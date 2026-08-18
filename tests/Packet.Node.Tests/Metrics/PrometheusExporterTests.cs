@@ -13,10 +13,10 @@ namespace Packet.Node.Tests.Metrics;
 /// <summary>
 /// Unit tests for the Prometheus <c>/metrics</c> exporter (#457). Drive
 /// <see cref="PdnMetricsApi.Render"/> over a directly-built <see cref="NodeHostedService"/>
-/// whose <see cref="NodeHostedService.Telemetry"/> is seeded with synthetic frames — no
+/// whose <see cref="NodeHostedService.Telemetry"/> is seeded with synthetic frames - no
 /// Kestrel, no modem. They pin three things the acceptance criteria call out: the exposition
 /// format is valid (HELP/TYPE headers, every metric <c>pdn_*</c>), metric values track the
-/// underlying telemetry counters, and label cardinality is bounded (per-port only — never a
+/// underlying telemetry counters, and label cardinality is bounded (per-port only - never a
 /// per-remote-callsign series, even with many peers heard on one port).
 /// </summary>
 [Trait("Category", "Node")]
@@ -41,7 +41,7 @@ public sealed class PrometheusExporterTests
             Identity = new Identity { Callsign = Local.ToString(), Alias = "LONDON" },
             Ports = [new PortConfig { Id = Port, Enabled = false, Transport = new KissTcpTransport { Host = "x", Port = 1 } }],
         });
-        // Supervisor is null until ExecuteAsync — fine: the projections null-tolerate it and the
+        // Supervisor is null until ExecuteAsync - fine: the projections null-tolerate it and the
         // configured-but-disabled port reports state "disabled" with live frame totals from the tap.
         var host = new NodeHostedService(config, null, clock, NullLoggerFactory.Instance);
         return (host, config, clock);

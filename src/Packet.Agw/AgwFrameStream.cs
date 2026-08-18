@@ -25,7 +25,7 @@ namespace Packet.Agw;
 /// advertises.
 /// </para>
 /// </remarks>
-#pragma warning disable CA1711 // The name "AgwFrameStream" describes what it does — wraps a byte stream and emits AGW frames; the "Stream" suffix is the most natural label even though it doesn't subclass System.IO.Stream.
+#pragma warning disable CA1711 // The name "AgwFrameStream" describes what it does - wraps a byte stream and emits AGW frames; the "Stream" suffix is the most natural label even though it doesn't subclass System.IO.Stream.
 public sealed class AgwFrameStream : IAsyncDisposable
 #pragma warning restore CA1711
 {
@@ -51,7 +51,7 @@ public sealed class AgwFrameStream : IAsyncDisposable
     /// (typical for a stream we opened ourselves).
     /// </param>
     /// <param name="inboundQueueCapacity">
-    /// Bounded inbound-queue size. Defaults to 64 — enough to absorb a
+    /// Bounded inbound-queue size. Defaults to 64 - enough to absorb a
     /// burst of frames while the consumer is mid-handler. A backed-up
     /// queue blocks the read loop, which in turn applies TCP back-
     /// pressure on the server.
@@ -117,7 +117,7 @@ public sealed class AgwFrameStream : IAsyncDisposable
                     // A full header is in hand (ReadExactAsync returned true), so "too
                     // short" is impossible: the advertised length is unusable (would
                     // overflow Int32). AGW has no frame delimiter to resync on, so a
-                    // corrupt length desyncs the stream — surface it and stop.
+                    // corrupt length desyncs the stream - surface it and stop.
                     throw new InvalidDataException(
                         "AGW frame advertises an unusable data length (overflows Int32); stream desynced.");
                 }
@@ -160,7 +160,7 @@ public sealed class AgwFrameStream : IAsyncDisposable
     /// Read exactly <paramref name="buffer"/>.Length bytes, blocking
     /// across multiple underlying-stream reads as necessary. Returns
     /// false if EOF happens on the FIRST read (i.e. before any byte
-    /// is delivered) — that's how callers distinguish "stream closed
+    /// is delivered) - that's how callers distinguish "stream closed
     /// cleanly between frames" from "stream closed mid-frame". A
     /// short read after the first byte throws via the caller.
     /// </summary>
@@ -188,7 +188,7 @@ public sealed class AgwFrameStream : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await readCts.CancelAsync().ConfigureAwait(false);
-        try { await readLoop.ConfigureAwait(false); } catch { /* swallow — terminating */ }
+        try { await readLoop.ConfigureAwait(false); } catch { /* swallow - terminating */ }
         readCts.Dispose();
         writeLock.Dispose();
         if (ownsStream)

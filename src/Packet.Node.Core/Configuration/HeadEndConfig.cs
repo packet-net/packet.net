@@ -13,12 +13,12 @@ namespace Packet.Node.Core.Configuration;
 /// <remarks>
 /// <para>
 /// <see cref="Id"/> is the head-end's <b>stable instance id</b> (the daemon's own config value,
-/// surfaced in its <c>GET /inventory</c> as <c>instanceId</c>) — not its IP. Keying bindings by the
+/// surfaced in its <c>GET /inventory</c> as <c>instanceId</c>) - not its IP. Keying bindings by the
 /// instance id, not <c>host:port</c>, is what lets a Pi reboot onto a new DHCP address without
 /// orphaning its port configs: bring-up re-resolves <c>id → current address</c> each time.
 /// </para>
 /// <para>
-/// <see cref="Address"/> is the <c>host:port</c> of that HTTP API — <b>manual</b> in Stage 3a.
+/// <see cref="Address"/> is the <c>host:port</c> of that HTTP API - <b>manual</b> in Stage 3a.
 /// Stage 3b adds mDNS discovery, which will resolve the instance id to a live address so the manual
 /// address becomes an optional fallback (routed / VLAN / Tailscale setups where multicast doesn't
 /// cross); that is why the address is validated only <em>when set</em>.
@@ -32,7 +32,7 @@ public sealed record HeadEndConfig
     public required string Id { get; init; }
 
     /// <summary>The <c>host:port</c> of the head-end's HTTP control plane (e.g.
-    /// <c>192.168.1.10:7300</c> or <c>pi.local:7300</c>) — manual in Stage 3a. An explicit port is
+    /// <c>192.168.1.10:7300</c> or <c>pi.local:7300</c>) - manual in Stage 3a. An explicit port is
     /// required (the API is not on :80). Empty/absent is tolerated for forward-compatibility with the
     /// Stage-3b mDNS path, but a port that references a head-end with no address cannot come up until
     /// discovery lands.</summary>

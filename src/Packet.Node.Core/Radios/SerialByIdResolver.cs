@@ -2,9 +2,9 @@ namespace Packet.Node.Core.Radios;
 
 /// <summary>
 /// Resolves a serial device path (e.g. <c>/dev/ttyUSB0</c>) to the stable <c>/dev/serial/by-id/*</c>
-/// symlink that canonicalises to it — the udev by-id convention, Linux-only. Returns <c>null</c> when
+/// symlink that canonicalises to it - the udev by-id convention, Linux-only. Returns <c>null</c> when
 /// there is no such symlink, when <b>two</b> symlinks canonicalise to the same device (the shared-USB-
-/// serial CP2102 CCDI dongles produce ambiguous by-id links — the very reason the CCDI serial, not
+/// serial CP2102 CCDI dongles produce ambiguous by-id links - the very reason the CCDI serial, not
 /// by-id, is a radio's stable key), or off Linux.
 /// </summary>
 /// <remarks>The by-id directory is injectable so the ambiguity/uniqueness logic is unit-testable
@@ -26,7 +26,7 @@ public sealed class SerialByIdResolver
     /// <summary>
     /// The <c>by-id</c> symlink that canonicalises to <paramref name="devicePath"/>, or <c>null</c>
     /// when none / more than one does (ambiguous) / not on Linux / the directory is absent. Never
-    /// throws — a filesystem hiccup resolves to <c>null</c>.
+    /// throws - a filesystem hiccup resolves to <c>null</c>.
     /// </summary>
     public string? Resolve(string devicePath)
     {

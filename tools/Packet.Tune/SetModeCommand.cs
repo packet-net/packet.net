@@ -10,7 +10,7 @@ namespace Packet.Tune;
 /// <c>--persist</c> writes flash), verified through the driver's GETALL readback
 /// and retried until it takes (#633), then transmit the settle throwaway frame
 /// (the NinoTNC applies a changed setting from the SECOND frame). Exit code 1
-/// means the mode is NOT set — never "probably fine".
+/// means the mode is NOT set - never "probably fine".
 /// </summary>
 internal static class SetModeCommand
 {

@@ -3,7 +3,7 @@ using System.Threading.Channels;
 namespace Packet.Node.Core.Console;
 
 /// <summary>
-/// An in-memory duplex <see cref="INodeConnection"/> pair — two ends wired
+/// An in-memory duplex <see cref="INodeConnection"/> pair - two ends wired
 /// back-to-back so bytes written to one surface on the other's
 /// <see cref="ReadAsync"/>, with no transport underneath. Used by the console's
 /// local <em>crossconnect</em> (<c>C &lt;app-ssid&gt;</c> to a callsign the node is
@@ -50,7 +50,7 @@ internal sealed class LoopbackNodeConnection : INodeConnection
     /// app callsign) for console messages/logging.
     /// </summary>
     /// <param name="normalizeAppOutputToCrlf">When true, the <c>appEnd</c> normalises everything it
-    /// writes (the terminal-bound direction — the node's own replies AND any relayed-session output)
+    /// writes (the terminal-bound direction - the node's own replies AND any relayed-session output)
     /// from bare-CR / lone-LF to CR-LF via <see cref="TelnetOutputNewlines"/>, exactly as the real
     /// telnet listener's <c>TcpNodeConnection</c> does. The browser command console needs this:
     /// without it, relayed bare-CR output (a connected BBS/node greeting) leaves the cursor parked at
@@ -100,11 +100,11 @@ internal sealed class LoopbackNodeConnection : INodeConnection
         }
         // The caller may reuse its buffer once WriteAsync returns; copy before queueing. When this
         // end normalises (the console's terminal-bound appEnd), convert bare-CR/lone-LF to CR-LF on
-        // the way out — NormalizeToCrlf both copies and carries the CR-LF coalescing state.
+        // the way out - NormalizeToCrlf both copies and carries the CR-LF coalescing state.
         var copy = normalizeOutput
             ? TelnetOutputNewlines.NormalizeToCrlf(bytes.Span, ref outLastWasCr)
             : bytes.ToArray();
-        outbox.TryWrite(copy);   // false once the peer end has gone — drop, the relay is winding down
+        outbox.TryWrite(copy);   // false once the peer end has gone - drop, the relay is winding down
         return ValueTask.CompletedTask;
     }
 

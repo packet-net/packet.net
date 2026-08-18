@@ -12,7 +12,7 @@ using Xunit;
 namespace Packet.Interop.Tests.Xrouter;
 
 /// <summary>
-/// v2.2 arc — extended-mode (mod-128 / SABME) interop against the real XRouter
+/// v2.2 arc - extended-mode (mod-128 / SABME) interop against the real XRouter
 /// container over the net-sim AFSK1200 link. Our <see cref="Ax25Session"/>
 /// attaches to net-sim's KISS-TCP on 8100 (node a); XRouter dials net-sim's 8103
 /// (node d) from inside docker. Same transport as the mod-8
@@ -23,16 +23,16 @@ namespace Packet.Interop.Tests.Xrouter;
 /// <remarks>
 /// <para>
 /// <b>The headline finding (verified on the wire).</b> XRouter rejects our SABME
-/// with <b>DM (F=1)</b> — it does not implement mod-128 on the incoming path, and
+/// with <b>DM (F=1)</b> - it does not implement mod-128 on the incoming path, and
 /// it answers our <i>polled</i> SABME (P=1) with a DM whose F bit is set. figc4.6's
 /// <c>AwaitingV22Connection</c> <c>DM received</c> handler routes a DM(F=1)
 /// (<c>t11_dm_received_yes</c>) straight to <c>Disconnected</c> as a §975 connection
-/// refusal — <b>with no fallback</b> — so a figure-literal v2.2-preferred connect
+/// refusal - <b>with no fallback</b> - so a figure-literal v2.2-preferred connect
 /// against XRouter dies and leaves <c>IsExtended</c> stuck true. This is the exact
 /// gap <see cref="Ax25SessionQuirks.Ax25Spec48DmRejectionDegradesToV20"/> (default
 /// on) closes: a DM in <c>AwaitingV22Connection</c> (either F-branch) is treated as
-/// "peer can't do v2.2, retry mod-8" — version 2.0 is forced and the link
-/// re-establishes via SABM — exactly the DM analogue of the FRMR fallback LinBPQ
+/// "peer can't do v2.2, retry mod-8" - version 2.0 is forced and the link
+/// re-establishes via SABM - exactly the DM analogue of the FRMR fallback LinBPQ
 /// triggers (<see cref="LinbpqViaNetsimExtendedMode"/>).
 /// </para>
 /// <para>
@@ -63,7 +63,7 @@ public class XrouterViaNetsimExtendedMode
     private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(40);
     private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
 
-    // Faster RR-ack turnaround on the shared half-duplex channel — same rationale
+    // Faster RR-ack turnaround on the shared half-duplex channel - same rationale
     // as the other net-sim tests. T1/T3 keep spec defaults so the
     // SABME→DM→SABM retransmit recovery timing is unchanged.
     private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
@@ -77,11 +77,11 @@ public class XrouterViaNetsimExtendedMode
 
     /// <summary>
     /// Our extended-preferred DL-CONNECT against XRouter: we emit SABME, XRouter
-    /// answers DM(F=1) (it does not implement mod-128 — see class remarks), and our
+    /// answers DM(F=1) (it does not implement mod-128 - see class remarks), and our
     /// figc4.6 DM-fallback (Ax25Spec48) drops us to v2.0 and re-establishes with a
     /// SABM, completing a <b>mod-8</b> connection. Then DISC/UA tears it down.
     /// Asserts the full degrade on the live DM the real XRouter sends, not a
-    /// synthesised one — this is the on-the-wire proof of the new quirk.
+    /// synthesised one - this is the on-the-wire proof of the new quirk.
     /// </summary>
     [Fact]
     public async Task ExtendedConnect_FallsBackToMod8_OnXrouterDm_ThenDisconnects()
@@ -94,7 +94,7 @@ public class XrouterViaNetsimExtendedMode
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         // Brief settle so net-sim's per-port TX queue is ready before SABME.
@@ -111,7 +111,7 @@ public class XrouterViaNetsimExtendedMode
             "the DM fallback forces version 2.0 — the completed link is mod-8, not mod-128 (XRouter cannot do mod-128)");
 
         // The wire evidence: XRouter answered our SABME with a DM. (Observed is
-        // the INBOUND log — frames addressed to us — so the SABME we transmitted
+        // the INBOUND log - frames addressed to us - so the SABME we transmitted
         // isn't here; the rig starting IsExtended=true plus reaching a mod-8
         // Connected via the DM-fallback is the proof the SABME went out and was
         // rejected. The SABME-on-the-wire emission is covered by the
@@ -131,7 +131,7 @@ public class XrouterViaNetsimExtendedMode
     /// fully functional mod-8 data link by round-tripping a command against
     /// XRouter's node prompt. We connect extended (→ DM → mod-8), wait for the link
     /// to quiesce, send "?\r" (help-summary command), and require a non-empty
-    /// response — then DISC/UA. Asserts the fallback leaves a usable connection,
+    /// response - then DISC/UA. Asserts the fallback leaves a usable connection,
     /// not merely a Connected state.
     /// </summary>
     [Fact]
@@ -150,7 +150,7 @@ public class XrouterViaNetsimExtendedMode
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         await Task.Delay(500, cts.Token);
@@ -163,7 +163,7 @@ public class XrouterViaNetsimExtendedMode
 
         // ─── Settle ─────────────────────────────────────────────────────
         // XRouter's NODECALL connect path does not emit a CTEXT welcome banner
-        // (CTEXT is alias-only — see XrouterViaNetsimConnectedMode). Wait for our
+        // (CTEXT is alias-only - see XrouterViaNetsimConnectedMode). Wait for our
         // own link to go quiescent (post-UA RR exchange settled) before driving
         // the command round-trip.
         await WaitForQuiescence(rig.Session, TimeSpan.FromSeconds(15), pumps.Tasks, cts.Token);
@@ -208,7 +208,7 @@ public class XrouterViaNetsimExtendedMode
     // IsExtended = true on the context (so DL-CONNECT initiates SABME) and an
     // Observed frame log (so the test can assert XRouter's DM appeared on the
     // wire). Kept duplicated rather than shared for the same reason the other
-    // rigs are — the tests are likely to diverge as more peer-specific quirks
+    // rigs are - the tests are likely to diverge as more peer-specific quirks
     // surface.
 
     private sealed record Rig(
@@ -278,7 +278,7 @@ public class XrouterViaNetsimExtendedMode
                 // extended (pre-DM) we parse extended; after the fallback forces
                 // v2.0 the context is mod-8. U-frames (SABME/UA/DM) are one control
                 // octet in both modes, so the handshake frames parse the same either
-                // way — only the post-connect I/S frames depend on the modulo, by
+                // way - only the post-connect I/S frames depend on the modulo, by
                 // which point ctx is mod-8.
                 if (!Ax25Frame.TryParse(f.Payload, Ax25ParseOptions.Lenient,
                         rig.Session.Context.IsExtended, out var parsed))
@@ -286,7 +286,7 @@ public class XrouterViaNetsimExtendedMode
                     continue;
                 }
 
-                // net-sim's afsk1200 channel is broadcast — only react to frames
+                // net-sim's afsk1200 channel is broadcast - only react to frames
                 // addressed to our local callsign.
                 if (!parsed.Destination.Callsign.Equals(rig.Session.Context.Local))
                 {

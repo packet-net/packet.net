@@ -11,7 +11,7 @@ namespace Packet.Node.Tests.HeadEnd;
 /// The legacy-binding fallback (#578): head-end ≤0.1.2 used <c>/dev/serial/by-id</c> basenames as
 /// device ids; 0.1.3 switched to by-path ids (#575), keeping by-id as the informational
 /// <c>byId</c> hint. A NodeConfig adopted against the old head-end must keep resolving after the
-/// upgrade — via the hint, with a re-adopt warning — in both the device resolver (bring-up) and
+/// upgrade - via the hint, with a re-adopt warning - in both the device resolver (bring-up) and
 /// the fleet scanner's bound-device detection.
 /// </summary>
 [Trait("Category", "Node")]
@@ -87,7 +87,7 @@ public sealed class HeadEndLegacyByIdFallbackTests
     {
         // The #574 bench reality: two CP2102 dongles share USB serial 0001, so both carry the
         // SAME by-id hint. Guessing between them would drive the wrong physical radio (PTT,
-        // re-clocks, SDMs to the sibling channel) — staying down with a clear error is safer.
+        // re-clocks, SDMs to the sibling channel) - staying down with a clear error is safer.
         var handler = new StubHeadEndHandler(new HeadEndInventory
         {
             InstanceId = "pi-shack",

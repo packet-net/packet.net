@@ -10,7 +10,7 @@ namespace Packet.Tune.Core;
 /// whose transport is mode/channel-agnostic (canonically <see cref="SdmTuningLink"/>
 /// over the radios' own FFSK side channel), then verify the switched link with tagged
 /// probe frames in both directions. On any failure after the commit, both ends revert
-/// to the session's home mode/channel — coordinated over the side channel when it
+/// to the session's home mode/channel - coordinated over the side channel when it
 /// still reaches the peer, and backstopped by the responder's idle watchdog when it
 /// does not (e.g. a split channel).
 /// </summary>
@@ -19,18 +19,18 @@ namespace Packet.Tune.Core;
 /// the link):
 /// <list type="number">
 ///   <item>C→R <c>propose|mode[|channel]</c>; responder answers <c>confirm</c> (or
-///     <c>reject</c> — nothing has changed anywhere yet).</item>
+///     <c>reject</c> - nothing has changed anywhere yet).</item>
 ///   <item>C→R <c>commit|mode[|channel]</c>. The commit telegram's sequence number is
 ///     the attempt tag carried by every probe frame. The responder switches on
 ///     receipt (after its auto-ack guard); the coordinator switches once the link
-///     confirms delivery — so nobody moves until both ends hold the commit.</item>
+///     confirms delivery - so nobody moves until both ends hold the commit.</item>
 ///   <item>Coordinator probes C→R (<see cref="ModeCoordOptions.ProbeFrames"/> tagged
 ///     frames), announces <c>sent|n</c>; responder reports <c>report|rx/n</c>, then
 ///     probes R→C and announces its own <c>sent</c>; coordinator snapshots its
 ///     counter and sends the final <c>report</c> back.</item>
 ///   <item>Both directions decoded ≥ 1 frame → the switch stands. Otherwise
 ///     <c>revert</c> goes out, both ends return home, and the home link is verified
-///     with a short probe burst (which always works — home is the mode the session
+///     with a short probe burst (which always works - home is the mode the session
 ///     started on).</item>
 /// </list>
 /// </remarks>
@@ -80,7 +80,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
 
     /// <summary>
     /// Session handshake: <c>HI|coord</c>, answered by the responder's
-    /// <c>HI|responder</c>. Confirms the peer <em>application</em> is alive — a
+    /// <c>HI|responder</c>. Confirms the peer <em>application</em> is alive - a
     /// delivery receipt alone only proves the peer radio is on.
     /// </summary>
     /// <returns><c>true</c> when the responder answered.</returns>
@@ -191,7 +191,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
         catch (TuningLinkException ex)
         {
             // Ambiguous: the responder may hold the commit with only the receipt
-            // lost. Stay home, tell it to revert (best effort — its watchdog is
+            // lost. Stay home, tell it to revert (best effort - its watchdog is
             // the backstop).
             Log?.Invoke($"coord: commit delivery unconfirmed ({ex.Message}) — staying home, sending revert");
             await TrySendRevertAsync("nocommit", cancellationToken).ConfigureAwait(false);
@@ -316,9 +316,9 @@ public sealed class ModeCoordinator : IAsyncDisposable
     /// <summary>
     /// <see cref="CoordinateAsync"/> with reply-driven retry across the commit/probe phase: a
     /// transient side-channel loss there reverts both ends safely to home (the SDM receipt is
-    /// unreliable — see <see cref="SdmTuningLink"/>), and the commit is a state change rather than
+    /// unreliable - see <see cref="SdmTuningLink"/>), and the commit is a state change rather than
     /// a re-runnable telegram, so the revert-safe unit to retry is the whole attempt, re-run from a
-    /// known home state. Only outcomes that left both ends confirmed-home retry —
+    /// known home state. Only outcomes that left both ends confirmed-home retry -
     /// <see cref="ModeCoordOutcome.CommitUndelivered"/> (never switched) and
     /// <see cref="ModeCoordOutcome.LinkFailed"/> with the home link verified alive; real verdicts
     /// (rejected / switch-failed / probe-dead) and the pre-commit confirm timeout (already retried
@@ -332,7 +332,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
             var attempt = await CoordinateAsync(mode, channel, cancellationToken).ConfigureAwait(false);
 
             bool recoverableAndHome =
-                attempt.Outcome == ModeCoordOutcome.CommitUndelivered             // never switched — still home
+                attempt.Outcome == ModeCoordOutcome.CommitUndelivered             // never switched - still home
                 || (attempt.Outcome == ModeCoordOutcome.LinkFailed && attempt.HomeLinkAlive == true); // reverted, home confirmed alive
             if (!recoverableAndHome || attemptNo >= options.CommitRetryAttempts)
             {
@@ -344,11 +344,11 @@ public sealed class ModeCoordinator : IAsyncDisposable
     }
 
     /// <summary>Coordinate a switch back to the session's home mode/channel (a normal
-    /// propose/confirm/commit attempt — the raw revert path is only for failures).</summary>
+    /// propose/confirm/commit attempt - the raw revert path is only for failures).</summary>
     public Task<ModeCoordAttempt> ReturnHomeAsync(CancellationToken cancellationToken = default) =>
         CoordinateAsync(options.HomeMode, options.HomeChannel, cancellationToken);
 
-    /// <summary>Best-effort <c>BY</c> — the responder exits its loop (reverting to
+    /// <summary>Best-effort <c>BY</c> - the responder exits its loop (reverting to
     /// home first if it is not there).</summary>
     public async Task EndAsync(CancellationToken cancellationToken = default)
     {
@@ -378,8 +378,8 @@ public sealed class ModeCoordinator : IAsyncDisposable
     }
 
     /// <summary>
-    /// Revert both ends to home: tell the peer (best effort), apply home locally, and —
-    /// when the peer was reachable — verify the home link with a short one-way probe
+    /// Revert both ends to home: tell the peer (best effort), apply home locally, and -
+    /// when the peer was reachable - verify the home link with a short one-way probe
     /// burst. Returns whether the home link verified (<c>null</c> = unverifiable).
     /// </summary>
     private async Task<bool?> RevertBothAsync(
@@ -412,7 +412,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
 
         if (!notified)
         {
-            // The peer could not be told (or we chose not to — it reverted first);
+            // The peer could not be told (or we chose not to - it reverted first);
             // its watchdog brings it home. Nothing to verify against yet.
             return null;
         }

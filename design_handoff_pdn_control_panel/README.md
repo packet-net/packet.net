@@ -1,4 +1,4 @@
-# Handoff: pdn — node control panel (web UI)
+# Handoff: pdn - node control panel (web UI)
 
 ## Overview
 
@@ -14,13 +14,13 @@ contract before it is locked.
 
 ## About the design files
 
-The files in this bundle are **design references written in HTML/React-via-Babel** — runnable
+The files in this bundle are **design references written in HTML/React-via-Babel** - runnable
 prototypes that show intended look and behaviour. They are **not** production code to copy directly.
-The task is to **recreate these designs in the target codebase** — the locked stack is **Vite +
-React + TypeScript + Tailwind + shadcn/ui** — using its established patterns and component library.
+The task is to **recreate these designs in the target codebase** - the locked stack is **Vite +
+React + TypeScript + Tailwind + shadcn/ui** - using its established patterns and component library.
 
 Concretely: most of the bespoke primitives in `pdn/ui.jsx` (Button, Badge, Card, Input, Select,
-Switch, Tabs, Sheet, Modal, Tooltip, Slider, Table cells) map 1:1 onto **shadcn/ui** components —
+Switch, Tabs, Sheet, Modal, Tooltip, Slider, Table cells) map 1:1 onto **shadcn/ui** components -
 prefer the real shadcn component over re-deriving these. The value here is the **layout, the
 information architecture, the copy, the interaction model, and the domain-specific composites**
 (monitor decode row, reconcile/disruption confirm, profile-first port editor, link tuner, etc.).
@@ -34,12 +34,12 @@ defines a token (below), map it onto the shadcn CSS-variable theme rather than h
 ## Tech / framework target
 
 - **Vite + React + TypeScript + Tailwind + shadcn/ui** (locked in the repo plan).
-- **Real-time:** SSE (`GET /api/v1/events`), not WebSocket — one multiplexed stream, events tagged
+- **Real-time:** SSE (`GET /api/v1/events`), not WebSocket - one multiplexed stream, events tagged
   by type (`frame`, `session`, `port`, `config`, `route`); the client subscribes/filters and keeps a
   ring buffer for the high-rate `frame` feed. (In the prototype this is faked with timers.)
 - **Auth:** every screen except first-run setup + login sits behind auth. Web login = Argon2id
   password + WebAuthn passkeys → JWT with `read` / `operate` / `admin` scopes. **On-air auth = TOTP**
-  (separate concept — see Users).
+  (separate concept - see Users).
 - **Config writes** ride the node's existing reconcile path; the UI's job is to *surface* disruption
   (live vs port-restart vs node-reset) before applying. Never silently apply.
 
@@ -83,13 +83,13 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
 ## App shell & navigation
 
 - **Left sidebar** (`w-60`, `bg-card`, collapses to an off-canvas drawer below `md`): logo + 7 nav
-  items — Dashboard, Monitor, Sessions, Routes, Ports, Config, Users — active item gets
+  items - Dashboard, Monitor, Sessions, Routes, Ports, Config, Users - active item gets
   `bg-primary/10 text-primary`. Footer shows the build version.
 - **Top bar** (`h-14`, translucent `bg-card/60 backdrop-blur`): node callsign + a pulsing status dot
   + identity, then uptime, a **theme toggle** (light/dark, persisted only in-session), and a user menu.
 - **Router:** client-side, state-driven (`route` string). Gate states: `setup` → `login` → `app`.
 - Decorative entrance animation on screen change must NOT animate opacity from 0 (it can freeze the
-  content invisible if the tab is backgrounded) — animate transform only. Same rule for any
+  content invisible if the tab is backgrounded) - animate transform only. Same rule for any
   slide/entrance.
 
 ---
@@ -117,7 +117,7 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
 - **Recent activity**: monospace journald-style log tail, level-coloured (info/warn/error).
 - Real data: `NodeStatus` (§6.4). `portsUp`, unhealthy-port highlight derived from per-link stats.
 
-### 4. Live monitor (`screens-observe.jsx` → `Monitor`) — the marquee screen
+### 4. Live monitor (`screens-observe.jsx` → `Monitor`) - the marquee screen
 - **Per-link stat strip** (cards): peer, port, smoothed RTT, retries, REJ/SREJ (colour-coded).
 - **Filters:** callsign search, port select, frame-type select; Pause/Resume; Clear; a live/paused
   indicator + frame count.
@@ -126,10 +126,10 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
   summary. New rows flash.
 - **Smooth-prepend behaviour (important):** newest rows insert at the top. When the user is at the
   top ("follow mode"), the list holds the visual frame then glides up via a **custom easeOutCubic
-  rAF tween (~520ms)** — *not* native `scroll-behavior:smooth* (too steppy at this cadence). When the
+  rAF tween (~520ms)** - *not* native `scroll-behavior:smooth* (too steppy at this cadence). When the
   user has scrolled down to read (`scrollTop > 140`), follow mode disengages and scroll position is
   preserved by offsetting `scrollTop` by the added height. Re-baseline height on filter/expand change.
-- **Click a row → full Wireshark-style decode** (`FrameDecode`): two columns — decoded AX.25 fields
+- **Click a row → full Wireshark-style decode** (`FrameDecode`): two columns - decoded AX.25 fields
   (direction, SSIDs, digi path, type, class, command/response, N(S)/N(R), P/F, PID, length) and a
   **hex+ASCII octet dump** with a copy-hex affordance.
 - Real data: `MonitorEvent` (§6.3) over the SSE `frame` feed; client ring buffer + client-side filter.
@@ -139,7 +139,7 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
   (Connected/TimerRecovery…) with status dot, V(S)/V(R), window, uptime, bytes ↓/↑, last activity,
   open/disconnect actions.
 - **Connect-out** (`ConnectOut` modal): callsign/alias with **autocomplete from the routes list**, via
-  port select. This is a **sysop interactive connect** — on connect it creates the session AND opens
+  port select. This is a **sysop interactive connect** - on connect it creates the session AND opens
   the session console immediately. From Routes, the port is defaulted to the best neighbour's port.
 - **Session console drawer** (`SessionConsole`, right-side Sheet): V(S)/V(R), window, uptime, byte
   counters; a **scrollable session stream**; a **send-a-line** input (minimal v1 affordance that
@@ -148,13 +148,13 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
 
 ### 6. NET/ROM routes (`screens-net.jsx` → `Routes`)
 - Tabs: **Destinations** / **Neighbours**.
-- **Neighbours:** callsign, alias, port, **path-quality bar** (0–255, colour by threshold), last heard,
+- **Neighbours:** callsign, alias, port, **path-quality bar** (0-255, colour by threshold), last heard,
   and a **Ping** action (AX.25 TEST over that neighbour's port).
 - **Destinations:** callsign, alias, best-via neighbour (+N alt routes), quality bar, **obsolescence**,
   **INP3 time** (ms, primary-coloured when present), hops, plus **Ping** + **Connect** (sysop connect,
   port defaulted from best neighbour). Footer legend for quality thresholds.
 - **Every non-obvious column header has an ⓘ tooltip** with a plain-English explanation (Quality,
-  Obsolescence, INP3 time, Hops, Path quality) — see `InfoHint` usages; copy is in the headers.
+  Obsolescence, INP3 time, Hops, Path quality) - see `InfoHint` usages; copy is in the headers.
 - Read-only view (no edits in v1). Real data: `NetRomRoutingSnapshot` (§6.2).
 
 ### 7. Ports (`pdn/screens-manage.jsx` → `Ports` + `PortEditor`)
@@ -166,9 +166,9 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
   reason for a degraded link), transport descriptor, transport-kind badge, a **setup summary line**
   (profile · channel · difficulty, or "Custom parameters"), session/frame counters, and actions:
   Edit, **Tune link**, Restart, Down/Bring up. Degraded/faulted cards get a tinted border.
-- **Port editor** (right Sheet, `PortEditor`) — **profile-first**:
+- **Port editor** (right Sheet, `PortEditor`) - **profile-first**:
   - **Port id + Enabled** (each with ⓘ help).
-  - **Connection**: type select (kiss-tcp / serial-kiss / **ninotnc** / axudp — note "ninotnc" is the
+  - **Connection**: type select (kiss-tcp / serial-kiss / **ninotnc** / axudp - note "ninotnc" is the
     label, kind is `nino-tnc`) with a **discriminated form per kind**. For ninotnc: serial device,
     **USB wire speed shown read-only at 57600 (fixed)**, and **modem mode as a dropdown** (named
     modes served by the node — `NINO_MODES`). KISS params only exist for KISS transports; AXUDP shows
@@ -179,9 +179,9 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
   - **Advanced parameters** (collapsible): friendly-labelled tuneables with **ⓘ tooltips and unit
     suffixes** — Link timing (Ack timeout/Reply delay/Keep-alive poll/Retries/Window; protocol names
     T1/T2/T3/N2 noted only in the tooltip) and Modem keying (TX delay/TX tail/Slot time in **ms**;
-    **Persistence as a 0–100% slider** stored as a 0–255 byte). **Non-default fields get a "modified"
+    **Persistence as a 0-100% slider** stored as a 0-255 byte). **Non-default fields get a "modified"
     badge + accent border.** "Reset to profile" restores baselines.
-  - **Save → disruption confirm** (`Modal`): plain-language summary — params apply *live* (no drop),
+  - **Save → disruption confirm** (`Modal`): plain-language summary - params apply *live* (no drop),
     a transport/enable change *restarts the port* (N sessions drop), renaming *resets the node*. No
     internal class names in copy.
 - Real data/config: `PortConfig` + `PortStatus` (§6.1/§6.4). `PORT_SETUP`, `NINO_MODES`,
@@ -192,15 +192,15 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
   Beacons, and a **Ports →** cross-link (ports are edited on the Ports screen).
 - Edits accumulate a dirty set; **"Review & apply"** opens the **reconcile preview** (`ReconcilePreview`):
   groups changes into **apply live / restart a port / reset the node**, plain-language, atomic apply.
-  (Copy must NOT leak internal types — e.g. say "checked before anything is applied", not
+  (Copy must NOT leak internal types - e.g. say "checked before anything is applied", not
   `IConfigProvider → ReconcilePlanner`.)
 - **Identity / Services / Management**: typed fields with per-field impact badges (live / port-restart
   / node-reset).
-- **NET/ROM + INP3**: rewritten as **guidance** — an intro paragraph, four **labelled toggle rows with
+- **NET/ROM + INP3**: rewritten as **guidance** - an intro paragraph, four **labelled toggle rows with
   one-line descriptions** (`ToggleRow`: NET/ROM networking, Advertise my routes, Accept connects
   through me, Forward transit traffic), a Node alias field, an **"Advanced routing tuning"**
   collapsible (`AdvancedDetails` + `GuidedNum`: new-neighbour quality, min quality, sweep, hop limit,
-  window — each tooltip'd, with unit suffixes), and an **INP3 section** with its own explanation,
+  window - each tooltip'd, with unit suffixes), and an **INP3 section** with its own explanation,
   two toggles, and a collapsible timing-intervals group. Copy lives in `NETROM_TOGGLE_HELP`,
   `NETROM_FIELD_HELP`, `INP3_FIELD_HELP` (`pdn/data.jsx`).
 - **Raw YAML**: textarea with a (mock) valid/validate affordance that also routes through the reconcile
@@ -217,7 +217,7 @@ as `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `bg-card`,
 - **Two auth worlds, visually separated:**
   - **Web login**: Password (Argon2id) + Passkeys (WebAuthn) rows, each an `AuthMethod` row with an
     enabled/not-set badge + action (Reset / Add passkey).
-  - **On-air auth**: **Authenticator (TOTP)** — used because a station reaching the node over a plain
+  - **On-air auth**: **Authenticator (TOTP)** - used because a station reaching the node over a plain
     packet session has no browser, just a 6-digit code. Enrol opens `TotpEnroll`: **scan** (QR
     placeholder + manual base32 key + `otpauth://` URI) → **verify** (6-digit code entry) → **done**
     (success + one-time recovery codes). Enrolled users get Re-enrol / Remove.
@@ -269,37 +269,37 @@ Connectionless **AX.25 TEST** frames (the `axping` analogue): station + via-port
 
 The prototype's mock data in **`pdn/data.jsx`** deliberately uses the **real record field names** from
 the codebase (`NodeConfig`, `PortConfig`, `NetRomRoutingSnapshot`, `MonitorEvent`, `SessionInfo`,
-`PortStatus`, `LinkStats`) — use it as the field-name reference. The operator-facing helper models
+`PortStatus`, `LinkStats`) - use it as the field-name reference. The operator-facing helper models
 (`RADIO_PROFILES`, `NINO_MODES`, `PORT_SETUP`, `PARAM_HELP`, `*_HELP`, `portHealth`, beacons, TOTP)
-are UI-layer concepts introduced by this design — decide where they live server-side.
+are UI-layer concepts introduced by this design - decide where they live server-side.
 
 ## Assets
 
 No external image assets. Icons are inline single-path SVGs (Lucide-style) in `pdn/ui.jsx` (`ICON`
-map) — in production use **lucide-react**. The logo is an icon tile + "pdn" wordmark (no bitmap).
+map) - in production use **lucide-react**. The logo is an icon tile + "pdn" wordmark (no bitmap).
 Fonts: Inter + JetBrains Mono via Google Fonts.
 
 ## Files in this bundle
 
-- `pdn-control-panel.html` — entry point: theme tokens (`:root`/`.dark`), Tailwind config, font
+- `pdn-control-panel.html` - entry point: theme tokens (`:root`/`.dark`), Tailwind config, font
   imports, script load order, and the inline `App` router/mount.
-- `pdn/data.jsx` — mock data + domain models + help/guidance copy + formatters.
-- `pdn/ui.jsx` — primitives (→ shadcn/ui) + icons (→ lucide-react) + app shell.
-- `pdn/screens-observe.jsx` — Dashboard, Monitor (+ FrameDecode, smooth-prepend).
-- `pdn/screens-net.jsx` — Sessions (+ console, connect-out), Routes.
-- `pdn/screens-manage.jsx` — Ports (+ editor, NinoTNC banner, save-confirm), Config (+ reconcile,
+- `pdn/data.jsx` - mock data + domain models + help/guidance copy + formatters.
+- `pdn/ui.jsx` - primitives (→ shadcn/ui) + icons (→ lucide-react) + app shell.
+- `pdn/screens-observe.jsx` - Dashboard, Monitor (+ FrameDecode, smooth-prepend).
+- `pdn/screens-net.jsx` - Sessions (+ console, connect-out), Routes.
+- `pdn/screens-manage.jsx` - Ports (+ editor, NinoTNC banner, save-confirm), Config (+ reconcile,
   NET/ROM guidance, Beacons), Users (+ AuthMethod, TOTP enroll).
-- `pdn/screens-tools.jsx` — LinkTuner, Ax25Ping/PingButton.
-- `pdn/screens-auth.jsx` — Login, Setup wizard.
-- `pdn/design-canvas.jsx` — canvas scaffold used by the style-variations file (not part of the app).
-- `pdn-style-variations.html` — side-by-side **style explorations** (accent family, monitor row
-  treatments, theme/elevation) — reference for the chosen direction (sky accent, hairline rows,
+- `pdn/screens-tools.jsx` - LinkTuner, Ax25Ping/PingButton.
+- `pdn/screens-auth.jsx` - Login, Setup wizard.
+- `pdn/design-canvas.jsx` - canvas scaffold used by the style-variations file (not part of the app).
+- `pdn-style-variations.html` - side-by-side **style explorations** (accent family, monitor row
+  treatments, theme/elevation) - reference for the chosen direction (sky accent, hairline rows,
   dark-first), not a screen to ship.
 
 ## How to run the reference
 
 Open `pdn-control-panel.html` in a browser. It loads React + Babel from CDN and transpiles the JSX in
-the browser (dev convenience only — do not ship this approach). Log in with "Continue with passkey".
+the browser (dev convenience only - do not ship this approach). Log in with "Continue with passkey".
 
 ## Screenshots (`screenshots/`)
 

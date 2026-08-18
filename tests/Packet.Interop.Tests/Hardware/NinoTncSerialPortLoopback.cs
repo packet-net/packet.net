@@ -22,7 +22,7 @@ namespace Packet.Interop.Tests.Hardware;
 /// MODE DIP switches must be set to 1111 ("Set from KISS") so the SETHW
 /// command can choose the operating mode in software. TX-DELAY pots must
 /// be at minimum so the KISS TXDELAY parameter takes effect. Both TNCs
-/// are configured for mode 6 (1200 AFSK AX.25) — the slowest, most
+/// are configured for mode 6 (1200 AFSK AX.25) - the slowest, most
 /// audio-link-tolerant mode in the catalog.
 /// </para>
 /// <para>

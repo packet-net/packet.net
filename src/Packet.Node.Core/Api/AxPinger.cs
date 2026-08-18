@@ -15,7 +15,7 @@ namespace Packet.Node.Core.Api;
 /// </summary>
 /// <remarks>
 /// The pinger only ever READS via <see cref="FrameTraced"/> and calls the public
-/// <see cref="SendTestAsync"/> — it never mutates the supervisor's live port set, so it
+/// <see cref="SendTestAsync"/> - it never mutates the supervisor's live port set, so it
 /// does not need (and must not take) the host's <c>RunExclusiveAsync</c> gate.
 /// </remarks>
 public interface IAxPingChannel
@@ -23,19 +23,19 @@ public interface IAxPingChannel
     /// <summary>This station's identity (the TEST command's source callsign).</summary>
     Callsign MyCall { get; }
 
-    /// <summary>The per-frame TX/RX trace stream — the same event
+    /// <summary>The per-frame TX/RX trace stream - the same event
     /// <see cref="Ax25Listener.FrameTraced"/> raises. The pinger subscribes here to
     /// catch the peer's TEST response.</summary>
     event EventHandler<Ax25FrameEventArgs>? FrameTraced;
 
     /// <summary>Send a connectionless TEST command frame (P bit set) to
-    /// <paramref name="destination"/> carrying <paramref name="info"/> — the probe whose
+    /// <paramref name="destination"/> carrying <paramref name="info"/> - the probe whose
     /// echo the pinger correlates. Mirrors <see cref="Ax25Listener.SendTestAsync"/>.</summary>
     Task SendTestAsync(Callsign destination, ReadOnlyMemory<byte> info, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Adapts a live <see cref="Ax25Listener"/> to <see cref="IAxPingChannel"/> — the
+/// Adapts a live <see cref="Ax25Listener"/> to <see cref="IAxPingChannel"/> - the
 /// production channel the endpoint hands the pinger. Pure delegation; holds no state.
 /// </summary>
 public sealed class ListenerAxPingChannel(Ax25Listener listener) : IAxPingChannel
@@ -62,7 +62,7 @@ public sealed class ListenerAxPingChannel(Ax25Listener listener) : IAxPingChanne
 /// target station and correlates each one's TEST response off the channel's
 /// <see cref="IAxPingChannel.FrameTraced"/> stream to measure round-trip time. A
 /// spec-compliant peer (§4.3.4.2) echoes the TEST command's information field in a TEST
-/// response; a peer that doesn't implement TEST simply never answers — every probe times
+/// response; a peer that doesn't implement TEST simply never answers - every probe times
 /// out (loss 100%), which is a normal result, not an error.
 /// </summary>
 /// <remarks>
@@ -75,7 +75,7 @@ public sealed class ListenerAxPingChannel(Ax25Listener listener) : IAxPingChanne
 /// makes a stray or duplicate TEST unable to false-match a probe.
 /// </para>
 /// <para>
-/// <b>Timing.</b> All timing rides the injected <see cref="TimeProvider"/> — the timeout
+/// <b>Timing.</b> All timing rides the injected <see cref="TimeProvider"/> - the timeout
 /// is a <see cref="Task.Delay(TimeSpan, TimeProvider, CancellationToken)"/> and the RTT
 /// is <see cref="Stopwatch.GetElapsedTime(long, long)"/> over
 /// <see cref="TimeProvider.GetTimestamp"/> samples. No wall-clock (repo rule §2.7), so a
@@ -90,8 +90,8 @@ public sealed class ListenerAxPingChannel(Ax25Listener listener) : IAxPingChanne
 public static class AxPinger
 {
     // Process-unique probe-tag prefix: "PDNPING" + the process-unique nonce. The per-run
-    // Guid + the per-probe seq are appended so no two probes — across runs, across
-    // concurrent endpoints, or vs a stray TEST a peer left on the air — share a tag.
+    // Guid + the per-probe seq are appended so no two probes - across runs, across
+    // concurrent endpoints, or vs a stray TEST a peer left on the air - share a tag.
     private static readonly byte[] TagMagic = "PDNPING"u8.ToArray();
 
     /// <summary>
@@ -121,7 +121,7 @@ public static class AxPinger
         ArgumentNullException.ThrowIfNull(clock);
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
 
-        // One process-unique nonce per run — pinned ahead of the loop so the tag for every
+        // One process-unique nonce per run - pinned ahead of the loop so the tag for every
         // probe in this run shares it; the per-probe seq distinguishes probes within the run.
         var runNonce = Guid.NewGuid();
 
@@ -164,7 +164,7 @@ public static class AxPinger
             // Arm the per-probe timeout BEFORE sending. The timer (a Task.Delay over the
             // injected clock) must be REGISTERED before the probe becomes observably
             // "sent", because under a FakeTimeProvider a test advances the clock once it
-            // sees the send — and an advance that lands before the timer exists is simply
+            // sees the send - and an advance that lands before the timer exists is simply
             // lost (no timer to fire), so the probe would never time out and the run would
             // hang. Creating the delay first closes that race deterministically; the
             // sub-microsecond gap before the actual send is immaterial against a
@@ -184,7 +184,7 @@ public static class AxPinger
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // The port went away mid-run (evicted / disposed) or the modem write
-                // failed — treat this probe as lost rather than tearing down the run.
+                // failed - treat this probe as lost rather than tearing down the run.
                 return new PingReply(seq, RttMs: null, Timeout: true);
             }
 
@@ -194,7 +194,7 @@ public static class AxPinger
             {
                 // Cancel the delay so its timer doesn't linger.
                 await timeoutCts.CancelAsync().ConfigureAwait(false);
-                // Use the TimeProvider's own GetElapsedTime — it converts the timestamp
+                // Use the TimeProvider's own GetElapsedTime - it converts the timestamp
                 // delta with the provider's TimestampFrequency, so a FakeTimeProvider reads
                 // back the exact advanced span (Stopwatch.GetElapsedTime would divide by the
                 // machine's Stopwatch.Frequency, mismatching the fake's frequency).
@@ -207,7 +207,7 @@ public static class AxPinger
                 return new PingReply(seq, rttMs, Timeout: false);
             }
 
-            // The delay won — but honour an explicit caller-cancel over a "timeout".
+            // The delay won - but honour an explicit caller-cancel over a "timeout".
             ct.ThrowIfCancellationRequested();
             return new PingReply(seq, RttMs: null, Timeout: true);
         }

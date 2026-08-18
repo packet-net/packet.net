@@ -11,17 +11,17 @@ namespace Packet.Node.Core.Oarc;
 public enum OarcIngestOutcome
 {
     /// <summary>The collector accepted the datagram (HTTP 200/202). Note: acceptance is a queue
-    /// admission, not a guarantee it passes the collector's async validation — but it is the most
+    /// admission, not a guarantee it passes the collector's async validation - but it is the most
     /// we can observe synchronously, and a well-formed datagram (our contract) is applied.</summary>
     Accepted,
 
-    /// <summary>The collector rejected the datagram synchronously (HTTP 400/422) — our payload is
+    /// <summary>The collector rejected the datagram synchronously (HTTP 400/422) - our payload is
     /// malformed. This will never succeed on retry; the reporter drops it (and we log the server's
     /// reason, which is a bug on our side).</summary>
     Rejected,
 
     /// <summary>A transport-level failure (network/DNS/TLS/timeout, HTTP 429, or any 5xx). Transient
-    /// — the reporter retries with backoff.</summary>
+    /// - the reporter retries with backoff.</summary>
     TransportError,
 }
 
@@ -33,7 +33,7 @@ public readonly record struct OarcIngestResult(OarcIngestOutcome Outcome, int? S
     public bool Accepted => Outcome == OarcIngestOutcome.Accepted;
 
     /// <summary>Whether a retry could plausibly succeed: a transport error (incl. 429/5xx) is
-    /// retryable; a synchronous rejection (400/422 — our payload is wrong) is not.</summary>
+    /// retryable; a synchronous rejection (400/422 - our payload is wrong) is not.</summary>
     public bool ShouldRetry => Outcome == OarcIngestOutcome.TransportError;
 
     /// <summary>Classify an HTTP status into an outcome. 200/202 → accepted; 400/422 → rejected
@@ -46,13 +46,13 @@ public readonly record struct OarcIngestResult(OarcIngestOutcome Outcome, int? S
     };
 }
 
-/// <summary>The thin HTTP layer to the OARC collector's typed ingest routes — the <i>how</i> of
+/// <summary>The thin HTTP layer to the OARC collector's typed ingest routes - the <i>how</i> of
 /// reporting (URL composition, JSON shaping, status classification), with no <i>when</i>/<i>what</i>
 /// policy (that is the <c>OarcReporter</c>'s). Open ingest (no auth), so no credential here.</summary>
 public interface IOarcIngestClient
 {
     /// <summary>POST one event to its typed route under <paramref name="baseUrl"/>. Never throws on a
-    /// transport/HTTP failure — those become an <see cref="OarcIngestResult"/> — except a genuine
+    /// transport/HTTP failure - those become an <see cref="OarcIngestResult"/> - except a genuine
     /// shutdown cancellation (a cancelled <paramref name="cancellationToken"/>), which propagates.
     /// The base URL is taken per-call so a hot config change to <c>oarc.baseUrl</c> applies at once.</summary>
     Task<OarcIngestResult> ReportAsync(OarcEvent ev, string baseUrl, CancellationToken cancellationToken = default);
@@ -61,7 +61,7 @@ public interface IOarcIngestClient
 /// <inheritdoc cref="IOarcIngestClient"/>
 public sealed partial class OarcIngestClient : IOarcIngestClient
 {
-    // Canonical outbound shape: camelCase Web defaults (belt-and-suspenders — every member also
+    // Canonical outbound shape: camelCase Web defaults (belt-and-suspenders - every member also
     // pins its name) and omit-when-null so an event carries only the fields we actually set.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -96,7 +96,7 @@ public sealed partial class OarcIngestClient : IOarcIngestClient
         }
         catch (UriFormatException ex)
         {
-            // A bad base URL is a config error, not transient — treat as a (non-retryable) rejection.
+            // A bad base URL is a config error, not transient - treat as a (non-retryable) rejection.
             LogBadBaseUrl(baseUrl, ex.Message);
             return new OarcIngestResult(OarcIngestOutcome.Rejected, null, $"bad base URL: {ex.Message}");
         }
@@ -110,7 +110,7 @@ public sealed partial class OarcIngestClient : IOarcIngestClient
             string? detail = null;
             if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity)
             {
-                // A synchronous reject means our payload violates the collector's contract — capture
+                // A synchronous reject means our payload violates the collector's contract - capture
                 // and log the reason; it is a defect on our side, not a transient blip.
                 detail = await SafeReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
                 LogRejected(ev.EndpointPath, (int)response.StatusCode, detail ?? "(no body)");
@@ -120,7 +120,7 @@ public sealed partial class OarcIngestClient : IOarcIngestClient
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            throw;   // genuine shutdown — propagate so the reporter's loop unwinds cleanly
+            throw;   // genuine shutdown - propagate so the reporter's loop unwinds cleanly
         }
         catch (Exception ex)   // network/DNS/TLS down, or a per-request timeout (TaskCanceled w/o our token)
         {

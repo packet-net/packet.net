@@ -3,7 +3,7 @@ using Packet.Rig;
 namespace Packet.Radio;
 
 /// <summary>
-/// Surfaces a CAT rig (<c>Packet.Rig</c>'s <see cref="IRigControl"/> — hamlib's <c>rigctld</c>,
+/// Surfaces a CAT rig (<c>Packet.Rig</c>'s <see cref="IRigControl"/> - hamlib's <c>rigctld</c>,
 /// flrig, …) as the packet stack's radio-control seam: the rig's receive-side reads
 /// (<see cref="IRigControl.ReadDcdAsync"/> / <see cref="IRigControl.ReadSignalStrengthDbmAsync"/>)
 /// become <see cref="ChannelBusy"/>/<see cref="CarrierSenseChanged"/> and
@@ -17,13 +17,13 @@ namespace Packet.Radio;
 /// <para>
 /// <b>Poll-based carrier sense.</b> Rig backends are poll-only (no push/notification channel),
 /// so DCD is sampled by an owned loop at <see cref="RigRadioControlOptions.DcdPollInterval"/>
-/// and <see cref="CarrierSenseChanged"/> edges are synthesized from consecutive samples — a
+/// and <see cref="CarrierSenseChanged"/> edges are synthesized from consecutive samples - a
 /// poll-based source cannot see edges shorter than the poll interval. A failed read
 /// (<see cref="RigException"/>) marks <see cref="ChannelBusy"/> <c>null</c> (unknown ⇒ the CSMA
 /// gate fails open) and backs off to <see cref="RigRadioControlOptions.FaultRetryInterval"/>;
 /// the rig backend re-dials on the next call, so the loop self-heals on the next successful
 /// read. Recovery repopulates <see cref="ChannelBusy"/> and fires an edge only if the
-/// re-observed value differs from the last known one — the unknown window itself is never an
+/// re-observed value differs from the last known one - the unknown window itself is never an
 /// edge. The loop only runs when the mapped capabilities include
 /// <see cref="RadioCapabilities.CarrierSense"/>.
 /// </para>
@@ -32,7 +32,7 @@ namespace Packet.Radio;
 /// <see cref="RigCapabilities.DcdRead"/> → <see cref="RadioCapabilities.CarrierSense"/>,
 /// <see cref="RigCapabilities.SignalStrengthRead"/> → <see cref="RadioCapabilities.RssiRead"/>,
 /// <see cref="RigCapabilities.PttSet"/> → <see cref="RadioCapabilities.TransmitterControl"/>.
-/// A rig advertising none of the three is rejected with <see cref="ArgumentException"/> — it
+/// A rig advertising none of the three is rejected with <see cref="ArgumentException"/> - it
 /// offers nothing the packet-medium seam can use.
 /// </para>
 /// <para>
@@ -119,7 +119,7 @@ public sealed class RigRadioControl : IRadioControl
     /// <inheritdoc/>
     /// <remarks>Written by the DCD poll loop: <c>null</c> before the first successful sample and
     /// while the rig is faulting (unknown fails open at the CSMA gate), else the last sampled
-    /// value — at most one poll interval stale.</remarks>
+    /// value - at most one poll interval stale.</remarks>
     public bool? ChannelBusy
     {
         get
@@ -196,7 +196,7 @@ public sealed class RigRadioControl : IRadioControl
             // Per-read fault isolation: a RigException is a tick-level upset (daemon bounce, rig
             // busy), never a loop-level one. NotSupportedException should be unreachable (the
             // loop only runs when DcdRead is advertised) and a stray backend-internal
-            // cancellation is a fault, not our shutdown — both are tolerated the same way for
+            // cancellation is a fault, not our shutdown - both are tolerated the same way for
             // belt-and-braces.
             catch (Exception ex) when (ex is RigException or NotSupportedException
                 or ObjectDisposedException or OperationCanceledException)
@@ -260,13 +260,13 @@ public sealed class RigRadioControl : IRadioControl
         }
         catch (OperationCanceledException)
         {
-            // The loop observed the cancel mid-await — done either way.
+            // The loop observed the cancel mid-await - done either way.
         }
         cts.Dispose();
 
         if (lastCommandedPtt && !ownsRig)
         {
-            // The rig outlives this adapter, so its own dispose-unkey won't run — unkey here.
+            // The rig outlives this adapter, so its own dispose-unkey won't run - unkey here.
             try
             {
                 using var unkeyCts = new CancellationTokenSource(TimeSpan.FromSeconds(2), clock);
@@ -275,7 +275,7 @@ public sealed class RigRadioControl : IRadioControl
             catch (Exception ex) when (ex is RigException or NotSupportedException
                 or OperationCanceledException or ObjectDisposedException)
             {
-                // Best effort only — the link (or the rig object) may already be gone.
+                // Best effort only - the link (or the rig object) may already be gone.
             }
         }
 
@@ -289,14 +289,14 @@ public sealed class RigRadioControl : IRadioControl
 /// <summary>Tuning knobs for <see cref="RigRadioControl"/>'s DCD poll loop.</summary>
 public sealed record RigRadioControlOptions
 {
-    /// <summary>Cadence of the DCD poll while reads are succeeding. The default suits CSMA —
-    /// which wants a fresh answer before every keyup — against a local rigctld, whose loopback
+    /// <summary>Cadence of the DCD poll while reads are succeeding. The default suits CSMA -
+    /// which wants a fresh answer before every keyup - against a local rigctld, whose loopback
     /// round trip is sub-millisecond; slow it down for a rig daemon at the end of a real
     /// link.</summary>
     public TimeSpan DcdPollInterval { get; init; } = TimeSpan.FromMilliseconds(100);
 
     /// <summary>Retry cadence after a failed DCD read, while <see cref="RigRadioControl.ChannelBusy"/>
-    /// reads <c>null</c>. Deliberately much slower than <see cref="DcdPollInterval"/> — the rig
+    /// reads <c>null</c>. Deliberately much slower than <see cref="DcdPollInterval"/> - the rig
     /// backend re-dials on the next call, and hammering a bounced daemon helps nobody.</summary>
     public TimeSpan FaultRetryInterval { get; init; } = TimeSpan.FromSeconds(2);
 }

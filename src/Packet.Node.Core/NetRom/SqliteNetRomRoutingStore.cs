@@ -10,7 +10,7 @@ namespace Packet.Node.Core.NetRom;
 
 /// <summary>
 /// The SQLite-backed <see cref="INetRomRoutingStore"/>: persists the learned NET/ROM
-/// routing table to a <c>pdn.db</c> file (raw SQL via Dapper — no EF, per the node
+/// routing table to a <c>pdn.db</c> file (raw SQL via Dapper - no EF, per the node
 /// host's persistence decision) so a restart restores the topology instead of going
 /// blind until the next NODES broadcast.
 /// </summary>
@@ -81,7 +81,7 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
     private readonly ILogger<SqliteNetRomRoutingStore> logger;
 
     /// <summary>Open (creating if absent) the store at <paramref name="dbPath"/> and
-    /// ensure its schema. A schema/open failure is logged, not thrown — the node still
+    /// ensure its schema. A schema/open failure is logged, not thrown - the node still
     /// boots, just without persistence.</summary>
     public SqliteNetRomRoutingStore(string dbPath, ILogger<SqliteNetRomRoutingStore>? logger = null)
     {

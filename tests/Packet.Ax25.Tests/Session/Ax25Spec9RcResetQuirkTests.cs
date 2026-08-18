@@ -12,7 +12,7 @@ namespace Packet.Ax25.Tests.Session;
 /// Timer-Recovery fully-acked checkpoint (V(S)=V(A) → Connected), so a sustained
 /// transfer that lives in Timer Recovery with frames always in flight ratchets RC
 /// across a <i>working</i> link and dies (DL-ERROR I → DM) at the N2'th lifetime
-/// T1 hiccup — reproduced by tools/Packet.LinkBench over net-sim. With the quirk
+/// T1 hiccup - reproduced by tools/Packet.LinkBench over net-sim. With the quirk
 /// on (default), a T1 expiry that follows V(A)-advancing progress clamps RC to 1
 /// before the RC=N2 guard runs: the peer acking new data is the proof of life RC
 /// exists to test, so RC counts <i>consecutive</i> recovery failures. The clamp
@@ -84,7 +84,7 @@ public class Ax25Spec9RcResetQuirkTests
     {
         var session = NewTimerRecoverySession(Ax25SessionQuirks.Default, out var ctx);
 
-        // An ack advances V(A) (progress — the link is alive) …
+        // An ack advances V(A) (progress - the link is alive) …
         session.PostEvent(new RrReceived(RrResponse(nr: 1)));
         ctx.VA.Should().Be(1, "the RR acknowledged frame 0");
         ctx.RC.Should().Be(7, "RC is untouched at ack time — RC==0 is Select_T1's Karn sampling signal, so the clamp waits for the next T1 expiry");
@@ -100,7 +100,7 @@ public class Ax25Spec9RcResetQuirkTests
     {
         var session = NewTimerRecoverySession(Ax25SessionQuirks.Default, out var ctx);
 
-        // A duplicate ack (N(R)=V(A)) acknowledges nothing new — no progress.
+        // A duplicate ack (N(R)=V(A)) acknowledges nothing new - no progress.
         session.PostEvent(new RrReceived(RrResponse(nr: 0)));
         ctx.VA.Should().Be(0, "N(R)=V(A) acknowledges nothing new");
 

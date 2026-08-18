@@ -181,7 +181,7 @@ public class NodeConfigYamlTests
         radio.Port.Should().Be("/dev/ttyUSB0");
         radio.Baud.Should().Be(28800);
 
-        // No radio: block → null (no radio attached — today's behaviour).
+        // No radio: block → null (no radio attached - today's behaviour).
         config.Ports[1].Radio.Should().BeNull();
 
         // Survives a serialise → re-parse round trip; the radio-less port's
@@ -260,7 +260,7 @@ public class NodeConfigYamlTests
     [Fact]
     public void Netrom_compress_defaults_off()
     {
-        // The compression knob defaults OFF — declining is the interop-safe path (every
+        // The compression knob defaults OFF - declining is the interop-safe path (every
         // NET/ROM peer can read an uncompressed link). It is opt-in per BPQ neighbour.
         const string yaml = """
             identity:
@@ -335,7 +335,7 @@ public class NodeConfigYamlTests
     public void Management_auth_defaults_on_and_round_trips_when_disabled()
     {
         // Default-ON: an absent management.auth block means a login is required. It moves
-        // with the http bind defaulting to the wildcard — a reachable panel that anyone
+        // with the http bind defaulting to the wildcard - a reachable panel that anyone
         // could drive would otherwise be the out-of-the-box posture.
         var defaulted = NodeConfigYaml.Parse("identity:\n  callsign: M0LTE-1\n");
         defaulted.Management.Auth.Enabled.Should().BeTrue();
@@ -512,7 +512,7 @@ public class NodeConfigYamlTests
     [Fact]
     public void Axudp_tolerates_a_stale_includeFcs_key_from_a_pre_removal_config()
     {
-        // 'includeFcs' was removed (AXUDP always carries the FCS — the FCS-less
+        // 'includeFcs' was removed (AXUDP always carries the FCS - the FCS-less
         // opt-out interoperated with nothing; see docs/strict-vs-pragmatic-audit.md).
         // A config carrying the now-defunct key must still load: the transport
         // converter reads only the fields it knows, so a stale 'includeFcs:' is
@@ -645,7 +645,7 @@ public class NodeConfigYamlTests
     [Fact]
     public void Round_trips_a_netrom_inp3_block_through_serialise_then_parse()
     {
-        // A populated inp3: overlay survives serialise → parse intact — including the
+        // A populated inp3: overlay survives serialise → parse intact - including the
         // TimeSpan-typed duration knobs (via YamlDotNet's built-in TimeSpan converter)
         // and the nullable advertiseIpAccept.
         var original = new NodeConfig
@@ -683,7 +683,7 @@ public class NodeConfigYamlTests
     public void Round_trips_a_default_disabled_inp3_overlay()
     {
         // The common case: INP3 left at its default (disabled). Serialising the
-        // default config and parsing it back must still yield the disabled default —
+        // default config and parsing it back must still yield the disabled default -
         // OmitNull drops advertiseIpAccept, and the rest is the record default.
         var original = new NodeConfig { Identity = new Identity { Callsign = "M0LTE-1" } };
 
@@ -724,7 +724,7 @@ public class NodeConfigYamlTests
     [Fact]
     public void An_absent_traffic_block_means_the_on_by_default_record()
     {
-        // Existing configs have no traffic: key — they must come up logging with
+        // Existing configs have no traffic: key - they must come up logging with
         // the default bounds (enabled is the whole point of the feature).
         var config = NodeConfigYaml.Parse("""
             schemaVersion: 1
@@ -808,7 +808,7 @@ public class NodeConfigYamlTests
     [Fact]
     public void Kiss_t1FromTxComplete_defaults_false_when_absent()
     {
-        // Pre-feature configs keep enqueue-time T1 semantics — no behaviour change.
+        // Pre-feature configs keep enqueue-time T1 semantics - no behaviour change.
         var config = NodeConfigYaml.Parse("""
             schemaVersion: 1
             identity:
@@ -830,7 +830,7 @@ public class NodeConfigYamlTests
     [Fact]
     public void Kiss_ackMode_defaults_false_when_absent()
     {
-        // A port with KISS knobs set but no ackMode key must default the flag off —
+        // A port with KISS knobs set but no ackMode key must default the flag off -
         // the no-regression contract (a pre-feature config blasts fire-and-forget).
         var config = NodeConfigYaml.Parse("""
             schemaVersion: 1
@@ -850,7 +850,7 @@ public class NodeConfigYamlTests
         config.Ports[0].Kiss!.AckMode.Should().BeFalse();
     }
 
-    // ---- tailscale: (network-access.md S1 — parsed/validated, inert) ----------------
+    // ---- tailscale: (network-access.md S1 - parsed/validated, inert) ----------------
 
     [Fact]
     public void Parses_a_full_tailscale_block()
@@ -886,7 +886,7 @@ public class NodeConfigYamlTests
     [Fact]
     public void An_absent_tailscale_block_means_the_disabled_default_record()
     {
-        // Existing configs have no tailscale: key — they must come up disabled (HTTP-only)
+        // Existing configs have no tailscale: key - they must come up disabled (HTTP-only)
         // with the documented defaults.
         var config = NodeConfigYaml.Parse("identity:\n  callsign: M0LTE-1\n");
 

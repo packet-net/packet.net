@@ -54,7 +54,7 @@ public class KissFrameClassifierTests
     [Fact]
     public void KISS_Data_With_Garbage_Payload_Classifies_As_Unknown_Without_Throwing()
     {
-        // Random bytes — the AX.25 parse must fail gracefully, not bubble
+        // Random bytes - the AX.25 parse must fail gracefully, not bubble
         // an exception out of the classifier. This is the contract that
         // makes the classifier safe for arbitrary on-wire input.
         var raw = new KissFrame(0, KissCommand.Data, new byte[] { 0x78, 0x01, 0x02, 0x70, 0x72, 0x65, 0x66, 0x69, 0x78, 0x03, 0xF0 });
@@ -69,14 +69,14 @@ public class KissFrameClassifierTests
     {
         // Same payload that NinoTncFrameClassifier would upgrade to a TX-Test
         // event must still come back as Ax25-or-Unknown from the generic
-        // classifier — modem-specific upgrades happen in modem-specific
+        // classifier - modem-specific upgrades happen in modem-specific
         // overlays.
         const string body = "x\x01\x02prefix-garbage=FirmwareVr:3.44=BrdSwchMod:040F0002";
         var raw = new KissFrame(0, KissCommand.Data, System.Text.Encoding.ASCII.GetBytes(body));
 
         var evt = KissFrameClassifier.Classify(raw);
 
-        // Either Ax25 (if the garbage happened to decode) or Unknown (if it didn't) —
+        // Either Ax25 (if the garbage happened to decode) or Unknown (if it didn't) -
         // but never a NinoTNC-specific subclass, because the generic classifier
         // doesn't know about TX-Test.
         (evt is Ax25FrameReceivedEvent || evt is UnknownInboundEvent).Should().BeTrue();

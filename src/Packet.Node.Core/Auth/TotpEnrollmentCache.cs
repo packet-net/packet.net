@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace Packet.Node.Core.Auth;
 
 /// <summary>
-/// The short-lived, server-side store of pending TOTP enrolments — the secret-handling
+/// The short-lived, server-side store of pending TOTP enrolments - the secret-handling
 /// piece of the over-RF sysop-code flow. <c>enroll/begin</c> mints a fresh random secret
 /// (<see cref="TotpService.GenerateSecret"/>) and shows it to the user ONCE (as a QR /
 /// manual key) without persisting it; that secret is stashed here keyed to the enrolling
@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Auth;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Mirrors <see cref="WebAuthnChallengeCache"/> exactly — the same three properties, none
+/// Mirrors <see cref="WebAuthnChallengeCache"/> exactly - the same three properties, none
 /// of which may be skipped:
 /// </para>
 /// <list type="number">
@@ -22,24 +22,24 @@ namespace Packet.Node.Core.Auth;
 /// by the authenticator app.</item>
 /// <item><b>Single-use.</b> <see cref="Take"/> removes-and-returns atomically (a
 /// <see cref="ConcurrentDictionary{TKey,TValue}.TryRemove(TKey, out TValue)"/>), so a
-/// pending enrolment is consumed the first time it is completed (win or lose) — a replayed
+/// pending enrolment is consumed the first time it is completed (win or lose) - a replayed
 /// or double-submitted complete finds nothing.</item>
 /// <item><b>Expiring.</b> Each entry carries an absolute expiry off the injected
-/// <see cref="TimeProvider"/> (repo rule §2.7 — no wall-clock). <see cref="Take"/> treats
+/// <see cref="TimeProvider"/> (repo rule §2.7 - no wall-clock). <see cref="Take"/> treats
 /// an expired entry as absent (and removes it), so an abandoned begin can't be completed
 /// later.</item>
 /// </list>
 /// <para>
 /// <b>Key binding.</b> A pending enrolment is bound to the enrolling <em>user</em> (the
 /// key is the username), so one user's pending secret can never be completed as another.
-/// The username comes from the authenticated principal at both begin and complete — never
+/// The username comes from the authenticated principal at both begin and complete - never
 /// the request body.
 /// </para>
 /// <para>
 /// <b>In-memory, single-process.</b> Like <see cref="WebAuthnChallengeCache"/> and
 /// <see cref="LoginThrottle"/>, pending enrolments live only in this process's memory: a
 /// node restart simply invalidates any half-finished enrolment (the user re-begins), which
-/// is the safe failure mode. There is nothing here worth persisting — and a never-confirmed
+/// is the safe failure mode. There is nothing here worth persisting - and a never-confirmed
 /// secret is one we explicitly DON'T want to keep.
 /// </para>
 /// </remarks>
@@ -55,7 +55,7 @@ public sealed class TotpEnrollmentCache
     private readonly TimeSpan ttl;
 
     /// <summary>Construct over the injected clock and (optional) entry lifetime.</summary>
-    /// <param name="clock">The clock all expiry rides (no wall-clock — testable on
+    /// <param name="clock">The clock all expiry rides (no wall-clock - testable on
     /// <c>FakeTimeProvider</c>).</param>
     /// <param name="ttl">How long a pending enrolment lives. Null = <see cref="DefaultTtl"/>.
     /// Must be positive.</param>
@@ -87,7 +87,7 @@ public sealed class TotpEnrollmentCache
     /// <summary>
     /// Atomically remove-and-return the pending secret for <paramref name="username"/>.
     /// Returns null if the user has no pending enrolment, it was already consumed
-    /// (single-use), or it expired (and removes it). This is the only read path — there is
+    /// (single-use), or it expired (and removes it). This is the only read path - there is
     /// deliberately no non-consuming peek, so a completed-or-failed attempt always burns the
     /// pending secret.
     /// </summary>

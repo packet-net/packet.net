@@ -75,7 +75,7 @@ public sealed partial class Ax25Frame
     /// <summary>
     /// Construct a Frame Reject (FRMR) response frame per §4.3.3.6. The
     /// 3-byte info field carrying the rejection cause must be supplied by
-    /// the caller — this factory doesn't construct it.
+    /// the caller - this factory doesn't construct it.
     /// </summary>
     public static Ax25Frame Frmr(Callsign destination, Callsign source,
         ReadOnlySpan<byte> info,

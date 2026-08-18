@@ -9,14 +9,14 @@ namespace Packet.Ax25.Session;
 /// transmissions" (see <see cref="LinkMultiplexerSignal"/>); before it keys the radio it
 /// consults this gate, which holds the transmission while <see cref="ICarrierSense"/>
 /// reports the channel busy and releases it once the channel clears (or a bounded wait
-/// expires — fail-open). This is the production form of hardware DCD driving channel
+/// expires - fail-open). This is the production form of hardware DCD driving channel
 /// access: the stack itself defers the keyup rather than an opaque transport wrapper. The
 /// source is supplied on the parity-tracked <see cref="Ax25ListenerOptions.CarrierSense"/>
 /// listener option (OQ-012).
 /// </summary>
 /// <remarks>
 /// <para>
-/// Wait-for-clear with slot-time polling — the simplest of the §6.4.2 p-persistence /
+/// Wait-for-clear with slot-time polling - the simplest of the §6.4.2 p-persistence /
 /// slot-time CSMA family, and enough for a half-duplex packet channel. <see cref="ICarrierSense.ChannelBusy"/>
 /// is re-read each slot, so a live driver's DCD edge is picked up within one slot. An
 /// unknown busy-state (no source, no edge seen yet, telemetry faulted) is treated as clear
@@ -24,7 +24,7 @@ namespace Packet.Ax25.Session;
 /// </para>
 /// <para>
 /// Off by default: constructed with a <c>null</c> source, the gate always reports clear
-/// immediately, so a stack with no carrier-sense wired behaves byte-for-byte as before —
+/// immediately, so a stack with no carrier-sense wired behaves byte-for-byte as before -
 /// the SDL transition behaviour is unchanged; only the <em>physical</em> keyup is deferred,
 /// and only when a source is present and the channel is genuinely busy. The gate does not
 /// touch the data-link state machine, so it composes with the SDL conformance harness
@@ -39,7 +39,7 @@ public sealed class CarrierSenseGate
 
     /// <summary>
     /// Build a gate over an optional carrier-sense source. A <c>null</c>
-    /// <paramref name="source"/> is the degenerate always-clear gate (no CSMA — the stack
+    /// <paramref name="source"/> is the degenerate always-clear gate (no CSMA - the stack
     /// keys up immediately, exactly as with no gate at all).
     /// </summary>
     /// <param name="source">The carrier-sense source to consult, or <c>null</c> for always-clear.</param>
@@ -56,7 +56,7 @@ public sealed class CarrierSenseGate
     }
 
     /// <summary>
-    /// True when a carrier-sense source is attached — i.e. this port does native CSMA. False
+    /// True when a carrier-sense source is attached - i.e. this port does native CSMA. False
     /// for the always-clear degenerate gate. (Inspection convenience for wiring assertions;
     /// does not affect transmission.)
     /// </summary>
@@ -117,12 +117,12 @@ public sealed class CarrierSenseGate
     }
 }
 
-/// <summary>Tuning for <see cref="CarrierSenseGate"/> — the slot-time CSMA knobs.</summary>
+/// <summary>Tuning for <see cref="CarrierSenseGate"/> - the slot-time CSMA knobs.</summary>
 public sealed record CarrierSenseGateOptions
 {
     /// <summary>
     /// How often the gate re-samples carrier-sense while waiting for a busy channel to clear
-    /// (the CSMA slot interval). Default 100 ms — the KISS SLOTTIME default (10 × 10 ms).
+    /// (the CSMA slot interval). Default 100 ms - the KISS SLOTTIME default (10 × 10 ms).
     /// </summary>
     public TimeSpan SlotTime { get; init; } = TimeSpan.FromMilliseconds(100);
 
@@ -130,7 +130,7 @@ public sealed record CarrierSenseGateOptions
     public TimeSpan MaxWait { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// When the bounded wait expires: <c>true</c> (default) transmits anyway — carrier-sense
+    /// When the bounded wait expires: <c>true</c> (default) transmits anyway - carrier-sense
     /// must never wedge traffic; <c>false</c> surfaces a <see cref="TimeoutException"/>.
     /// </summary>
     public bool FailOpen { get; init; } = true;

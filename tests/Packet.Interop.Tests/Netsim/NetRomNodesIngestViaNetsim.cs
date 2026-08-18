@@ -16,7 +16,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// <summary>
 /// Read-only NET/ROM interop: prove that pdn, attached to net-sim's afsk1200
 /// channel, <b>hears a real reference node's NODES broadcast and builds a
-/// routing-table entry from it</b> — through the exact production pipeline (a
+/// routing-table entry from it</b> - through the exact production pipeline (a
 /// real <see cref="Ax25Listener"/>'s frame-trace tap → <see cref="NetRomService"/>
 /// → <see cref="NetRomRoutingTable"/> → snapshot). No transmit, no engine change.
 /// </summary>
@@ -28,10 +28,10 @@ namespace Packet.Interop.Tests.Netsim;
 /// node c / 8102). This test asserts pdn ingests <em>both</em>:
 /// </para>
 /// <list type="bullet">
-/// <item><b>XRouter — ambient.</b> XRouter broadcasts a NODES frame (PID 0xCF,
+/// <item><b>XRouter - ambient.</b> XRouter broadcasts a NODES frame (PID 0xCF,
 /// dest <c>NODES</c>) on its own ~75 s cadence regardless of table contents, so
 /// pdn hears it passively.</item>
-/// <item><b>LinBPQ — provoked.</b> LinBPQ broadcasts NODES out a port only when
+/// <item><b>LinBPQ - provoked.</b> LinBPQ broadcasts NODES out a port only when
 /// that port has a non-zero QUALITY <em>and</em> on its NODESINTERVAL cadence; on
 /// this isolated topology its table is otherwise empty. We force an
 /// <em>immediate</em> broadcast with the sysop <c>SENDNODES</c> command, after
@@ -43,14 +43,14 @@ namespace Packet.Interop.Tests.Netsim;
 /// <b>The handshake (source-verified against LinBPQ 6.0.25.23, not guessed).</b>
 /// BPQ's <c>PASSWORD</c> is a positional challenge, not a plain password. The bare
 /// command <c>PASSWORD</c> makes BPQ reply with five 1-based character positions
-/// (e.g. <c>5 3 6 3 3</c>) chosen at random — with repeats — from the configured
+/// (e.g. <c>5 3 6 3 3</c>) chosen at random - with repeats - from the configured
 /// <c>PASSWORD=</c> text (uppercased; the fixture sets <c>WONTLISTEN</c>). The
 /// caller answers <c>PASSWORD &lt;chars&gt;</c> with the characters at those
 /// positions concatenated (here <c>LNINN</c>). BPQ sums the ASCII bytes of the
 /// reply and compares to the sum it precomputed; a match flips the session to
 /// authorised and unlocks the sysop command set (which includes <c>SENDNODES</c>).
 /// We authenticate as a deliberately <em>non-sysop</em> telnet user
-/// (<c>USER=netop</c>) so the genuine challenge runs — the <c>admin</c>/SYSOP user
+/// (<c>USER=netop</c>) so the genuine challenge runs - the <c>admin</c>/SYSOP user
 /// is a Secure_Session and would shortcut <c>PASSWORD</c> to an instant Ok,
 /// bypassing the very mechanism we want to prove. <c>SENDNODES</c> then emits an
 /// immediate <c>PN0TST &gt; NODES</c> UI frame on the netsim port.
@@ -58,7 +58,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// <para>
 /// <b>The assertion.</b> Hearing each node's NODES makes pdn record it as a
 /// directly-heard neighbour (with the node's advertised alias) carrying the
-/// assumed default-port path quality and an assumed direct route — the canonical
+/// assumed default-port path quality and an assumed direct route - the canonical
 /// processing heuristics 3 + 4. That is genuine cross-implementation evidence that
 /// pdn parses a real NET/ROM node's on-the-wire broadcast and builds routing state
 /// from it, for <em>both</em> reference peers.
@@ -78,12 +78,12 @@ namespace Packet.Interop.Tests.Netsim;
 /// </para>
 /// </remarks>
 [Trait("Category", "Interop")]
-[Trait("Group", "NetRom")]   // isolated from the timing-sensitive AX.25 tests — interop.yml runs the NET/ROM group against a freshly-recreated stack (see docs/plan.md §7.2)
+[Trait("Group", "NetRom")]   // isolated from the timing-sensitive AX.25 tests - interop.yml runs the NET/ROM group against a freshly-recreated stack (see docs/plan.md §7.2)
 [Collection(NetsimCollection.Name)]
 public class NetRomNodesIngestViaNetsim
 {
     private const string Host = "127.0.0.1";
-    private const int OurKissPort = 8100;                       // net-sim node a — the shared "ours" endpoint
+    private const int OurKissPort = 8100;                       // net-sim node a - the shared "ours" endpoint
     private const int BpqTelnetPort = 8010;                     // LinBPQ node prompt
     private static readonly Callsign OurCall = new("PNTEST", 0);
     private static readonly Callsign XrouterCall = new("PN0XRT", 0);
@@ -98,7 +98,7 @@ public class NetRomNodesIngestViaNetsim
     private static readonly TimeSpan XrouterHearBudget = TimeSpan.FromSeconds(200);
 
     // LinBPQ is provoked via SENDNODES (immediate), so its budget is much tighter
-    // than XRouter's ambient cadence — generous-but-bounded so a single dropped
+    // than XRouter's ambient cadence - generous-but-bounded so a single dropped
     // frame on the sim channel still passes (we re-trigger inside the budget) and
     // a genuinely-deaf node fails rather than hangs.
     private static readonly TimeSpan BpqHearBudget = TimeSpan.FromSeconds(90);
@@ -117,7 +117,7 @@ public class NetRomNodesIngestViaNetsim
 
         // The production pipeline: a real listener on the channel, plus the
         // node-level NET/ROM service subscribed to its frame-trace tap. The
-        // listener never transmits here (we don't connect to anyone) — it is a
+        // listener never transmits here (we don't connect to anyone) - it is a
         // pure promiscuous receiver, exactly the read-only slice.
         await using var listener = new Ax25Listener(kiss, new Ax25ListenerOptions { MyCall = OurCall });
         using var netRom = new NetRomService(new NetRomConfig { Enabled = true });
@@ -191,7 +191,7 @@ public class NetRomNodesIngestViaNetsim
                 }
                 catch (Exception ex)
                 {
-                    // A transient telnet hiccup must not sink the test outright —
+                    // A transient telnet hiccup must not sink the test outright -
                     // log and let the next resend tick retry within budget.
                     output.WriteLine($"SENDNODES trigger failed (will retry): {ex.GetType().Name}: {ex.Message}");
                 }
@@ -273,7 +273,7 @@ public class NetRomNodesIngestViaNetsim
             var answer = SolveChallenge(positions, passwordText);
             output.WriteLine($"BPQ PASSWORD challenge {string.Join(' ', positions)} -> answer {answer}");
 
-            // Answer goes back as an ARGUMENT to a second PASSWORD command — a
+            // Answer goes back as an ARGUMENT to a second PASSWORD command - a
             // bare token would be parsed as an unknown command.
             await SendLineAsync(stream, "PASSWORD " + answer, ct);
             var authResp = await ReadLineAfterPromptAsync(stream, TimeSpan.FromSeconds(6), ct);
@@ -282,7 +282,7 @@ public class NetRomNodesIngestViaNetsim
                 throw new InvalidOperationException($"BPQ rejected the PASSWORD challenge answer: {authResp.Trim()}");
             }
 
-            // Now authorised — force an immediate NODES broadcast.
+            // Now authorised - force an immediate NODES broadcast.
             await SendLineAsync(stream, "SENDNODES", ct);
             var sendResp = await ReadLineAfterPromptAsync(stream, TimeSpan.FromSeconds(6), ct);
             if (!sendResp.Contains("Ok", StringComparison.Ordinal) ||
@@ -396,7 +396,7 @@ public class NetRomNodesIngestViaNetsim
                 }
                 if (i + 2 >= n)
                 {
-                    break;   // partial IAC at the tail — drop
+                    break;   // partial IAC at the tail - drop
                 }
 
                 byte verb = buf[i + 1];

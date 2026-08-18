@@ -4,10 +4,10 @@ using Packet.Node.Core.HeadEnd;
 namespace Packet.Node.Tests.HeadEnd;
 
 /// <summary>
-/// <see cref="HeadEndScanEnrichment.WithLiveHealth"/> (#583) — the in-memory join that folds the
+/// <see cref="HeadEndScanEnrichment.WithLiveHealth"/> (#583) - the in-memory join that folds the
 /// background poller's snapshot into <c>GET /api/v1/radios/headends</c>: matched instances gain
 /// <c>reachableNow</c>/<c>lastSeen</c>, unmatched instances (and a scan with no monitor data at
-/// all) keep them null — the fields say "live poller view", never a guess.
+/// all) keep them null - the fields say "live poller view", never a guess.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class HeadEndScanEnrichmentTests
@@ -32,7 +32,7 @@ public sealed class HeadEndScanEnrichmentTests
         var shack = enriched.Instances.Single(i => i.InstanceId == "pi-shack");
         shack.ReachableNow.Should().BeFalse("the poller's live verdict wins over the scan-time one");
         shack.LastSeen.Should().Be(T0);
-        // The scan-time result is untouched — the two reachability views coexist.
+        // The scan-time result is untouched - the two reachability views coexist.
         shack.Reachable.Should().BeTrue();
 
         var attic = enriched.Instances.Single(i => i.InstanceId == "pi-attic");

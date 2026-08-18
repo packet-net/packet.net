@@ -10,7 +10,7 @@ namespace Packet.Kiss.Tests;
 /// <c>KissTcpClient(Stream)</c> ctor lets us swap the <see cref="System.Net.Sockets.TcpClient"/>'s
 /// <see cref="System.Net.Sockets.NetworkStream"/> for a pair of pipes). The
 /// "TNC peer" side reads what the client wrote and writes echoes/data back,
-/// exercising the send path, the RX-pump echo interception, and pass-through —
+/// exercising the send path, the RX-pump echo interception, and pass-through -
 /// the same code that runs against a real socket.
 /// </summary>
 public sealed class KissTcpClientAckModeTests : IDisposable
@@ -58,7 +58,7 @@ public sealed class KissTcpClientAckModeTests : IDisposable
             timeout: TimeSpan.FromSeconds(5));
 
         var wireTag = await peerLoop;
-        // Auto-assigned tag is the first non-zero cursor value = 1 — asserted
+        // Auto-assigned tag is the first non-zero cursor value = 1 - asserted
         // on the wire (the neutral TxCompletion no longer carries the tag).
         wireTag.Should().Be((ushort)1);
         receipt.Completed.Should().BeOnOrAfter(receipt.Queued);
@@ -119,7 +119,7 @@ public sealed class KissTcpClientAckModeTests : IDisposable
         var sendA = client.SendFrameWithAckAsync(new byte[] { 0xA0 }, TimeSpan.FromSeconds(5), sequenceTag: 0x0011);
         var sendB = client.SendFrameWithAckAsync(new byte[] { 0xB0 }, TimeSpan.FromSeconds(5), sequenceTag: 0x0022);
 
-        // Read both sends off the wire (order on the wire doesn't matter — we key
+        // Read both sends off the wire (order on the wire doesn't matter - we key
         // by tag), then echo B *before* A to prove out-of-order resolution.
         var tag1 = await ReadOneAckModeSendTagAsync();
         var tag2 = await ReadOneAckModeSendTagAsync();
@@ -129,7 +129,7 @@ public sealed class KissTcpClientAckModeTests : IDisposable
         await WriteAckEchoAsync(0x0011);
 
         // Each send resolves from ITS OWN echo (keyed by tag), proven by both
-        // completing despite the echoes arriving B-before-A — a cross-resolution
+        // completing despite the echoes arriving B-before-A - a cross-resolution
         // would deadlock one of them. The tag correctness is asserted on the
         // wire above; the neutral TxCompletion no longer carries the tag.
         var receiptA = await sendA;
@@ -201,7 +201,7 @@ public sealed class KissTcpClientAckModeTests : IDisposable
             }
         });
 
-        // No send in flight — an ackmode echo for an unknown tag must not throw
+        // No send in flight - an ackmode echo for an unknown tag must not throw
         // and (with no pending waiter) simply passes through as a frame.
         await WriteAckEchoAsync(0x7777);
         await WriteFrameAsync(KissCommand.Data, new byte[] { 0x55 });

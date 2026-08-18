@@ -6,11 +6,11 @@ namespace Packet.Node.Api;
 
 /// <summary>
 /// The per-port spectrum feed for the modem-tuning waterfall:
-/// <c>GET /api/v1/ports/{id}/spectrum/events</c> — an SSE stream of waterfall lines from a
+/// <c>GET /api/v1/ports/{id}/spectrum/events</c> - an SSE stream of waterfall lines from a
 /// <c>kind: soundmodem</c> port (404 for any other port kind, or a port that is not
 /// running). Read-scoped, pure observation. Each <c>spectrum</c> event carries the
 /// dB-scaled bins as base64 plus the bin width, at the modem's natural FFT cadence
-/// (~3 lines/s, ~2.7 kB — comfortably inside the node's SSE-everywhere design).
+/// (~3 lines/s, ~2.7 kB - comfortably inside the node's SSE-everywhere design).
 /// </summary>
 public static class PdnPortSpectrumApi
 {

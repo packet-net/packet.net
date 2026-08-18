@@ -31,12 +31,12 @@ public sealed partial class NodeHostedService : BackgroundService
     private readonly ILogger<NodeHostedService> logger;
     private readonly INetRomRoutingStore? routingStore;
     // Optional per-peer AX.25 capability cache (DI passes the registered singleton). Null in
-    // older tests / a host that didn't register one — the node then dials with today's static
+    // older tests / a host that didn't register one - the node then dials with today's static
     // defaults and records nothing (default-off). Threaded into NetRomService (interlinks) and
     // the PortSupervisor (user CONNECT) at start.
     private readonly PeerCapabilityCache? capabilityCache;
     // Optional MHeard log (#454). DI passes the registered singleton; null in older tests / a host
-    // that didn't register one — the node then keeps no persisted heard log (the MH verb reports
+    // that didn't register one - the node then keeps no persisted heard log (the MH verb reports
     // "not available"). Fed from the telemetry tap (every received frame's source station) and
     // surfaced read-only by the MH console verb + the REST /api/v1/heard surface.
     private readonly Heard.HeardLog? heardLog;
@@ -45,7 +45,7 @@ public sealed partial class NodeHostedService : BackgroundService
     private readonly Rigs.IRigControlFactory? rigFactory;
     private readonly BeaconService beacons;
     // Optional over-RF sysop dependencies (DI passes the registered user store + TOTP
-    // verifier). Null in older tests / a node without them — the console then has no SYSOP
+    // verifier). Null in older tests / a node without them - the console then has no SYSOP
     // capability (the default-off contract). The SysopContext is assembled once at start.
     private readonly IUserStore? userStore;
     private readonly TotpService? totp;
@@ -54,7 +54,7 @@ public sealed partial class NodeHostedService : BackgroundService
     // Serialises supervisor mutation: the reconcile worker AND any web-initiated
     // action (port restart, session connect/disconnect/send) acquire this, so an
     // action can never race a config reconcile (or another action) touching the
-    // live port set — honouring PortSupervisor's single-threaded-by-contract rule.
+    // live port set - honouring PortSupervisor's single-threaded-by-contract rule.
     private readonly SemaphoreSlim supervisorGate = new(1, 1);
     private readonly object swapGate = new();
 
@@ -98,12 +98,12 @@ public sealed partial class NodeHostedService : BackgroundService
         this.heardLog = heardLog;
         this.userStore = userStore;
         this.totp = totp;
-        // Feed the heard log (when wired) from the same tap that feeds the link telemetry — one
+        // Feed the heard log (when wired) from the same tap that feeds the link telemetry - one
         // source of truth (#454). Null heard log ⇒ telemetry behaves exactly as before.
         telemetry = new NodeTelemetry(this.loggerFactory.CreateLogger<NodeTelemetry>(), heardLog);
         rigTelemetry = new Rigs.RigTelemetry();
         // The ID-beacon service. Optional ctor param (DI passes the registered singleton);
-        // when null — every existing direct-construction test — we build one over the same
+        // when null - every existing direct-construction test - we build one over the same
         // config + clock, so beacons are always wired but inert by default (default-off).
         this.beacons = beacons ?? new BeaconService(
             this.config, this.timeProvider, this.loggerFactory.CreateLogger<BeaconService>());
@@ -115,7 +115,7 @@ public sealed partial class NodeHostedService : BackgroundService
 
     // App-package plumbing (docs/app-packages.md): the catalog feeds the launcher's
     // verb union; the service supervisor owns enabled packages' daemons. Both are
-    // optional — null (every direct-construction test, and a host that doesn't
+    // optional - null (every direct-construction test, and a host that doesn't
     // register them) means packages simply don't exist, byte-for-byte old behaviour.
     private readonly Applications.Packages.IAppPackageCatalog? appPackages;
     private readonly Applications.Packages.IAppServiceSupervisor? appServices;
@@ -124,23 +124,23 @@ public sealed partial class NodeHostedService : BackgroundService
     // supervisor so a head-end binding with a blank config address resolves via mDNS at bring-up.
     private readonly HeadEnd.IHeadEndDiscovery? headEndDiscovery;
 
-    /// <summary>The port supervisor — exposed for component tests.</summary>
+    /// <summary>The port supervisor - exposed for component tests.</summary>
     public PortSupervisor? Supervisor => supervisor;
 
     /// <summary>The live config the host runs on. Read-only access for projections that need the
     /// node identity without taking their own <c>IConfigProvider</c> dependency.</summary>
     public IConfigProvider Config => config;
 
-    /// <summary>The NET/ROM read-only routing service — exposed for component tests
+    /// <summary>The NET/ROM read-only routing service - exposed for component tests
     /// (and any future read surface). Null until <see cref="ExecuteAsync"/> runs.</summary>
     public NetRomService? NetRom => netRom;
 
     /// <summary>The live frame/byte telemetry (frame counters + the monitor SSE
-    /// feed). Created in the constructor so it's never null — the read API + the
+    /// feed). Created in the constructor so it's never null - the read API + the
     /// <c>/events</c> endpoint read it straight off this singleton.</summary>
     public NodeTelemetry Telemetry => telemetry;
 
-    /// <summary>The rig-status fan-out hub behind the <c>/api/v1/rigs/events</c> SSE stream —
+    /// <summary>The rig-status fan-out hub behind the <c>/api/v1/rigs/events</c> SSE stream -
     /// every attached rig's poll ticks publish here.</summary>
     public Rigs.RigTelemetry RigTelemetry => rigTelemetry;
 
@@ -149,24 +149,24 @@ public sealed partial class NodeHostedService : BackgroundService
     /// enabled comes up. Exposed for component tests.</summary>
     public BeaconService Beacons => beacons;
 
-    /// <summary>The telnet listener — exposed for component tests (e.g. to read
+    /// <summary>The telnet listener - exposed for component tests (e.g. to read
     /// the bound port).</summary>
     public TelnetConsoleListener? Telnet => telnet;
 
     /// <summary>The per-peer AX.25 capability cache (the learned v2.2/SREJ-via-XID
-    /// records the dial path consults). Exposed for the operator read surface — the
+    /// records the dial path consults). Exposed for the operator read surface - the
     /// REST <c>/capabilities</c> projection reads <see cref="PeerCapabilityCache.All"/>
     /// off this handle and forgets a (port, peer) through it, mirroring the
     /// <see cref="NetRom"/> / <see cref="Telemetry"/> handles. Null when the host was
-    /// constructed without a cache (older tests / an embedder that didn't register one) —
+    /// constructed without a cache (older tests / an embedder that didn't register one) -
     /// the API then projects an empty list and treats every forget as a 404, the same
     /// default-off behaviour the rest of the cache wiring keeps.</summary>
     public PeerCapabilityCache? Capabilities => capabilityCache;
 
-    /// <summary>The MHeard log (#454) — the persisted record of stations heard on each port,
+    /// <summary>The MHeard log (#454) - the persisted record of stations heard on each port,
     /// surfaced by the <c>MH</c> console verb and the REST <c>/api/v1/heard</c> projection. Fed
     /// from <see cref="Telemetry"/>'s received-frame tap. Null when the host was constructed without
-    /// one (older tests / an embedder that didn't register one) — the MH verb then reports "not
+    /// one (older tests / an embedder that didn't register one) - the MH verb then reports "not
     /// available" and the REST surface projects an empty list, the default-off behaviour the rest
     /// of the heard-log wiring keeps.</summary>
     public Heard.HeardLog? Heard => heardLog;
@@ -192,7 +192,7 @@ public sealed partial class NodeHostedService : BackgroundService
         // when an enabled app's owner set netrom.alias, the node advertises alias → the app's
         // resolved callsign in its NODES broadcast. Read fresh per broadcast off the live config +
         // catalog so an alias edit hot-applies; off by default (no alias ⇒ no extra advert). Only
-        // wired when the catalog exists — an inline-only node still advertises its inline apps'
+        // wired when the catalog exists - an inline-only node still advertises its inline apps'
         // aliases through the same source (packages is then empty).
         netRom.AppAdvertSource = () =>
         {
@@ -209,7 +209,7 @@ public sealed partial class NodeHostedService : BackgroundService
         // consoles (AX.25 + NET/ROM) can serve SYSOP; the telnet factory reads the same field.
         sysopContext = BuildSysopContext();
 
-        // The application launcher — built before the supervisor so its per-connection consoles
+        // The application launcher - built before the supervisor so its per-connection consoles
         // (AX.25 + NET/ROM) can launch registered apps; the telnet factory reads the same field.
         var host = new ApplicationHost(config, loggerFactory, appPackages);
         applicationHost = host;
@@ -262,7 +262,7 @@ public sealed partial class NodeHostedService : BackgroundService
             }
             // Dispose NET/ROM BEFORE the supervisor: DisposeAsync cleanly DISCs each
             // interlink AX.25 session (so a neighbour isn't left with a half-open link
-            // it polls), and that DISC needs the ports' listeners still alive — the
+            // it polls), and that DISC needs the ports' listeners still alive - the
             // supervisor disposes those, so it must run after.
             if (netRom is not null)
             {
@@ -300,7 +300,7 @@ public sealed partial class NodeHostedService : BackgroundService
                 break;
             }
 
-            // Drain the pending flag — anything that arrives after this point
+            // Drain the pending flag - anything that arrives after this point
             // re-releases the semaphore for the next iteration.
             Interlocked.Exchange(ref pendingReconcile, 0);
 
@@ -311,7 +311,7 @@ public sealed partial class NodeHostedService : BackgroundService
     /// <summary>
     /// Run a single reconcile against the provider's current config. Exposed
     /// (internal) so component tests can drive a reconcile deterministically
-    /// without racing the debounce/semaphore. Single-threaded by construction —
+    /// without racing the debounce/semaphore. Single-threaded by construction -
     /// the caller (the loop, or a test) never overlaps calls.
     /// </summary>
     internal async Task ReconcileOnceAsync(CancellationToken ct)
@@ -328,7 +328,7 @@ public sealed partial class NodeHostedService : BackgroundService
         {
             // A no-op for the PORT supervisor isn't necessarily a no-op for beacons: a
             // beacon-only edit (system default or a per-port override) leaves the port
-            // set untouched, so the reconcile plan is empty — but the timers must re-arm
+            // set untouched, so the reconcile plan is empty - but the timers must re-arm
             // to the new interval/text/enabled. Re-arm from the live config (idempotent),
             // the same way the console reads ServicesConfig live.
             beacons.Reapply();
@@ -386,7 +386,7 @@ public sealed partial class NodeHostedService : BackgroundService
             return;
         }
 
-        // Services changes need no action — the console reads ServicesConfig live
+        // Services changes need no action - the console reads ServicesConfig live
         // through the provider; the reference swap is implicit.
 
         // Re-arm beacons from the new config. Ports brought up/restarted in the plan
@@ -410,8 +410,8 @@ public sealed partial class NodeHostedService : BackgroundService
     /// <summary>
     /// Run a supervisor/session action under the same single-threaded gate the
     /// reconcile worker uses, so a web-initiated action (port restart, session
-    /// connect/disconnect/send) never races a config reconcile — or another action
-    /// — mutating the live port set. <b>Keep the critical section short:</b> capture
+    /// connect/disconnect/send) never races a config reconcile - or another action
+    /// - mutating the live port set. <b>Keep the critical section short:</b> capture
     /// what you need (a listener reference, a session) and run long-running I/O (a
     /// connect dial that awaits SABM/UA) <em>outside</em> the delegate, because the
     /// gate blocks reconciles while it's held. The action runs even before
@@ -459,7 +459,7 @@ public sealed partial class NodeHostedService : BackgroundService
         }
         catch (Exception ex)
         {
-            // A telnet bind clash must not crash the node — log + run without it.
+            // A telnet bind clash must not crash the node - log + run without it.
             LogTelnetFaulted(ex, telnetConfig.Bind, telnetConfig.Port);
             listener.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
@@ -503,14 +503,14 @@ public sealed partial class NodeHostedService : BackgroundService
     /// <see cref="NodeCommandService"/> (the same one the telnet console runs) over the app-end,
     /// and adopt the user-end into <paramref name="console"/> so the existing SSE fan-out + input
     /// plumbing the web Sessions screen already uses is reused unchanged. Returns the minted
-    /// session id the stream/input/close endpoints address it by — a <c>console:&lt;guid&gt;</c>
+    /// session id the stream/input/close endpoints address it by - a <c>console:&lt;guid&gt;</c>
     /// string, distinct from the <c>{portId}:{peer}</c> ids the AX.25 connect-out sessions use.
     /// </summary>
     /// <remarks>
     /// The service task runs detached; it ends when the user-end is disposed (the manager's
     /// <see cref="SysopConsoleManager.CloseAsync"/> / peer-gone path disposes the user-end, which
     /// shares one completion with the app-end, so the service's read returns EOF and its loop
-    /// exits — then the app-end is disposed too). The connection carries the
+    /// exits - then the app-end is disposed too). The connection carries the
     /// <see cref="NodeTransportKind.Telnet"/> transport so the console uses local line-discipline
     /// and CR-LF output (a browser terminal, not a packet link).
     /// </remarks>
@@ -521,7 +521,7 @@ public sealed partial class NodeHostedService : BackgroundService
         var id = "console:" + Guid.NewGuid().ToString("N");
         // normalizeAppOutputToCrlf: the appEnd is the terminal-bound direction (the command
         // service's replies AND any relayed connected-session output flow out through it). xterm
-        // only advances a line on LF, so bare-CR endings — which a connected BBS/node emits — must
+        // only advances a line on LF, so bare-CR endings - which a connected BBS/node emits - must
         // be completed to CR-LF here, exactly as the real telnet listener's TcpNodeConnection does;
         // otherwise the cursor parks at column 0 of the prompt line and typed input overtypes it.
         var (appEnd, userEnd) = LoopbackNodeConnection.CreatePair(
@@ -564,7 +564,7 @@ public sealed partial class NodeHostedService : BackgroundService
 
     // Assemble the over-RF sysop dependencies once at start: the user store + TOTP verifier
     // (DI-supplied) plus the host-side privileged operations (this host + config). Null when
-    // either dependency is absent — the console then has no SYSOP capability, exactly as
+    // either dependency is absent - the console then has no SYSOP capability, exactly as
     // before. Operations close over `this`, whose Supervisor is set immediately after.
     private SysopContext? BuildSysopContext() =>
         userStore is not null && totp is not null

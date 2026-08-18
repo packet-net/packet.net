@@ -5,7 +5,7 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Tests.Configuration;
 
 /// <summary>
-/// Pins <see cref="Ax25CompatPresets"/> — the single name→preset authority the
+/// Pins <see cref="Ax25CompatPresets"/> - the single name→preset authority the
 /// validator and the <c>PortSupervisor</c> share: preset names resolve to the
 /// library's <see cref="Ax25ParseOptions"/> instances, per-flag overrides apply
 /// on top (explicit wins), and absent compat resolves to the no-change defaults
@@ -68,7 +68,7 @@ public class Ax25CompatPresetsTests
     [Fact]
     public void Name_knowledge_matches_what_the_validator_advertises()
     {
-        // Every advertised name must resolve — a name the validator accepts can
+        // Every advertised name must resolve - a name the validator accepts can
         // never fail at bring-up (the single-authority contract).
         foreach (var preset in Ax25CompatPresets.PresetNames)
         {

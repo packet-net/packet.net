@@ -8,21 +8,21 @@ namespace Packet.Ax25.Session;
 /// </summary>
 public enum UFrameType
 {
-    /// <summary>Set Asynchronous Balanced Mode — establishes a mod-8 connection.</summary>
+    /// <summary>Set Asynchronous Balanced Mode - establishes a mod-8 connection.</summary>
     Sabm,
-    /// <summary>Set Asynchronous Balanced Mode Extended — establishes a mod-128 connection.</summary>
+    /// <summary>Set Asynchronous Balanced Mode Extended - establishes a mod-128 connection.</summary>
     Sabme,
-    /// <summary>Disconnect — initiates link teardown.</summary>
+    /// <summary>Disconnect - initiates link teardown.</summary>
     Disc,
-    /// <summary>Unnumbered Acknowledge — confirms SABM(E) / DISC.</summary>
+    /// <summary>Unnumbered Acknowledge - confirms SABM(E) / DISC.</summary>
     Ua,
-    /// <summary>Disconnected Mode — peer is not in a connection.</summary>
+    /// <summary>Disconnected Mode - peer is not in a connection.</summary>
     Dm,
-    /// <summary>Frame Reject — protocol violation reported.</summary>
+    /// <summary>Frame Reject - protocol violation reported.</summary>
     Frmr,
-    /// <summary>Exchange Identification — parameter negotiation per §4.3.4.</summary>
+    /// <summary>Exchange Identification - parameter negotiation per §4.3.4.</summary>
     Xid,
-    /// <summary>Test — diagnostic round-trip per §4.3.4.</summary>
+    /// <summary>Test - diagnostic round-trip per §4.3.4.</summary>
     Test,
 }
 
@@ -37,7 +37,7 @@ public enum UFrameType
 /// <param name="Type">U-frame subtype.</param>
 /// <param name="IsCommand">
 /// <c>true</c> for a command frame (P bit); <c>false</c> for a response
-/// (F bit). Determined by the verb name — SABM(E) / DISC are always
+/// (F bit). Determined by the verb name - SABM(E) / DISC are always
 /// commands; UA / DM are always responses; FRMR is a response; XID and
 /// TEST appear in both roles. Spec §4.3.3 / §4.3.4.
 /// </param>
@@ -59,11 +59,11 @@ public enum UFrameType
 /// When non-null, the wire-translation layer uses this list verbatim as
 /// the via-chain instead of the session context's
 /// <see cref="Ax25SessionContext.Digipeaters"/>. Populated by the
-/// dispatcher when the triggering frame arrived via a digipeater path —
+/// dispatcher when the triggering frame arrived via a digipeater path -
 /// the response carries the source-to-destination path reversed so the
 /// peer's digipeaters route the reply back along the same chain. See
 /// AX.25 v2.2 §C.2 (Path Construction). <c>null</c> on triggers without
-/// an inbound frame (upper-layer DL requests, timer expiries) — in
+/// an inbound frame (upper-layer DL requests, timer expiries) - in
 /// which case the context's chain is used.
 /// </param>
 public readonly record struct UFrameSpec(

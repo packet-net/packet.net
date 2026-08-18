@@ -1,16 +1,16 @@
 namespace Packet.Tune.Core;
 
 /// <summary>
-/// One <b>hail</b> request — the payload of a <see cref="TuningVerb.Hail"/> (<c>HAIL</c>)
+/// One <b>hail</b> request - the payload of a <see cref="TuningVerb.Hail"/> (<c>HAIL</c>)
 /// telegram. A station sends a hail over the radios' SDM side channel to ask a peer for
 /// its <see cref="StationStatus"/>. Because the side channel rides the radio's own FFSK
-/// modem — independent of whatever packet modulation the TNC is in — a hail (and the
+/// modem - independent of whatever packet modulation the TNC is in - a hail (and the
 /// <c>STAT</c> reply) reaches a station you <em>cannot</em> talk to on the packet path
 /// because of a mode mismatch, and the reply reveals the mismatch. That is the whole
 /// diagnostic point.
 /// </summary>
 /// <remarks>
-/// The wire form is deliberately tiny — the hail always fits a plain 32-character SDM.
+/// The wire form is deliberately tiny - the hail always fits a plain 32-character SDM.
 /// Sequence numbering, dedupe and versioning come from the enclosing
 /// <see cref="TuningTelegram"/>, exactly as for the <see cref="ModeCoordMessage"/> family.
 /// </remarks>
@@ -27,7 +27,7 @@ public sealed record StationHail
     /// <summary>Wrap in a <see cref="TuningVerb.Hail"/> telegram with the given sequence number.</summary>
     public TuningTelegram ToTelegram(int sequence) => new(sequence, TuningVerb.Hail, ToArgs());
 
-    /// <summary>Parse the args of a <c>HAIL</c> telegram. Always succeeds — an empty arg is a
+    /// <summary>Parse the args of a <c>HAIL</c> telegram. Always succeeds - an empty arg is a
     /// valid bare hail; any non-empty arg is taken as the requester callsign.</summary>
     public static bool TryParse(string? args, out StationHail hail)
     {

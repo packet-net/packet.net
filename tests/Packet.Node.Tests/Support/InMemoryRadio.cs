@@ -9,7 +9,7 @@ namespace Packet.Node.Tests.Support;
 /// <summary>
 /// A pair of in-memory <see cref="IAx25Transport"/>s wired back-to-back: a frame
 /// written on one endpoint surfaces on the other's inbound stream. The
-/// software-RF channel for the node integration tests — lets two real
+/// software-RF channel for the node integration tests - lets two real
 /// <see cref="Packet.Ax25.Session.Ax25Listener"/>s connect in-process with no
 /// sockets, mirroring the conformance harness's in-memory transport.
 /// </summary>
@@ -26,7 +26,7 @@ public static class InMemoryRadio
         return (a, b);
     }
 
-    /// <summary>One side of the in-memory medium — a full <see cref="IAx25Transport"/>
+    /// <summary>One side of the in-memory medium - a full <see cref="IAx25Transport"/>
     /// with the <see cref="ICsmaChannelParams"/> capability (which records the params
     /// pushed to it so a hot-reload test can assert they were applied live).</summary>
     public sealed class Endpoint : IAx25Transport, ICsmaChannelParams
@@ -85,7 +85,7 @@ public static class InMemoryRadio
         public byte? SlotTime { get; set; }
         public byte? TxTail { get; set; }
 
-        /// <summary>How many times TXTAIL was sent to the transport — proves the
+        /// <summary>How many times TXTAIL was sent to the transport - proves the
         /// always-send-on-apply cadence (#465), not just the final value.</summary>
         public int TxTailSendCount { get; set; }
     }

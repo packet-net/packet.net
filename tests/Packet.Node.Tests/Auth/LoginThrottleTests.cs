@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Auth;
 /// <summary>
 /// The login lockout: N failures within the window lock a key out; the window
 /// sliding past resets it; a success resets it; and per-username vs per-IP keys are
-/// independent. All driven by <see cref="FakeTimeProvider"/> — no wall-clock.
+/// independent. All driven by <see cref="FakeTimeProvider"/> - no wall-clock.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class LoginThrottleTests
@@ -66,7 +66,7 @@ public sealed class LoginThrottleTests
         throttle.Reset("user:bob");                              // success
         throttle.IsLocked("user:bob").Should().BeFalse();
 
-        // Back to a clean slate — it takes the full N again to lock.
+        // Back to a clean slate - it takes the full N again to lock.
         throttle.RecordFailure("user:bob").Should().BeFalse();
         throttle.RecordFailure("user:bob").Should().BeFalse();
         throttle.RecordFailure("user:bob").Should().BeTrue();

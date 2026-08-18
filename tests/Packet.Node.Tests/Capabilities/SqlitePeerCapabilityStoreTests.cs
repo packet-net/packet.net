@@ -80,7 +80,7 @@ public sealed class SqlitePeerCapabilityStoreTests : IDisposable
         var store = Open();
         store.Upsert(Rec("vhf0", "GB7RDG-7", ext: false, srej: null, refused: Refused));
 
-        // Same key, new values — must UPDATE, not duplicate.
+        // Same key, new values - must UPDATE, not duplicate.
         var laterProbe = Probed + TimeSpan.FromDays(1);
         store.Upsert(new PeerCapabilityRecord("vhf0", "GB7RDG-7",
             SupportsExtended: true, SupportsSrejViaXid: true, LastProbed: laterProbe, LastRefused: null));

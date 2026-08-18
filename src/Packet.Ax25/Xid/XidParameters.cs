@@ -3,7 +3,7 @@ namespace Packet.Ax25.Xid;
 /// <summary>
 /// The decoded, semantic view of an XID information field's parameter set
 /// (AX.25 v2.2 §4.3.3.7, Figure 4.5). Each field is <c>null</c> when the
-/// corresponding PI/PL/PV triple is <em>absent</em> from the frame — which,
+/// corresponding PI/PL/PV triple is <em>absent</em> from the frame - which,
 /// per §4.3.3.7 ¶1024, means "use the currently-negotiated value" rather than
 /// any particular default. The negotiation FSM (MDL, App. C5) is responsible
 /// for turning a command + response pair into the agreed link parameters;
@@ -23,10 +23,10 @@ namespace Packet.Ax25.Xid;
 /// </remarks>
 public sealed record XidParameters
 {
-    /// <summary>Classes of Procedures (PI=2) — duplex selection. <c>null</c> if absent.</summary>
+    /// <summary>Classes of Procedures (PI=2) - duplex selection. <c>null</c> if absent.</summary>
     public ClassesOfProcedures? ClassesOfProcedures { get; init; }
 
-    /// <summary>HDLC Optional Functions (PI=3) — reject scheme + modulo + segmenter. <c>null</c> if absent.</summary>
+    /// <summary>HDLC Optional Functions (PI=3) - reject scheme + modulo + segmenter. <c>null</c> if absent.</summary>
     public HdlcOptionalFunctions? HdlcOptionalFunctions { get; init; }
 
     /// <summary>

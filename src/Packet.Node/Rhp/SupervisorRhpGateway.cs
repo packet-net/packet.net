@@ -18,9 +18,9 @@ namespace Packet.Node.Rhp;
 /// <remarks>
 /// Port labels are the operator-defined <see cref="PortConfig.Id"/> (e.g. <c>"vhf-2m"</c>,
 /// <c>"hf-40m"</c>), matched case-insensitively. For outbound opens, null resolves a
-/// locally-registered app (loopback) or errors — it does not silently default to the first
+/// locally-registered app (loopback) or errors - it does not silently default to the first
 /// port. R-2 limitation (named in <c>docs/rhp2-server.md</c>): <c>local</c> must be the
-/// node's own callsign — originating from an arbitrary app callsign needs the R-3
+/// node's own callsign - originating from an arbitrary app callsign needs the R-3
 /// multi-callsign engine work.
 /// </remarks>
 public sealed class SupervisorRhpGateway : IRhpGateway
@@ -71,7 +71,7 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         }
 
         // With NO explicit port, a target the node is locally registered for (an app on its
-        // own SSID) is reached by an in-process loopback crossconnect — no RF, no second SABM.
+        // own SSID) is reached by an in-process loopback crossconnect - no RF, no second SABM.
         // An EXPLICIT port is an explicit "go to RF" and always dials. A null port that does
         // NOT match a local app is an error (#665): silently defaulting to ports[0] dialled
         // the wrong port when an upstream bug stripped the label to null (GB7RDG cutover).
@@ -98,7 +98,7 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            throw;   // server shutting down — not a route failure
+            throw;   // server shutting down - not a route failure
         }
         catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
         {
@@ -138,7 +138,7 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         }
         catch (InvalidOperationException ex)
         {
-            // Already registered / the node's own callsign — the wire's "Duplicate socket".
+            // Already registered / the node's own callsign - the wire's "Duplicate socket".
             throw new RhpGatewayException(RhpErrorCode.DuplicateSocket, ex.Message);
         }
     }
@@ -170,7 +170,7 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         var port = supervisor.GetPort(portId)
             ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{portId}' is not running.");
 
-        // A UI datagram is connectionless — no session, no registration; the source-bearing
+        // A UI datagram is connectionless - no session, no registration; the source-bearing
         // overload emits it verbatim as the bound callsign.
         await port.Listener.SendUiAsync(source, dest, info, pid, ct).ConfigureAwait(false);
     }
@@ -199,7 +199,7 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             targets.Add((resolved, resolved));
         }
 
-        // Tap FrameTraced on each running port's listener — the same read-only, promiscuous tap
+        // Tap FrameTraced on each running port's listener - the same read-only, promiscuous tap
         // NetRomService uses to hear NODES (fires before address filtering, so it hears broadcast
         // UI like APRS regardless of the frame's destination). First-cut scope: ports running NOW
         // are tapped; a port that (re)starts later is not retro-subscribed.

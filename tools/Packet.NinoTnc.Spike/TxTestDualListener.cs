@@ -8,7 +8,7 @@ namespace Packet.NinoTnc.Spike;
 ///
 ///   1) the synthetic <see cref="NinoTncTxTestFrameReceivedEvent"/> that the
 ///      pressed modem sends *up to its own host*, and
-///   2) whatever the *other* modem hears on the air at the same moment —
+///   2) whatever the *other* modem hears on the air at the same moment -
 ///      typed (AX.25 / TX-Test / ACKMODE-Data / Unknown) plus the raw
 ///      KISS payload hex so we can eyeball the bytes when nothing
 ///      decodes cleanly.
@@ -34,7 +34,7 @@ internal static class TxTestDualListener
         a.InboundEvent += (_, evt) => Report("A", portA, evt);
         b.InboundEvent += (_, evt) => Report("B", portB, evt);
 
-        // Catch the raw bytes too for the "didn't decode" case — the
+        // Catch the raw bytes too for the "didn't decode" case - the
         // typed dispatcher classifies non-decodable payloads as
         // UnknownInboundEvent but it's nice to have a single combined
         // log line for both sides.

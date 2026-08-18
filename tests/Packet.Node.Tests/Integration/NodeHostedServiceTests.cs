@@ -12,8 +12,8 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// The host component test (exit criterion v / vi): the
 /// <see cref="NodeHostedService"/> boots, brings up a port, accepts an inbound
-/// session that reaches the prompt, then a live config edit reconciles — bringing
-/// an added port up and tearing a removed one down — without dropping the
+/// session that reaches the prompt, then a live config edit reconciles - bringing
+/// an added port up and tearing a removed one down - without dropping the
 /// unrelated session. Drives the hosted service through its internal reconcile
 /// entry point so the test is deterministic (no debounce / semaphore race) and
 /// uses a <see cref="FakeTimeProvider"/> as the clock seam.
@@ -86,7 +86,7 @@ public sealed class NodeHostedServiceTests
         supervisor.GetPort("a")!.Listener.Should().BeSameAs(sessionBefore, "port a untouched by adding b");
         remote.CurrentState.Should().Be("Connected", "the inbound session survives the reconcile");
 
-        // Now remove port b again — only b is torn down.
+        // Now remove port b again - only b is torn down.
         var shrink = Config(Port("a", 1));
         config.Apply(shrink);
         await host.ReconcileOnceAsync(hostCts.Token);

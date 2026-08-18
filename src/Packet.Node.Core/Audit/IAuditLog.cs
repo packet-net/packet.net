@@ -3,7 +3,7 @@ namespace Packet.Node.Core.Audit;
 /// <summary>
 /// The node-wide audit sink for privileged actions. Persisted to <c>pdn.db</c>
 /// (<see cref="AuditEntry"/>). <see cref="Record"/> is fire-and-forget and MUST NOT
-/// throw or block the caller on a store fault — auditing can never take an action
+/// throw or block the caller on a store fault - auditing can never take an action
 /// path down (the same resilience contract as the other pdn.db stores).
 /// </summary>
 public interface IAuditLog

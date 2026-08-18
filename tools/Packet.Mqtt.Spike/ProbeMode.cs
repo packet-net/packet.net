@@ -13,9 +13,9 @@ namespace Packet.Mqtt.Spike;
 /// <remarks>
 /// Output goes to <c>artifacts/mqtt-probe/&lt;ts&gt;/</c>:
 /// <list type="bullet">
-/// <item><c>messages.jsonl</c> — one line per message with topic, length,
+/// <item><c>messages.jsonl</c> - one line per message with topic, length,
 /// hex preview, ts</item>
-/// <item><c>summary.md</c> — final topic-frequency table + payload-size
+/// <item><c>summary.md</c> - final topic-frequency table + payload-size
 /// distribution</item>
 /// </list>
 /// </remarks>
@@ -75,7 +75,7 @@ public static class ProbeMode
                 Console.WriteLine($"             ascii={asciiPreview}");
             }
 
-            // JSONL row — manual since we don't want a JSON lib dep here.
+            // JSONL row - manual since we don't want a JSON lib dep here.
             sb.Clear();
             sb.Append('{');
             sb.Append("\"seq\":").Append(messageCount).Append(',');

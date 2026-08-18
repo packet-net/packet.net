@@ -5,14 +5,14 @@ namespace Packet.Ax25.Session;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Pass <see cref="TimeProvider.System"/> for production — timers fire off
+/// Pass <see cref="TimeProvider.System"/> for production - timers fire off
 /// real wall-clock time. Pass a <c>FakeTimeProvider</c> (from
-/// <c>Microsoft.Extensions.TimeProvider.Testing</c>) for tests — virtual
+/// <c>Microsoft.Extensions.TimeProvider.Testing</c>) for tests - virtual
 /// time advances only when the test harness calls <c>Advance</c>, making
 /// timer-expiry transitions deterministic without sleeping.
 /// </para>
 /// <para>
-/// One implementation covers both cases — the <see cref="TimeProvider"/>
+/// One implementation covers both cases - the <see cref="TimeProvider"/>
 /// abstraction handles the real-vs-fake distinction without us needing
 /// parallel schedulers.
 /// </para>
@@ -37,7 +37,7 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
 
     /// <summary>
     /// Create a scheduler. <paramref name="time"/> controls how durations are
-    /// interpreted — pass <see cref="TimeProvider.System"/> for production,
+    /// interpreted - pass <see cref="TimeProvider.System"/> for production,
     /// a fake for tests.
     /// </summary>
     public SystemTimerScheduler(TimeProvider time)
@@ -147,7 +147,7 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
         }
     }
 
-    // Arm body without taking the gate — caller already holds it.
+    // Arm body without taking the gate - caller already holds it.
     private void ArmLocked(string name, TimeSpan duration, Action onExpiry)
     {
         if (timers.TryGetValue(name, out var existing))

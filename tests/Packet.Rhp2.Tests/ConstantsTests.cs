@@ -91,7 +91,7 @@ public class ConstantsTests
     [InlineData(RhpErrorCode.BadParameter, "Bad parameter")]
     [InlineData(RhpErrorCode.NoBuffers, "No buffers")]
     [InlineData(RhpErrorCode.Unauthorised, "Unauthorised")]
-    // Note the spec's own inconsistent capitalisation on the next two —
+    // Note the spec's own inconsistent capitalisation on the next two -
     // canonical text reproduces it rather than tidying it up.
     [InlineData(RhpErrorCode.NoRoute, "No Route")]
     [InlineData(RhpErrorCode.OperationNotSupported, "Operation not supported")]

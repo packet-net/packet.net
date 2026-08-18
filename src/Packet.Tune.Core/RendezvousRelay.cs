@@ -22,7 +22,7 @@ namespace Packet.Tune.Core;
 /// Implemented directly over <see cref="TcpListener"/> +
 /// <see cref="WebSocket.CreateFromStream(Stream, bool, string?, TimeSpan)"/>
 /// (the RFC 6455 upgrade handshake is ~30 lines), so the class embeds in any
-/// process — no ASP.NET Core host, no HttpListener platform caveats. Usable
+/// process - no ASP.NET Core host, no HttpListener platform caveats. Usable
 /// embedded (tests park it on port 0) and from the CLI
 /// (<c>packet-tune rendezvous --listen 8735</c>).
 /// </remarks>
@@ -156,7 +156,7 @@ public sealed class RendezvousRelay : IAsyncDisposable
                 {
                     if (!waiting.TryClaim())
                     {
-                        continue; // the parked client died in the meantime — park afresh
+                        continue; // the parked client died in the meantime - park afresh
                     }
                     usedPins.TryAdd(pin, true);
                     Log?.Invoke($"relay: session {pin} paired ({waiting.Role} + {joined.Role})");
@@ -166,7 +166,7 @@ public sealed class RendezvousRelay : IAsyncDisposable
 
                 if (!parked.TryAdd(pin, joined))
                 {
-                    continue; // lost a park race — loop and pair with the winner
+                    continue; // lost a park race - loop and pair with the winner
                 }
                 Log?.Invoke($"relay: session {pin}: {joined.Role} parked, waiting for partner");
                 await joined.ParkAsync(cancellationToken).ConfigureAwait(false);
@@ -220,7 +220,7 @@ public sealed class RendezvousRelay : IAsyncDisposable
             while (true)
             {
                 // A parked client may already have a receive in flight from its
-                // parking watchdog — consume that first, then read normally.
+                // parking watchdog - consume that first, then read normally.
                 WebSocketReceiveResult result;
                 byte[] sourceBuffer;
                 if (from.TakePendingReceive() is { } pending)
@@ -247,7 +247,7 @@ public sealed class RendezvousRelay : IAsyncDisposable
         }
         catch (Exception ex) when (ex is WebSocketException or IOException or OperationCanceledException or ObjectDisposedException)
         {
-            // Either socket died — the session dies with it.
+            // Either socket died - the session dies with it.
         }
     }
 
@@ -340,7 +340,7 @@ public sealed class RendezvousRelay : IAsyncDisposable
 
     private static async Task AcceptUpgradeAsync(NetworkStream stream, string key, CancellationToken cancellationToken)
     {
-        // RFC 6455 §4.2.2 — the accept token is SHA-1 of key + magic GUID.
+        // RFC 6455 §4.2.2 - the accept token is SHA-1 of key + magic GUID.
         // SHA-1 here is protocol framing, not a security control.
 #pragma warning disable CA5350
         byte[] hash = SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"));
@@ -425,7 +425,7 @@ public sealed class RendezvousRelay : IAsyncDisposable
             var done = await Task.WhenAny(parkDone.Task, receive).ConfigureAwait(false);
             if (done == parkDone.Task)
             {
-                return; // claimed — the session pump consumes the pending receive
+                return; // claimed - the session pump consumes the pending receive
             }
 
             // The socket spoke while parked. Early data (an eager HI) is kept

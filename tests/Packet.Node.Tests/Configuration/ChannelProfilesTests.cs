@@ -64,7 +64,7 @@ public class ChannelProfilesTests
         // A port with no profile is a pass-through: the resolver asserts nothing,
         // including no tail. The implicit-0 TX tail (#465) is supplied at the APPLY
         // boundary (PortSupervisor.ApplyKissParamsToModemAsync sends `txTail ?? 0`
-        // unconditionally), NOT here — so a non-profiled port still gets a
+        // unconditionally), NOT here - so a non-profiled port still gets a
         // deterministic 0 sent to its modem even though the resolver returns null.
         var (_, kiss) = ChannelProfiles.Resolve(Port());
         kiss.Should().BeNull("no profile, no params → the resolver passes through unchanged");

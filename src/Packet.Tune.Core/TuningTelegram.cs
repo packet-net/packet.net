@@ -5,42 +5,42 @@ namespace Packet.Tune.Core;
 /// <summary>The verbs of the tuning-telegram protocol.</summary>
 public enum TuningVerb
 {
-    /// <summary><c>HI</c> — handshake/ready beacon. Args = the sender's role
+    /// <summary><c>HI</c> - handshake/ready beacon. Args = the sender's role
     /// (<c>tuned</c> / <c>meter</c>). The tuned end also re-sends it between
     /// rounds as its "ready for the next burst" signal.</summary>
     Hello,
 
-    /// <summary><c>RQ</c> — meter → tuned: transmit an n-frame burst now. Args = n.</summary>
+    /// <summary><c>RQ</c> - meter → tuned: transmit an n-frame burst now. Args = n.</summary>
     BurstRequest,
 
-    /// <summary><c>MS</c> — meter → tuned: the burst's measurement
+    /// <summary><c>MS</c> - meter → tuned: the burst's measurement
     /// (<see cref="MeterReport"/> args).</summary>
     Measurement,
 
-    /// <summary><c>AD</c> — meter → tuned: advice for the human at the pot
+    /// <summary><c>AD</c> - meter → tuned: advice for the human at the pot
     /// (<c>UP</c> / <c>DN</c> / <c>OK</c>).</summary>
     Advice,
 
-    /// <summary><c>BY</c> — end of session (no args).</summary>
+    /// <summary><c>BY</c> - end of session (no args).</summary>
     Bye,
 
-    /// <summary><c>MODE</c> — a mode-coordination message (propose / confirm /
+    /// <summary><c>MODE</c> - a mode-coordination message (propose / confirm /
     /// reject / commit / sent / report / revert). Args are the
     /// <see cref="ModeCoordMessage"/> wire form, e.g. <c>propose|2|1</c>.</summary>
     ModeCoordination,
 
-    /// <summary><c>HAIL</c> — hailer → responder: "tell me your station status".
+    /// <summary><c>HAIL</c> - hailer → responder: "tell me your station status".
     /// Args are the <see cref="StationHail"/> wire form (the requester's callsign,
     /// or empty). The reply is a <see cref="Status"/> telegram.</summary>
     Hail,
 
-    /// <summary><c>STAT</c> — responder → hailer: this station's
+    /// <summary><c>STAT</c> - responder → hailer: this station's
     /// <see cref="StationStatus"/> (callsign, current NinoTNC mode + bitrate, radio
     /// channel, supported modes, capabilities, and the responder's RSSI of the hail).
     /// The richer status can exceed the plain-SDM budget and rides an extended SDM.</summary>
     Status,
 
-    /// <summary><c>TXD</c> — a TXDELAY-minimisation message (propose / confirm /
+    /// <summary><c>TXD</c> - a TXDELAY-minimisation message (propose / confirm /
     /// reject / step / sent / report / apply / done / abort). Args are the
     /// <see cref="TxDelayMinMessage"/> wire form, e.g. <c>step|300|5</c>. A large
     /// <c>report</c> can exceed the plain-SDM budget and rides an extended SDM,
@@ -52,7 +52,7 @@ public enum TuningVerb
 /// One tuning-protocol telegram: a compact ASCII line
 /// <c>V1|&lt;seq&gt;|&lt;verb&gt;|&lt;args&gt;</c> with verbs
 /// <c>HI</c>/<c>RQ</c>/<c>MS</c>/<c>AD</c>/<c>BY</c>/<c>MODE</c>. The same telegram
-/// travels over any <see cref="ITuningLink"/> — as the text of a Tait SDM
+/// travels over any <see cref="ITuningLink"/> - as the text of a Tait SDM
 /// (<see cref="SdmTuningLink"/>) or as a JSON-wrapped WebSocket frame
 /// (<see cref="WebSocketTuningLink"/>).
 /// </summary>
@@ -60,14 +60,14 @@ public enum TuningVerb
 /// A plain Tait SDM carries at most <see cref="SdmCharacterBudget"/>
 /// characters, and the canonical <c>MS</c> args
 /// (<c>dec/&lt;n&gt;|fec:&lt;delta&gt;|clip:&lt;delta&gt;|rssi:&lt;dbm&gt;|lvl:&lt;db&gt;</c>)
-/// can exceed that — so the codec also has a documented <em>compact wire
+/// can exceed that - so the codec also has a documented <em>compact wire
 /// form</em> (<see cref="EncodeCompact"/>) that shortens the <c>MS</c> arg
 /// keys to <c>f</c>/<c>c</c>/<c>r</c>/<c>l</c> and, if the result would
 /// still bust the budget, drops the optional audio-level enrichment (the
 /// bracketing signals keep priority). <see cref="TryParse"/> accepts both
 /// forms, so either encoding round-trips.
 /// </remarks>
-/// <param name="Sequence">Monotonic per-sender sequence number — the receiver
+/// <param name="Sequence">Monotonic per-sender sequence number - the receiver
 /// dedupes on it (transport retries may deliver a telegram twice).</param>
 /// <param name="Verb">The protocol verb.</param>
 /// <param name="Args">Verb-specific argument text (may be empty, e.g. <c>BY</c>).</param>
@@ -76,7 +76,7 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
     /// <summary>The protocol version marker every telegram starts with.</summary>
     public const string VersionPrefix = "V1";
 
-    /// <summary>The character budget of a plain Tait SDM — the compact wire
+    /// <summary>The character budget of a plain Tait SDM - the compact wire
     /// form must fit inside it.</summary>
     public const int SdmCharacterBudget = 32;
 
@@ -107,7 +107,7 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
     /// <see cref="Encode"/> except that <c>MS</c> args are re-encoded with
     /// single-letter keys via <see cref="MeterReport.ToCompactArgs"/> when
     /// they parse as a report. If even the compact form busts the budget and
-    /// the report carries the optional audio level, the level is dropped —
+    /// the report carries the optional audio level, the level is dropped -
     /// it is enrichment; the bracketing signals (decode/FEC/clip/RSSI) keep
     /// priority.
     /// </summary>

@@ -59,7 +59,7 @@ public sealed class ConsoleAppDispatchTests
     public async Task A_built_in_verb_is_never_offered_to_the_host()
     {
         // The stub would happily "resolve" BYE, but the parser claims it first as the disconnect
-        // verb — so the host is never consulted and the user is disconnected.
+        // verb - so the host is never consulted and the user is disconnected.
         var host = new StubHost(new ApplicationConfig { Id = "x", Command = "BYE", Executable = "/bin/cat" });
         var svc = Build(host);
         var conn = new DriveableConnection("M0LTE-7", NodeTransportKind.Ax25);
@@ -88,7 +88,7 @@ public sealed class ConsoleAppDispatchTests
     {
         // A service app (no session attachment) resolves its command verb to a bound callsign;
         // typing the verb loopback-connects (the C <callsign> path). Here no outbound connector
-        // is wired, so the console reports the connect-unavailable message — which proves the
+        // is wired, so the console reports the connect-unavailable message - which proves the
         // verb was routed to the CONNECT path rather than falling through to "unknown command".
         var host = new StubHost(
             new ApplicationConfig { Id = "wall", Command = "WALL", Executable = "/bin/cat" },

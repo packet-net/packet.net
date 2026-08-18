@@ -7,7 +7,7 @@ public sealed record TaitCcdiRadioOptions
 {
     /// <summary>
     /// How long the link may stay silent before the watchdog probes the radio (RSSI query in
-    /// Command mode, pulse in CCR — the CCR manual itself recommends a 10 s pulse cadence).
+    /// Command mode, pulse in CCR - the CCR manual itself recommends a 10 s pulse cadence).
     /// <c>null</c> disables the watchdog. Default 30 s.
     /// </summary>
     public TimeSpan? KeepAliveInterval { get; init; } = TimeSpan.FromSeconds(30);
@@ -19,12 +19,12 @@ public sealed record TaitCcdiRadioOptions
 
     /// <summary>
     /// Stale-DCD re-validation (#576): when <see cref="TaitCcdiRadio.ChannelBusy"/> has been
-    /// latched <c>true</c> for this long without a clear edge — implausible on a packet channel,
-    /// and the observed effect of a lost DCD-clear PROGRESS message — the watchdog issues a
+    /// latched <c>true</c> for this long without a clear edge - implausible on a packet channel,
+    /// and the observed effect of a lost DCD-clear PROGRESS message - the watchdog issues a
     /// solicited probe. An unresponsive radio has its busy state reset to <c>null</c> (unknown ⇒
     /// the CSMA gate fails open) with a final carrier-clear <see cref="TaitCcdiRadio.CarrierSenseChanged"/>;
     /// a responsive radio keeps its state and the timer re-arms. <c>null</c> disables. Default 30 s
-    /// (same order as <see cref="KeepAliveInterval"/> — the two share the watchdog loop).
+    /// (same order as <see cref="KeepAliveInterval"/> - the two share the watchdog loop).
     /// </summary>
     public TimeSpan? StaleBusyRevalidateAfter { get; init; } = TimeSpan.FromSeconds(30);
 
@@ -34,7 +34,7 @@ public sealed record TaitCcdiRadioOptions
 
     /// <summary>
     /// After a set-command's prompt, how long to wait for a trailing ERROR before declaring
-    /// success — the radio prompts <i>before</i> it reports a rejection (hardware-observed).
+    /// success - the radio prompts <i>before</i> it reports a rejection (hardware-observed).
     /// Applies to prompt-completed commands only; queries are unaffected.
     /// </summary>
     public TimeSpan PromptErrorGrace { get; init; } = TimeSpan.FromMilliseconds(100);
@@ -54,13 +54,13 @@ public sealed record TaitCcdiRadioOptions
 /// <summary>Which serial-protocol interpreter the radio port is in.</summary>
 public enum TaitProtocolMode
 {
-    /// <summary>CCDI Command mode — transactions + unsolicited PROGRESS/ERROR/RING.</summary>
+    /// <summary>CCDI Command mode - transactions + unsolicited PROGRESS/ERROR/RING.</summary>
     Command,
 
-    /// <summary>Transparent mode — the port is a byte pipe through the radio's FFSK/THSD modem.</summary>
+    /// <summary>Transparent mode - the port is a byte pipe through the radio's FFSK/THSD modem.</summary>
     Transparent,
 
-    /// <summary>CCR mode — the run-time channel-programming interpreter (TM8100 only).</summary>
+    /// <summary>CCR mode - the run-time channel-programming interpreter (TM8100 only).</summary>
     Ccr,
 }
 
@@ -108,12 +108,12 @@ public enum TaitUserControls
     /// the invalid-keypress tone.</summary>
     DisableInputOnly = 1,
 
-    /// <summary>Normal operation except while a CCDI command is being processed — the power-up
+    /// <summary>Normal operation except while a CCDI command is being processed - the power-up
     /// default.</summary>
     EnableAll = 2,
 }
 
-/// <summary>Front-panel key numbers (§1.10.5, PROGRESS type 23 — also the key codes
+/// <summary>Front-panel key numbers (§1.10.5, PROGRESS type 23 - also the key codes
 /// <see cref="TaitCcdiRadio.SimulateKeyPressAsync"/> accepts).</summary>
 public enum TaitKey : byte
 {
@@ -177,7 +177,7 @@ public enum TaitKey : byte
 public sealed record TaitChannelReport(char Kind, string ChannelId, int? Zone)
 {
     /// <summary>Parse the PROGRESS-21 parameter string: [PARA1][PARA2] where PARA2 is either
-    /// the channel id (1–4 digits) or zone(2)+channel(4).</summary>
+    /// the channel id (1-4 digits) or zone(2)+channel(4).</summary>
     public static TaitChannelReport Parse(string para)
     {
         ArgumentException.ThrowIfNullOrEmpty(para);

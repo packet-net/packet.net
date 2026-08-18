@@ -38,7 +38,7 @@ public class NinoTncCatalogTests
         // block in release-notes.txt). Two names diverge from the
         // kissproxy source this catalog was ported from, because kissproxy
         // predates firmware 3/4.42: modes 1/3 are C4FSK (coherent 4-level
-        // FSK), and modes 13/14 are plain "300 AFSK" — upstream retired the
+        // FSK), and modes 13/14 are plain "300 AFSK" - upstream retired the
         // "AFSKPLL" spelling once every 300 AFSK mode gained coherent
         // demodulation. We keep "IL2P+CRC" where upstream writes "IL2Pc":
         // same protocol, and it is what this codebase's filters match on.
@@ -72,7 +72,7 @@ public class NinoTncCatalogTests
     {
         // Firmware 3.41 reports mode 14 (300 AFSK IL2P+CRC) as 0x90;
         // 3.44 reports 0x23. Bench evidence: the 2026-07-03 wide-il2pc
-        // mode-survey runs — GETALL verify read "unrecognised firmware byte
+        // mode-survey runs - GETALL verify read "unrecognised firmware byte
         // 0x90" while the decoding 300 AFSK traffic proved mode 14 was
         // engaged. Both bytes must resolve to the same catalog entry.
         var via341 = NinoTncCatalog.TryGetByFirmwareByte(0x90);

@@ -8,7 +8,7 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// Boots the real <c>Packet.Node</c> composition root and exercises the routing/validation boundary
 /// of the guided deviation-tuning API. Arming a real session drives serial + radio hardware (the SDM
-/// link, NinoTNC bursts) which can't be stood up under the in-memory WAF — that path is a documented
+/// link, NinoTNC bursts) which can't be stood up under the in-memory WAF - that path is a documented
 /// human bench follow-up, and the session state machine is covered hardware-free by
 /// <c>PortTuningSessionTests</c>. These assert the responses that never touch the air: unknown/not-
 /// running ports (404), a malformed role (400), and the SSE feed 404 when no session exists. Auth is

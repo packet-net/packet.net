@@ -6,7 +6,7 @@ using Packet.Kiss.NinoTnc;
 
 internal static class TestShape
 {
-    // Mimics the xUnit test verbatim — no drain.
+    // Mimics the xUnit test verbatim - no drain.
     public static async Task<int> Run(string portA, string portB)
     {
         Console.WriteLine("TestShape — running xUnit-shaped flow without drain");

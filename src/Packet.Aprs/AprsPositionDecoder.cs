@@ -11,7 +11,7 @@ namespace Packet.Aprs;
 /// Strict decoder: invalid characters in fixed-position fields
 /// (lat/lon digits, hemisphere indicators, symbol table id, compressed
 /// base-91 range) cause <see cref="TryDecode"/> to return <c>false</c>.
-/// This matches direwolf's "Position" warnings — see the corpus
+/// This matches direwolf's "Position" warnings - see the corpus
 /// findings in <c>tools/Packet.AprsIs.Spike/findings.md</c> for the
 /// classes of malformed frames in the wild.
 /// </para>
@@ -19,7 +19,7 @@ namespace Packet.Aprs;
 /// The decoder strips a leading DTI byte if present; callers may
 /// equivalently pass the info field with or without the DTI. For
 /// <c>@</c> / <c>/</c> reports (timestamped variants), the caller must
-/// strip the 7-byte timestamp before passing in — this decoder handles
+/// strip the 7-byte timestamp before passing in - this decoder handles
 /// only the lat-lon-symbol portion.
 /// </para>
 /// </remarks>
@@ -32,10 +32,10 @@ public static class AprsPositionDecoder
     /// Info-field bytes, optionally prefixed with the DTI byte. Handles
     /// the four DTI variants:
     /// <list type="bullet">
-    ///   <item><c>!</c> — no timestamp, no message capability</item>
-    ///   <item><c>=</c> — no timestamp, message-capable</item>
-    ///   <item><c>/</c> — timestamped, no message capability</item>
-    ///   <item><c>@</c> — timestamped, message-capable</item>
+    ///   <item><c>!</c> - no timestamp, no message capability</item>
+    ///   <item><c>=</c> - no timestamp, message-capable</item>
+    ///   <item><c>/</c> - timestamped, no message capability</item>
+    ///   <item><c>@</c> - timestamped, message-capable</item>
     /// </list>
     /// For the timestamped variants the 7-byte timestamp prefix
     /// (or 8 bytes for MDHM) is stripped before the position bytes are
@@ -87,7 +87,7 @@ public static class AprsPositionDecoder
                 info = info[(1 + tsLen)..];
                 break;
             default:
-                // No DTI byte — assume caller already stripped it; fall
+                // No DTI byte - assume caller already stripped it; fall
                 // through to format detection.
                 break;
         }
@@ -97,13 +97,13 @@ public static class AprsPositionDecoder
 
     /// <summary>
     /// Decode position bytes that have already had any DTI byte and
-    /// timestamp stripped — useful for object / item / status-with-position
+    /// timestamp stripped - useful for object / item / status-with-position
     /// reports where the position payload follows a fixed-width header that
     /// the caller has parsed.
     /// </summary>
     /// <remarks>
     /// Unlike <see cref="TryDecode"/>, this entry point does NOT treat a
-    /// leading <c>/</c> as a DTI byte — in compressed form <c>/</c> is a
+    /// leading <c>/</c> as a DTI byte - in compressed form <c>/</c> is a
     /// valid symbol-table identifier.
     /// </remarks>
     public static bool TryDecodePayload(ReadOnlySpan<byte> info, out AprsPosition position)
@@ -130,13 +130,13 @@ public static class AprsPositionDecoder
     /// <remarks>
     /// Four formats per spec:
     /// <list type="bullet">
-    ///   <item>DHM zulu: <c>DDHHMMz</c> — 7 bytes, terminator <c>z</c></item>
-    ///   <item>DHM local: <c>DDHHMM/</c> — 7 bytes, terminator <c>/</c></item>
-    ///   <item>HMS: <c>HHMMSSh</c> — 7 bytes, terminator <c>h</c></item>
-    ///   <item>MDHM: <c>MMDDHHMM</c> — 8 bytes, all digits, no terminator</item>
+    ///   <item>DHM zulu: <c>DDHHMMz</c> - 7 bytes, terminator <c>z</c></item>
+    ///   <item>DHM local: <c>DDHHMM/</c> - 7 bytes, terminator <c>/</c></item>
+    ///   <item>HMS: <c>HHMMSSh</c> - 7 bytes, terminator <c>h</c></item>
+    ///   <item>MDHM: <c>MMDDHHMM</c> - 8 bytes, all digits, no terminator</item>
     /// </list>
     /// The 7-byte forms have their format byte at position 6 (the 7th
-    /// byte). The 8-byte MDHM has no terminator — distinguished by all
+    /// byte). The 8-byte MDHM has no terminator - distinguished by all
     /// 8 bytes being digits.
     /// </remarks>
     private static int TimestampLength(ReadOnlySpan<byte> candidate7)
@@ -158,7 +158,7 @@ public static class AprsPositionDecoder
         {
             return 7;
         }
-        // MDHM (8 bytes, all digits) — also covers a final digit at
+        // MDHM (8 bytes, all digits) - also covers a final digit at
         // position 6 followed by another digit at position 7 in the
         // caller's buffer; we caught the first 7 here and need the 8th.
         if (IsAsciiDigit(t))
@@ -173,7 +173,7 @@ public static class AprsPositionDecoder
     //
     // Layout (20 bytes minimum + optional comment):
     //   DDMM.mmN/S  (8 bytes)
-    //   <symtbl>    (1 byte)  — '/' or '\' or overlay
+    //   <symtbl>    (1 byte)  - '/' or '\' or overlay
     //   DDDMM.mmE/W (9 bytes)
     //   <symcode>   (1 byte)
     //   <comment>   (0..N bytes)
@@ -217,7 +217,7 @@ public static class AprsPositionDecoder
     private static bool TryParseLatitude(ReadOnlySpan<byte> field, out double degrees)
     {
         degrees = 0;
-        // DDMM.mmN/S — 8 chars
+        // DDMM.mmN/S - 8 chars
         if (field.Length != 8)
         {
             return false;
@@ -292,7 +292,7 @@ public static class AprsPositionDecoder
     private static bool TryParseLongitude(ReadOnlySpan<byte> field, out double degrees)
     {
         degrees = 0;
-        // DDDMM.mmE/W — 9 chars
+        // DDDMM.mmE/W - 9 chars
         if (field.Length != 9)
         {
             return false;
@@ -374,7 +374,7 @@ public static class AprsPositionDecoder
     //   csT        (3 bytes course/speed/range/altitude)
     //   <comment>  (0..N bytes)
     //
-    // Base-91 range: characters '!' (33) through '{' (123) — see §9.
+    // Base-91 range: characters '!' (33) through '{' (123) - see §9.
 
     private static bool TryDecodeCompressed(ReadOnlySpan<byte> info, [NotNullWhen(true)] out AprsPosition position)
     {
@@ -415,7 +415,7 @@ public static class AprsPositionDecoder
         }
 
         char symbolCode = (char)info[9];
-        // info[10..13] = csT (course/speed/range/altitude) — not parsed
+        // info[10..13] = csT (course/speed/range/altitude) - not parsed
         // here; would land in a separate decoder for compressed extensions.
 
         string comment = info.Length > 13
@@ -454,7 +454,7 @@ public static class AprsPositionDecoder
     /// <summary>
     /// Valid symbol-table identifiers per APRS12c §20: primary table
     /// (<c>/</c>), alternate table (<c>\</c>), or a single overlay
-    /// character drawn from <c>0–9</c>, <c>A–Z</c>, or <c>a–j</c>
+    /// character drawn from <c>0-9</c>, <c>A-Z</c>, or <c>a-j</c>
     /// (the alternate table with overlay).
     /// </summary>
     private static bool IsValidSymbolTable(char c)

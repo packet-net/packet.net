@@ -4,7 +4,7 @@ namespace Packet.NetRom.Wire;
 
 /// <summary>
 /// Codec for the information field carried by a NET/ROM L4 <b>Connect Request</b>
-/// (opcode 0x01) — the one transport message whose info field has a defined
+/// (opcode 0x01) - the one transport message whose info field has a defined
 /// structure (the others carry user data or are empty). It conveys the
 /// <em>proposed send-window</em> and the <em>originating user + originating node</em>
 /// callsigns end-to-end, so the accepting node knows who is calling and can
@@ -17,8 +17,8 @@ namespace Packet.NetRom.Wire;
 ///   [1] proposed send-window size (1..127)
 ///   [7] originating user callsign  (AX.25 shifted form)
 ///   [7] originating node callsign  (AX.25 shifted form)
-///   (any trailing octets are an implementation extension — e.g. LinBPQ appends a
-///    timeout/flags pair — and are ignored on parse)
+///   (any trailing octets are an implementation extension - e.g. LinBPQ appends a
+///    timeout/flags pair - and are ignored on parse)
 /// </code>
 /// <para>
 /// <b>Why the window lives here, not in the transport header.</b> The 5-octet
@@ -40,7 +40,7 @@ public static class ConnectRequestInfo
     public const int Length = 1 + NetRomCallsign.ShiftedLength + NetRomCallsign.ShiftedLength; // 15
 
     /// <summary>Octets in the LinBPQ "extended connect" form: the canonical 15 plus
-    /// a 2-octet trailer carrying the proposed session timer (T1, little-endian) — and,
+    /// a 2-octet trailer carrying the proposed session timer (T1, little-endian) - and,
     /// in the high byte of that timer, the BPQ compression-supported bit.</summary>
     public const int ExtendedLength = Length + 2; // 17
 
@@ -78,7 +78,7 @@ public static class ConnectRequestInfo
         NetRomCallsign.WriteShifted(originatingUser, buf.AsSpan(1));
         NetRomCallsign.WriteShifted(originatingNode, buf.AsSpan(1 + NetRomCallsign.ShiftedLength));
         buf[Length] = (byte)(timerSeconds & 0xFF);          // T1 low
-        byte hi = (byte)((timerSeconds >> 8) & 0x0F);       // T1 high — only low nibble is the timer
+        byte hi = (byte)((timerSeconds >> 8) & 0x0F);       // T1 high - only low nibble is the timer
         if (offerCompression)
         {
             hi |= CompressBit;

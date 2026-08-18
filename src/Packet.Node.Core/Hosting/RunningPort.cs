@@ -52,7 +52,7 @@ public sealed class RunningPort : IAsyncDisposable
     /// <summary>The neutral AX.25 transport this port runs over (a native KISS transport,
     /// optionally wrapped in the reconnect / pacing decorators; an AXUDP modem via the
     /// migration shim). May also expose <see cref="ITxCompletionTransport"/> /
-    /// <see cref="ICsmaChannelParams"/> — consumers feature-detect with <c>is</c>.</summary>
+    /// <see cref="ICsmaChannelParams"/> - consumers feature-detect with <c>is</c>.</summary>
     public required IAx25Transport Transport { get; init; }
 
     public required Ax25Listener Listener { get; init; }
@@ -68,7 +68,7 @@ public sealed class RunningPort : IAsyncDisposable
 
     /// <summary>
     /// When a radio-control attachment is active (<see cref="PortConfig.Radio"/>), the
-    /// modem transport underneath the RSSI-tagging wrapper — the KISS/CSMA-capable
+    /// modem transport underneath the RSSI-tagging wrapper - the KISS/CSMA-capable
     /// transport <see cref="Transport"/> decorates. The tagging wrapper does NOT own
     /// what it wraps, so this port disposes it explicitly (after the wrapper, before
     /// the radio). Null when no radio is attached (then <see cref="Transport"/> IS the
@@ -78,7 +78,7 @@ public sealed class RunningPort : IAsyncDisposable
 
     /// <summary>The open radio control channel feeding the RSSI-tagging wrapper, or
     /// null when this port has no radio attached (config absent, or the radio failed
-    /// to open and the port degraded to running without metadata). Disposed LAST —
+    /// to open and the port degraded to running without metadata). Disposed LAST -
     /// the wrapper's sampler and the health monitor poll it until they are disposed.</summary>
     public IRadioControl? Radio { get; init; }
 
@@ -90,7 +90,7 @@ public sealed class RunningPort : IAsyncDisposable
 
     /// <summary>The open rig-control (CAT) backend connection feeding the rig status poller, or
     /// null when this port has no rig attached (config absent, or the daemon was unreachable and
-    /// the port degraded to running without it). Disposed after <see cref="RigStatus"/> — the
+    /// the port degraded to running without it). Disposed after <see cref="RigStatus"/> - the
     /// poller reads it until stopped.</summary>
     public Packet.Rig.IRigControl? Rig { get; init; }
 
@@ -102,7 +102,7 @@ public sealed class RunningPort : IAsyncDisposable
     /// <summary>The supervised node-managed <c>rigctld</c> when this port's <c>rig:</c> block is
     /// the <c>device</c>+<c>model</c> shape (and the daemon came up), or null (BYO daemon, no
     /// rig, or the daemon failed and the port degraded to running without a rig). Disposed
-    /// <b>LAST</b> — every rig client (the status poller's connection AND a rig-backed radio's
+    /// <b>LAST</b> - every rig client (the status poller's connection AND a rig-backed radio's
     /// dedicated one) dials it until they are gone.</summary>
     public Rigs.ManagedRigDaemon? RigDaemon { get; init; }
 
@@ -117,9 +117,9 @@ public sealed class RunningPort : IAsyncDisposable
 
     /// <summary>
     /// The NinoTNC serial port underneath the modem chain, captured before any pacing /
-    /// reconnect decorator hides it — or <c>null</c> when this port's modem is not a NinoTNC
+    /// reconnect decorator hides it - or <c>null</c> when this port's modem is not a NinoTNC
     /// (a serial-KISS / kiss-tcp / AXUDP modem exposes no NinoTNC diagnostics). The capability
-    /// doctor (<c>GET /api/v1/ports/{id}/doctor</c>) issues GETVER/GETALL/GETRSSI against it —
+    /// doctor (<c>GET /api/v1/ports/{id}/doctor</c>) issues GETVER/GETALL/GETRSSI against it -
     /// and, on an explicit interrupt, the transmitting probes. <b>Not owned here</b>: the modem
     /// chain (<see cref="ModemTransport"/>) owns and disposes it.
     /// </summary>
@@ -128,9 +128,9 @@ public sealed class RunningPort : IAsyncDisposable
     /// <summary>
     /// The reconnect decorator's live link state (<c>IsReconnecting</c>) when this port's transport
     /// chain contains one (kiss-tcp / nino-tnc-tcp ports), captured before later decorators hide it
-    /// — like <see cref="NinoTnc"/>. Null for a transport with no reconnect supervision (local
+    /// - like <see cref="NinoTnc"/>. Null for a transport with no reconnect supervision (local
     /// serial, AXUDP). Feeds <c>pdn_port_transport_reconnecting{port}</c> (#583); <b>not owned
-    /// here</b> — it IS (part of) the modem chain, which owns its own disposal.
+    /// here</b> - it IS (part of) the modem chain, which owns its own disposal.
     /// </summary>
     public Transports.ITransportLinkState? LinkState { get; init; }
 
@@ -148,7 +148,7 @@ public sealed class RunningPort : IAsyncDisposable
         // Order matters: listener first (it consumes the outermost transport), then the
         // outermost transport (when radio-tagged, disposing the node tap cascades into the
         // RSSI-tagging wrapper and stops its sampler), then the modem chain the wrapper didn't
-        // own, then the radio-status/health monitor, then the radio itself LAST — both the RSSI
+        // own, then the radio-status/health monitor, then the radio itself LAST - both the RSSI
         // sampler and the health monitor poll the radio, so the radio must outlive them.
         await Listener.DisposeAsync().ConfigureAwait(false);
         await Transport.DisposeAsync().ConfigureAwait(false);
@@ -164,7 +164,7 @@ public sealed class RunningPort : IAsyncDisposable
         {
             await Radio.DisposeAsync().ConfigureAwait(false);
         }
-        // The rig pair is independent of the radio/modem chain; same discipline — the
+        // The rig pair is independent of the radio/modem chain; same discipline - the
         // poller stops before the backend it reads.
         if (RigStatus is not null)
         {

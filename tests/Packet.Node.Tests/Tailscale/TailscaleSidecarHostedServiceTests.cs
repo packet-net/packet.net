@@ -49,7 +49,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
     /// idles until SIGTERM (exit 0) or exits with the given code (to exercise restart-on-exit).
     /// When <paramref name="argsLog"/> is set it appends its argv there (one line) before idling,
     /// so a test can assert the flags it was launched with. When <paramref name="hupLog"/> is set
-    /// it traps SIGHUP and appends a line there per signal (without exiting) — so a test can assert
+    /// it traps SIGHUP and appends a line there per signal (without exiting) - so a test can assert
     /// the live forwards-reload path SIGHUPs the same child instead of restarting it.</summary>
     private string WriteFakeSidecar(
         string name,
@@ -193,7 +193,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
     public async Task Disabled_config_runs_nothing_and_status_stays_disabled()
     {
         Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
-        // Point at a path that does not exist — if the service tried to launch it'd error;
+        // Point at a path that does not exist - if the service tried to launch it'd error;
         // because the config is disabled it must never launch, so status stays disabled.
         var bin = Path.Combine(dir, "does-not-exist");
         var status = new TailscaleStatusHolder();
@@ -212,7 +212,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
     public async Task A_child_that_exits_triggers_a_backoff_restart()
     {
         Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
-        // The fake records each launch, emits running, then exits 1 — so each respawn appends a
+        // The fake records each launch, emits running, then exits 1 - so each respawn appends a
         // line. Two-plus launches proves the supervisor restarted on the unexpected exit.
         var runsFile = Path.Combine(dir, "runs.txt");
         var bin = WriteFakeSidecar("ts-flap", [
@@ -354,7 +354,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
 
         var status = new TailscaleStatusHolder();
         var config = new TestConfigProvider(Node(Enabled(Path.Combine(dir, "state"))));
-        // Point at a non-existent binary while enabled — the surface must stay total.
+        // Point at a non-existent binary while enabled - the surface must stay total.
         await using var svc = NewService(
             config, status, Path.Combine(dir, "nope"), backoffBase: TimeSpan.FromMilliseconds(20));
 
@@ -370,7 +370,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
     public async Task Stop_sigterms_the_child()
     {
         Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
-        // The fake traps TERM and records it before exiting — proving a graceful SIGTERM stop.
+        // The fake traps TERM and records it before exiting - proving a graceful SIGTERM stop.
         var path = Path.Combine(dir, "ts-polite");
         var marker = Path.Combine(dir, "term.marker");
         var ready = Path.Combine(dir, "ready");
@@ -469,7 +469,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
         // The whole point of the fix: a forwards-only change must NOT tear down + rejoin the tailnet
         // (which would drop the operator's control-panel session). It rewrites forwards.json and
-        // SIGHUPs the SAME child — proved by exactly one launch line plus a recorded HUP.
+        // SIGHUPs the SAME child - proved by exactly one launch line plus a recorded HUP.
         var argsLog = Path.Combine(dir, "args.txt");
         var hupLog = Path.Combine(dir, "hup.txt");
         var bin = WriteFakeSidecar("ts-fwd-toggle", [
@@ -651,7 +651,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
     public async Task A_node_level_change_still_restarts_the_sidecar_even_with_forwards()
     {
         Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
-        // A node-level field (hostname → a fresh tsnet node) must still restart, never SIGHUP — the
+        // A node-level field (hostname → a fresh tsnet node) must still restart, never SIGHUP - the
         // forwards split must not regress the restart-on-node-change behaviour.
         var argsLog = Path.Combine(dir, "args.txt");
         var hupLog = Path.Combine(dir, "hup.txt");

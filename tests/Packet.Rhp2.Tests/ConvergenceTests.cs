@@ -11,14 +11,14 @@ namespace Packet.Rhp2.Tests;
 /// copy. These tests guard the surface that must stay stable for that to be a drop-in:
 /// the <see cref="RhpErrorCode"/> value/text table (the one place a silent code-vs-text drift
 /// would corrupt the wire on every reply), and the catalogue's <c>type</c> discriminators.
-/// A change here is a change to the shared wire format — make it deliberately, on both sides.
+/// A change here is a change to the shared wire format - make it deliberately, on both sides.
 /// </summary>
 public class ConvergenceTests
 {
     // The full RhpErrorCode table as rhp2lib-net's RhpV2.Client.Protocol.RhpErrorCode spells it,
     // value -> canonical errText, Ok(0) .. NotConnected(17). Verified identical to rhp2lib-net's
     // codec when #474's convergence assessment was made. The capitalisation quirks are part of
-    // the wire contract: "No Route" capitalised, "Operation not supported" not — XRouter emits
+    // the wire contract: "No Route" capitalised, "Operation not supported" not - XRouter emits
     // exactly these, so a server built on this codec must too.
     public static TheoryData<int, string> ErrorCodeTable() => new()
     {
@@ -50,7 +50,7 @@ public class ConvergenceTests
     [Fact]
     public void ErrorCode_constants_have_the_shared_numeric_values()
     {
-        // Pin the named constants to their wire numbers — a renumbering would diverge from
+        // Pin the named constants to their wire numbers - a renumbering would diverge from
         // rhp2lib-net's identical table and corrupt every reply that carries the code.
         RhpErrorCode.Ok.Should().Be(0);
         RhpErrorCode.Unspecified.Should().Be(1);
@@ -91,7 +91,7 @@ public class ConvergenceTests
     [InlineData(RhpMessageType.ConnectReply, "connectReply")]
     [InlineData(RhpMessageType.Send, "send")]
     [InlineData(RhpMessageType.SendReply, "sendReply")]
-    [InlineData(RhpMessageType.SendTo, "sendto")]          // lowercase "to" — the wire casing trap
+    [InlineData(RhpMessageType.SendTo, "sendto")]          // lowercase "to" - the wire casing trap
     [InlineData(RhpMessageType.SendToReply, "sendtoReply")]
     [InlineData(RhpMessageType.Recv, "recv")]
     [InlineData(RhpMessageType.Accept, "accept")]

@@ -15,7 +15,7 @@ public sealed class AvailableAppsUpdateGuardTests
     [InlineData("0.2.9", "0.2.10", true)]   // catalog strictly newer → an update
     [InlineData("0.2.0", "0.3.0", true)]    // minor bump
     [InlineData("0.2.9", "0.2.9", false)]   // equal → up to date, not an update
-    [InlineData("0.2.10", "0.2.9", false)]  // catalog OLDER → NOT a (backwards) update — the bug
+    [InlineData("0.2.10", "0.2.9", false)]  // catalog OLDER → NOT a (backwards) update - the bug
     [InlineData("0.3.0", "0.2.9", false)]   // catalog older across minor → not an update
     public void IsUpgrade_OffersAnUpdateOnlyWhenTheCatalogIsStrictlyNewer(
         string installed, string catalog, bool expected) =>

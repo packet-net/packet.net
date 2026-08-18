@@ -59,20 +59,20 @@ await foreach (KissFrame frame in client.ReadFramesAsync())
 ```
 
 ## Key types
-- `KissEncoder` / `KissDecoder` — encode AX.25 bytes to KISS wire bytes; statefully decode an incoming byte stream into `KissFrame`s.
-- `KissFrame` — one decoded frame: `Port`, `Command`, and raw `Payload`.
-- `KissCommand` — KISS command codes (`Data`, `TxDelay`, `Persistence`, `SetHardware`, `AckMode`, …).
-- `KissFraming` — the FEND/FESC/TFEND/TFESC framing constants plus the exit-KISS byte.
-- `KissTcpClient` — KISS-over-TCP client implementing `IAx25Transport`; handles framing both directions, ACKMODE TX-completion, CSMA params, and half-open-link idle detection.
-- `KissFrameClassifier` / `KissInboundEvent` — map a raw frame to a typed inbound event (`Ax25FrameReceivedEvent`, `AckModeDataReceivedEvent`, `UnknownInboundEvent`).
-- `KissAckMode` — build/parse the G8BPQ ACKMODE extension (command 0x0C) with its 2-byte sequence tag.
-- `KissAx25Bridge` — wire a KISS transport to a `Packet.Ax25` connected-mode session adapter.
+- `KissEncoder` / `KissDecoder` - encode AX.25 bytes to KISS wire bytes; statefully decode an incoming byte stream into `KissFrame`s.
+- `KissFrame` - one decoded frame: `Port`, `Command`, and raw `Payload`.
+- `KissCommand` - KISS command codes (`Data`, `TxDelay`, `Persistence`, `SetHardware`, `AckMode`, …).
+- `KissFraming` - the FEND/FESC/TFEND/TFESC framing constants plus the exit-KISS byte.
+- `KissTcpClient` - KISS-over-TCP client implementing `IAx25Transport`; handles framing both directions, ACKMODE TX-completion, CSMA params, and half-open-link idle detection.
+- `KissFrameClassifier` / `KissInboundEvent` - map a raw frame to a typed inbound event (`Ax25FrameReceivedEvent`, `AckModeDataReceivedEvent`, `UnknownInboundEvent`).
+- `KissAckMode` - build/parse the G8BPQ ACKMODE extension (command 0x0C) with its 2-byte sequence tag.
+- `KissAx25Bridge` - wire a KISS transport to a `Packet.Ax25` connected-mode session adapter.
 
 ## See also
 - [Source & issues](https://github.com/packet-net/packet.net)
-- [`Packet.Ax25`](https://www.nuget.org/packages/Packet.Ax25) — the AX.25 frames + connected-mode sessions KISS carries.
-- [`Packet.Kiss.NinoTnc`](https://www.nuget.org/packages/Packet.Kiss.NinoTnc) — NinoTNC-specific KISS extensions (ACKMODE, SETHW, frame classification).
-- [`Packet.Kiss.Serial`](https://www.nuget.org/packages/Packet.Kiss.Serial) — generic serial-port KISS modem.
+- [`Packet.Ax25`](https://www.nuget.org/packages/Packet.Ax25) - the AX.25 frames + connected-mode sessions KISS carries.
+- [`Packet.Kiss.NinoTnc`](https://www.nuget.org/packages/Packet.Kiss.NinoTnc) - NinoTNC-specific KISS extensions (ACKMODE, SETHW, frame classification).
+- [`Packet.Kiss.Serial`](https://www.nuget.org/packages/Packet.Kiss.Serial) - generic serial-port KISS modem.
 
 ---
 *AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

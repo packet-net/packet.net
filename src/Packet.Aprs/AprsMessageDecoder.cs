@@ -14,7 +14,7 @@ namespace Packet.Aprs;
 /// where NNNNNNNNN is exactly 9 ASCII characters of addressee
 /// (right-padded with spaces; the second <c>:</c> after the
 /// addressee is the body separator). The trailing
-/// <c>{messageId}</c> (1–5 chars per spec) is optional.
+/// <c>{messageId}</c> (1-5 chars per spec) is optional.
 /// </para>
 /// </remarks>
 public static class AprsMessageDecoder
@@ -57,7 +57,7 @@ public static class AprsMessageDecoder
         var body = info[(AddresseeLen + 1)..];
 
         // Split off a trailing {messageId}. The opening '{' must be in the
-        // last 6 bytes (1–5 char ID + '{'). The spec uses '{' only as the
+        // last 6 bytes (1-5 char ID + '{'). The spec uses '{' only as the
         // message-ID prefix so a plain text-body match is acceptable.
         string? messageId = null;
         string text = Encoding.UTF8.GetString(body).TrimEnd('\r', '\n');

@@ -7,7 +7,7 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Tests.Configuration;
 
 /// <summary>
-/// FsCheck generators producing <em>valid</em> <see cref="NodeConfig"/> values —
+/// FsCheck generators producing <em>valid</em> <see cref="NodeConfig"/> values -
 /// the substrate for the serialise↔parse round-trip property. "Valid" here means
 /// it passes <see cref="NodeConfigValidator"/>: parseable callsign, unique port
 /// ids + endpoints, in-range params. Generating only valid configs keeps the
@@ -17,7 +17,7 @@ public static class NodeConfigArbitraries
 {
     private static Gen<string> CallsignGen()
     {
-        // 1–6 uppercase alnum base + optional SSID 0–15 — exactly what Callsign
+        // 1-6 uppercase alnum base + optional SSID 0-15 - exactly what Callsign
         // accepts, so every generated identity validates.
         var letter = Gen.Elements("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".ToCharArray());
         return
@@ -80,7 +80,7 @@ public static class NodeConfigArbitraries
             select (PortLinkConfig?)new PortLinkConfig { Dial = dial, PreConnectXid = xid });
 
     // The optional radio-control attachment: only generated when the transport is a
-    // serial-modem kind (serial-kiss / nino-tnc) — validation rejects it elsewhere —
+    // serial-modem kind (serial-kiss / nino-tnc) - validation rejects it elsewhere -
     // and null ~half the time even then (most ports have no radio cabled).
     private static Gen<PortRadioConfig?> RadioGen(TransportConfig transport, int index) =>
         transport is not (SerialKissTransport or NinoTncTransport)
@@ -126,7 +126,7 @@ public static class NodeConfigArbitraries
         Gen.OneOf(
             Gen.Constant(new NetRomConfig()),
             // Enabled with an explicit routing knob (endpoint/transit need enabled, which
-            // this branch guarantees) — exercises the new knob's serialise↔parse round-trip.
+            // this branch guarantees) - exercises the new knob's serialise↔parse round-trip.
             from routing in Gen.Elements(NetRomRouting.None, NetRomRouting.Endpoint, NetRomRouting.Transit)
             from defQ in Gen.Choose(0, 255)
             from minQ in Gen.Choose(0, 255)
@@ -143,7 +143,7 @@ public static class NodeConfigArbitraries
                 SweepIntervalSeconds = sweep,
                 Compress = compress,
             },
-            // A disabled, passive node (no routing knob) — the other valid axis.
+            // A disabled, passive node (no routing knob) - the other valid axis.
             from defQ in Gen.Choose(0, 255)
             from minQ in Gen.Choose(0, 255)
             select new NetRomConfig

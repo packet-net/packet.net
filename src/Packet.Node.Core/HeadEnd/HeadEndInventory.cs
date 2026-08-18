@@ -9,7 +9,7 @@ namespace Packet.Node.Core.HeadEnd;
 /// </summary>
 public sealed record HeadEndInventory
 {
-    /// <summary>The head-end's stable instance id (a config value on the daemon, not its IP) — the
+    /// <summary>The head-end's stable instance id (a config value on the daemon, not its IP) - the
     /// same id an operator puts in <see cref="Configuration.HeadEndConfig.Id"/>.</summary>
     public string InstanceId { get; init; } = "";
 

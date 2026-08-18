@@ -16,13 +16,13 @@ namespace Packet.Node.Core.HeadEnd;
 /// <para>
 /// The head-end advertises TXT <c>instance=</c> (the authoritative stable id), optional
 /// <c>httpport=</c>, and <c>v=1</c>; the SRV port is the HTTP API. The instance id is taken from the
-/// TXT value regardless of the DNS-SD label — a concurrent daemon change may echo the id into the
+/// TXT value regardless of the DNS-SD label - a concurrent daemon change may echo the id into the
 /// label too, but the TXT is authoritative. A responder with no usable <c>instance=</c> or no
 /// address is skipped (it cannot be keyed or dialled).
 /// </para>
 /// <para>
 /// Total by contract: any resolver fault (no multicast route, no responder, a malformed record)
-/// logs at debug and yields an empty list. Discovery is a convenience — the manual
+/// logs at debug and yields an empty list. Discovery is a convenience - the manual
 /// <see cref="Configuration.HeadEndConfig.Address"/> always works without it.
 /// </para>
 /// </remarks>
@@ -121,7 +121,7 @@ public sealed partial class MdnsHeadEndDiscovery : IHeadEndDiscovery
     }
 
     // A DNS-SD service carries its TXT record as one or more property maps; read a key from the
-    // first map that has it (case-insensitively — some responders upper-case TXT keys).
+    // first map that has it (case-insensitively - some responders upper-case TXT keys).
     private static string? LookupTxt(IService service, string key)
     {
         foreach (var map in service.Properties)

@@ -3,7 +3,7 @@ using System.ComponentModel;
 namespace Packet.Mcp.Decoding;
 
 /// <summary>
-/// The human-readable decode of a single AX.25 frame — what <c>decode_frame</c>
+/// The human-readable decode of a single AX.25 frame - what <c>decode_frame</c>
 /// returns. A pure projection of <c>Packet.Ax25.Ax25Frame</c> (plus the KISS
 /// wrapper when present); no node state involved.
 /// </summary>

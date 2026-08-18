@@ -11,7 +11,7 @@ namespace Packet.Node.Tests.Capabilities;
 /// <summary>
 /// The user-CONNECT dial path (<see cref="Ax25OutboundConnector"/>) consults the per-peer
 /// capability cache to pick the dial version + pre-connect-XID probe, then records the OUTCOME of
-/// a RETURNED dial — never on a throw. Asserted over a real handshake on the in-memory radio: the
+/// a RETURNED dial - never on a throw. Asserted over a real handshake on the in-memory radio: the
 /// pre-seeded plan is observed on the wire (the peer's first received frame), and the cache state
 /// is checked after a returned dial and after a dial that throws.
 /// </summary>
@@ -22,7 +22,7 @@ public sealed class Ax25OutboundConnectorCapabilityCacheWiringTests
     private static readonly Callsign LocalCall = new("M0AAA", 1);
     private static readonly Callsign Target = new("M0BBB", 2);
 
-    // U-frame control octets (P/F masked out) — mirrors the Ax25 listener wire tests.
+    // U-frame control octets (P/F masked out) - mirrors the Ax25 listener wire tests.
     private const byte SabmBase = 0x2F;
     private const byte XidBase = 0xAF;
     private static byte UBase(Ax25Frame f) => (byte)(f.Control & 0xEF);
@@ -52,7 +52,7 @@ public sealed class Ax25OutboundConnectorCapabilityCacheWiringTests
         var echo = new EchoStation(eB, Target, "ok");
         await echo.StartAsync();
 
-        // Capture the FIRST frame the caller transmits — it proves what the connector dialled
+        // Capture the FIRST frame the caller transmits - it proves what the connector dialled
         // (tap the caller's own TX: same wire, no dependence on the peer's RX timing).
         var firstReceived = new TaskCompletionSource<Ax25Frame>(TaskCreationOptions.RunContinuationsAsynchronously);
         caller.FrameTraced += (_, e) =>

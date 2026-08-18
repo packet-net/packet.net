@@ -33,7 +33,7 @@ public sealed record SdmTuningLinkOptions
     /// <summary>
     /// Minimum gap between receiving a telegram and transmitting: the radio may still be
     /// transmitting its own auto-acknowledgement of the just-received SDM, and half-duplex
-    /// etiquette is not to key over it. (This is politeness only — it does NOT prevent the
+    /// etiquette is not to key over it. (This is politeness only - it does NOT prevent the
     /// SDM auto-ack refractory, which is unavoidable and instead handled by not depending on the
     /// delivery receipt; see <see cref="WaitForDeliveryReceipt"/> and
     /// docs/research/tm8110-sdm-autoack-refractory.md.) Default 2 s.
@@ -42,7 +42,7 @@ public sealed record SdmTuningLinkOptions
 
     /// <summary>
     /// When <c>true</c>, <see cref="SdmTuningLink.SendAsync"/> waits for the radio's over-air
-    /// delivery receipt (PROGRESS 1D) and retries/throws on its absence — the original
+    /// delivery receipt (PROGRESS 1D) and retries/throws on its absence - the original
     /// behaviour. That is only dependable for <b>unidirectional or ≥~9 s-spaced</b> SDM, or
     /// radios programmed with SDM auto-ack OFF. For the close bidirectional traffic a
     /// coordination protocol generates, the receipt is <b>not</b> a reliable success signal: a
@@ -57,17 +57,17 @@ public sealed record SdmTuningLinkOptions
 
 /// <summary>
 /// <see cref="ITuningLink"/> over a radio's own small-datagram side channel
-/// (<see cref="IRadioSideChannel"/> — canonically Tait CCDI short data
+/// (<see cref="IRadioSideChannel"/> - canonically Tait CCDI short data
 /// messages): telegrams ride the radios' internal signalling modem at factory
-/// deviation — fully independent of the TNC/modem under tune or negotiation,
+/// deviation - fully independent of the TNC/modem under tune or negotiation,
 /// so the coordination channel works at ANY deviation setting and in ANY
 /// modem mode. No internet, no TNC involvement.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
 ///   <item><b>Reliability:</b> by default (<see cref="SdmTuningLinkOptions.WaitForDeliveryReceipt"/>
-///     false) a send completes as soon as the radio accepts the datagram — on a working channel
-///     the SDM payload is always delivered — and the over-air delivery receipt
+///     false) a send completes as soon as the radio accepts the datagram - on a working channel
+///     the SDM payload is always delivered - and the over-air delivery receipt
 ///     (<see cref="IRadioSideChannel.DeliveryReceipt"/>; for Tait, PROGRESS 1D) is treated as
 ///     advisory only, because it is <b>not</b> a dependable success signal for close bidirectional
 ///     SDM (see the auto-ack refractory note below). Delivery reliability is then the caller's
@@ -86,7 +86,7 @@ public sealed record SdmTuningLinkOptions
 ///     poll for missed events.</item>
 /// </list>
 /// <para>
-/// <b>SDM auto-ack refractory (TM8110, characterised 2026-07-08 — supersedes the earlier
+/// <b>SDM auto-ack refractory (TM8110, characterised 2026-07-08 - supersedes the earlier
 /// "keying wedges the ack engine" account, which was wrong).</b> The SDM <em>payload</em> is
 /// delivered every time. But a radio captures its own send's over-air delivery receipt only if it
 /// has not transmitted an SDM auto-acknowledge since its previous send AND ≥~9 s have elapsed since
@@ -156,12 +156,12 @@ public sealed class SdmTuningLink : ITuningLink
 
     /// <summary>Create over a live <see cref="TaitCcdiRadio"/>. The radio's
     /// lifetime stays the caller's. Enable PROGRESS messages on the radio
-    /// first — DCD, arrivals and receipts all ride on them.</summary>
+    /// first - DCD, arrivals and receipts all ride on them.</summary>
     /// <param name="radio">The radio whose SDM side channel carries the telegrams.</param>
     /// <param name="peerId">The peer radio's 8-character SDM data identity.</param>
     /// <param name="options">Tunables; null = defaults.</param>
     /// <param name="extendedSdm">When <c>true</c>, allow telegrams over the 32-character plain-SDM
-    /// budget to ride an extended SDM (up to 128 characters — natively split/reassembled by the
+    /// budget to ride an extended SDM (up to 128 characters - natively split/reassembled by the
     /// radios). Needed for the richer <see cref="StationStatus"/> reply; leave <c>false</c> for the
     /// short mode-coordination / deviation telegrams. Default <c>false</c>.</param>
     /// <param name="timeProvider">Time source for the guard, backoff, poll and receipt
@@ -211,9 +211,9 @@ public sealed class SdmTuningLink : ITuningLink
                 await WaitForChannelClearAsync(cancellationToken).ConfigureAwait(false);
 
                 // The over-air delivery receipt (PROGRESS 1D) is a dependable success signal only
-                // for unidirectional / well-spaced SDM (or radios with auto-ack off) — the strict
+                // for unidirectional / well-spaced SDM (or radios with auto-ack off) - the strict
                 // WaitForDeliveryReceipt mode. For close bidirectional traffic it is unreliable by
-                // radio design (the auto-ack refractory — docs/research/tm8110-sdm-autoack-refractory.md),
+                // radio design (the auto-ack refractory - docs/research/tm8110-sdm-autoack-refractory.md),
                 // so the default mode does not arm a receipt waiter and does not gate the send on it.
                 var receipt = options.WaitForDeliveryReceipt
                     ? new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
@@ -229,7 +229,7 @@ public sealed class SdmTuningLink : ITuningLink
                     }
                     catch (Exception ex) when (ex is TaitCcdiException or IOException or TimeoutException)
                     {
-                        // The radio itself refused the datagram — busy / not-ready right after a
+                        // The radio itself refused the datagram - busy / not-ready right after a
                         // prior transmission, or a programming rejection (e.g. SDM disabled, 0/06).
                         // This is the one genuine transport failure worth retrying; surface the
                         // last such error if every attempt fails.
@@ -242,7 +242,7 @@ public sealed class SdmTuningLink : ITuningLink
                     {
                         if (!options.WaitForDeliveryReceipt)
                         {
-                            // Default: the radio accepted the datagram — on a working channel the
+                            // Default: the radio accepted the datagram - on a working channel the
                             // payload is delivered. Don't gate on the (unreliable) receipt; the
                             // caller confirms via its application-level reply.
                             return;
@@ -353,7 +353,7 @@ public sealed class SdmTuningLink : ITuningLink
         if (wait > TimeSpan.Zero)
         {
             // The radio is (or may be) transmitting its auto-ack for the
-            // telegram we just received — sending now would pre-empt it.
+            // telegram we just received - sending now would pre-empt it.
             await Task.Delay(wait, clock, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -379,7 +379,7 @@ public sealed class SdmTuningLink : ITuningLink
             while (!cancellationToken.IsCancellationRequested)
             {
                 // Prompt read on arrival events; slow fallback poll otherwise
-                // (the buffer is one-deep — a missed event must not strand a
+                // (the buffer is one-deep - a missed event must not strand a
                 // telegram until the next one overwrites it). SemaphoreSlim has
                 // no TimeProvider-timeout overload, so the poll deadline rides a
                 // clock-driven token: on the system clock this is the same wait,

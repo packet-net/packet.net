@@ -45,7 +45,7 @@ public sealed class MetricsEndpointTests : IDisposable
                 continue;
             }
             line.Should().StartWith("pdn_");
-            // Each sample line ends `... <value>` — a final space-delimited numeric token.
+            // Each sample line ends `... <value>` - a final space-delimited numeric token.
             int sp = line.LastIndexOf(' ');
             sp.Should().BeGreaterThan(0);
             double.TryParse(line[(sp + 1)..], System.Globalization.NumberStyles.Float,
@@ -57,7 +57,7 @@ public sealed class MetricsEndpointTests : IDisposable
     public async Task Metrics_stays_anonymous_with_auth_on()
     {
         // The Prometheus contract: a scraper holds a static config, not a login, and this
-        // node's access tokens live 60 minutes — so /metrics is AllowAnonymous regardless of
+        // node's access tokens live 60 minutes - so /metrics is AllowAnonymous regardless of
         // management.auth.enabled. Auth defaults on now, so without this the documented
         // scrape workflow would 401 on every stock install. Deliberate (Tom, 2026-08-03):
         // metrics are public; the exposure trade is documented in docs/observability.md.

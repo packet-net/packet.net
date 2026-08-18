@@ -20,7 +20,7 @@ public interface IBurstMeter
     /// <summary>
     /// The idle-channel RX-audio baseline in dB captured before the first
     /// burst, or <c>null</c> when the meter has no audio-level source. Only
-    /// the GETRSSI fast path (NinoTNC firmware 3.41-era — REMOVED in 3.44)
+    /// the GETRSSI fast path (NinoTNC firmware 3.41-era - REMOVED in 3.44)
     /// provides it; it turns per-burst <see cref="MeterReport.AudioLevelDb"/>
     /// readings into a quieting figure for the advice line.
     /// </summary>
@@ -38,13 +38,13 @@ public interface ITuningPrompt
 /// <summary>Options for a <see cref="TuningSession"/>.</summary>
 public sealed record TuningSessionOptions
 {
-    /// <summary>Frames per burst (kept short — every burst is airtime). Default 5.</summary>
+    /// <summary>Frames per burst (kept short - every burst is airtime). Default 5.</summary>
     public int BurstFrames { get; init; } = 5;
 
     /// <summary>
     /// Tuned-side wait between receiving <c>RQ</c> and keying the burst.
     /// Over the SDM link the same radio that just received the <c>RQ</c>
-    /// still has its auto-acknowledgement to transmit — keying the burst
+    /// still has its auto-acknowledgement to transmit - keying the burst
     /// immediately pre-empts it and the meter sees a false "not delivered"
     /// (bench-observed). Default 2.5 s.
     /// </summary>
@@ -62,17 +62,17 @@ public sealed record TuningSessionOptions
 /// <remarks>
 /// <para>Protocol choreography (five verbs, meter drives the measurements):</para>
 /// <list type="number">
-///   <item>The tuned end sends <c>HI|tuned</c> — its "ready for a burst"
+///   <item>The tuned end sends <c>HI|tuned</c> - its "ready for a burst"
 ///     beacon, re-sent after the operator confirms each pot adjustment. The
 ///     meter sends nothing unsolicited (over the half-duplex SDM channel a
 ///     telegram sent while the tuned end is keyed for a burst would collide
 ///     with it, and the tuned radio can't cleanly receive/auto-ack an SDM
-///     mid-transmit — so the meter only answers the idle-channel beacon).</item>
+///     mid-transmit - so the meter only answers the idle-channel beacon).</item>
 ///   <item>On <c>HI|tuned</c> the meter sends <c>RQ|n</c> and opens its
 ///     measurement window; the tuned end fires an n-frame burst (after
 ///     <see cref="TuningSessionOptions.PreBurstDelay"/>).</item>
 ///   <item>The meter sends <c>MS|&lt;report&gt;</c> then
-///     <c>AD|UP/DN/OK/SW</c> (<c>SW</c> = no decode — sweep the pot); the
+///     <c>AD|UP/DN/OK/SW</c> (<c>SW</c> = no decode - sweep the pot); the
 ///     tuned end shows the trend table and prompts the operator (adjust pot
 ///     → Enter → next round, or finish).</item>
 ///   <item><c>BY</c> from either end closes the session.</item>
@@ -118,7 +118,7 @@ public static class TuningSession
         // channel, a telegram landing at the tuned radio while it is keyed
         // (session-start CQBEEP arming, a burst) would collide with that
         // transmission and can't be cleanly received/auto-acked. The meter's first
-        // transmission is the RQ answering the tuned end's ready beacon — which the
+        // transmission is the RQ answering the tuned end's ready beacon - which the
         // tuned end sends from an idle channel.
         await output.WriteLineAsync("meter: waiting for the tuned end's ready beacon...").ConfigureAwait(false);
 
@@ -145,7 +145,7 @@ public static class TuningSession
                         {
                             // Soft failure: the request may well have been
                             // delivered with only its receipt lost (the burst
-                            // itself can pre-empt the ack) — measure anyway.
+                            // itself can pre-empt the ack) - measure anyway.
                             await output.WriteLineAsync(
                                 $"meter: RQ delivery unconfirmed ({ex.Message}) — opening the measurement window anyway")
                                 .ConfigureAwait(false);
@@ -182,7 +182,7 @@ public static class TuningSession
                         break;
 
                     case TuningVerb.Hello:
-                        break; // our own role echoed back / unknown role — ignore
+                        break; // our own role echoed back / unknown role - ignore
 
                     case TuningVerb.Bye:
                         await output.WriteLineAsync("meter: tuned end said BY — session over").ConfigureAwait(false);
@@ -303,7 +303,7 @@ public static class TuningSession
                         }
                         // Ready for the next round. A lost delivery here would
                         // stall the session, so one failed signal gets one
-                        // retry — of the SAME telegram (same seq), so the
+                        // retry - of the SAME telegram (same seq), so the
                         // receiver's dedupe makes a double delivery harmless.
                         var ready = new TuningTelegram(seq++, TuningVerb.Hello, TunedRole);
                         for (int attempt = 1; ; attempt++)

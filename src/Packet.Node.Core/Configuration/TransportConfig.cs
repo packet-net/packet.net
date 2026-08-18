@@ -4,7 +4,7 @@ using Packet.SoundModem.Modems;
 namespace Packet.Node.Core.Configuration;
 
 /// <summary>
-/// How a port reaches its KISS modem — a closed, discriminated union. Each
+/// How a port reaches its KISS modem - a closed, discriminated union. Each
 /// concrete subtype is one transport kind; the <see cref="Kind"/> string is the
 /// discriminator the YAML layer keys on (the <c>kind:</c> field) and the value
 /// the <see cref="Transports.ITransportFactory"/> switches over.
@@ -13,13 +13,13 @@ namespace Packet.Node.Core.Configuration;
 /// <para>
 /// Modelled as an abstract record with sealed subtypes (C# has no native DU).
 /// The set is closed: a new transport adds a subtype here, a kind constant, a
-/// validator arm, a YAML mapping arm, and a factory arm — and the compiler's
+/// validator arm, a YAML mapping arm, and a factory arm - and the compiler's
 /// exhaustiveness checking flags any arm you miss.
 /// </para>
 /// <para>
 /// AXUDP (AX.25 frames over UDP, <see cref="AxudpTransport"/>) plugs into the
 /// same seam via the <c>AxudpFrameTransport</c> adapter, which presents a
-/// <see cref="Packet.Axudp.AxudpSocket"/> as a native <c>IAx25Transport</c> — so
+/// <see cref="Packet.Axudp.AxudpSocket"/> as a native <c>IAx25Transport</c> - so
 /// the listener / console / reconcile path is shared with the KISS transports.
 /// The telnet console is <b>not</b> a transport (it is not an
 /// <c>IAx25Transport</c>); it lives under <see cref="ManagementConfig.Telnet"/>.
@@ -57,7 +57,7 @@ public static class TransportKinds
     public const string NinoTnc = "nino-tnc";
 
     /// <summary>Full-control NinoTNC over a split-station head-end's raw TCP pipe (GETVER / mode /
-    /// GETRSSI / ACKMODE) — distinct from the control-less generic <see cref="KissTcp"/>.</summary>
+    /// GETRSSI / ACKMODE) - distinct from the control-less generic <see cref="KissTcp"/>.</summary>
     public const string NinoTncTcp = "nino-tnc-tcp";
 
     /// <summary>KISS over TCP (a softmodem / net-sim endpoint).</summary>
@@ -66,16 +66,16 @@ public static class TransportKinds
     /// <summary>AX.25 frames encapsulated in UDP datagrams (AXUDP / BPQAXIP).</summary>
     public const string Axudp = "axudp";
 
-    /// <summary>Multipoint AXUDP — one UDP socket, many partners addressed by callsign
+    /// <summary>Multipoint AXUDP - one UDP socket, many partners addressed by callsign
     /// (the BPQ <c>BPQAXIP</c> + <c>MAP</c> model).</summary>
     public const string AxudpMultipoint = "axudp-multipoint";
 
-    /// <summary>A Tait TM8100/TM8200 radio in Transparent mode as the modem — no external TNC
+    /// <summary>A Tait TM8100/TM8200 radio in Transparent mode as the modem - no external TNC
     /// (AX.25 over the radio's own FFSK byte pipe with KISS SLIP framing).</summary>
     public const string TaitTransparent = "tait-transparent";
 
     /// <summary>An in-process soundcard modem (the pdn-soundmodem engine): audio in/out via
-    /// ALSA, no external TNC or daemon — with native carrier-sense into the AX.25 stack.</summary>
+    /// ALSA, no external TNC or daemon - with native carrier-sense into the AX.25 stack.</summary>
     public const string SoundModem = "soundmodem";
 }
 
@@ -116,15 +116,15 @@ public sealed record NinoTncTransport : TransportConfig
 
 /// <summary>
 /// A <b>full-control</b> NinoTNC hosted on a split-station head-end and reached over its raw TCP
-/// pipe (<c>NinoTncSerialPort.OpenTcp</c> — see <c>docs/research/split-station-rf-headend.md</c>).
+/// pipe (<c>NinoTncSerialPort.OpenTcp</c> - see <c>docs/research/split-station-rf-headend.md</c>).
 /// Unlike the generic control-less <see cref="KissTcpTransport"/>, this is the NinoTNC's whole
 /// surface remotely: GETVER, mode agility (<see cref="Mode"/>), GETRSSI, ACKMODE TX-completion. The
 /// TNC is bound by <c>(headEndId, deviceId)</c>, resolved to the head-end's <c>tcpPort</c> at
-/// bring-up (a re-addressed head-end keeps this config — the id is the key, not host:port).
+/// bring-up (a re-addressed head-end keeps this config - the id is the key, not host:port).
 /// </summary>
 /// <remarks>
 /// NinoTNC baud is fictional over USB-CDC, so there is no baud field (nothing for the head-end's
-/// line verb to set). A head-end-hosted Tait <c>radio:</c> control channel — the co-located pair —
+/// line verb to set). A head-end-hosted Tait <c>radio:</c> control channel - the co-located pair -
 /// is legitimate on this kind (validation lifts the serial-only radio restriction specifically for
 /// head-end-bound ports).
 /// </remarks>
@@ -140,14 +140,14 @@ public sealed record NinoTncTcpTransport : TransportConfig
     public required string DeviceId { get; init; }
 
     /// <summary>NinoTNC mode 0..15 (the modem mode catalogue index), applied via KISS SETHW after
-    /// the remote port opens — exactly as the local <see cref="NinoTncTransport.Mode"/> path does.</summary>
+    /// the remote port opens - exactly as the local <see cref="NinoTncTransport.Mode"/> path does.</summary>
     public int Mode { get; init; }
 
     /// <inheritdoc/>
     public override string DescribeEndpoint() => $"nino-tnc-tcp:{HeadEndId}/{DeviceId}";
 }
 
-/// <summary>KISS over TCP (<c>KissTcpClient.ConnectAsync</c>) — a softmodem or net-sim.</summary>
+/// <summary>KISS over TCP (<c>KissTcpClient.ConnectAsync</c>) - a softmodem or net-sim.</summary>
 public sealed record KissTcpTransport : TransportConfig
 {
     /// <inheritdoc/>
@@ -164,10 +164,10 @@ public sealed record KissTcpTransport : TransportConfig
 }
 
 /// <summary>
-/// AXUDP — AX.25 frames encapsulated in UDP datagrams (the RFC-1226 AXIP/AXUDP /
+/// AXUDP - AX.25 frames encapsulated in UDP datagrams (the RFC-1226 AXIP/AXUDP /
 /// BPQAXIP transport). Each datagram payload is one AX.25 frame body (the same
 /// KISS-form octets the listener produces) followed by the 2-octet AX.25 FCS.
-/// The FCS is unconditional — it is the de-facto wire form that every real peer
+/// The FCS is unconditional - it is the de-facto wire form that every real peer
 /// (LinBPQ's BPQAXIP, XRouter, ax25ipd, JNOS, per RFC 1226) requires; see
 /// <c>docs/strict-vs-pragmatic-audit.md</c>. Driven by the <c>AxudpFrameTransport</c>
 /// adapter over a <see cref="Packet.Axudp.AxudpSocket"/>.
@@ -177,7 +177,7 @@ public sealed record KissTcpTransport : TransportConfig
 /// every outbound frame to one configured remote (<see cref="Host"/>:<see cref="Port"/>)
 /// and receives on its own bound <see cref="LocalPort"/>. There is no CSMA on a
 /// UDP link, so the KISS TXDELAY/PERSIST/SLOTTIME knobs are inert for this kind
-/// (the adapter accepts and ignores them — see <c>AxudpFrameTransport</c>).
+/// (the adapter accepts and ignores them - see <c>AxudpFrameTransport</c>).
 /// </remarks>
 public sealed record AxudpTransport : TransportConfig
 {
@@ -193,7 +193,7 @@ public sealed record AxudpTransport : TransportConfig
     /// <summary>
     /// Local UDP port to bind for receiving inbound datagrams. Conventionally the
     /// same as the remote's port for a symmetric tunnel; <c>0</c> picks an
-    /// ephemeral port (send-only / monitor — the peer can't reach an ephemeral
+    /// ephemeral port (send-only / monitor - the peer can't reach an ephemeral
     /// bind unless it learns the source port).
     /// </summary>
     public int LocalPort { get; init; }
@@ -203,10 +203,10 @@ public sealed record AxudpTransport : TransportConfig
 }
 
 /// <summary>
-/// Multipoint AXUDP — the BPQ <c>BPQAXIP</c> analog. ONE UDP socket bound to
+/// Multipoint AXUDP - the BPQ <c>BPQAXIP</c> analog. ONE UDP socket bound to
 /// <see cref="LocalPort"/> reaches MANY partners, each addressed by
 /// <c>callsign → host:port</c> (BPQ's <c>MAP &lt;call&gt; &lt;ip&gt; UDP &lt;port&gt;</c>),
-/// with a per-peer <see cref="AxudpPeerConfig.Broadcast"/> flag (the BPQ <c>B</c> suffix —
+/// with a per-peer <see cref="AxudpPeerConfig.Broadcast"/> flag (the BPQ <c>B</c> suffix -
 /// fan NODES/ID/BEACON broadcasts to that peer). The wire form is identical to point-to-point
 /// <see cref="AxudpTransport"/> (AX.25 body + the mandatory 2-octet FCS); only the addressing
 /// model differs. Driven by the <c>AxudpMultipointFrameTransport</c> adapter over a
@@ -228,14 +228,14 @@ public sealed record AxudpMultipointTransport : TransportConfig
     /// peer). Conventionally a fixed well-known port so partners can MAP back to us.</summary>
     public required int LocalPort { get; init; }
 
-    /// <summary>The partner table — each entry maps a callsign to a UDP endpoint
+    /// <summary>The partner table - each entry maps a callsign to a UDP endpoint
     /// (BPQ <c>MAP</c>). Empty is allowed (a receive-only listener) but unusual.</summary>
     public IReadOnlyList<AxudpPeerConfig> Peers { get; init; } = [];
 
     /// <inheritdoc/>
     public override string DescribeEndpoint() => $"axudp-multipoint:local:{LocalPort}({Peers.Count} peers)";
 
-    // Peers is a collection member, which a record compares by REFERENCE — so a YAML
+    // Peers is a collection member, which a record compares by REFERENCE - so a YAML
     // round-trip (fresh list) would read as changed and needlessly restart the port.
     // Hand-roll value equality over it, matching every other config record with a
     // collection member (see ConfigEquality). AxudpPeerConfig is a plain record (scalar
@@ -255,7 +255,7 @@ public sealed record AxudpMultipointTransport : TransportConfig
 /// </summary>
 public sealed record AxudpPeerConfig
 {
-    /// <summary>The partner callsign (the routing key — an outbound frame whose AX.25
+    /// <summary>The partner callsign (the routing key - an outbound frame whose AX.25
     /// destination is this callsign goes to this peer's endpoint).</summary>
     public required string Call { get; init; }
 
@@ -266,16 +266,16 @@ public sealed record AxudpPeerConfig
     public required int Port { get; init; }
 
     /// <summary>Whether NODES / ID / BEACON broadcasts fan out to this peer (BPQ's <c>B</c>
-    /// suffix on a <c>MAP</c> line). Default false — a non-broadcast peer only ever receives
+    /// suffix on a <c>MAP</c> line). Default false - a non-broadcast peer only ever receives
     /// frames whose AX.25 destination is its own callsign.</summary>
     public bool Broadcast { get; init; }
 }
 
 /// <summary>
-/// A Tait TM8100/TM8200 radio in Transparent mode as the port's modem — <b>no external TNC</b>.
+/// A Tait TM8100/TM8200 radio in Transparent mode as the port's modem - <b>no external TNC</b>.
 /// AX.25 frames ride the radio's internal FFSK modem (an 8-bit-clean byte pipe) with KISS SLIP
 /// framing, driven by <c>Packet.Radio.Tait.TaitTransparentTransport</c>. The radio is bound by
-/// device path (<see cref="Device"/>) OR — preferred — by CCDI serial (<see cref="Serial"/>),
+/// device path (<see cref="Device"/>) OR - preferred - by CCDI serial (<see cref="Serial"/>),
 /// resolved at bring-up so a re-enumerated <c>/dev/ttyUSB*</c> still finds the right radio; OR by
 /// a split-station head-end device (<see cref="HeadEndId"/>+<see cref="DeviceId"/>, #585), in
 /// which case the byte pipe is the head-end's raw TCP bridge and the Command↔Transparent runtime
@@ -285,7 +285,7 @@ public sealed record AxudpPeerConfig
 /// Unlike a serial-modem port with an optional <c>radio:</c> control channel, here the radio IS
 /// the modem: there is no separate CCDI control channel while in Transparent mode, so this kind
 /// provides no per-frame RSSI/SNR (only airtime timing). Teardown exits Transparent and restores
-/// Command mode — a port left in Transparent is deaf to CCDI. A <c>radio:</c> block is therefore
+/// Command mode - a port left in Transparent is deaf to CCDI. A <c>radio:</c> block is therefore
 /// invalid on this kind (validation rejects it).
 /// </remarks>
 public sealed record TaitTransparentTransportConfig : TransportConfig

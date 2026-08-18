@@ -64,7 +64,7 @@ public sealed class NetRomNodeConnection : INodeConnection
         }
         catch (ChannelClosedException)
         {
-            // circuit closed — fall through to EOF
+            // circuit closed - fall through to EOF
         }
         return ReadOnlyMemory<byte>.Empty;
     }

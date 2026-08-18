@@ -6,7 +6,7 @@ using Packet.Mqtt.Spike;
 //
 // Tom's LinBPQ node publishes every AX.25 frame sent/received across its 4 RF
 // ports to mqtt.lan under the PACKETNODE topic. We don't yet know the exact
-// topic structure or payload format — this tool starts in `probe` mode to
+// topic structure or payload format - this tool starts in `probe` mode to
 // observe, then `monitor` mode will parse the frames structurally.
 //
 // Args:

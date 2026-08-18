@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// The marquee AXUDP test: <b>two real pdn node-host instances connect to each
-/// other over AXUDP</b> on the loopback interface — a full AX.25 connected-mode
+/// other over AXUDP</b> on the loopback interface - a full AX.25 connected-mode
 /// session (SABM/UA + I-frames carrying the node banner) carried over real UDP
 /// datagrams, end-to-end through the node-host machinery (the real
 /// <see cref="TransportFactory"/> → <see cref="AxudpFrameTransport"/> → port supervisor
@@ -37,7 +37,7 @@ public sealed class AxudpNodeToNodeIntegrationTests
         var configA = NodeConfig(NodeACall, "NODE-A", localPort: portA, remotePort: portB);
         var configB = NodeConfig(NodeBCall, "NODE-B", localPort: portB, remotePort: portA);
 
-        // Real transport factory — this exercises the actual AXUDP wiring, not a fake.
+        // Real transport factory - this exercises the actual AXUDP wiring, not a fake.
         await using var nodeA = new PortSupervisor(
             new TestConfigProvider(configA), TransportFactory.Instance, TimeProvider.System, NullLoggerFactory.Instance);
         await using var nodeB = new PortSupervisor(
@@ -49,7 +49,7 @@ public sealed class AxudpNodeToNodeIntegrationTests
             "both AXUDP ports should come up");
 
         // Node A dials node B through its own node-host connector (the same path the
-        // telnet/console Connect command uses) — so node A won't start a console
+        // telnet/console Connect command uses) - so node A won't start a console
         // against B, and we can read B's banner off the returned connection.
         var connector = nodeA.ResolveDefaultConnector();
         connector.Should().NotBeNull("node A has a running AXUDP port to dial out on");
@@ -59,7 +59,7 @@ public sealed class AxudpNodeToNodeIntegrationTests
 
         // Monitor-v2 (#173): with the session up (ConnectAsync returns on
         // DL-CONNECT-confirm), the link's live timer state is surfaced from the connected
-        // session — node A has a real, positive SRT estimate for NODEB-1. This is the value
+        // session - node A has a real, positive SRT estimate for NODEB-1. This is the value
         // that feeds the REST /links projection + the MCP link_quality tool (previously
         // hard-coded 0); the retry count (RC) is read from the same place. (RC's exact
         // value just after the handshake is timing-dependent, so it isn't asserted here.)
@@ -70,11 +70,11 @@ public sealed class AxudpNodeToNodeIntegrationTests
         // (ConnectAsync only returns on DL-CONNECT-confirm). Now prove a request/response
         // I-frame round-trip: send a command and read node B's reply back over the tunnel.
         // (Node B's eager connect banner is asserted separately by the unsolicited-banner
-        // test below — Ax25NodeConnection now replays pre-subscribe data, so the banner is
+        // test below - Ax25NodeConnection now replays pre-subscribe data, so the banner is
         // no longer lost to the connect/subscribe window.)
         await toB.WriteAsync(Encoding.ASCII.GetBytes("I\r"), cts.Token);
         // Read through to the Info reply itself. The needle must be a token unique to the
-        // Info reply ("Software:"), NOT "NODEB-1" — node B's eager connect banner
+        // Info reply ("Software:"), NOT "NODEB-1" - node B's eager connect banner
         // ("Welcome to NODE-B (NODEB-1)") also contains the callsign, so a callsign needle
         // can return on the banner before the Info reply arrives (a flake).
         var infoReply = await ReadUntilAsync(toB, "Software:", cts.Token);
@@ -89,9 +89,9 @@ public sealed class AxudpNodeToNodeIntegrationTests
     {
         // The regression this guards: an outbound connect (the path an RHP `open` to a node's
         // own callsign, or the console `C <node>`, takes) wraps an ALREADY-connected session in
-        // Ax25NodeConnection. Node B emits its console banner the instant it accepts — it does
-        // not wait — so the banner lands in the window between connect and subscribe. Before the
-        // fix that banner was dropped (open succeeded, Connected, then nothing — the caller
+        // Ax25NodeConnection. Node B emits its console banner the instant it accepts - it does
+        // not wait - so the banner lands in the window between connect and subscribe. Before the
+        // fix that banner was dropped (open succeeded, Connected, then nothing - the caller
         // stalls); now Ax25NodeConnection replays pre-subscribe inbound data, so reading WITHOUT
         // sending anything first yields B's banner.
         var (portA, portB) = (FreeUdpPort(), FreeUdpPort());
@@ -113,7 +113,7 @@ public sealed class AxudpNodeToNodeIntegrationTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         await using var toB = await connector!.ConnectAsync(NodeBCall, cts.Token);
 
-        // No write — read straight through to the banner. If the eager banner were still being
+        // No write - read straight through to the banner. If the eager banner were still being
         // dropped, this would hang until the 20 s budget and the assertion would fail empty.
         var banner = await ReadUntilAsync(toB, "NODEB-1", cts.Token);
         banner.Should().Contain("NODEB-1",
@@ -126,7 +126,7 @@ public sealed class AxudpNodeToNodeIntegrationTests
         // packet.net#659, the two-node case the first-connect banner test never saw: the
         // Ax25Listener caches and REUSES its Ax25Session per (local, remote) across
         // connect/disconnect cycles, and the early-inbound replay buffer used to be a
-        // one-shot per session object — disarmed forever by the FIRST connection's consumer.
+        // one-shot per session object - disarmed forever by the FIRST connection's consumer.
         // So on a RE-DIAL to a peer already connected once, node B's eager banner was
         // L2-ACKed but never buffered and never replayed: the caller connected, then got
         // zero bytes. Live two-node testing connects/disconnects/reconnects repeatedly, which
@@ -236,7 +236,7 @@ public sealed class AxudpNodeToNodeIntegrationTests
             var chunk = await conn.ReadAsync(ct);
             if (chunk.Length == 0)
             {
-                // EOF — return what we have (the assertion will report the miss).
+                // EOF - return what we have (the assertion will report the miss).
                 break;
             }
             sb.Append(Encoding.ASCII.GetString(chunk.Span));

@@ -1,7 +1,7 @@
 namespace Packet.Node.Core.Api;
 
 /// <summary>
-/// The result of a connectionless AX.25 TEST ping run (the "axping" analogue) — the
+/// The result of a connectionless AX.25 TEST ping run (the "axping" analogue) - the
 /// shape <c>POST /api/v1/ping</c> returns. Field names match
 /// <c>docs/node-api.md</c>'s <c>PingResult</c> schema + the web client's
 /// <c>src/lib/types.ts</c>; System.Text.Json's web defaults camel-case the PascalCase

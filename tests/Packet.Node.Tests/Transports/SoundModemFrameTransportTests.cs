@@ -158,7 +158,7 @@ public class SoundModemFrameTransportTests
         }
 
         // The channel is internal to the transport; observable effect is covered by the
-        // pdn-soundmodem library's own CSMA tests — here we assert the calls complete
+        // pdn-soundmodem library's own CSMA tests - here we assert the calls complete
         // without error and the transport exposes the facet at all.
         transport.Should().BeAssignableTo<ICsmaChannelParams>();
         transport.Should().BeAssignableTo<ICarrierSense>();
@@ -187,7 +187,7 @@ public class SoundModemFrameTransportTests
     // ─── per-frame FEC receive-quality (#635) ─────────────────────────────────────────────
 
     /// <summary>Drives one modulated frame through the fake capture pump and returns the
-    /// inbound frame the transport delivered — the same recipe the end-to-end test uses.</summary>
+    /// inbound frame the transport delivered - the same recipe the end-to-end test uses.</summary>
     private static async Task<Ax25InboundFrame> ReceiveOneAsync(
         SoundModemFrameTransport transport, FakeCapture capture, float[] audio)
     {
@@ -225,7 +225,7 @@ public class SoundModemFrameTransportTests
         snap.Frames.Should().Be(1);
         snap.CumulativeCorrectedBytes.Should().Be(0);
         snap.FramesWithCorrections.Should().Be(0);
-        // A clean IL2P frame is 0 corrected bytes — explicitly NOT null (that is HDLC's value).
+        // A clean IL2P frame is 0 corrected bytes - explicitly NOT null (that is HDLC's value).
         snap.LastFrameCorrectedBytes.Should().Be(0);
 
         snap.Recent.Should().ContainSingle();
@@ -254,7 +254,7 @@ public class SoundModemFrameTransportTests
         SoundModemQualitySnapshot snap = transport.QualitySnapshot();
         snap.Frames.Should().Be(1);
         // HDLC carries no FEC count: an FCS pass proves zero residual errors, not an error count.
-        // This must stay null — coalescing it to 0 would falsely read as "clean FEC frame".
+        // This must stay null - coalescing it to 0 would falsely read as "clean FEC frame".
         snap.LastFrameCorrectedBytes.Should().BeNull(
             "HDLC has no FEC count — null (no count) is a different fact from 0 (clean IL2P)");
         snap.CumulativeCorrectedBytes.Should().Be(0);
@@ -308,7 +308,7 @@ public class SoundModemFrameTransportTests
 
         await using (var transport = await SoundModemFrameTransport.OpenAsync(config))
         {
-            // Running over the mock slice — carrier sense is live (non-null).
+            // Running over the mock slice - carrier sense is live (non-null).
             transport.ChannelBusy.Should().NotBeNull();
         }
     }

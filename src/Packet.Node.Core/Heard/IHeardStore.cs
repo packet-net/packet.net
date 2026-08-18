@@ -7,7 +7,7 @@ namespace Packet.Node.Core.Heard;
 /// </summary>
 /// <remarks>
 /// Resilient like <see cref="Capabilities.IPeerCapabilityStore"/> and the NET/ROM routing
-/// store: a backing-store fault logs and degrades (a read returns empty, a write is dropped) —
+/// store: a backing-store fault logs and degrades (a read returns empty, a write is dropped) -
 /// it never throws out to crash the node. Implementations open a fresh pooled connection per
 /// call. Keyed by the (port, callsign) pair, because a hearing is per-link.
 /// </remarks>

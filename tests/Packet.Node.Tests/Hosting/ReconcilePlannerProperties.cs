@@ -7,15 +7,15 @@ using Packet.Node.Tests.Configuration;
 namespace Packet.Node.Tests.Hosting;
 
 /// <summary>
-/// Property coverage of the reconcile planner — the "decide" half of the marquee
+/// Property coverage of the reconcile planner - the "decide" half of the marquee
 /// invariant. Over arbitrary valid configs:
 /// <list type="bullet">
-/// <item><b>Idempotence</b> — planning a config against itself is always a no-op.</item>
-/// <item><b>Restart-class soundness</b> — a port appears in <c>ToRestart</c> iff its
+/// <item><b>Idempotence</b> - planning a config against itself is always a no-op.</item>
+/// <item><b>Restart-class soundness</b> - a port appears in <c>ToRestart</c> iff its
 /// transport changed (both ends enabled); a port appears in <c>KissParamsChanged</c>
 /// only when its KISS params changed and nothing restart-class did; the two are
 /// disjoint.</item>
-/// <item><b>Coverage</b> — every running (enabled, present-in-both) port lands in
+/// <item><b>Coverage</b> - every running (enabled, present-in-both) port lands in
 /// exactly one outcome bucket or none.</item>
 /// </list>
 /// </summary>

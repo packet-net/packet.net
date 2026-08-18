@@ -21,7 +21,7 @@ namespace Packet.Ax25.Properties;
 /// <para>
 /// <b>Resolved: clean-reject at the wire seam.</b> Each of the finding's
 /// malformed inputs is now <b>dropped cleanly</b> at
-/// <see cref="SegmentationLayer.OnDataIndication"/> — the seam catches
+/// <see cref="SegmentationLayer.OnDataIndication"/> - the seam catches
 /// <see cref="Reassembler.Push"/>'s documented
 /// <see cref="System.ArgumentException"/> / <see cref="System.InvalidOperationException"/>,
 /// resets any in-progress reassembly, and returns <c>null</c> (the same
@@ -32,7 +32,7 @@ namespace Packet.Ax25.Properties;
 /// </para>
 /// <para>
 /// <b>The low-level contract is intentionally unchanged.</b>
-/// <see cref="Reassembler.Push"/> still throws on a protocol violation — its
+/// <see cref="Reassembler.Push"/> still throws on a protocol violation - its
 /// direct-call tests in <c>tests/Packet.Ax25.Tests/Session/SegmenterTests.cs</c>
 /// continue to pin that strict contract. Only this wire-facing boundary softens
 /// the throw to a drop. These tests pin the seam behaviour; if it ever regresses
@@ -56,7 +56,7 @@ public class SegmentReassemblerThrowOnWireFindingTests
         => new(infoField, Ax25Frame.PidSegmented);
 
     /// <summary>
-    /// Case 1 — a non-First segment with no prior First reaches the wire seam and
+    /// Case 1 - a non-First segment with no prior First reaches the wire seam and
     /// is <b>dropped cleanly</b> (no throw escapes, nothing delivered).
     /// Hex input (segment info field): <c>05 AA BB</c> (First bit clear,
     /// remaining-count = 5).
@@ -74,7 +74,7 @@ public class SegmentReassemblerThrowOnWireFindingTests
     }
 
     /// <summary>
-    /// Case 2 — an empty info field on a PID-0x08 indication reaches the wire seam
+    /// Case 2 - an empty info field on a PID-0x08 indication reaches the wire seam
     /// and is <b>dropped cleanly</b>.
     /// Hex input (segment info field): <c>(empty)</c>.
     /// </summary>
@@ -90,7 +90,7 @@ public class SegmentReassemblerThrowOnWireFindingTests
     }
 
     /// <summary>
-    /// Case 3 — under the default (inner-PID) quirk, a First segment carrying only
+    /// Case 3 - under the default (inner-PID) quirk, a First segment carrying only
     /// the F/X octet (no inner-PID octet) reaches the wire seam and is
     /// <b>dropped cleanly</b>.
     /// Hex input (segment info field): <c>80</c> (First bit set, remaining-count = 0,
@@ -108,7 +108,7 @@ public class SegmentReassemblerThrowOnWireFindingTests
     }
 
     /// <summary>
-    /// Case 4 — an out-of-sequence continuation (a valid First, then a segment
+    /// Case 4 - an out-of-sequence continuation (a valid First, then a segment
     /// whose remaining-count skips a value) is <b>dropped cleanly</b>.
     /// Hex inputs: First <c>85 CC</c> (StrictlyFaithful so no inner PID is read;
     /// First bit + remaining = 5), then <c>03 DD</c> (remaining = 3 where 4 was
@@ -120,10 +120,10 @@ public class SegmentReassemblerThrowOnWireFindingTests
         // Use StrictlyFaithful so the first segment isn't consumed as inner-PID.
         var layer = NewWireLayer(Ax25SessionQuirks.StrictlyFaithful);
 
-        // First segment: First bit set, remaining 5 — accepted, starts the series.
+        // First segment: First bit set, remaining 5 - accepted, starts the series.
         layer.OnDataIndication(Seg(Segmenter.FirstBit | 5, 0xCC)).Should().BeNull("mid-series, nothing delivered yet");
 
-        // Continuation with remaining 3 (expected 4) — out of sequence.
+        // Continuation with remaining 3 (expected 4) - out of sequence.
         var act = () => layer.OnDataIndication(Seg(3, 0xDD));
         act.Should().NotThrow(
             "FINDING 2026-06-03 (resolved): an out-of-sequence continuation off the wire is dropped, not thrown");
@@ -157,7 +157,7 @@ public class SegmentReassemblerThrowOnWireFindingTests
 
     /// <summary>
     /// A stray non-First (dropped) immediately followed by a complete valid series
-    /// also reassembles — the drop leaves the reassembler in the clean
+    /// also reassembles - the drop leaves the reassembler in the clean
     /// "waiting for a First" state, exactly where it started.
     /// </summary>
     [Fact]
@@ -165,7 +165,7 @@ public class SegmentReassemblerThrowOnWireFindingTests
     {
         var layer = NewWireLayer(Ax25SessionQuirks.StrictlyFaithful);
 
-        // Stray non-First with no prior First — dropped.
+        // Stray non-First with no prior First - dropped.
         layer.OnDataIndication(Seg(0x05, 0xAA, 0xBB)).Should().BeNull("stray non-First is dropped");
 
         // A well-formed single-segment series then arrives and is delivered.

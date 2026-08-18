@@ -4,7 +4,7 @@ using Packet.Kiss;
 namespace Packet.Kiss.Tests;
 
 /// <summary>
-/// Robustness properties for <see cref="KissDecoder"/> — fed arbitrary
+/// Robustness properties for <see cref="KissDecoder"/> - fed arbitrary
 /// byte sequences, it must never throw, never produce malformed frames,
 /// and never wedge its internal state.
 /// </summary>
@@ -12,7 +12,7 @@ public class KissDecoderFuzzProperties
 {
     /// <summary>
     /// Random byte input must never throw out of <c>Push</c>. KISS is a
-    /// soft framing protocol — malformed escape sequences or partial
+    /// soft framing protocol - malformed escape sequences or partial
     /// frames are explicitly allowed by the spec ("receivers should be
     /// lenient"), and the decoder's job is to drop garbage and keep
     /// going.
@@ -79,7 +79,7 @@ public class KissDecoderFuzzProperties
     {
         if (bogus == KissFraming.Tfend || bogus == KissFraming.Tfesc)
         {
-            return; // valid escape — skip
+            return; // valid escape - skip
         }
         var bytes = new byte[]
         {

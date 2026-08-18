@@ -7,7 +7,7 @@ namespace Packet.Node.Tests.Support;
 
 /// <summary>
 /// A bare AX.25 station that accepts an inbound connect and, on the first data it
-/// receives, sends a fixed reply back — the "third station" the node connects OUT
+/// receives, sends a fixed reply back - the "third station" the node connects OUT
 /// to, used to prove the console's connect-OUT relays both ways.
 /// </summary>
 public sealed class EchoStation : IAsyncDisposable
@@ -23,7 +23,7 @@ public sealed class EchoStation : IAsyncDisposable
         {
             MyCall = myCall,
             ConfigureSession = WireSession,
-            // Small N2 bounds the connect backstop at 30 s, T1V stays spec default —
+            // Small N2 bounds the connect backstop at 30 s, T1V stays spec default -
             // see RemoteStation / TestAx25Timing / Wait.cs (#47 flake).
             N2 = TestAx25Timing.StationN2,
         }, TimeProvider.System);

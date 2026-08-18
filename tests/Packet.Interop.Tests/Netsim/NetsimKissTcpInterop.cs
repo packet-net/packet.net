@@ -14,7 +14,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// <para>
 /// net-sim emulates an audio-domain RF link between two virtual TNCs and
 /// exposes each TNC over a separate KISS-TCP port. We connect KISS clients
-/// to both ends, transmit on one, observe on the other — which is the
+/// to both ends, transmit on one, observe on the other - which is the
 /// closest a software-only test can get to a real RF link.
 /// </para>
 /// <para>
@@ -40,14 +40,14 @@ public class NetsimKissTcpInterop
         // Generous: this covers KISS-connect + net-sim client registration + afsk1200 TX
         // (~150 ms on the wire) + the receive poll, over docker net-sim on a shared self-hosted
         // runner. 15 s was too tight under runner load and flaked as OperationCanceled mid-receive
-        // (it even "failed" on a docs-only commit — proof of flakiness, not regression).
+        // (it even "failed" on a docs-only commit - proof of flakiness, not regression).
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
 
         await using var sender = await KissTcpClient.ConnectAsync(Host, NodeAKissPort, cts.Token);
         await using var receiver = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
 
         // Give net-sim a moment to register both clients before we transmit.
-        // afsk1200 is slow — TX time for a small frame is ~150ms on the wire.
+        // afsk1200 is slow - TX time for a small frame is ~150ms on the wire.
         await Task.Delay(200, cts.Token);
 
         var outbound = Ax25Frame.Ui(

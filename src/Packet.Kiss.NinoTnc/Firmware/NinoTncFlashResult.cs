@@ -7,7 +7,7 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 /// On success the bootloader reboots the modem into the new firmware
 /// immediately; the very first boot after a flash also runs a bootloader
 /// self-update (~2 s) before KISS comes up, and the RAM operating mode is
-/// cleared (the modem boots mode 0) — callers should wait a few seconds,
+/// cleared (the modem boots mode 0) - callers should wait a few seconds,
 /// then re-verify with GETVER and re-apply the desired mode via SETHW.
 /// </remarks>
 /// <param name="Chip">The chip variant that was flashed (bootloader-confirmed).</param>

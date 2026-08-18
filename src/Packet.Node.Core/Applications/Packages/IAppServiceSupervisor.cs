@@ -14,7 +14,7 @@ public interface IAppServiceSupervisor
     /// start missing, stop surplus, leave matching alone.</summary>
     Task ReconcileAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Stop-then-start one service regardless of backoff state — the owner's way out
+    /// <summary>Stop-then-start one service regardless of backoff state - the owner's way out
     /// of <see cref="AppServiceState.Faulted"/>. Throws <see cref="InvalidOperationException"/>
     /// for an unknown id or a service pdn does not manage.</summary>
     Task RestartAsync(string id, CancellationToken cancellationToken = default);
@@ -38,10 +38,10 @@ public enum AppServiceState
     /// <summary>Exited; waiting out the restart backoff.</summary>
     Backoff,
 
-    /// <summary>Crash-loop breaker tripped — stays down until toggled or restarted.</summary>
+    /// <summary>Crash-loop breaker tripped - stays down until toggled or restarted.</summary>
     Faulted,
 
-    /// <summary>Owner-managed (<see cref="AppServiceManaged.External"/>) — pdn does not track health.</summary>
+    /// <summary>Owner-managed (<see cref="AppServiceManaged.External"/>) - pdn does not track health.</summary>
     External,
 }
 

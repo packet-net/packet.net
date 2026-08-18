@@ -13,17 +13,17 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// The keystone for packet.net#476: a <b>service</b> app reachable by its bare command verb at the
-/// node prompt even when it is <b>un-migrated</b> — it bound a self-derived SSID instead of the
+/// node prompt even when it is <b>un-migrated</b> - it bound a self-derived SSID instead of the
 /// node-resolved <c>PDN_APP_CALLSIGN</c>. The node resolves <c>BBS</c> → <c>NODE-1</c> but the app
 /// actually bound <c>NODE-4</c>; typing <c>BBS</c> must still land inside the app. A migrated app
-/// (bound the resolved callsign) keeps working — the resolver returns the resolved callsign when it
+/// (bound the resolved callsign) keeps working - the resolver returns the resolved callsign when it
 /// is the live binding, and only bridges to a stray when it is not.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class ServiceVerbSelfDerivedTests
 {
     // The node is on the bare base (SSID 0) so the resolver auto-assigns the app the lowest free
-    // SSID = 1 (NODE-1) — the node's own SSID 0 is the only one reserved.
+    // SSID = 1 (NODE-1) - the node's own SSID 0 is the only one reserved.
     private static readonly Callsign NodeCall = new("NODE", 0);
     private static readonly Callsign RemoteCall = new("REMOTE", 1);
 
@@ -33,7 +33,7 @@ public sealed class ServiceVerbSelfDerivedTests
         Ports = [new PortConfig { Id = "p1", Enabled = true, Transport = new KissTcpTransport { Host = "mem", Port = 1 } }],
     };
 
-    // A packet-capable service package (command verb, no session block) — the shape the node
+    // A packet-capable service package (command verb, no session block) - the shape the node
     // resolves a loopback callsign for.
     private static AppPackageManifest ServiceManifest(string id, string verb) => new()
     {
@@ -88,7 +88,7 @@ public sealed class ServiceVerbSelfDerivedTests
         await remote.ConnectAsync(NodeCall);
         await Wait.ForAsync(() => remote.Saw("Welcome to"), "the node console banner");
 
-        // Type the bare verb — NOT "C NODE-4". The console resolves it to the app's bound callsign.
+        // Type the bare verb - NOT "C NODE-4". The console resolves it to the app's bound callsign.
         remote.SendLine("BBS");
 
         await Wait.ForAsync(() => remote.Saw("BBSv1>"),

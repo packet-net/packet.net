@@ -18,7 +18,7 @@ public class WireSerializationTests
     private static string ToJson(RhpMessage message) => Encoding.UTF8.GetString(RhpJson.Serialize(message));
 
     // -----------------------------------------------------------------
-    //  errCode / errText casing — the spec-vs-XRouter divergence
+    //  errCode / errText casing - the spec-vs-XRouter divergence
     // -----------------------------------------------------------------
 
     [Fact]
@@ -37,7 +37,7 @@ public class WireSerializationTests
     public void OpenReply_parses_from_real_xrouter_capitalised_form()
     {
         // Real XRouter emits errCode/errText with capital C/T on every
-        // reply — not just authReply as the spec implies.
+        // reply - not just authReply as the spec implies.
         var msg = (OpenReplyMessage)Parse("""{"type":"openReply","id":7,"handle":1234,"errCode":0,"errText":"Ok"}""");
 
         msg.ErrCode.Should().Be(0);
@@ -264,7 +264,7 @@ public class WireSerializationTests
     }
 
     // -----------------------------------------------------------------
-    //  Field ABSENCE survives deserialization (absent ≠ empty — the wire
+    //  Field ABSENCE survives deserialization (absent ≠ empty - the wire
     //  answers errCode 12 for a missing handle/data, 3 only for unknown
     //  handles, and "data":"" is a legal zero-byte send)
     // -----------------------------------------------------------------

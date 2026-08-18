@@ -73,7 +73,7 @@ public sealed class TrafficLogServiceTests : IDisposable
     public void Overflow_drops_are_counted_and_enqueue_never_blocks()
     {
         // The service is deliberately NOT started: nothing drains the queue, so it
-        // models the worst case — a wedged writer (stalled disk). Capacity 4.
+        // models the worst case - a wedged writer (stalled disk). Capacity 4.
         var service = new TrafficLogService(
             new NodeTelemetry(), new SqliteTrafficStore(dbPath), Config(),
             new FakeTimeProvider(), queueCapacity: 4);
@@ -84,7 +84,7 @@ public sealed class TrafficLogServiceTests : IDisposable
         }
         for (int i = 4; i < 10; i++)
         {
-            // Returns (false) immediately rather than ever waiting on the writer —
+            // Returns (false) immediately rather than ever waiting on the writer -
             // TryWrite on a bounded channel is non-blocking by construction.
             service.TryEnqueue(Evt(i)).Should().BeFalse("frame {0} overflows the full queue", i);
         }
@@ -104,10 +104,10 @@ public sealed class TrafficLogServiceTests : IDisposable
         {
             // TrafficLogService is a BackgroundService whose ExecuteAsync does
             // `await Task.Yield()` before it calls telemetry.Subscribe(...), so the
-            // base StartAsync returns to us at that yield — BEFORE the subscription is
+            // base StartAsync returns to us at that yield - BEFORE the subscription is
             // live. NodeTelemetry has no backlog, so a frame observed in that window is
             // delivered to no subscriber and never reaches the store (the 30s "both
-            // traced frames reach the store" timeout — surfaced under CI CPU
+            // traced frames reach the store" timeout - surfaced under CI CPU
             // contention, which delays the post-yield continuation). Gate the Observe
             // calls on the service actually being subscribed so the sequence is
             // deterministic.

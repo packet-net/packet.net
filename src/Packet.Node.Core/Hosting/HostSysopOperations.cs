@@ -5,7 +5,7 @@ using Packet.Node.Core.Console;
 namespace Packet.Node.Core.Hosting;
 
 /// <summary>
-/// The host-side <see cref="ISysopOperations"/> — the privileged actions an elevated
+/// The host-side <see cref="ISysopOperations"/> - the privileged actions an elevated
 /// over-RF sysop drives, implemented over the EXACT serialized seams the web control API
 /// uses: <see cref="NodeHostedService.RunExclusiveAsync{T}"/> for session enumeration /
 /// kick (so they can't race a config reconcile or a port bring-up), and
@@ -19,7 +19,7 @@ namespace Packet.Node.Core.Hosting;
 /// <remarks>
 /// The caller (<c>NodeCommandService</c>) has already authorised: it only invokes these
 /// after a live, unexpired <c>SYSOP</c> elevation with a sufficient scope. This type does
-/// not re-check elevation — it is the authorised action surface.
+/// not re-check elevation - it is the authorised action surface.
 /// </remarks>
 internal sealed class HostSysopOperations : ISysopOperations
 {
@@ -82,7 +82,7 @@ internal sealed class HostSysopOperations : ISysopOperations
             {
                 return Task.FromResult(SysopActionResult.Failure($"No active session {sessionId}."));
             }
-            // Request an orderly disconnect — the same event the web Sessions API posts.
+            // Request an orderly disconnect - the same event the web Sessions API posts.
             session.PostEvent(new DlDisconnectRequest());
             return Task.FromResult(SysopActionResult.Success($"Disconnecting {sessionId}."));
         }, ct);
@@ -104,7 +104,7 @@ internal sealed class HostSysopOperations : ISysopOperations
         {
             return Task.FromResult(SysopActionResult.Success($"Port '{portId}' is already {word}."));
         }
-        // Flip Enabled and apply through the seam — TryApply validates + persists +
+        // Flip Enabled and apply through the seam - TryApply validates + persists +
         // raises OnChange, and the reconcile worker brings the port up/down. Same path as
         // the web Ports lifecycle endpoint.
         var ports = config.Current.Ports

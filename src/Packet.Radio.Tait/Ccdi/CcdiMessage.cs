@@ -39,17 +39,17 @@ public abstract record CcdiMessage(char Ident)
     }
 }
 
-/// <summary>MODEL (§1.10.4) — radio type/model/tier plus the CCDI protocol version.</summary>
+/// <summary>MODEL (§1.10.4) - radio type/model/tier plus the CCDI protocol version.</summary>
 public sealed record CcdiModelMessage(char RuType, char RuModel, char RuTier, string CcdiVersion) : CcdiMessage('m');
 
 /// <summary>RADIO_SERIAL (§1.10.7).</summary>
 public sealed record CcdiSerialMessage(string SerialNumber) : CcdiMessage('n');
 
-/// <summary>RADIO_VERSIONS (§1.10.8) — one record of the multi-message version inventory.
+/// <summary>RADIO_VERSIONS (§1.10.8) - one record of the multi-message version inventory.
 /// Record numbers: 00 model name, 01 software, 02 database, 03 FPGA.</summary>
 public sealed record CcdiVersionMessage(string RecordNumber, string Version) : CcdiMessage('v');
 
-/// <summary>CCTM_QUERY_RESULTS (§1.10.1) — the answer to a QUERY type-5 CCTM command.</summary>
+/// <summary>CCTM_QUERY_RESULTS (§1.10.1) - the answer to a QUERY type-5 CCTM command.</summary>
 public sealed record CcdiQueryResultMessage(int CctmCommand, string Value) : CcdiMessage('j')
 {
     /// <summary>CCTM 063/064 RSSI results are an integer in units of 0.1 dB(m); this converts
@@ -64,7 +64,7 @@ public sealed record CcdiQueryResultMessage(int CctmCommand, string Value) : Ccd
         int.TryParse(Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int v) ? v : null;
 }
 
-/// <summary>PROGRESS (§1.10.5) — unsolicited radio state-change notification.</summary>
+/// <summary>PROGRESS (§1.10.5) - unsolicited radio state-change notification.</summary>
 public sealed record CcdiProgressMessage(CcdiProgressType Type, string Para) : CcdiMessage('p');
 
 /// <summary>ERROR (§1.10.2). Category '0' = transaction error, '1' = system error.</summary>
@@ -87,13 +87,13 @@ public sealed record CcdiErrorMessage(char Category, byte ErrorNumber) : CcdiMes
     };
 }
 
-/// <summary>RING (§1.10.9) — an incoming call. <paramref name="RingType"/> is the four-character
+/// <summary>RING (§1.10.9) - an incoming call. <paramref name="RingType"/> is the four-character
 /// [TYPE1..TYPE4] string, decoded by <see cref="CallType"/> / <see cref="IsEmergency"/> /
 /// <see cref="Addressing"/> / <see cref="Type4"/>.
 /// <paramref name="Status"/> is "FF" when no status value was received.</summary>
 public sealed record CcdiRingMessage(char Category, string RingType, string Status, string CallerId) : CcdiMessage('r')
 {
-    /// <summary>[TYPE1] — what kind of call arrived.</summary>
+    /// <summary>[TYPE1] - what kind of call arrived.</summary>
     public TaitRingCallType CallType => RingType.Length > 0
         ? RingType[0] switch
         {
@@ -107,11 +107,11 @@ public sealed record CcdiRingMessage(char Category, string RingType, string Stat
         }
         : TaitRingCallType.Unknown;
 
-    /// <summary>[TYPE2] — <c>true</c> for an emergency-priority call, <c>false</c> for normal
+    /// <summary>[TYPE2] - <c>true</c> for an emergency-priority call, <c>false</c> for normal
     /// priority.</summary>
     public bool IsEmergency => RingType.Length > 1 && RingType[1] == '1';
 
-    /// <summary>[TYPE3] — how the call was addressed.</summary>
+    /// <summary>[TYPE3] - how the call was addressed.</summary>
     public TaitRingAddressing Addressing => RingType.Length > 2
         ? RingType[2] switch
         {
@@ -123,9 +123,9 @@ public sealed record CcdiRingMessage(char Category, string RingType, string Stat
         : TaitRingAddressing.Unknown;
 
     /// <summary>
-    /// [TYPE4], raw and undecoded — the field exists in the §1.10.9 RING format, but the
+    /// [TYPE4], raw and undecoded - the field exists in the §1.10.9 RING format, but the
     /// manual defines <b>no</b> value table for it: a layout-mode extraction of MMA-00038-06
-    /// pages 53–54 (2026-07-03) recovers the value table fully legibly and it lists TYPE1,
+    /// pages 53-54 (2026-07-03) recovers the value table fully legibly and it lists TYPE1,
     /// TYPE2 and TYPE3 only. The manual's own worked example and every bench capture
     /// (TM8110, CCDI 03.02) carry <c>'0'</c> here. <c>'\0'</c> when the ring-type string was
     /// shorter than four characters.
@@ -166,21 +166,21 @@ public enum TaitRingAddressing
     SuperGroup,
 }
 
-/// <summary>GET_SDM (§1.10.3) — the buffered short data message, in response to QUERY type 1
+/// <summary>GET_SDM (§1.10.3) - the buffered short data message, in response to QUERY type 1
 /// (which also clears the radio's one-deep SDM buffer). Empty <paramref name="Data"/> = no SDM
 /// buffered.</summary>
 public sealed record CcdiSdmMessage(string Data) : CcdiMessage('s');
 
-/// <summary>QUERY_DISPLAY_RESPONSE (§1.10.6) — one element of a display-dump burst.
+/// <summary>QUERY_DISPLAY_RESPONSE (§1.10.6) - one element of a display-dump burst.
 /// <paramref name="Kind"/>: '0' start, 'F' end (payload = error digit), '1' text object
 /// (payload = 9 hex chars x/y/font + the string), '2' icon object (11 hex chars).</summary>
 public sealed record CcdiDisplayMessage(char Kind, string Payload) : CcdiMessage('d');
 
-/// <summary>TDMA_DATA (§1.10.10, TM8200 only) — a received TDMA packet's raw data.</summary>
+/// <summary>TDMA_DATA (§1.10.10, TM8200 only) - a received TDMA packet's raw data.</summary>
 public sealed record CcdiTdmaDataMessage(string Data) : CcdiMessage('z');
 
 /// <summary>CCR positive acknowledgement (§2.6): the command ident was accepted (accepted ≠
-/// executed — e.g. TX frequency latches until the next PTT).</summary>
+/// executed - e.g. TX frequency latches until the next PTT).</summary>
 public sealed record CcrAckMessage(char EchoedCommand) : CcdiMessage('+');
 
 /// <summary>CCR negative acknowledgement (§2.7). <see cref="EchoedCommand"/> is present only
@@ -199,8 +199,8 @@ public sealed record CcrNakMessage(byte Reason, char? EchoedCommand) : CcdiMessa
     };
 }
 
-/// <summary>CCR unsolicited Selcall decode (§2.9.3): tones decoded from the channel — digits,
-/// special tones A–F ('E' repeat), '-' for a gap of one tone period.</summary>
+/// <summary>CCR unsolicited Selcall decode (§2.9.3): tones decoded from the channel - digits,
+/// special tones A-F ('E' repeat), '-' for a gap of one tone period.</summary>
 public sealed record CcrSelcallDecodeMessage(string Tones) : CcdiMessage('V');
 
 /// <summary>CCR unsolicited notification (§2.9): 'R' = CCR mode initialised (M01R00),
@@ -209,10 +209,10 @@ public sealed record CcrNotificationMessage(char Kind) : CcdiMessage('M');
 
 /// <summary>CCR pulse response (§2.8.15): <c>true</c> = the radio has its minimum CCR
 /// configuration (a receive frequency has been set since entering CCR); <c>false</c> = still on
-/// defaults — i.e. the radio has been power-cycled and forgot everything.</summary>
+/// defaults - i.e. the radio has been power-cycled and forgot everything.</summary>
 public sealed record CcrPulseResultMessage(bool HasMinimumConfiguration) : CcdiMessage('Q');
 
-/// <summary>Any message whose ident (or parameter shape) we don't decode yet — kept raw so
+/// <summary>Any message whose ident (or parameter shape) we don't decode yet - kept raw so
 /// nothing the radio says is invisible to a consumer.</summary>
 public sealed record CcdiUnknownMessage(char UnknownIdent, string Parameters) : CcdiMessage(UnknownIdent);
 
@@ -229,9 +229,9 @@ public enum CcdiProgressType : byte
     EmergencyModeInitiated = 0x03,
     /// <summary>Emergency mode terminated.</summary>
     EmergencyModeTerminated = 0x04,
-    /// <summary>RF detected on the current channel — hardware DCD rising edge.</summary>
+    /// <summary>RF detected on the current channel - hardware DCD rising edge.</summary>
     ReceiverBusy = 0x05,
-    /// <summary>RF no longer detected on the current channel — hardware DCD falling edge.</summary>
+    /// <summary>RF no longer detected on the current channel - hardware DCD falling edge.</summary>
     ReceiverNotBusy = 0x06,
     /// <summary>PTT asserted (radio began transmitting).</summary>
     PttActivated = 0x07,

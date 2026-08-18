@@ -12,21 +12,21 @@ using Xunit;
 namespace Packet.Interop.Tests.Direwolf;
 
 /// <summary>
-/// v2.2 arc V5b — independent mod-128 (SABME / extended) interop against a
+/// v2.2 arc V5b - independent mod-128 (SABME / extended) interop against a
 /// real Dire Wolf (WB2OSZ) 1.8.1 connected-mode engine. This is the
 /// real-peer leg of V5b: our in-process conformance suites prove our stack
 /// against our own SDL reading; Dire Wolf is the figure-faithful oracle
 /// (<c>ax25_link.c</c> implements the figc4.x state machine, including
 /// <c>state_5_awaiting_v22_connection</c> and <c>modulo == 128</c>) and the
-/// <b>only</b> mod-128-capable peer in the matrix — LinBPQ FRMRs SABME
+/// <b>only</b> mod-128-capable peer in the matrix - LinBPQ FRMRs SABME
 /// (packet.net#276), so the genuine mod-128 rows can only be proven here.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Topology — why this peer is not on net-sim.</b> Dire Wolf's
+/// <b>Topology - why this peer is not on net-sim.</b> Dire Wolf's
 /// connected-mode engine is reachable <i>only</i> over the AGW protocol with
 /// a client app that has registered the called callsign on a real
-/// (<c>MEDIUM_RADIO</c>, audio) channel — raw KISS bypasses
+/// (<c>MEDIUM_RADIO</c>, audio) channel - raw KISS bypasses
 /// <c>ax25_link.c</c> entirely, and its one KISS-TCP-<i>client</i> mode
 /// (<c>NCHANNEL</c>) is a <c>MEDIUM_NETTNC</c> channel on which every AGW
 /// connected-mode request is hard-<c>assert</c>ed out (<c>chan &lt;
@@ -45,10 +45,10 @@ namespace Packet.Interop.Tests.Direwolf;
 /// <para>
 /// <b>The headline finding (verified against Dire Wolf 1.8.1 source + on the
 /// wire).</b> Dire Wolf, as the responder, accepts an inbound SABME at
-/// modulo-128 with <b>no config knob</b> for the incoming path — the opposite
+/// modulo-128 with <b>no config knob</b> for the incoming path - the opposite
 /// of LinBPQ. <c>sabm_e_frame</c> in state 0 (disconnected) does
-/// <c>if (extended) set_version_2_2(S)</c> — which sets <c>modulo = 128</c>
-/// and <c>srej_enable = srej_single</c> — then answers UA. (<c>maxv22</c>
+/// <c>if (extended) set_version_2_2(S)</c> - which sets <c>modulo = 128</c>
+/// and <c>srej_enable = srej_single</c> - then answers UA. (<c>maxv22</c>
 /// gates only the <i>outgoing</i> SABME-attempt count, not the incoming
 /// path.) Confirmed on the wire: SABME → UA, then a two-octet-control,
 /// 7-bit-N(S)/N(R) I-frame round-trip.
@@ -67,14 +67,14 @@ public class DirewolfMod128Interop
     private const string Host = "127.0.0.1";
 
     // direwolf-gw's KISS-TCP, exposed on the host. Distinct from net-sim's
-    // 8100/8101 — Dire Wolf is its own self-contained RF (see class remarks),
+    // 8100/8101 - Dire Wolf is its own self-contained RF (see class remarks),
     // so it does not share net-sim's listeners. Still in the serialised
     // Netsim collection because the docker stack as a whole is brought up /
     // torn down together and parallel runs would contend on docker.
     private const int OurKissPort = 8106;
 
-    // Each test connects to a distinct called callsign — all registered by
-    // the AGW echo helper via compose's AGW_REGISTER — so a torn-down link
+    // Each test connects to a distinct called callsign - all registered by
+    // the AGW echo helper via compose's AGW_REGISTER - so a torn-down link
     // from one test cannot be confused with another in the serialised run.
     // Callsign base is max 6 chars. Distinct per test case; all registered by
     // the AGW echo helper via compose's AGW_REGISTER.
@@ -90,7 +90,7 @@ public class DirewolfMod128Interop
     private static readonly TimeSpan DataBudget = TimeSpan.FromSeconds(40);
     private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
 
-    // Faster RR-ack turnaround on the shared half-duplex AFSK channel — same
+    // Faster RR-ack turnaround on the shared half-duplex AFSK channel - same
     // rationale as the LinBPQ net-sim tests. T1/T3 keep spec defaults so
     // retransmit/recovery timing is unchanged.
     private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(700);
@@ -102,10 +102,10 @@ public class DirewolfMod128Interop
     private static int UBase(Ax25Frame f) => f.Control & 0xEF;
 
     /// <summary>
-    /// Case (a) — connect-extended. Our extended-preferred DL-CONNECT emits a
+    /// Case (a) - connect-extended. Our extended-preferred DL-CONNECT emits a
     /// SABME; Dire Wolf answers UA and runs the link at modulo-128. We assert
     /// we reach Connected, that the context is still extended (no FRMR
-    /// fallback — Dire Wolf does <i>not</i> reject SABME the way LinBPQ does),
+    /// fallback - Dire Wolf does <i>not</i> reject SABME the way LinBPQ does),
     /// and that a UA addressed to us appeared on the wire. Then DISC/UA tears
     /// it down. This is the cleanest possible proof of the headline: a real
     /// third-party stack establishing a mod-128 link with us over a real AFSK
@@ -122,7 +122,7 @@ public class DirewolfMod128Interop
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
@@ -146,11 +146,11 @@ public class DirewolfMod128Interop
     }
 
     /// <summary>
-    /// Case (b) — bidirectional mod-128 transfer. After the mod-128 connect,
+    /// Case (b) - bidirectional mod-128 transfer. After the mod-128 connect,
     /// send a connected-data payload; the AGW echo helper bounces it back, so
     /// we receive our payload as a DL-DATA indication. Asserts the round-trip
     /// AND that Dire Wolf's I-frame carrying the echo used a <b>two-octet
-    /// (extended) control field</b> with 7-bit N(S)/N(R) — the on-the-wire
+    /// (extended) control field</b> with 7-bit N(S)/N(R) - the on-the-wire
     /// proof that the session is genuinely modulo-128, not modulo-8. (A mod-8
     /// I-frame has a single control octet.)
     /// </summary>
@@ -163,7 +163,7 @@ public class DirewolfMod128Interop
         var rig = BuildRig(local: OurCall, remote: ConnectBidi, kiss: kiss);
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
@@ -198,11 +198,11 @@ public class DirewolfMod128Interop
     }
 
     /// <summary>
-    /// Case (c) — SREJ-128 loss recovery. Dire Wolf, as a v2.2 responder, runs
+    /// Case (c) - SREJ-128 loss recovery. Dire Wolf, as a v2.2 responder, runs
     /// single SREJ by default (<c>set_version_2_2</c> sets
     /// <c>srej_enable = srej_single</c>). To exercise SREJ deterministically on
     /// a medium that doesn't drop frames on its own, the rig silently drops
-    /// exactly one of <i>our</i> outbound I-frames (N(S)=1) on the send side —
+    /// exactly one of <i>our</i> outbound I-frames (N(S)=1) on the send side -
     /// simulating a frame lost on Dire Wolf's receive path. Dire Wolf then has
     /// a gap, sends us an <b>SREJ</b> requesting N(R)=1, and our figc4.5
     /// SREJ-received path selectively retransmits that single frame. Once Dire
@@ -219,14 +219,14 @@ public class DirewolfMod128Interop
 
         // SREJ on our side too so our SREJ-received selective-retransmit path
         // (figc4.5, single-frame) is the recovery mechanism, matching Dire
-        // Wolf's srej_single. SABME alone doesn't negotiate SREJ for us — set
+        // Wolf's srej_single. SABME alone doesn't negotiate SREJ for us - set
         // it explicitly, as the in-process SREJ conformance tests do.
         var rig = BuildRig(local: OurCall, remote: ConnectSrej, kiss: kiss,
             configure: ctx => { ctx.SrejEnabled = true; ctx.ImplicitReject = false; });
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
@@ -283,17 +283,17 @@ public class DirewolfMod128Interop
     }
 
     /// <summary>
-    /// Case (d) — segmentation round-trip, <b>both directions</b>. Now GREEN via
+    /// Case (d) - segmentation round-trip, <b>both directions</b>. Now GREEN via
     /// the default-on <see cref="Ax25SessionQuirks.SegmentFirstCarriesL3Pid"/>
     /// quirk: our <see cref="SegmentationLayer"/> interoperates with Dire Wolf's
     /// segmentation format out of the box. AX.25 v2.2 Figure 6.2 draws a segment's
     /// info field as one F/X control octet (<c>FXXXXXXX</c>) followed directly by
-    /// payload — with <b>no field carrying the original Layer-3 PID</b>. Dire Wolf
-    /// 1.8.1 — the only known v2.2 segmenter — reads §6.6's "two-octet header"
+    /// payload - with <b>no field carrying the original Layer-3 PID</b>. Dire Wolf
+    /// 1.8.1 - the only known v2.2 segmenter - reads §6.6's "two-octet header"
     /// prose to mean its <b>first</b> segment carries an extra <b>inner-PID
     /// octet</b> (the original L3 PID) between the F/X octet and the data
-    /// (<c>ax25_link.c</c> <c>dl_data_request</c> ~L1330–1410 / <c>dl_data_indication</c>
-    /// ~L2010–2030: first segment <c>[F/X][original PID][data]</c>, subsequent
+    /// (<c>ax25_link.c</c> <c>dl_data_request</c> ~L1330-1410 / <c>dl_data_indication</c>
+    /// ~L2010-2030: first segment <c>[F/X][original PID][data]</c>, subsequent
     /// <c>[F/X][data]</c>; the inner octet counts toward the segment budget via
     /// <c>DIVROUNDUP(len + 1, N1 − 1)</c>). The repo defaults to matching Dire
     /// Wolf's format (de-facto interop) and reproduces the figure-literal format
@@ -304,13 +304,13 @@ public class DirewolfMod128Interop
     /// (our N1=64 forces several segments), Dire Wolf reassembles the exact
     /// payload and the echo helper bounces it back.</item>
     /// <item>Reverse (Dire Wolf → us): Dire Wolf re-segments the 220-byte echo
-    /// (its PACLEN/N1 = 128 forces it), and our reassembler — now reading the
-    /// first-segment inner-PID octet — reconstructs the exact original payload.</item>
+    /// (its PACLEN/N1 = 128 forces it), and our reassembler - now reading the
+    /// first-segment inner-PID octet - reconstructs the exact original payload.</item>
     /// </list>
     /// We assert the exact-payload round-trip via our own receive-side
     /// <see cref="SegmentationLayer"/> reassembling Dire Wolf's segment I-frames.
-    /// (The §6.6 / Figure 6.2 spec gap — the two-octet header loses the L3 PID and
-    /// Dire Wolf fills it non-standardly — remains a candidate ax25spec
+    /// (The §6.6 / Figure 6.2 spec gap - the two-octet header loses the L3 PID and
+    /// Dire Wolf fills it non-standardly - remains a candidate ax25spec
     /// clarification, deliberately not filed from this work.)
     /// </summary>
     [SkippableFact]
@@ -321,11 +321,11 @@ public class DirewolfMod128Interop
 
         // N1 = 128 to MATCH Dire Wolf's responder PACLEN=128 (its config). N1 is a
         // symmetric link parameter, so our receiver must accept Dire Wolf's
-        // ≤128-byte segments — set lower (e.g. 64) and the in-frame "info field ≤
+        // ≤128-byte segments - set lower (e.g. 64) and the in-frame "info field ≤
         // N1" check (timer_recovery t22 / connected) trips DL-ERROR(O) +
         // re-establish on Dire Wolf's 128-byte echo segments. With N1=128 a >128B
         // payload still forces US to segment on the forward leg, and Dire Wolf's
-        // PACLEN=128 forces it to segment the echo on the reverse leg — so both
+        // PACLEN=128 forces it to segment the echo on the reverse leg - so both
         // directions exercise real segmentation while staying within N1.
         var rig = BuildRig(local: OurCall, remote: ConnectSeg, kiss: kiss,
             configure: ctx => { ctx.N1 = 128; ctx.K = 16; ctx.SegmenterReassemblerEnabled = true; });
@@ -339,7 +339,7 @@ public class DirewolfMod128Interop
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
@@ -375,7 +375,7 @@ public class DirewolfMod128Interop
     }
 
     /// <summary>
-    /// Case (e) — XID parameter negotiation. Probe whether Dire Wolf responds
+    /// Case (e) - XID parameter negotiation. Probe whether Dire Wolf responds
     /// to an XID command on the incoming-connect path. From the 1.8.1 source,
     /// Dire Wolf initiates XID only when it is the <i>connection initiator</i>
     /// (state 5 after sending SABME + receiving UA); as the responder it stays
@@ -394,7 +394,7 @@ public class DirewolfMod128Interop
         var rig = BuildRig(local: OurCall, remote: ConnectXid, kiss: kiss);
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
@@ -403,7 +403,7 @@ public class DirewolfMod128Interop
         connectConfirm.Should().NotBeNull("must complete the mod-128 handshake first");
 
         // Build and send an XID command (mod-128 / SREJ defaults) directly
-        // over KISS — our Rx capabilities for Dire Wolf to negotiate against.
+        // over KISS - our Rx capabilities for Dire Wolf to negotiate against.
         var xidInfo = Packet.Ax25.Xid.XidInfoField.Encode(new Packet.Ax25.Xid.XidParameters
         {
             HdlcOptionalFunctions = Packet.Ax25.Xid.HdlcOptionalFunctions.Default,
@@ -458,7 +458,7 @@ public class DirewolfMod128Interop
     {
         /// <summary>
         /// Optional send-side loss hook for the SREJ test. When set, an
-        /// outbound I-frame for which this returns true is NOT transmitted —
+        /// outbound I-frame for which this returns true is NOT transmitted -
         /// simulating a frame lost on Dire Wolf's receive side, which makes
         /// Dire Wolf (srej_single) send us an SREJ and exercises our figc4.5
         /// SREJ-received selective-retransmit path. Returns false for every
@@ -541,7 +541,7 @@ public class DirewolfMod128Interop
                     continue;
                 }
 
-                // The AFSK channel is broadcast — only react to frames
+                // The AFSK channel is broadcast - only react to frames
                 // addressed to our local callsign.
                 if (!parsed.Destination.Callsign.Equals(rig.Session.Context.Local))
                 {

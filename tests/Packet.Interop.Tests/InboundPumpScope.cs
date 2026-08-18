@@ -4,19 +4,19 @@ namespace Packet.Interop.Tests;
 /// Owns the lifetime of one-or-more background "inbound pump" tasks (the
 /// <c>Task.Run(() =&gt; InboundPump(rig, ct))</c> loops the connected-mode interop
 /// scenarios spin up to feed KISS frames into a session) and <b>guarantees they are
-/// cancelled and awaited on EVERY exit path</b> — pass, assertion-failure, throw, or
-/// timeout — via <see cref="IAsyncDisposable"/>.
+/// cancelled and awaited on EVERY exit path</b> - pass, assertion-failure, throw, or
+/// timeout - via <see cref="IAsyncDisposable"/>.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The hazard this closes: the scenarios previously cancelled + awaited the pumps with
 /// a bare <c>cts.Cancel(); await Task.WhenAll(pumps)</c> at the <em>end of the happy
 /// path</em>. When an assertion before that line threw (the common case for a flaky
-/// interop test), the pump tasks were abandoned — left running against KISS sockets the
+/// interop test), the pump tasks were abandoned - left running against KISS sockets the
 /// test's <c>await using</c> was about to dispose, and racing the test's <c>using var
 /// cts</c> disposal. That risks an <see cref="ObjectDisposedException"/> on the disposed
 /// CTS surfacing as an <em>unobserved task exception</em> on the finalizer thread, and
-/// leaves background work running into the next test on a persistent CI runner — the
+/// leaves background work running into the next test on a persistent CI runner - the
 /// teardown-robustness gap the §7.2 isolation work otherwise hardens at the docker layer.
 /// </para>
 /// <para>
@@ -28,7 +28,7 @@ namespace Packet.Interop.Tests;
 /// test promptly by <see cref="ThrowIfAnyFaulted"/> during the wait helpers; on the
 /// teardown path we only need every pump <em>observed</em> so the task plumbing doesn't
 /// escalate). Declare the scope AFTER the test's <c>using var cts</c> so it disposes
-/// first — pumps stop before the outer CTS is torn down.
+/// first - pumps stop before the outer CTS is torn down.
 /// </para>
 /// </remarks>
 internal sealed class InboundPumpScope : IAsyncDisposable
@@ -59,13 +59,13 @@ internal sealed class InboundPumpScope : IAsyncDisposable
         return new InboundPumpScope(cts, tasks);
     }
 
-    /// <summary>The running pump tasks — pass to the wait helpers (which call their
+    /// <summary>The running pump tasks - pass to the wait helpers (which call their
     /// <c>ThrowIfAnyFaulted</c>) so a backgrounded crash (e.g. an unbound predicate
     /// throwing inside the rx pump) becomes an immediate test failure with the real stack
     /// trace, rather than a budget timeout that hides the cause.</summary>
     public IReadOnlyList<Task> Tasks => tasks;
 
-    /// <summary>Cancel every pump and await its completion — on EVERY exit path. Expected
+    /// <summary>Cancel every pump and await its completion - on EVERY exit path. Expected
     /// cancellation and any residual fault are swallowed (a real fault was already
     /// surfaced to the test by <see cref="ThrowIfAnyFaulted"/>); the point here is that no
     /// pump is left running or unobserved.</summary>
@@ -75,7 +75,7 @@ internal sealed class InboundPumpScope : IAsyncDisposable
         {
             await cts.CancelAsync().ConfigureAwait(false);
         }
-        catch (ObjectDisposedException) { /* already disposed — pumps are already done */ }
+        catch (ObjectDisposedException) { /* already disposed - pumps are already done */ }
 
         try
         {

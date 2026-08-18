@@ -15,7 +15,7 @@ namespace Packet.Ax25.Tests.Session;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The figc4.x SDL transitions reference many verbs not yet wired —
+/// The figc4.x SDL transitions reference many verbs not yet wired -
 /// subroutines (<c>Establish_Data_Link</c>), DL-layer signals
 /// (<c>DL_CONNECT_indication</c>), outgoing U-frames (<c>UA</c>, <c>DM</c>),
 /// and link-parameter assignments (<c>SRT</c>, <c>T1V</c>). Driving a

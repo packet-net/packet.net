@@ -10,7 +10,7 @@ namespace Packet.LinkBench.Channel;
 /// engine talks to its own <see cref="IAx25Transport"/>; the channel model joins
 /// them. Implementations: <see cref="InProcChannel"/> (primary, deterministic),
 /// <see cref="AxudpChannel"/> (lossless cross-check, no ackmode by nature),
-/// <see cref="NetSimChannel"/> (rung 2 — real AFSK over net-sim).
+/// <see cref="NetSimChannel"/> (rung 2 - real AFSK over net-sim).
 /// </summary>
 internal interface IBenchChannel : IAsyncDisposable
 {
@@ -18,12 +18,12 @@ internal interface IBenchChannel : IAsyncDisposable
     IAx25Transport EndpointB { get; }
 
     /// <summary>Whether <see cref="ITxCompletionTransport.SendAwaitingCompletionAsync"/> works
-    /// here. AXUDP is a tunnel — no TNC, no TX-complete echo — so it cannot.</summary>
+    /// here. AXUDP is a tunnel - no TNC, no TX-complete echo - so it cannot.</summary>
     bool SupportsAckMode { get; }
 }
 
 /// <summary>
-/// Two <see cref="AxudpFrameTransport"/>s on UDP loopback — real sockets, real
+/// Two <see cref="AxudpFrameTransport"/>s on UDP loopback - real sockets, real
 /// async/serialisation, full-duplex, lossless. Tom's "lossless AXUDP" baseline:
 /// confirms an in-proc result isn't an artifact of the in-proc model. AXUDP is a
 /// native <see cref="IAx25Transport"/> (no KISS), used directly.
@@ -52,8 +52,8 @@ internal sealed class AxudpChannel : IBenchChannel
 
 /// <summary>
 /// Two KISS-TCP clients into net-sim ports (rung 2): net-sim provides the real
-/// channel (AFSK, half-duplex shared medium, loss knob) and — on the pinned
-/// ackmode-capable image (plan §7) — the Samoyed modem's 0x0C echo.
+/// channel (AFSK, half-duplex shared medium, loss knob) and - on the pinned
+/// ackmode-capable image (plan §7) - the Samoyed modem's 0x0C echo.
 /// </summary>
 internal sealed class NetSimChannel : IBenchChannel
 {

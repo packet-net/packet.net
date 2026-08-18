@@ -4,7 +4,7 @@ using Packet.Core;
 namespace Packet.NetRom.Wire;
 
 /// <summary>
-/// The NET/ROM L3 network header — 15 octets prepended to every inter-node
+/// The NET/ROM L3 network header - 15 octets prepended to every inter-node
 /// datagram carried over a connected-mode AX.25 interlink (PID 0xCF). It names
 /// the end-to-end origin and destination <em>nodes</em> (not the hop-by-hop AX.25
 /// addresses, which are the interlink's own) and carries the hop-limit

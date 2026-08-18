@@ -2,7 +2,7 @@ namespace Packet.Node.Core.Configuration;
 
 /// <summary>
 /// Reporting to the OARC packet-network map (<c>docs/oarc-reporting-design.md</c>). The node pushes
-/// its telemetry — node up/status/down, L2 links, L4 circuits, and (opt-in) per-frame L2 traces —
+/// its telemetry - node up/status/down, L2 links, L4 circuits, and (opt-in) per-frame L2 traces -
 /// to the OARC collector's typed ingest endpoints over HTTPS, so a pdn station shows on the map.
 /// <b>Outbound only</b> (no consumption in v1) and <b>default-OFF</b>: a stock node reports nothing.
 /// </summary>
@@ -19,8 +19,8 @@ namespace Packet.Node.Core.Configuration;
 /// <b>Locator is a hard precondition.</b> The collector requires a valid 6-char Maidenhead locator
 /// on node-up/node-status (<c>^[A-R]{2}\d{2}[A-Xa-x]{2}$</c>). The node's
 /// <see cref="Identity.Grid"/> is free-form, so the reporter validates it and will not report node
-/// events without a valid locator (the UI flags this). The auth model is <b>open</b> — the collector
-/// requires no credential — so there is no secret in this block.
+/// events without a valid locator (the UI flags this). The auth model is <b>open</b> - the collector
+/// requires no credential - so there is no secret in this block.
 /// </para>
 /// <para>
 /// <see cref="Enabled"/> and the category toggles are hot-reload aware (a master flip sends
@@ -29,7 +29,7 @@ namespace Packet.Node.Core.Configuration;
 /// </remarks>
 public sealed record OarcConfig
 {
-    /// <summary>The master switch. Default <c>false</c> — a node joins the OARC map only when the
+    /// <summary>The master switch. Default <c>false</c> - a node joins the OARC map only when the
     /// operator opts in; with it off the reporter is dormant and sends nothing.</summary>
     public bool Enabled { get; init; }
 
@@ -38,7 +38,7 @@ public sealed record OarcConfig
     public string BaseUrl { get; init; } = "https://node-api.packet.oarc.uk/";
 
     /// <summary>Report node up/status/down (identity, locator, software/version, link &amp; circuit
-    /// counts, L3-relayed). Default <c>true</c> — the baseline "this node is on the map" report.</summary>
+    /// counts, L3-relayed). Default <c>true</c> - the baseline "this node is on the map" report.</summary>
     public bool ReportNodeStatus { get; init; } = true;
 
     /// <summary>Report L2 link lifecycle + status (link-up/-status/-down: frames, bytes, throughput,
@@ -49,17 +49,17 @@ public sealed record OarcConfig
     /// stats). Default <c>true</c>.</summary>
     public bool ReportCircuits { get; init; } = true;
 
-    /// <summary>Report the per-frame L2 trace feed (the wire-monitor firehose — every frame's
-    /// src/dest/ctrl/seq/len). Default <c>false</c> — the highest-volume, most-revealing category,
+    /// <summary>Report the per-frame L2 trace feed (the wire-monitor firehose - every frame's
+    /// src/dest/ctrl/seq/len). Default <c>false</c> - the highest-volume, most-revealing category,
     /// opt-in only.</summary>
     public bool ReportTraces { get; init; }
 
     /// <summary>When <see cref="ReportTraces"/> is on, report only over-air (RF) frames and skip
-    /// internal/loopback/inter-process traffic. Default <c>true</c> — the firehose is rarely wanted
+    /// internal/loopback/inter-process traffic. Default <c>true</c> - the firehose is rarely wanted
     /// unfiltered.</summary>
     public bool TracesRfOnly { get; init; } = true;
 
-    /// <summary>Publish exact latitude/longitude alongside the locator. Default <c>false</c> — the
+    /// <summary>Publish exact latitude/longitude alongside the locator. Default <c>false</c> - the
     /// node reports its Maidenhead locator (grid-square resolution) only, unless the operator opts
     /// in to precise coordinates.</summary>
     public bool PublishExactPosition { get; init; }
@@ -98,7 +98,7 @@ public sealed record OarcConfig
 /// </remarks>
 public sealed record MqttConfig
 {
-    /// <summary>The master switch. Default <c>false</c> — the node publishes to MQTT only when the
+    /// <summary>The master switch. Default <c>false</c> - the node publishes to MQTT only when the
     /// operator opts in; with it off the emitter is dormant and sends nothing.</summary>
     public bool Enabled { get; init; }
 

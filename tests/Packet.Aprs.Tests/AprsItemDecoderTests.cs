@@ -36,7 +36,7 @@ public class AprsItemDecoderTests
     [Fact]
     public void Decodes_Killed_Item()
     {
-        // APRS101 §11: `)NAME_POSITION` — killed item, indicator byte is '_'.
+        // APRS101 §11: `)NAME_POSITION` - killed item, indicator byte is '_'.
         var info = System.Text.Encoding.ASCII.GetBytes(")AIDV#2_4903.50N/07201.75WA");
         AprsItemDecoder.TryDecode(info, out var item).Should().BeTrue();
         item.Name.Should().Be("AIDV#2");

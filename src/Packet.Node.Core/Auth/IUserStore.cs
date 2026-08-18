@@ -7,7 +7,7 @@ namespace Packet.Node.Core.Auth;
 /// </summary>
 /// <remarks>
 /// Resilient like the NET/ROM routing store: a backing-store fault logs and
-/// degrades (a query returns null/empty, a write returns false) — it never throws
+/// degrades (a query returns null/empty, a write returns false) - it never throws
 /// out to crash the node. Implementations open a fresh pooled connection per call.
 /// </remarks>
 public interface IUserStore
@@ -47,7 +47,7 @@ public interface IUserStore
     bool SetTotpSecret(string username, string secret, string callsign);
 
     /// <summary>
-    /// Clear a user's TOTP enrolment — null out the secret, callsign, and replay
+    /// Clear a user's TOTP enrolment - null out the secret, callsign, and replay
     /// counter. Returns <c>true</c> if a row changed, <c>false</c> if the user was
     /// absent / already had none / on a store fault.
     /// </summary>
@@ -62,7 +62,7 @@ public interface IUserStore
     /// </summary>
     bool UpdateTotpCounter(string username, long counter);
 
-    /// <summary>All users (hash included — callers project to <see cref="UserSummary"/>
+    /// <summary>All users (hash included - callers project to <see cref="UserSummary"/>
     /// before returning to a client). Empty on fault.</summary>
     IReadOnlyList<UserRecord> List();
 
@@ -93,7 +93,7 @@ public interface IUserStore
     /// The persisted 256-bit JWT signing key, generating + storing it on first
     /// call so tokens survive a restart. Returns null only if the store is so
     /// broken it can neither read nor persist a key (auth then cannot be enabled
-    /// safely — the host treats a null key as "auth unavailable"). Never logged.
+    /// safely - the host treats a null key as "auth unavailable"). Never logged.
     /// </summary>
     byte[]? GetOrCreateSigningKey();
 

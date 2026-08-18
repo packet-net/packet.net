@@ -48,7 +48,7 @@ public sealed class PrometheusTextWriterTests
     {
         var w = new PrometheusTextWriter();
         w.Sample("a", 7);
-        w.Sample("b", 7.0);     // integral double — no decimal point
+        w.Sample("b", 7.0);     // integral double - no decimal point
         w.Sample("c", 1.5);
 
         var lines = w.ToString().Split('\n');

@@ -6,7 +6,7 @@ using Packet.Core;
 namespace Packet.AprsIs.Spike;
 
 /// <summary>
-/// Original spike behaviour — connect, read N frames, run each through the
+/// Original spike behaviour - connect, read N frames, run each through the
 /// TNC2 parser → reconstruct → round-trip pipeline, persist failures to
 /// JSONL, write a summary markdown.
 /// </summary>

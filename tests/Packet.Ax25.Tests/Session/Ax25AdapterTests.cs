@@ -8,7 +8,7 @@ using Packet.Core;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Tests for <see cref="Ax25Adapter"/> — the glue between the state
+/// Tests for <see cref="Ax25Adapter"/> - the glue between the state
 /// machine and byte-level I/O. Covers the outbound serialisation path,
 /// the inbound parse-and-classify path, and an end-to-end loopback
 /// where two adapters exchange a SABM frame.
@@ -159,7 +159,7 @@ public class Ax25AdapterTests
             schedA.Arm("T1", tx.Session.T1V, () => { });
         });
 
-        // P_eq_1 etc. — bindings the figures' predicates need.
+        // P_eq_1 etc. - bindings the figures' predicates need.
         var bindingsA = new Dictionary<Ax25Guard, Func<bool>>(
             Ax25SessionBindings.CreateDefault(ctxA, schedA))
         {
@@ -181,7 +181,7 @@ public class Ax25AdapterTests
         // Kick off.
         a.Session.PostEvent(new DlConnectRequest());
 
-        // Side A: ran t03 — SRT/T1V init, Establish_Data_Link, set_layer_3_initiated, → AwaitingConnection.
+        // Side A: ran t03 - SRT/T1V init, Establish_Data_Link, set_layer_3_initiated, → AwaitingConnection.
         a.Session.CurrentState.Should().Be("AwaitingConnection");
         a.Context.Layer3Initiated.Should().BeTrue();
         a.Context.RC.Should().Be(0);
@@ -200,7 +200,7 @@ public class Ax25AdapterTests
     /// packet-net/packet.net#327, adapter construction site: an I-frame received
     /// while the session has no reply data must still elicit the figc4.x
     /// delayed-ack RR. The adapter's <c>sendLinkMux</c> grants the SDL's
-    /// <c>LM-SEIZE Request</c> by posting <c>LM-SEIZE Confirm</c> back —
+    /// <c>LM-SEIZE Request</c> by posting <c>LM-SEIZE Confirm</c> back -
     /// deferred by the §6.7.1.2 T2 acknowledge delay (packet-net/packet.net#385),
     /// so nothing flushes until T2 expires; t22 then sends the RR via
     /// <c>Enquiry Response (F=0)</c> with the then-current V(R). The
@@ -235,7 +235,7 @@ public class Ax25AdapterTests
         ctx.AcknowledgePending.Should().BeTrue("t26 set Ack-Pending for the delayed ack");
         scheduler.IsRunning("T2").Should().BeTrue("the seize grant is deferred on the T2 timer");
 
-        // T2 expires → exactly one RR response, N(R)=1, F=0 — and no
+        // T2 expires → exactly one RR response, N(R)=1, F=0 - and no
         // runaway re-seize loop.
         time.Advance(ctx.T2 + TimeSpan.FromMilliseconds(1));
         emittedBytes.Should().ContainSingle("the only emission is the delayed-ack RR");

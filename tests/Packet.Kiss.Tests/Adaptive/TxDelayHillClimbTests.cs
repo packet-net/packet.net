@@ -39,7 +39,7 @@ public class TxDelayHillClimbTests
     public void First_Outcome_After_A_Change_Is_Ignored_As_Settling()
     {
         // The NinoTNC applies a changed TXDELAY from the SECOND frame after the KISS command
-        // (bench-measured) — the outcome right after a step was transmitted with the OLD
+        // (bench-measured) - the outcome right after a step was transmitted with the OLD
         // value, so it must not count toward the next step.
         var estimator = new TxDelayHillClimbEstimator(initialTxDelay: 50)
         {
@@ -53,7 +53,7 @@ public class TxDelayHillClimbTests
         estimator.Observe(Sample("M0LTE", FrameOutcome.AcknowledgedFirstTry));
         estimator.CurrentTxDelayFor("M0LTE").Should().Be((byte)48, "stepped down after 2 successes");
 
-        // This loss happened on the settling frame (old TXDELAY) — no penalty, no streak count.
+        // This loss happened on the settling frame (old TXDELAY) - no penalty, no streak count.
         estimator.Observe(Sample("M0LTE", FrameOutcome.Lost));
         estimator.CurrentTxDelayFor("M0LTE").Should().Be((byte)48, "settling frame outcome is discarded");
 
@@ -120,14 +120,14 @@ public class TxDelayHillClimbTests
             LossPenaltyUnits = 50,
         };
 
-        // Drive down — should clamp at MinTxDelay (8) instead of going negative.
+        // Drive down - should clamp at MinTxDelay (8) instead of going negative.
         for (int i = 0; i < 10; i++)
         {
             estimator.Observe(Sample("PEER", FrameOutcome.AcknowledgedFirstTry));
         }
         estimator.CurrentTxDelayFor("PEER").Should().Be((byte)8);
 
-        // Drive up — should clamp at MaxTxDelay (12), not wrap or overflow.
+        // Drive up - should clamp at MaxTxDelay (12), not wrap or overflow.
         estimator.Observe(Sample("PEER", FrameOutcome.Lost));
         estimator.CurrentTxDelayFor("PEER").Should().Be((byte)12);
     }

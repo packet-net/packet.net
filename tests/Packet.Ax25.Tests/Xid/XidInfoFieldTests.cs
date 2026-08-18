@@ -21,11 +21,11 @@ public class XidInfoFieldTests
     //
     // NOTE on the HDLC Optional Functions PV (P3 = 03 03 ..): AX.25 v2.2 §3.8 ("Order of
     // Octet and Bit Transmission") sends multiple-octet fields HIGH-ORDER OCTET FIRST, so
-    // we transmit/parse the 3-octet value MOST-SIGNIFICANT OCTET FIRST — the order
+    // we transmit/parse the 3-octet value MOST-SIGNIFICANT OCTET FIRST - the order
     // direwolf's xid.c and LinBPQ's L2Code.c both use (verified on the wire: BPQ accepts
     // the MSB-first PV and negotiates SREJ, and silently drops the historical LSB-first
     // one). The printed Figure 4.6 octets `82 A8 22` are LSB-octet first and so CONTRADICT
-    // §3.8 — a figure-rendering error (like the same figure's documented ABM off-by-one).
+    // §3.8 - a figure-rendering error (like the same figure's documented ABM off-by-one).
     // Our HdlcOptionalFunctions bit constants are numbered in the LSB-octet value space,
     // so the SAME logical selection (REJ + modulo-128 + SREJ-multiframe + the always-1
     // bits) serialises §3.8-correct to `22 A8 82` here (the byte-reverse of the figure's
@@ -42,7 +42,7 @@ public class XidInfoFieldTests
         0x0A, 0x01, 0x03,
     };
 
-    // ─── Header constants (§4.3.3.7 ¶1019–1021) ─────────────────────────
+    // ─── Header constants (§4.3.3.7 ¶1019-1021) ─────────────────────────
 
     [Fact]
     public void Header_Constants_Match_Spec()
@@ -69,7 +69,7 @@ public class XidInfoFieldTests
         p!.ClassesOfProcedures.Should().NotBeNull();
         p.ClassesOfProcedures!.HalfDuplex.Should().BeTrue("PV 0x22 0x00 sets bit 5 (half-duplex)");
 
-        // HDLC Optional Functions: PV 0x22 0xA8 0x82 (MSB-octet first — see the
+        // HDLC Optional Functions: PV 0x22 0xA8 0x82 (MSB-octet first - see the
         // Figure46Info note). Decoded, these are REJ (bit 1) + modulo-128 (bit 11)
         // + the always-1 bits + SREJ-multiframe (bit 21). NOTE: Figure 4.6's caption
         // claims "SREJ/REJ"; the selection is REJ (bit 1 set, bit 2 clear),
@@ -123,15 +123,15 @@ public class XidInfoFieldTests
         // the Classes-of-Procedures Balanced-ABM bit is "Bit 0" per the Figure
         // 4.5 table (and ¶1077 "Bit 0 is always a 1"), so half-duplex ABM
         // encodes as 0x21 0x00. Figure 4.6's worked example instead shows
-        // 0x22 0x00 — it has placed the always-1 ABM bit at position 1, NOT 0.
-        // (The HDLC field's PV is serialised MSB-octet-first per §3.8 — `22 A8 82` for
-        // this selection — matching direwolf / BPQ on the wire; the figure's printed
+        // 0x22 0x00 - it has placed the always-1 ABM bit at position 1, NOT 0.
+        // (The HDLC field's PV is serialised MSB-octet-first per §3.8 - `22 A8 82` for
+        // this selection - matching direwolf / BPQ on the wire; the figure's printed
         // `82 A8 22` is the LSB-first contradiction, see the Figure46Info note.) Per the
         // repo's spec-compliant-by-default rule we
         // follow the normative table for the ABM bit,
         // so byte index 6 is 0x21, not the figure's 0x22. Everything else
         // reproduces Figure 4.6 byte-for-byte. The duplex selection (bit 5)
-        // — the only field a peer actually reads — is identical either way.
+        // - the only field a peer actually reads - is identical either way.
         const int abmAnomalyIndex = 6;
         encoded[abmAnomalyIndex].Should().Be(0x21,
             "table/prose put Balanced-ABM at bit 0 (0x21); Fig 4.6's 0x22 is the figure's off-by-one");
@@ -278,7 +278,7 @@ public class XidInfoFieldTests
     [Theory]
     [InlineData(2048)]   // default N1 (256 octets)
     [InlineData(1024)]   // Fig 4.6
-    [InlineData(8)]      // 1 octet — exercises the single-byte numeric encoding
+    [InlineData(8)]      // 1 octet - exercises the single-byte numeric encoding
     [InlineData(65535)]  // two-octet boundary
     public void RoundTrip_IFieldLengthRx_Bits(int bits)
     {
@@ -388,7 +388,7 @@ public class XidInfoFieldTests
         var info = new byte[]
         {
             0x82, 0x80, 0x00, 0x07,
-            0x42, 0x02, 0xDE, 0xAD,            // unknown PI, 2-byte PV — skipped
+            0x42, 0x02, 0xDE, 0xAD,            // unknown PI, 2-byte PV - skipped
             0x08, 0x01, 0x05,                  // window k = 5
         };
         XidInfoField.TryParse(info, out var got).Should().BeTrue();
@@ -403,8 +403,8 @@ public class XidInfoFieldTests
         var info = new byte[]
         {
             0x82, 0x80, 0x00, 0x0A,
-            0x05, 0x02, 0x08, 0x00,            // PI=5 Tx N1 — skipped
-            0x07, 0x01, 0x10,                  // PI=7 Tx window — skipped
+            0x05, 0x02, 0x08, 0x00,            // PI=5 Tx N1 - skipped
+            0x07, 0x01, 0x10,                  // PI=7 Tx window - skipped
             0x08, 0x01, 0x05,                  // PI=8 Rx window = 5
         };
         XidInfoField.TryParse(info, out var got).Should().BeTrue();

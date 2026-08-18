@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Packet.Node.Core.SelfUpdate;
 
 /// <summary>
-/// A node version for the self-update available-version check — a dotted numeric release
+/// A node version for the self-update available-version check - a dotted numeric release
 /// (<c>MAJOR.MINOR.PATCH</c>, extra trailing components tolerated) plus a flag for whether the
 /// running build carries SemVer <em>build metadata</em> (the <c>+…</c> suffix, e.g.
 /// <c>0.1.0+dev20260614…</c> or <c>0.1.0+&lt;sha&gt;</c>).
@@ -17,7 +17,7 @@ namespace Packet.Node.Core.SelfUpdate;
 /// equal base is "up to date" regardless of build metadata (per docs/node-self-update-design.md
 /// § Channel = github).</para>
 /// <para>Build metadata is otherwise opaque (SemVer §10: it does not participate in ordering).
-/// We do not parse pre-release tags (<c>-rc.1</c>) — node releases are plain <c>node-vX.Y.Z</c>;
+/// We do not parse pre-release tags (<c>-rc.1</c>) - node releases are plain <c>node-vX.Y.Z</c>;
 /// any <c>-suffix</c> on the numeric part is simply ignored for comparison, conservatively.</para>
 /// </remarks>
 public readonly record struct NodeVersion : IComparable<NodeVersion>
@@ -27,7 +27,7 @@ public readonly record struct NodeVersion : IComparable<NodeVersion>
     /// <summary>The numeric release components (e.g. <c>[0, 1, 0]</c>). Never null.</summary>
     public IReadOnlyList<int> Components => components;
 
-    /// <summary>Whether the source string carried SemVer build metadata (a <c>+…</c> suffix) —
+    /// <summary>Whether the source string carried SemVer build metadata (a <c>+…</c> suffix) -
     /// the marker of a dev/local/CI build that sorts above the matching release.</summary>
     public bool HasBuildMetadata { get; }
 
@@ -41,7 +41,7 @@ public readonly record struct NodeVersion : IComparable<NodeVersion>
     /// Parse a version string. Accepts a leading <c>v</c> / <c>node-v</c> (release-tag spellings),
     /// a SemVer build-metadata suffix (<c>+…</c>, recorded in <see cref="HasBuildMetadata"/>), and
     /// a SemVer pre-release suffix (<c>-…</c>, ignored). Returns <c>false</c> rather than throwing
-    /// on anything it can't read — the available-version check must never throw.
+    /// on anything it can't read - the available-version check must never throw.
     /// </summary>
     public static bool TryParse(string? text, out NodeVersion version)
     {
@@ -62,7 +62,7 @@ public readonly record struct NodeVersion : IComparable<NodeVersion>
             s = s[1..];
         }
 
-        // SemVer build metadata (`+…`) — the dev/local marker. Strip + record it.
+        // SemVer build metadata (`+…`) - the dev/local marker. Strip + record it.
         bool hasBuild = false;
         int plus = s.IndexOf('+', StringComparison.Ordinal);
         if (plus >= 0)
@@ -71,7 +71,7 @@ public readonly record struct NodeVersion : IComparable<NodeVersion>
             s = s[..plus];
         }
 
-        // SemVer pre-release (`-…`) — ignored for ordering (node releases are plain X.Y.Z).
+        // SemVer pre-release (`-…`) - ignored for ordering (node releases are plain X.Y.Z).
         int dash = s.IndexOf('-', StringComparison.Ordinal);
         if (dash >= 0)
         {
@@ -104,7 +104,7 @@ public readonly record struct NodeVersion : IComparable<NodeVersion>
     }
 
     /// <summary>Compare the numeric base versions only (component-wise, missing components treated
-    /// as 0). Build metadata is deliberately NOT part of this ordering — see
+    /// as 0). Build metadata is deliberately NOT part of this ordering - see
     /// <see cref="IsUpdateOver"/> for the dev-above-release rule that consumes it.</summary>
     public int CompareTo(NodeVersion other)
     {
@@ -126,13 +126,13 @@ public readonly record struct NodeVersion : IComparable<NodeVersion>
     /// <summary>
     /// Would <see langword="this"/> be an update to apply over a node currently running
     /// <paramref name="running"/>? <c>true</c> only when this version's numeric base is
-    /// <b>strictly greater</b> than the running base. An equal base is "up to date" — and that is
+    /// <b>strictly greater</b> than the running base. An equal base is "up to date" - and that is
     /// exactly the dev-above-release case: a <c>0.1.0+dev…</c> node compared against the <c>0.1.0</c>
     /// release has an equal base, so this returns <c>false</c> (no downgrade offered).
     /// </summary>
     public bool IsUpdateOver(NodeVersion running) => CompareTo(running) > 0;
 
-    /// <summary>Render the numeric base (no build metadata) — what <c>latestVersion</c> reports.</summary>
+    /// <summary>Render the numeric base (no build metadata) - what <c>latestVersion</c> reports.</summary>
     public override string ToString() => string.Join('.', components ?? []);
 
     // Comparison operators over the numeric base (CA1036). Note these compare the base only; the

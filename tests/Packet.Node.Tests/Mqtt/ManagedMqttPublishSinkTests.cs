@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Mqtt;
 
 /// <summary>
 /// The managed-client options behind the production publish sink (#582): the pending-publish queue
-/// must be BOUNDED with drop-oldest overflow — MQTTnet's default is <c>int.MaxValue</c>, which with
+/// must be BOUNDED with drop-oldest overflow - MQTTnet's default is <c>int.MaxValue</c>, which with
 /// the emitter on and the broker down grows two messages per traced frame in RAM indefinitely.
 /// Asserted on <see cref="ManagedMqttPublishSink.BuildOptions"/> without starting a client.
 /// </summary>

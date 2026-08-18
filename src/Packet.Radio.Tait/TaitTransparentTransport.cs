@@ -7,7 +7,7 @@ namespace Packet.Radio.Tait;
 
 /// <summary>
 /// An <see cref="IAx25Transport"/> whose modem <b>is</b> a Tait TM8100/TM8200 radio in
-/// Transparent mode — no external TNC. The radio's own FFSK modem is an 8-bit-clean byte pipe
+/// Transparent mode - no external TNC. The radio's own FFSK modem is an 8-bit-clean byte pipe
 /// (hardware-proven: all 256 byte values, including XON/XOFF, round-trip identical), so this
 /// transport frames AX.25 with <b>KISS SLIP framing</b> (FEND-delimited, reusing
 /// <see cref="KissEncoder"/>/<see cref="KissDecoder"/>) over that pipe and de-frames the inbound
@@ -32,7 +32,7 @@ namespace Packet.Radio.Tait;
 /// <para>
 /// <b>Signal-telemetry trade-off (inherent).</b> In Transparent mode the serial port is a byte
 /// pipe: CCDI is unavailable, so there is <em>no</em> RSSI, SNR, noise-floor, carrier-rise (DCD)
-/// or burst attribution — those fields on <see cref="RadioMetadata"/> stay <c>null</c>. This is
+/// or burst attribution - those fields on <see cref="RadioMetadata"/> stay <c>null</c>. This is
 /// the deliberate cost of a <b>TNC-less</b> link (one device, no audio wiring), versus the
 /// NinoTNC-plus-CCDI arrangement (<c>RssiTaggingTransport</c>) which has full per-frame signal
 /// telemetry but needs two devices (a TNC for the modem and the radio's CCDI control channel).
@@ -40,7 +40,7 @@ namespace Packet.Radio.Tait;
 /// <para>
 /// <b>Exit / recovery WARNING.</b> <see cref="DisposeAsync"/> escapes Transparent mode with the
 /// <c>+++</c> guard sequence (§1.7.2) and restores the command baud, returning the radio to
-/// Command mode — a port left in Transparent is deaf to CCDI. <b>If the radio is programmed with
+/// Command mode - a port left in Transparent is deaf to CCDI. <b>If the radio is programmed with
 /// "Ignore Escape Sequence" ON, the <c>+++</c> escape does nothing and there is no software way
 /// out: recovery is a power cycle.</b> That is exactly the lockout observed on the bench before
 /// the option was turned off. Program the radio with the escape sequence honoured before running
@@ -66,7 +66,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
 
     /// <summary>
     /// Wrap an already-open <paramref name="radio"/>. The transport does not enter Transparent
-    /// mode in the constructor — call <see cref="EnterTransparentModeAsync"/> (or use
+    /// mode in the constructor - call <see cref="EnterTransparentModeAsync"/> (or use
     /// <see cref="OpenAsync"/>, which does both). When <paramref name="ownsRadio"/> is
     /// <c>true</c> (the default), <see cref="DisposeAsync"/> disposes the radio too.
     /// </summary>
@@ -83,14 +83,14 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
         this.ownsRadio = ownsRadio;
         radio.TransparentDataReceived += OnTransparentData;
         // A dead serial link / dropped head-end pipe faults the radio's read pump; complete the
-        // inbound channel so ReceiveAsync ENDS instead of going silent forever — end-of-stream is
+        // inbound channel so ReceiveAsync ENDS instead of going silent forever - end-of-stream is
         // the drop signal a reconnect supervisor (the node's ReconnectingKissModem) keys on,
         // mirroring how KissTcpClient surfaces a dead socket.
         radio.ConnectionStateChanged += OnConnectionState;
     }
 
     /// <summary>Raised on every send with the transmission's timing envelope (queue instant,
-    /// estimated on-air start and end, airtime, lead-in, on-air byte count) — the TX-side
+    /// estimated on-air start and end, airtime, lead-in, on-air byte count) - the TX-side
     /// counterpart of the inbound <see cref="RadioMetadata.EstimatedAirtime"/>, for the AX.25
     /// engine / airtime estimator.</summary>
     public event EventHandler<TaitTransparentTxTiming>? TxTiming;
@@ -112,7 +112,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
         CancellationToken cancellationToken = default)
     {
         var opts = options ?? new TaitTransparentTransportOptions();
-        // The keep-alive watchdog probes with CCDI queries — meaningless (and impossible) while
+        // The keep-alive watchdog probes with CCDI queries - meaningless (and impossible) while
         // the port is a Transparent byte pipe, so disable it for this radio.
         var radio = TaitCcdiRadio.Open(
             portName, opts.CommandBaud, new TaitCcdiRadioOptions { KeepAliveInterval = null }, timeProvider);
@@ -122,17 +122,17 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
     /// <summary>
     /// Open a Tait radio whose serial port is bridged as a raw binary TCP pipe by a split-station
     /// head-end and enter Transparent mode, returning a ready-to-use transport that owns the
-    /// radio — the remote twin of <see cref="OpenAsync"/>. The <c>t</c> entry command is issued at
+    /// radio - the remote twin of <see cref="OpenAsync"/>. The <c>t</c> entry command is issued at
     /// <see cref="TaitTransparentTransportOptions.CommandBaud"/>, clocked onto the physical UART
     /// via <paramref name="setBaud"/> at open; when
     /// <see cref="TaitTransparentTransportOptions.TransparentBaud"/> differs, the enter/exit
     /// re-clocks also route through <paramref name="setBaud"/> (the data socket is a pure binary
-    /// pipe — line rate travels out-of-band through the head-end's line verb).
+    /// pipe - line rate travels out-of-band through the head-end's line verb).
     /// </summary>
     /// <remarks>
     /// The pipe's <b>read-idle liveness budget is disabled</b> here: in Transparent mode any
     /// in-band probe byte would be transmitted over the air, so an RF-quiet channel is
-    /// indistinguishable from a dead link by bytes alone — the 5-minute default would tear a
+    /// indistinguishable from a dead link by bytes alone - the 5-minute default would tear a
     /// healthy port down every quiet stretch (the same failure #580 fixed for nino-tnc-tcp,
     /// which CAN probe in-band with GETVER). Drop detection relies on OS TCP keepalive and a FIN,
     /// both of which fault the pump and end <see cref="ReceiveAsync"/>.
@@ -158,7 +158,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
             new TaitCcdiRadioOptions
             {
                 // No CCDI watchdog (a byte pipe can't answer queries) and no in-band read-idle
-                // budget (no probe is possible without transmitting) — see the remarks.
+                // budget (no probe is possible without transmitting) - see the remarks.
                 KeepAliveInterval = null,
                 ReadIdleTimeout = Timeout.InfiniteTimeSpan,
             },
@@ -188,20 +188,20 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
     }
 
     /// <summary>
-    /// Enter Transparent mode: issue the CCDI <c>t</c> command at the command baud, then — if the
-    /// transparent baud differs — re-clock the open port to it. Idempotent-safe: a second call is
+    /// Enter Transparent mode: issue the CCDI <c>t</c> command at the command baud, then - if the
+    /// transparent baud differs - re-clock the open port to it. Idempotent-safe: a second call is
     /// a no-op.
     /// </summary>
     /// <remarks>
     /// <b>Stale-Transparent recovery.</b> A radio whose previous session ended without a clean
-    /// teardown — the node crashed, or (the split-station case) the head-end pipe died before the
-    /// escape could be delivered — is still a Transparent byte pipe: the <c>t</c> entry command is
+    /// teardown - the node crashed, or (the split-station case) the head-end pipe died before the
+    /// escape could be delivered - is still a Transparent byte pipe: the <c>t</c> entry command is
     /// then transmitted over the air as data and no prompt ever comes back. When the entry times
     /// out, this presumes exactly that state and recovers: re-clock to the transparent baud (where
     /// the stale pipe is clocked), run the §1.7.2 escape blind, re-clock back, and retry the entry
     /// once. A radio that was merely off/unreachable fails the retry the same way it failed the
     /// first attempt (the blind escape is harmless noise to a Command-mode radio); a radio wedged
-    /// by "Ignore Escape Sequence" ON still fails — that misconfiguration has no software recovery
+    /// by "Ignore Escape Sequence" ON still fails - that misconfiguration has no software recovery
     /// (see the class-level WARNING and the Transparent-readiness doctor).
     /// </remarks>
     public async Task EnterTransparentModeAsync(CancellationToken cancellationToken = default)
@@ -219,7 +219,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
             }
             catch (TimeoutException)
             {
-                // No CCDI answer at the command baud — presume a stale Transparent pipe from a
+                // No CCDI answer at the command baud - presume a stale Transparent pipe from a
                 // session that never got to exit (see remarks). Escape it and retry once.
                 if (options.TransparentBaud != options.CommandBaud)
                 {
@@ -305,7 +305,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
     private void OnTransparentData(object? sender, ReadOnlyMemory<byte> data)
     {
         // Fired on the radio's single read-pump thread, so the decoder is touched serially.
-        // Stamp delivery time once for this chunk — the instant the bytes that complete the
+        // Stamp delivery time once for this chunk - the instant the bytes that complete the
         // frame(s) arrived off the wire.
         var receivedAt = clock.GetUtcNow();
         foreach (var frame in decoder.Push(data.Span))
@@ -315,7 +315,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
                 continue;
             }
             // On-air size = the exact SLIP-framed byte count this frame was carried as
-            // (SLIP encoding is deterministic from content, so re-encoding recovers it) —
+            // (SLIP encoding is deterministic from content, so re-encoding recovers it) -
             // symmetric with the TX-side airtime.
             var airtime = EstimateAirtime(KissEncoder.Encode(SlipPort, KissCommand.Data, frame.Payload).Length);
             var inboundFrame = new Ax25InboundFrame(
@@ -329,7 +329,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
         }
     }
 
-    // A faulted radio (dead serial link / dropped head-end pipe — the pump broke on a hard IO
+    // A faulted radio (dead serial link / dropped head-end pipe - the pump broke on a hard IO
     // failure) can never deliver another byte: end the inbound stream so consumers see the drop.
     private void OnConnectionState(object? sender, TaitConnectionState state)
     {
@@ -369,7 +369,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
             }
             catch (Exception ex) when (ex is IOException or InvalidOperationException or TimeoutException or SocketException)
             {
-                // Best-effort exit — the radio may already be gone / power-cycled, or the
+                // Best-effort exit - the radio may already be gone / power-cycled, or the
                 // head-end pipe already dead (SocketException / IOException from the socket or
                 // the line-verb callback). Dispose the radio below regardless.
             }
@@ -385,13 +385,13 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
 
 /// <summary>
 /// Options for <see cref="TaitTransparentTransport"/>: the two serial rates (Command vs
-/// Transparent terminal baud — equal on rigs where the radio is programmed the same both ways,
+/// Transparent terminal baud - equal on rigs where the radio is programmed the same both ways,
 /// which needs no re-clock), the FFSK over-air baud used for airtime estimation, and the
 /// transmit lead-in.
 /// </summary>
 public sealed record TaitTransparentTransportOptions
 {
-    /// <summary>The CCDI Command-mode serial rate — the rate the <c>t</c> entry / <c>+++</c> exit
+    /// <summary>The CCDI Command-mode serial rate - the rate the <c>t</c> entry / <c>+++</c> exit
     /// commands are clocked at. Default <see cref="TaitCcdiRadio.DefaultBaudRate"/> (28800).</summary>
     public int CommandBaud { get; init; } = TaitCcdiRadio.DefaultBaudRate;
 
@@ -402,7 +402,7 @@ public sealed record TaitTransparentTransportOptions
 
     /// <summary>
     /// The FFSK <b>over-air</b> baud used to estimate frame airtime (<c>on-air bytes × 8 ÷
-    /// this</c>). Default 2400 — the TM8110's internal FFSK modem raw rate. Note effective
+    /// this</c>). Default 2400 - the TM8110's internal FFSK modem raw rate. Note effective
     /// throughput is lower (~1.8 kbit/s) because the radio adds per-≤46-byte-block framing this
     /// figure ignores, so airtime computed here is a floor; set it to a measured effective rate
     /// if a tighter estimate is wanted.
@@ -414,7 +414,7 @@ public sealed record TaitTransparentTransportOptions
     /// per rig if the AX.25 engine needs tight on-air-start timestamps.</summary>
     public TimeSpan LeadIn { get; init; } = TimeSpan.FromMilliseconds(100);
 
-    /// <summary>The Transparent-mode escape character (§1.7.2) — the byte sent ×3 (guarded by
+    /// <summary>The Transparent-mode escape character (§1.7.2) - the byte sent ×3 (guarded by
     /// idle time) to leave Transparent. Default <c>'+'</c> (the <c>+++</c> sequence).</summary>
     public char EscapeChar { get; init; } = '+';
 

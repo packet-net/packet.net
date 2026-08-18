@@ -12,8 +12,8 @@ namespace Packet.Interop.Tests.Netsim;
 
 /// <summary>
 /// Connected-mode interop scenarios across the net-sim AFSK1200 RF
-/// simulator. Two <see cref="Ax25Session"/> instances run end-to-end —
-/// one on each net-sim KISS-TCP port — and drive a full
+/// simulator. Two <see cref="Ax25Session"/> instances run end-to-end -
+/// one on each net-sim KISS-TCP port - and drive a full
 /// connect-handshake / disconnect-handshake over the simulated radio
 /// channel. This is the realistic transport for AX.25 (KISS to a TNC
 /// modulating an analog RF carrier), not an IP-gateway shortcut.
@@ -32,7 +32,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// Both sides use the real figc4.7 subroutine walker (no recorder
 /// stubs). T1 / T3 use wall-clock time. Frame serialisation is via
 /// <see cref="Ax25Frame.ToBytes"/> → <see cref="KissTcpClient.SendAsync"/>
-/// — no skipped layers.
+/// - no skipped layers.
 /// </para>
 /// </remarks>
 [Trait("Category", "Interop")]
@@ -46,7 +46,7 @@ public class NetsimConnectedModeScenarios
     private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
 
     // net-sim's afsk1200 channel is a single shared half-duplex medium with
-    // collision_mode: silence (see docker/netsim/network.yaml) — if both
+    // collision_mode: silence (see docker/netsim/network.yaml) - if both
     // ends key up at once, BOTH transmissions are lost and recovery waits
     // for a T1 retransmit cycle. The spec-default ack timer (T2 = 1500 ms)
     // and retransmit timer (T1V = 6 s after connect) make each lost-frame
@@ -54,14 +54,14 @@ public class NetsimConnectedModeScenarios
     // collisions can blow the per-direction budget before a frame lands.
     // We shorten the ack timer here so the receiver turns the channel
     // around quickly (smaller contention window, faster quiescence) without
-    // changing protocol semantics — a real TNC on a quiet channel runs a
+    // changing protocol semantics - a real TNC on a quiet channel runs a
     // short FRACK/RESPTIME too. Retransmit (T1) recovery still happens via
     // the normal SDL path; we just don't rely on burning many 6 s cycles.
     private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
 
     // Headroom for a *local* state mutation to settle after the remote
     // signal that implies it has already been observed (e.g. B reaching
-    // Connected once A has its DL-CONNECT-confirm — B's UA must already be
+    // Connected once A has its DL-CONNECT-confirm - B's UA must already be
     // on the wire). These resolve near-instantly when the host is idle; the
     // budget only matters under heavy CPU contention. WaitUntil returns as
     // soon as the predicate holds, so a generous budget costs nothing.
@@ -90,13 +90,13 @@ public class NetsimConnectedModeScenarios
 
         // Inbound pumps: every KISS frame from net-sim becomes an
         // Ax25Event into the matching session. The pump tasks must be
-        // observed by the wait helpers below — if a pump throws (e.g.
+        // observed by the wait helpers below - if a pump throws (e.g.
         // GuardEvaluationException from an unbound predicate), we want
         // the test to fail immediately with the real exception, not
         // sit for ConnectBudget seconds waiting for a signal that can
         // never arrive.
-        // `await using` so the pumps are cancelled + awaited on EVERY exit path —
-        // pass, assertion-failure, throw, or timeout — not just at the happy-path
+        // `await using` so the pumps are cancelled + awaited on EVERY exit path -
+        // pass, assertion-failure, throw, or timeout - not just at the happy-path
         // end (declared after `cts` so it disposes first: pumps stop before the
         // outer CTS is torn down). See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token,
@@ -137,7 +137,7 @@ public class NetsimConnectedModeScenarios
     {
         // Connected-mode data round-trip between two of our sessions over
         // the netsim RF channel. Closes the gap left by the connect/disconnect
-        // test above — that asserts the handshake state machine; this asserts
+        // test above - that asserts the handshake state machine; this asserts
         // I-frame TX/RX with V(s)/V(r)/V(a) bookkeeping flowing end-to-end.
         //
         // SP-005 force-multiplier: any divergence between V(s) on the sender
@@ -184,8 +184,8 @@ public class NetsimConnectedModeScenarios
 
         // On a shared half-duplex channel (collision_mode: silence) we drive
         // the two directions strictly one at a time, and between them wait
-        // for the *sending* side's link to go quiescent — every sent I-frame
-        // acknowledged (V(s) == V(a)) and no ack of its own still pending —
+        // for the *sending* side's link to go quiescent - every sent I-frame
+        // acknowledged (V(s) == V(a)) and no ack of its own still pending -
         // before the other side keys up. That keeps the two endpoints from
         // transmitting fresh I-frames into each other (which would collide
         // and be silenced, then need slow T1 recovery). It also strengthens
@@ -269,7 +269,7 @@ public class NetsimConnectedModeScenarios
             subroutines: subroutines)
         {
             // Shorten the ack timer so RR-acks turn the half-duplex channel
-            // around quickly — see AckTimer remarks. T1/T3 keep spec defaults.
+            // around quickly - see AckTimer remarks. T1/T3 keep spec defaults.
             T2Duration = AckTimer,
         };
 
@@ -306,7 +306,7 @@ public class NetsimConnectedModeScenarios
 
                 // Address filter: we should only react to frames
                 // addressed to our local callsign. net-sim's RF sim
-                // is broadcast — both ports hear everything.
+                // is broadcast - both ports hear everything.
                 if (!parsed.Destination.Callsign.Equals(rig.Session.Context.Local))
                 {
                     continue;
@@ -388,7 +388,7 @@ public class NetsimConnectedModeScenarios
     /// (V(s) == V(a)) and it owes no pending acknowledgement of its own
     /// (<see cref="Ax25SessionContext.AcknowledgePending"/> is clear). On
     /// the shared half-duplex sim this is the signal that the side has
-    /// finished talking and the channel is free for the other end — used
+    /// finished talking and the channel is free for the other end - used
     /// to serialise the two I-frame directions so they don't collide.
     /// Reads are lock-free and eventually-consistent against the inbound
     /// pump thread, which is fine for a poll: a stale read just costs one

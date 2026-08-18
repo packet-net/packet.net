@@ -113,7 +113,7 @@ public sealed class SqliteRefreshTokenStoreTests : IDisposable
         store.FindByHash("a2")!.Revoked.Should().BeTrue();
         store.FindByHash("b1")!.Revoked.Should().BeFalse();       // other family untouched
 
-        // Idempotent — re-revoking an already-revoked family changes 0 rows.
+        // Idempotent - re-revoking an already-revoked family changes 0 rows.
         store.RevokeFamily("famA").Should().Be(0);
     }
 
@@ -153,7 +153,7 @@ public sealed class SqliteRefreshTokenStoreTests : IDisposable
         store.Revoke("hash-1", consumedAt).Should().BeTrue();
         store.FindByHash("hash-1")!.RevokedUtc.Should().Be(consumedAt);
 
-        // Idempotent — a second open over the now-migrated table doesn't re-ALTER/throw.
+        // Idempotent - a second open over the now-migrated table doesn't re-ALTER/throw.
         Open().FindByHash("hash-1").Should().NotBeNull();
     }
 

@@ -4,7 +4,7 @@ namespace Packet.Ax25.Session;
 
 /// <summary>
 /// AX.25 v2.2 §2.4 / §6.6 segmentation-reassembly shim that sits at the
-/// data-link primitive boundary — between Layer 3 (the upper layer) and an
+/// data-link primitive boundary - between Layer 3 (the upper layer) and an
 /// <see cref="Ax25Session"/>. The data-link state machine and session are
 /// <b>unchanged</b>: segments travel as ordinary I-frames carrying PID
 /// <see cref="Ax25Frame.PidSegmented"/> (0x08), so the FSM just sends and
@@ -13,7 +13,7 @@ namespace Packet.Ax25.Session;
 /// </summary>
 /// <remarks>
 /// <para>
-/// One instance per data-link session — it owns the per-session
+/// One instance per data-link session - it owns the per-session
 /// <see cref="Reassembler"/> (which holds in-flight multi-segment state).
 /// The spec models exactly this placement (§2557 / §2560): the reassembler
 /// examines the DL-DATA / DL-UNIT-DATA <em>indication</em>; a 0x08 PID
@@ -22,21 +22,21 @@ namespace Packet.Ax25.Session;
 /// over-N1 means segment, otherwise pass through.
 /// </para>
 /// <para>
-/// <b>Gating.</b> Segmentation is a v2.2, negotiated capability (§1621 —
+/// <b>Gating.</b> Segmentation is a v2.2, negotiated capability (§1621 -
 /// "only enabled if both stations on the link are using AX.25 version 2.2 or
 /// higher", set via the XID HDLC-Optional-Functions segmenter bit). This
 /// layer gates the send side on
 /// <see cref="Ax25SessionContext.SegmenterReassemblerEnabled"/>. If a payload
 /// exceeds N1−1 (the max segment-free info-field size) and the segmenter is
-/// <em>not</em> enabled, <see cref="BuildSendRequests"/> throws — the request
+/// <em>not</em> enabled, <see cref="BuildSendRequests"/> throws - the request
 /// is rejected cleanly rather than silently truncated or sent as an
 /// oversize frame.
 /// </para>
 /// <para>
-/// <b>Inner PID on reassembly — gated by
+/// <b>Inner PID on reassembly - gated by
 /// <see cref="Ax25SessionQuirks.SegmentFirstCarriesL3Pid"/> (default on).</b>
 /// Figure 6.2 defines the segment header as the 0x08 PID octet plus one F/X
-/// octet — there is <b>no field carrying the original Layer-3 PID</b> through a
+/// octet - there is <b>no field carrying the original Layer-3 PID</b> through a
 /// segmented series. Dire Wolf, the only known v2.2 segmenter, prepends the
 /// original PID as an extra octet on the first segment so its reassembler can
 /// recover it (the §6.6 "two-octet header" prose admits this reading). This shim
@@ -45,9 +45,9 @@ namespace Packet.Ax25.Session;
 /// <item><b>Quirk on (default):</b> the first segment carries the inner-PID octet
 /// (<see cref="Segmenter"/> writes it on send; the <see cref="Reassembler"/> reads
 /// it on receive). A reassembled payload is delivered with that <b>original L3
-/// PID</b> — so segmentation no longer loses it.</item>
+/// PID</b> - so segmentation no longer loses it.</item>
 /// <item><b>Quirk off (<see cref="Ax25SessionQuirks.StrictlyFaithful"/>):</b> the
-/// figure-literal format — no inner-PID octet, and a reassembled payload is
+/// figure-literal format - no inner-PID octet, and a reassembled payload is
 /// delivered as <see cref="Ax25Frame.PidNoLayer3"/> (0xF0), the faithful "PID
 /// unknown / raw" value (<see cref="FigureLiteralReassembledPid"/>).</item>
 /// </list>
@@ -69,7 +69,7 @@ public sealed class SegmentationLayer
     public const byte FigureLiteralReassembledPid = Ax25Frame.PidNoLayer3;
 
     /// <summary>Construct a shim over the supplied session context.</summary>
-    /// <param name="context">The session's context — read for the negotiated
+    /// <param name="context">The session's context - read for the negotiated
     /// segmenter-enabled flag, N1, and the segmentation-format quirk. The quirk is
     /// read <i>lazily</i> (at first send/receive), because callers such as
     /// <see cref="Ax25Listener"/> construct the shim before their
@@ -81,7 +81,7 @@ public sealed class SegmentationLayer
     }
 
     /// <summary>Whether the Dire-Wolf first-segment inner-PID format is in effect
-    /// for this session — read live from the context's quirks (default on).</summary>
+    /// for this session - read live from the context's quirks (default on).</summary>
     private bool InnerPidFormat => context.Quirks.SegmentFirstCarriesL3Pid;
 
     /// <summary>
@@ -99,7 +99,7 @@ public sealed class SegmentationLayer
     /// <param name="data">The upper-layer payload.</param>
     /// <param name="pid">The Layer-3 PID for the (un-segmented) request.</param>
     /// <exception cref="InvalidOperationException">If the payload exceeds N1−1
-    /// and the segmenter has not been negotiated (v2.0 / not enabled) — the
+    /// and the segmenter has not been negotiated (v2.0 / not enabled) - the
     /// request can't be honoured without violating N1, so it's rejected
     /// cleanly.</exception>
     public IReadOnlyList<DlDataRequest> BuildSendRequests(ReadOnlyMemory<byte> data, byte pid = Ax25Frame.PidNoLayer3)
@@ -157,12 +157,12 @@ public sealed class SegmentationLayer
     /// a PID-0x08 indication that is empty, a non-First segment with no prior First,
     /// an inner-PID First missing its PID octet, or an out-of-sequence continuation.
     /// <see cref="Reassembler.Push"/> rejects each of these by throwing
-    /// (its strict, documented contract — see <see cref="Reassembler"/>). This
+    /// (its strict, documented contract - see <see cref="Reassembler"/>). This
     /// boundary process is the right place to turn that strict contract into a
     /// graceful drop: it catches the documented
     /// <see cref="ArgumentException"/> / <see cref="InvalidOperationException"/>,
     /// <b>resets any in-progress reassembly</b> (so a corrupt series can't poison
-    /// the next valid one), and returns <c>null</c> — the same "nothing to deliver
+    /// the next valid one), and returns <c>null</c> - the same "nothing to deliver
     /// yet" signal as a legitimate mid-series segment. Nothing propagates to the
     /// caller and nothing relies on <see cref="Ax25Listener"/>'s inbound catch-all.
     /// This matches the §6.6 / Fig C5.2 reassembler treating a bad segment as a
@@ -171,13 +171,13 @@ public sealed class SegmentationLayer
     /// </para>
     /// <para>
     /// The low-level <see cref="Reassembler.Push"/> contract is deliberately
-    /// <i>unchanged</i> — direct callers still get the strict throw; only this
+    /// <i>unchanged</i> - direct callers still get the strict throw; only this
     /// wire-facing seam softens it to a drop.
     /// </para>
     /// </remarks>
     /// <param name="indication">The indication the session raised.</param>
     /// <returns>The indication to deliver upward, or <c>null</c> when a
-    /// segment was consumed but the series is incomplete — or when a malformed
+    /// segment was consumed but the series is incomplete - or when a malformed
     /// segment was dropped (and the reassembler reset).</returns>
     public DataLinkDataIndication? OnDataIndication(DataLinkDataIndication indication)
     {
@@ -185,7 +185,7 @@ public sealed class SegmentationLayer
 
         if (indication.Pid != Ax25Frame.PidSegmented)
         {
-            return indication;   // not a segment — pass through transparently
+            return indication;   // not a segment - pass through transparently
         }
 
         // Construct the per-session reassembler lazily on first use, reading the
@@ -202,7 +202,7 @@ public sealed class SegmentationLayer
         {
             // Malformed / protocol-violating segment off the wire. Drop it cleanly
             // and discard any partially-accumulated series so a corrupt run can't
-            // poison the next valid one — the dropped reassembler is replaced lazily
+            // poison the next valid one - the dropped reassembler is replaced lazily
             // on the next segment, back in the "waiting for a First" state. We
             // swallow *only* Push's two documented contract exceptions; any other
             // (crash-class) exception would be a genuine bug and is left to surface.
@@ -212,11 +212,11 @@ public sealed class SegmentationLayer
 
         if (completed is null)
         {
-            return null;   // mid-series segment — nothing to deliver yet
+            return null;   // mid-series segment - nothing to deliver yet
         }
 
         // With the inner-PID quirk on, the reassembler recovered the original L3
-        // PID off the first segment — deliver with it. With the quirk off
+        // PID off the first segment - deliver with it. With the quirk off
         // (figure-literal) there is no inner PID, so deliver as PidNoLayer3.
         var pid = reassembler.LastRecoveredPid ?? FigureLiteralReassembledPid;
         return new DataLinkDataIndication(completed, pid);

@@ -3,7 +3,7 @@ namespace Packet.Node.Core.Auth.Oauth;
 /// <summary>
 /// A single-use OAuth authorization code (OAuth 2.1 code + PKCE). Bound to the client,
 /// the exact redirect URI, the PKCE challenge, the granted scope, the requested resource,
-/// and the authenticated owner — all re-checked at the token endpoint. Short TTL.
+/// and the authenticated owner - all re-checked at the token endpoint. Short TTL.
 /// </summary>
 /// <param name="Code">The opaque code value handed to the client via the redirect.</param>
 /// <param name="ClientId">The client the code was issued to (must match at token exchange).</param>
@@ -25,7 +25,7 @@ public sealed record OauthCode(
 
 /// <summary>
 /// The single-use authorization-code store. <see cref="Consume"/> is atomic (delete + return
-/// in one statement) so a code can be redeemed exactly once — a replay finds nothing. Resilient
+/// in one statement) so a code can be redeemed exactly once - a replay finds nothing. Resilient
 /// on store fault (logs + degrades to null/no-op).
 /// </summary>
 public interface IOauthCodeStore

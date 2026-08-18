@@ -25,7 +25,7 @@ Once everything is healthy:
 | net-sim KISS A | localhost:8100 | afsk1200 node A |
 | net-sim KISS B | localhost:8101 | afsk1200 node B |
 | rax25 | (no host port) | Habets's Rust AX.25 engine; dials netsim:8104 as a KISS-TCP client (built from source at image-build time) |
-| direwolf | localhost:8106 | Dire Wolf mod-128 peer — KISS-TCP of an internal "gateway" Dire Wolf; our session dials this. NOT on net-sim (see `direwolf/Dockerfile`); built from pinned source |
+| direwolf | localhost:8106 | Dire Wolf mod-128 peer - KISS-TCP of an internal "gateway" Dire Wolf; our session dials this. NOT on net-sim (see `direwolf/Dockerfile`); built from pinned source |
 
 Tear down:
 
@@ -37,7 +37,7 @@ docker compose -f docker/compose.interop.yml down -v
 
 Image references in `compose.interop.yml` are pinned to **sha256 digests**
 rather than floating tags. This makes a CI run two months from now behave
-identically to one today — useful for keeping interop scenarios reproducible
+identically to one today - useful for keeping interop scenarios reproducible
 when an upstream image rebases or changes behaviour.
 
 To refresh against a newer upstream image:

@@ -11,7 +11,7 @@ using Packet.Core;
 namespace Packet.Ax25.Properties;
 
 /// <summary>
-/// Runtime invariants — properties that hold on a live <see cref="Ax25Session"/>
+/// Runtime invariants - properties that hold on a live <see cref="Ax25Session"/>
 /// regardless of the input sequence.
 /// </summary>
 /// <remarks>
@@ -26,7 +26,7 @@ public class SessionRuntimeInvariants
     [Property(MaxTest = 200)]
     public void Window_Invariant_Holds_Under_Arbitrary_Data_Requests(byte requestCountRaw)
     {
-        // Number of DL-DATA-requests to post — clamped to a generous range so
+        // Number of DL-DATA-requests to post - clamped to a generous range so
         // even small N is meaningful while never running absurdly long.
         var requestCount = (requestCountRaw % 50) + 1;
 
@@ -71,7 +71,7 @@ public class SessionRuntimeInvariants
     [Property(MaxTest = 50)]
     public void TimerRecovery_Exits_To_Connected_Or_Disconnected_Within_N2_Plus_1_T1_Expiries(byte n2Raw)
     {
-        // N2 ∈ [1, 10] — keep N2 bounded so tests stay fast. The invariant
+        // N2 ∈ [1, 10] - keep N2 bounded so tests stay fast. The invariant
         // is structural: regardless of N2's exact value, TimerRecovery must
         // exit within at most N2+1 T1 expiries (the +1 accounts for the
         // initial Connected → TimerRecovery transition consuming the first
@@ -91,7 +91,7 @@ public class SessionRuntimeInvariants
         var terminalStates = new HashSet<string> { "Connected", "Disconnected", "AwaitingConnection", "AwaitingV22Connection", "AwaitingRelease" };
 
         // Bound the loop at N2+2 T1 cycles (one to enter TR, then N2 to exit
-        // — the +2 gives some slack, and we assert exit happens before reaching it).
+        // - the +2 gives some slack, and we assert exit happens before reaching it).
         for (int i = 0; i <= n2 + 2; i++)
         {
             rig.Time.Advance(TimeSpan.FromMilliseconds(t1vMs + 10));
@@ -103,7 +103,7 @@ public class SessionRuntimeInvariants
             }
 
             // We've left TimerRecovery (or never entered, depending on the
-            // path) — it must be one of the expected terminal states.
+            // path) - it must be one of the expected terminal states.
             terminalStates.Should().Contain(rig.Session.CurrentState,
                 $"after {i + 1} T1 cycles, state should be a known non-TimerRecovery state");
             seenTimerRecovery.Should().BeTrue(
@@ -123,8 +123,8 @@ public class SessionRuntimeInvariants
     /// decision is drawn after "V(a) := N(r)", so it tests V(s) = N(r); the
     /// table used to test the stale V(a), mis-routing to Invoke Retransmission
     /// so recovery never completed (RC → N2 → DM). The property above only
-    /// asserts TimerRecovery <i>terminates</i> — and Disconnected counts as
-    /// termination — so it could not catch this; this fact pins the success
+    /// asserts TimerRecovery <i>terminates</i> - and Disconnected counts as
+    /// termination - so it could not catch this; this fact pins the success
     /// outcome specifically. Found on-air via packet.net#214.
     /// </summary>
     [Fact]
@@ -142,7 +142,7 @@ public class SessionRuntimeInvariants
         rig.Time.Advance(TimeSpan.FromMilliseconds(110));
         rig.Session.CurrentState.Should().Be("TimerRecovery");
 
-        // Peer replies RR, response, F=1, N(r)=1 — acks the outstanding frame.
+        // Peer replies RR, response, F=1, N(r)=1 - acks the outstanding frame.
         var rr = Ax25Frame.Rr(
             destination: rig.Context.Local,
             source: rig.Context.Remote,
@@ -161,7 +161,7 @@ public class SessionRuntimeInvariants
     /// <summary>
     /// Sliding-window invariant: the count of unacked I-frames
     /// <c>(V(s) - V(a)) mod Modulus</c> must never exceed <c>K</c>.
-    /// This is the AX.25 v2.2 §4.3.2.1 send-window constraint —
+    /// This is the AX.25 v2.2 §4.3.2.1 send-window constraint -
     /// crossing it would imply the runtime queued an I-frame outside
     /// the negotiated window.
     /// </summary>
@@ -174,7 +174,7 @@ public class SessionRuntimeInvariants
 
     /// <summary>
     /// Rig: a single connected session with no peer wired. Used by the
-    /// invariant properties — these test only sender-side state under
+    /// invariant properties - these test only sender-side state under
     /// arbitrary inputs; peer behaviour doesn't matter for the
     /// invariants under test.
     /// </summary>

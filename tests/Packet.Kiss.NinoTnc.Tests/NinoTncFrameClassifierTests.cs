@@ -84,7 +84,7 @@ public class NinoTncFrameClassifierTests
     {
         // The 2-byte-payload echo is correlated inside NinoTncSerialPort by
         // sequence tag and surfaces via SendFrameWithAckAsync's return value.
-        // The classifier does not generate a typed event for it — by design.
+        // The classifier does not generate a typed event for it - by design.
         var raw = new KissFrame(0, KissCommand.AckMode, new byte[] { 0x12, 0x34 });
 
         var evt = NinoTncFrameClassifier.Classify(raw);
@@ -95,7 +95,7 @@ public class NinoTncFrameClassifierTests
     [Fact]
     public void Unrecognised_Command_Classifies_As_Unknown()
     {
-        // KISS Poll (0x0E) — not part of our supported subset; classifier
+        // KISS Poll (0x0E) - not part of our supported subset; classifier
         // gives the caller raw access via Unknown so they can decide what
         // to do.
         var raw = new KissFrame(0, KissCommand.Poll, Array.Empty<byte>());
@@ -109,7 +109,7 @@ public class NinoTncFrameClassifierTests
     [Fact]
     public void KISS_Data_With_Garbage_Body_Classifies_As_Unknown()
     {
-        // 8 bytes — too short for an AX.25 header, no FirmwareVr marker.
+        // 8 bytes - too short for an AX.25 header, no FirmwareVr marker.
         var raw = new KissFrame(0, KissCommand.Data, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 });
 
         var evt = NinoTncFrameClassifier.Classify(raw);

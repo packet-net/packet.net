@@ -4,7 +4,7 @@ namespace Packet.Kiss;
 
 /// <summary>
 /// Maps a raw <see cref="KissFrame"/> to its corresponding typed
-/// <see cref="KissInboundEvent"/>. Generic across KISS modems —
+/// <see cref="KissInboundEvent"/>. Generic across KISS modems -
 /// recognises the shapes defined by KISS itself (Data → AX.25,
 /// ACKMODE-Data, otherwise Unknown) without any modem-specific
 /// knowledge.
@@ -19,7 +19,7 @@ namespace Packet.Kiss;
 public static class KissFrameClassifier
 {
     /// <summary>
-    /// Classify <paramref name="frame"/>. Never returns null — frames
+    /// Classify <paramref name="frame"/>. Never returns null - frames
     /// the rules don't recognise become an
     /// <see cref="UnknownInboundEvent"/>.
     /// </summary>

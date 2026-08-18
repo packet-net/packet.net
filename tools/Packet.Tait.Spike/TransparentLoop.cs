@@ -13,7 +13,7 @@ namespace Packet.Tait.Spike;
 /// TNC-less Transparent-mode AX.25 modems, push AX.25 UI frames radio-to-radio (both directions)
 /// over the FFSK byte pipe, and confirm intact round-trip, KISS-SLIP boundary framing, populated
 /// timing metadata (ReceivedAt + EstimatedAirtime; RSSI/DCD null), and a clean Transparent exit
-/// (both radios back in Command mode). No NinoTNC involved — the radio's own modem carries it.
+/// (both radios back in Command mode). No NinoTNC involved - the radio's own modem carries it.
 /// </summary>
 internal static class TransparentLoop
 {
@@ -23,7 +23,7 @@ internal static class TransparentLoop
         Console.WriteLine($"identifiers: A='{idA}'  B='{idB}'  frames/direction={framesPerDirection}");
 
         // Re-scan and print the current serial→port map (device paths renumber; never trust
-        // remembered /dev/ttyUSB* numbers — bind by CCDI serial).
+        // remembered /dev/ttyUSB* numbers - bind by CCDI serial).
         Console.WriteLine("scanning for Tait radios (CCDI MODEL/serial probe)...");
         var discovered = new List<TaitDiscoveredRadio>();
         await foreach (var found in TaitRadioPortDiscovery.DiscoverAsync())

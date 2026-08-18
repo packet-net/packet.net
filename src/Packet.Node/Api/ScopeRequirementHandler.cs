@@ -6,7 +6,7 @@ namespace Packet.Node.Api;
 
 /// <summary>
 /// Evaluates a <see cref="ScopeRequirement"/> against the request's authenticated
-/// principal — but <b>only when <c>management.auth.enabled</c> is on</b>. With the
+/// principal - but <b>only when <c>management.auth.enabled</c> is on</b>. With the
 /// flag off it succeeds the requirement unconditionally, so every gated endpoint
 /// serves unauthenticated exactly as before auth existed (the default-off,
 /// no-regression contract).
@@ -18,7 +18,7 @@ namespace Packet.Node.Api;
 /// principal must be authenticated, its <c>scope</c> claim must
 /// <see cref="AuthScopes.Satisfies"/> the endpoint's required scope (admin ⊃
 /// operate ⊃ read), and its <c>aud</c> must match the gate's required audience
-/// (control-API vs MCP) — so an MCP token never satisfies a control-API gate.
+/// (control-API vs MCP) - so an MCP token never satisfies a control-API gate.
 /// </remarks>
 public sealed class ScopeRequirementHandler(IConfigProvider config) : AuthorizationHandler<ScopeRequirement>
 {

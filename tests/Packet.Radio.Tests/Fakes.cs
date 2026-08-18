@@ -76,16 +76,16 @@ internal sealed class FakeRig : IRigControl
 
     public bool Ptt { get; private set; }
 
-    /// <summary>When set, every receive-side read throws it — models a bounced daemon mid-poll.</summary>
+    /// <summary>When set, every receive-side read throws it - models a bounced daemon mid-poll.</summary>
     public RigException? ReadFault { get; set; }
 
-    /// <summary>Number of DCD reads attempted (faulted ones included) — cadence assertions.</summary>
+    /// <summary>Number of DCD reads attempted (faulted ones included) - cadence assertions.</summary>
     public int DcdReads => Volatile.Read(ref dcdReads);
 
-    /// <summary>Number of signal-strength reads attempted — delegation assertions.</summary>
+    /// <summary>Number of signal-strength reads attempted - delegation assertions.</summary>
     public int StrengthReads => Volatile.Read(ref strengthReads);
 
-    /// <summary>Number of PTT commands issued — no-redundant-unkey assertions.</summary>
+    /// <summary>Number of PTT commands issued - no-redundant-unkey assertions.</summary>
     public int PttSets => Volatile.Read(ref pttSets);
 
     /// <summary>True once <see cref="DisposeAsync"/> ran.</summary>

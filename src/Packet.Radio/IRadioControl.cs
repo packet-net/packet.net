@@ -1,7 +1,7 @@
 namespace Packet.Radio;
 
 /// <summary>
-/// A control/telemetry channel to the radio behind a modem — the seam OQ-011 asked for.
+/// A control/telemetry channel to the radio behind a modem - the seam OQ-011 asked for.
 /// The contract is the *common subset* a CAT-style serial protocol can realistically offer
 /// (RSSI read, carrier-sense, transmitter keying); anything richer is discovered through
 /// <see cref="Capabilities"/> and exposed on the concrete driver (e.g. Tait CCDI's PA
@@ -9,7 +9,7 @@ namespace Packet.Radio;
 /// </summary>
 /// <remarks>
 /// Experimental (Phase 10 spike): the shape follows plan OQ-011's proposed common subset
-/// {RSSI-get, busy-get, PTT-set} — frequency/channel control is deliberately deferred until a
+/// {RSSI-get, busy-get, PTT-set} - frequency/channel control is deliberately deferred until a
 /// second implementation (Yaesu CAT / ICOM CI-V) exists to test the abstraction against.
 /// </remarks>
 public interface IRadioControl : IAsyncDisposable
@@ -19,7 +19,7 @@ public interface IRadioControl : IAsyncDisposable
     RadioCapabilities Capabilities { get; }
 
     /// <summary>
-    /// Read the receiver's current RSSI in dBm (instantaneous, not averaged — suitable for
+    /// Read the receiver's current RSSI in dBm (instantaneous, not averaged - suitable for
     /// per-frame attribution). Throws <see cref="NotSupportedException"/> when
     /// <see cref="RadioCapabilities.RssiRead"/> is absent.
     /// </summary>
@@ -28,7 +28,7 @@ public interface IRadioControl : IAsyncDisposable
     /// <summary>
     /// Key or unkey the transmitter. Throws <see cref="NotSupportedException"/> when
     /// <see cref="RadioCapabilities.TransmitterControl"/> is absent. Drivers must guarantee
-    /// best-effort unkey on dispose — a radio latched in TX is a site incident.
+    /// best-effort unkey on dispose - a radio latched in TX is a site incident.
     /// </summary>
     ValueTask SetTransmitterAsync(bool transmit, CancellationToken cancellationToken = default);
 
@@ -41,7 +41,7 @@ public interface IRadioControl : IAsyncDisposable
 
     /// <summary>
     /// Fired on every carrier-sense edge the radio reports. This is a *hardware* data-carrier
-    /// detect — it leads the modem's decoded frame by the whole preamble + frame duration, which
+    /// detect - it leads the modem's decoded frame by the whole preamble + frame duration, which
     /// is what makes it valuable for CSMA. Subscribers run on the driver's read pump: keep
     /// handlers fast and non-blocking.
     /// </summary>
@@ -85,7 +85,7 @@ public enum RadioCapabilities
 
     /// <summary>
     /// The driver can supply an <see cref="IRadioSideChannel"/> (radio-native small-datagram
-    /// messaging, e.g. Tait SDM). Advertises the <em>machinery</em> only — whether the feature
+    /// messaging, e.g. Tait SDM). Advertises the <em>machinery</em> only - whether the feature
     /// is enabled in the radio's programming needs a live probe; see the capability-gating
     /// remarks on <see cref="IRadioSideChannel"/>.
     /// </summary>

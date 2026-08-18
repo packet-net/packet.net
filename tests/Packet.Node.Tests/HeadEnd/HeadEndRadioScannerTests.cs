@@ -63,7 +63,7 @@ public sealed class HeadEndRadioScannerTests
         // The inventory's id-stability fields flow through to the scan row (#579).
         device.IdSource.Should().Be("by-path");
         device.IdStable.Should().BeTrue();
-        // #567: a NinoTNC's KISS baud is a fixed 57600 — the identify clocks the head-end line to it
+        // #567: a NinoTNC's KISS baud is a fixed 57600 - the identify clocks the head-end line to it
         // (once, no sweep) before GETVER.
         handler.LineCalls.Select(BaudOf).Should().Equal(57600);
         await responder.WaitAsync(Timeout);
@@ -89,10 +89,10 @@ public sealed class HeadEndRadioScannerTests
         device.Serial.Should().Be("1G000123");
         device.Version.Should().Be("03.02");
         device.Baud.Should().Be(28800);
-        // The band split is read off the product code (record [00]) — 2m for the default rig.
+        // The band split is read off the product code (record [00]) - 2m for the default rig.
         device.BandCode.Should().Be("B1");
         device.AmateurBand.Should().Be("2m");
-        // It answered at the inventory clock — the only line call is the open-time clock, no sweep.
+        // It answered at the inventory clock - the only line call is the open-time clock, no sweep.
         handler.LineCalls.Select(BaudOf).Should().Equal(28800);
         await responder.WaitAsync(Timeout);
     }
@@ -128,7 +128,7 @@ public sealed class HeadEndRadioScannerTests
             InstanceId = "pi-shack",
             Ports = [new HeadEndPortInfo { Id = "tait0", TcpPort = pipe.Port, Baud = 28800, UsbVid = "10c4" }],
         });
-        // The loopback answers MODEL only once the head-end has been clocked to 19200 — so the scan
+        // The loopback answers MODEL only once the head-end has been clocked to 19200 - so the scan
         // has to sweep off the (wrong) 28800 inventory clock before it identifies.
         var responder = pipe.RespondTaitIdentityAsync(shouldAnswer: () => handler.LastBaud == 19200);
         var discovery = new FakeHeadEndDiscovery(new DiscoveredHeadEnd("pi-shack", "127.0.0.1", 7300));
@@ -154,9 +154,9 @@ public sealed class HeadEndRadioScannerTests
             InstanceId = "pi-shack",
             Ports =
             [
-                // A dev-fallback id (no by-path/by-id link) — the head-end flags it unstable.
+                // A dev-fallback id (no by-path/by-id link) - the head-end flags it unstable.
                 new HeadEndPortInfo { Id = "ttyUSB9", TcpPort = pipe.Port, Baud = 57600, UsbVid = "04d8", IdSource = "dev", IdStable = false },
-                // A bound device from an OLD head-end (< v0.1.3) that reports neither field —
+                // A bound device from an OLD head-end (< v0.1.3) that reports neither field -
                 // its scan row must carry NULLS (unknown), never an assumed "stable".
                 new HeadEndPortInfo { Id = "nino-bound", TcpPort = 9, Baud = 57600, UsbVid = "04d8" },
             ],

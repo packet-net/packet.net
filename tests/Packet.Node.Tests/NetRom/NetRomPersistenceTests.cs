@@ -46,7 +46,7 @@ public sealed class NetRomPersistenceTests : IDisposable
     {
         new SqliteNetRomRoutingStore(dbPath).Save(Sample(T0), T0);
 
-        using var netRom = NewService(new FakeTimeProvider(T0));   // restarts immediately — no decay
+        using var netRom = NewService(new FakeTimeProvider(T0));   // restarts immediately - no decay
 
         var snap = netRom.Snapshot();
         snap.Destinations.Should().Contain(d => d.Destination == Dest);
@@ -72,7 +72,7 @@ public sealed class NetRomPersistenceTests : IDisposable
     {
         new SqliteNetRomRoutingStore(dbPath).Save(Sample(T0, obs: 6), T0);
 
-        // Down for a week — far more than the 6 obsolescence intervals.
+        // Down for a week - far more than the 6 obsolescence intervals.
         using var netRom = NewService(new FakeTimeProvider(T0.AddDays(7)));
 
         netRom.Snapshot().DestinationCount.Should().Be(0, "a week of downtime ages every route out");

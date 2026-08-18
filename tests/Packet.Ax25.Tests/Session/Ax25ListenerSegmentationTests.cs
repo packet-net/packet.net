@@ -119,7 +119,7 @@ public class Ax25ListenerSegmentationTests
     public async Task A_configured_N1_via_session_parameters_drives_segmentation_for_new_sessions()
     {
         // The per-port PACLEN path (packet.net#458): N1 is carried on the live-reseed
-        // Ax25SessionParameters record (not Ax25ListenerOptions — that is parity-tracked),
+        // Ax25SessionParameters record (not Ax25ListenerOptions - that is parity-tracked),
         // seeded into a NEW session's context at build time. Prove a configured N1=64
         // (set via UpdateSessionParameters, exactly as the node-host PortSupervisor does
         // after constructing the listener) actually drives segmentation on the wire.
@@ -199,7 +199,7 @@ public class Ax25ListenerSegmentationTests
         var (listener, _, _) = await AcceptedSession(_ => { });
         await using var _ = listener;
 
-        // A session this listener never built (never driven — just constructable).
+        // A session this listener never built (never driven - just constructable).
         var alien = new Ax25SessionContext { Local = LocalCall, Remote = new Callsign("M5ABC", 3) };
         var scheduler = new SystemTimerScheduler(TimeProvider.System);
         var dispatcher = new ActionDispatcher(onTimerExpiry: _ => { }, sendSFrame: _ => { });
@@ -258,7 +258,7 @@ public class Ax25ListenerSegmentationTests
     /// <summary>
     /// The receive-path hardening (FINDINGS.md 2026-06-03): a malformed PID-0x08
     /// segment arriving off the wire through the real <see cref="Ax25Listener"/>
-    /// pump is dropped cleanly at the <see cref="SegmentationLayer"/> seam — no
+    /// pump is dropped cleanly at the <see cref="SegmentationLayer"/> seam - no
     /// DL-DATA indication surfaces, the pump survives, and (the reset half) a valid
     /// segmented series delivered immediately afterwards still reassembles intact.
     /// This proves the fix does not lean on the listener's inbound catch-all.
@@ -277,14 +277,14 @@ public class Ax25ListenerSegmentationTests
         // A malformed segment off the wire: a non-First (First bit clear) segment
         // with no in-progress series. Carried as a normal I-frame, PID 0x08, N(S)=0.
         // The I-frame is sequence-valid (so V(R) advances), but its info field is a
-        // protocol-violating segment — it must be dropped at the seam, delivering
+        // protocol-violating segment - it must be dropped at the seam, delivering
         // nothing upward, without throwing through the pump.
         modem.InjectInbound(Ax25Frame.I(LocalCall, PeerCall, nr: 0, ns: 0,
             info: new byte[] { 0x05, 0xAA, 0xBB }, pid: Ax25Frame.PidSegmented));
 
         // A valid single-segment series immediately afterwards (N(S)=1): First bit
         // set, remaining 0, one data byte 0x42. If the malformed segment had
-        // poisoned the reassembler — or thrown through the pump and wedged it —
+        // poisoned the reassembler - or thrown through the pump and wedged it -
         // this would not reassemble.
         modem.InjectInbound(Ax25Frame.I(LocalCall, PeerCall, nr: 0, ns: 1,
             info: new byte[] { Segmenter.FirstBit | 0, 0x42 }, pid: Ax25Frame.PidSegmented));

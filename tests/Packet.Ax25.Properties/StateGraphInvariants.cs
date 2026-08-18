@@ -15,7 +15,7 @@ namespace Packet.Ax25.Properties;
 /// <para>
 /// Each property runs once (no FsCheck-generated input) and iterates
 /// over the static transition tables. The <c>[Property]</c> attribute is
-/// used so that any future per-element generator can slot in easily —
+/// used so that any future per-element generator can slot in easily -
 /// e.g. shrinking on a specific transition that violates the invariant.
 /// </para>
 /// <para>
@@ -43,7 +43,7 @@ public class StateGraphInvariants
     }
 
     /// <summary>
-    /// State names that are valid as a transition's <c>Next</c> target —
+    /// State names that are valid as a transition's <c>Next</c> target -
     /// either a state with its own transition table, or a known terminal
     /// state we haven't transcribed yet (e.g. TimerRecovery before figc4.5).
     /// </summary>
@@ -122,7 +122,7 @@ public class StateGraphInvariants
     public void AllActionsHaveDefinedVerb()
     {
         // Verb is the generated Ax25ActionVerb enum (Packet.Ax25.Sdl 0.8.0+),
-        // so "non-empty" is now "a defined enum member" — a table carrying an
+        // so "non-empty" is now "a defined enum member" - a table carrying an
         // out-of-range cast would be a codegen bug.
         var offenders = AllDataLinkTables()
             .SelectMany(t => t.Transitions.SelectMany(tx =>
@@ -151,7 +151,7 @@ public class StateGraphInvariants
     public void MultiTransitionEventsAlwaysHaveGuards()
     {
         // When a single event produces multiple transitions, every transition
-        // must have a non-null guard — otherwise the orchestrator can't pick
+        // must have a non-null guard - otherwise the orchestrator can't pick
         // between them deterministically. (The codegen's guard_overlap and
         // decision_branch_completeness lints check the deeper partition
         // property; this test just enforces the shape.)
@@ -199,7 +199,7 @@ public class StateGraphInvariants
     [Property(DisplayName = "No transition appears in more than one state table")]
     public void TransitionIdsAreUniqueAcrossAllTables()
     {
-        // Belt-and-braces vs TransitionIdsAreUniqueWithinTable — same id
+        // Belt-and-braces vs TransitionIdsAreUniqueWithinTable - same id
         // appearing in two different state tables is legal in principle
         // (they're scoped by `From`) but is a smell that suggests
         // copy-paste drift. Surface globally-duplicated ids for review.
@@ -213,8 +213,8 @@ public class StateGraphInvariants
             .Select(g => $"{g.Key} appears in {{{string.Join(", ", g.Select(x => x.Table))}}}")
             .ToArray();
 
-        // Don't fail — this is informational. But assert the count for visibility.
-        // (Currently every figure's t01 means t01 appears 5 times — by design.)
+        // Don't fail - this is informational. But assert the count for visibility.
+        // (Currently every figure's t01 means t01 appears 5 times - by design.)
         // If we ever want to enforce global uniqueness, change this to .Should().BeEmpty().
         collisions.Length.Should().BeGreaterThan(0,
             "expected at least some shared t## ids across tables (by figure convention)");

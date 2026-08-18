@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Applications;
 /// Enforced separation guardrails for the app platform: the node host and core share <b>no</b>
 /// compile-time link with any application, and don't hardcode a specific app (WALL) into their
 /// source. WALL being a separate-language (Python) out-of-process program already makes a code
-/// link impossible; these tests forward-proof that — so a future contributor can't quietly add
+/// link impossible; these tests forward-proof that - so a future contributor can't quietly add
 /// a project reference to an in-repo app or bake an app's path into the node. The separation is
 /// the proof of the seam, so it is asserted, not merely intended.
 /// </summary>
@@ -41,7 +41,7 @@ public sealed class AppPlatformArchitectureTests
     {
         var root = RepoRoot();
         // Unambiguous references to the WALL app specifically (its script / its example dir).
-        // Deliberately NOT a bare "wall" match — the repo's §2.7 "no wall-clock" convention is
+        // Deliberately NOT a bare "wall" match - the repo's §2.7 "no wall-clock" convention is
         // pervasive and unrelated; these tokens only ever mean "the WALL app".
         var forbidden = new[] { "wall.py", "examples/wall", "examples\\wall" };
         var offenders = new List<string>();

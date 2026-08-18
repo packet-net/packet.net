@@ -1,7 +1,7 @@
 namespace Packet.Mqtt.Spike;
 
 /// <summary>
-/// Structured ingestion mode — parse each MQTT payload as an AX.25 frame
+/// Structured ingestion mode - parse each MQTT payload as an AX.25 frame
 /// (optionally KISS-wrapped, depending on what `probe` revealed), gather
 /// per-port stats, and log failures to JSONL for analysis.
 /// </summary>

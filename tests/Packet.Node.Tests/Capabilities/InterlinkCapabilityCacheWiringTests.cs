@@ -12,7 +12,7 @@ namespace Packet.Node.Tests.Capabilities;
 
 /// <summary>
 /// The NET/ROM interlink dial path consults the per-peer capability cache (PlanDial), threads
-/// the resulting plan to the dial, and records the OUTCOME — but only on a RETURNED dial, never
+/// the resulting plan to the dial, and records the OUTCOME - but only on a RETURNED dial, never
 /// on a throw. Drives <see cref="NetRomService.EnsureInterlinkForTestAsync"/> with the
 /// claim-aware <see cref="NetRomService.OpenInterlink"/> hook capturing the plan it was handed
 /// and returning a session with a controlled context, so the wiring is asserted deterministically
@@ -33,7 +33,7 @@ public sealed class InterlinkCapabilityCacheWiringTests
     };
 
     // A bare started listener over one InMemoryRadio endpoint, for AttachPort (its identity is
-    // all EnsureInterlinkAsync's no-route fallback needs — it picks the first attachment).
+    // all EnsureInterlinkAsync's no-route fallback needs - it picks the first attachment).
     private static async Task<Ax25Listener> StartListenerAsync(IAx25Transport transport, Callsign myCall)
     {
         var listener = new Ax25Listener(transport, new Ax25ListenerOptions
@@ -167,7 +167,7 @@ public sealed class InterlinkCapabilityCacheWiringTests
             NullLogger<NetRomService>.Instance, store: null, capabilityCache: cache);
         svc.AttachPort(PortId, NodeCall, portListener);
 
-        // The dial throws — no link of either version, so it carries no capability signal.
+        // The dial throws - no link of either version, so it carries no capability signal.
         svc.OpenInterlink = (_, _, _, _) => throw new IOException("neighbour did not answer");
 
         Func<Task> dial = async () => await svc.EnsureInterlinkForTestAsync(new NeighbourKey(PortId, Neighbour));

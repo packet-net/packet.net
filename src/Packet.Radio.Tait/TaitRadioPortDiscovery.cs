@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 namespace Packet.Radio.Tait;
 
 /// <summary>
-/// Finds Tait radios on the machine's serial ports — the CCDI analogue of
+/// Finds Tait radios on the machine's serial ports - the CCDI analogue of
 /// <c>NinoTncPortDiscovery</c>, but with an authoritative probe: unlike KISS, CCDI has a
 /// query/response identity command, so a candidate port either answers a MODEL query with a
 /// serial number or it isn't a Tait radio. Intended for the node host's "just plug it in"
@@ -13,7 +13,7 @@ namespace Packet.Radio.Tait;
 /// </summary>
 /// <remarks>
 /// The CCDI USB dongles seen in the wild (CP2102s) often share identical USB serial numbers,
-/// so <c>/dev/serial/by-id</c> cannot distinguish two radios — the CCDI serial-number query is
+/// so <c>/dev/serial/by-id</c> cannot distinguish two radios - the CCDI serial-number query is
 /// the only reliable identity. Probing writes a <c>q002F</c> (MODEL query) to each candidate:
 /// harmless to a KISS TNC sharing the machine (unframed ASCII is discarded by KISS framing),
 /// but skip ports you know belong to something touchier via the env-var override.
@@ -26,7 +26,7 @@ public static class TaitRadioPortDiscovery
 
     /// <summary>
     /// Candidate serial ports worth probing, best-first: the env-var override verbatim if set;
-    /// otherwise on Linux the USB-UART bridges (<c>/dev/ttyUSB*</c> — CCDI dongles are UART
+    /// otherwise on Linux the USB-UART bridges (<c>/dev/ttyUSB*</c> - CCDI dongles are UART
     /// bridges, whereas NinoTNCs enumerate as CDC <c>/dev/ttyACM*</c>); otherwise every port
     /// the OS reports.
     /// </summary>
@@ -53,7 +53,7 @@ public static class TaitRadioPortDiscovery
     }
 
     /// <summary>
-    /// Ask "is there a Tait radio on this port at this baud rate?" — opens the port, sends a
+    /// Ask "is there a Tait radio on this port at this baud rate?" - opens the port, sends a
     /// MODEL/serial/versions query, and returns the identity, or <c>null</c> when anything
     /// (open failure, timeout, gibberish) says no. Never throws for a negative.
     /// </summary>
@@ -81,7 +81,7 @@ public static class TaitRadioPortDiscovery
     }
 
     /// <summary>
-    /// Probe every candidate port (serially — two probes racing on one USB hub help nobody)
+    /// Probe every candidate port (serially - two probes racing on one USB hub help nobody)
     /// and yield each radio found. <paramref name="baudRates"/> defaults to 28800 only; pass
     /// more (e.g. 9600, 19200) to sweep radios programmed at other rates.
     /// </summary>

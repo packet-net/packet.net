@@ -5,7 +5,7 @@ namespace Packet.Mcp.Tools;
 
 /// <summary>
 /// The write-side MCP tools. Gated <c>operate</c> by the host and audit-logged
-/// there (actor/transport/scope/payload hash) — the caller identity comes from
+/// there (actor/transport/scope/payload hash) - the caller identity comes from
 /// <see cref="IMcpCallerAccessor"/>. Each delegates to <see cref="INodeMcpBackend"/>,
 /// whose live implementation runs the action through the node's existing
 /// exclusive-gated action paths (so an MCP write never races a reconcile).
@@ -21,7 +21,7 @@ public sealed class WriteTools(INodeMcpBackend backend, IMcpCallerAccessor calle
     // Every write tool needs `operate`. The /mcp endpoint is gated `read` (so any
     // access needs at least read), and this is the per-tool step up to operate.
     // When the node has auth off, the host grants all scopes, so this passes
-    // through — matching the REST surface's behaviour.
+    // through - matching the REST surface's behaviour.
     private McpCaller RequireOperate()
     {
         var c = caller.Current;

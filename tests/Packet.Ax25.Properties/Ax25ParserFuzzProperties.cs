@@ -10,7 +10,7 @@ namespace Packet.Ax25.Properties;
 /// happy-path round-trip tests in <see cref="Ax25FrameRoundTripProperties"/>
 /// by asserting that <see cref="Ax25Frame.TryParse"/> and
 /// <see cref="Ax25Address.Read"/> degrade gracefully on arbitrary
-/// (often nonsense) input — never throwing unexpected exception types,
+/// (often nonsense) input - never throwing unexpected exception types,
 /// never producing an output that doesn't round-trip.
 /// </summary>
 /// <remarks>
@@ -47,7 +47,7 @@ public class Ax25ParserFuzzProperties
 
     /// <summary>
     /// Any frame that <c>TryParse</c> accepts must round-trip cleanly
-    /// through <c>ToBytes</c> + <c>TryParse</c> — its byte form is
+    /// through <c>ToBytes</c> + <c>TryParse</c> - its byte form is
     /// canonical for the value it represents.
     /// </summary>
     [Property(MaxTest = 1_000)]
@@ -100,7 +100,7 @@ public class Ax25ParserFuzzProperties
 
     /// <summary>
     /// Anything parsed-then-encoded should fit in the parser's claimed
-    /// <c>RequiredBytes</c> budget exactly — no over-allocation, no
+    /// <c>RequiredBytes</c> budget exactly - no over-allocation, no
     /// silent truncation.
     /// </summary>
     [Property(MaxTest = 1_000)]

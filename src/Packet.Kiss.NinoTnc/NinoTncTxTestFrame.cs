@@ -9,7 +9,7 @@ namespace Packet.Kiss.NinoTnc;
 /// only when the operator presses the on-board TX-Test button: the modem
 /// transmits a test signal over the air, *and* sends this synthetic KISS
 /// frame to its USB host carrying its firmware version, identity, and
-/// runtime counters. It is on-demand only — the firmware does not emit it
+/// runtime counters. It is on-demand only - the firmware does not emit it
 /// on a timer. The frame is a regular KISS data frame (command 0x00) whose
 /// payload is an ASCII run of <c>=Key:Value</c> pairs rather than an AX.25
 /// frame.
@@ -26,7 +26,7 @@ namespace Packet.Kiss.NinoTnc;
 /// <para>
 /// Numeric fields are hex-encoded. <c>BrdSwchMod</c> packs four bytes:
 /// <c>XX</c> (board revision), <c>YY</c> (DIP switch position, low 4 bits),
-/// then <c>ZZZZ</c> (a 16-bit firmware mode value — its low byte is the
+/// then <c>ZZZZ</c> (a 16-bit firmware mode value - its low byte is the
 /// "running mode" lookup index in <see cref="NinoTncCatalog.FirmwareByteToMode"/>).
 /// </para>
 /// <para>
@@ -56,7 +56,7 @@ public sealed record NinoTncTxTestFrame
     /// <summary>
     /// Which dsPIC chip variant this modem runs, derived from the
     /// firmware version's major component. Important for firmware
-    /// update flows — the two variants need different hex images and
+    /// update flows - the two variants need different hex images and
     /// mixing them up bricks the modem until ICSP recovery.
     /// </summary>
     public Firmware.NinoTncChipVariant ChipVariant =>
@@ -71,14 +71,14 @@ public sealed record NinoTncTxTestFrame
     /// <summary>Uptime as a <see cref="TimeSpan"/>, when <see cref="UptimeMs"/> is set.</summary>
     public TimeSpan? Uptime => UptimeMs.HasValue ? TimeSpan.FromMilliseconds(UptimeMs.Value) : null;
 
-    /// <summary>The XX byte from BrdSwchMod — the board revision number.</summary>
+    /// <summary>The XX byte from BrdSwchMod - the board revision number.</summary>
     public byte? BoardRevision { get; init; }
 
-    /// <summary>The YY byte from BrdSwchMod — the DIP-switch position (0–15).</summary>
+    /// <summary>The YY byte from BrdSwchMod - the DIP-switch position (0-15).</summary>
     public byte? DipSwitchPosition { get; init; }
 
     /// <summary>
-    /// The low byte of the ZZZZ field from BrdSwchMod — the firmware-mode
+    /// The low byte of the ZZZZ field from BrdSwchMod - the firmware-mode
     /// identifier that <see cref="NinoTncCatalog.FirmwareByteToMode"/> maps
     /// to the "actually running" mode (matters when DIP=15 = "Set from KISS").
     /// </summary>
@@ -105,7 +105,7 @@ public sealed record NinoTncTxTestFrame
 
     /// <summary>
     /// The preamble word counter (the same register the numeric report
-    /// exposes as 0B — see <see cref="NinoTncStatusFrame.PreambleWordCount"/>).
+    /// exposes as 0B - see <see cref="NinoTncStatusFrame.PreambleWordCount"/>).
     /// Bench note: on firmware 3.41 this register was never observed to
     /// increment for ordinary host traffic (TX or RX, modes 6/7).
     /// </summary>
@@ -119,8 +119,8 @@ public sealed record NinoTncTxTestFrame
 
     /// <summary>
     /// Every labelled field the frame carried, verbatim (key → value).
-    /// Fields this type has no property for — e.g. additions in newer
-    /// firmware — are still present here, so nothing is lost.
+    /// Fields this type has no property for - e.g. additions in newer
+    /// firmware - are still present here, so nothing is lost.
     /// </summary>
     public IReadOnlyDictionary<string, string> RawFields { get; init; } =
         new Dictionary<string, string>();
@@ -179,7 +179,7 @@ public sealed record NinoTncTxTestFrame
             {
                 dipPos = (byte)(yy & 0x0F);
             }
-            // ZZZZ is 4 hex chars — high byte then low byte of a 16-bit value.
+            // ZZZZ is 4 hex chars - high byte then low byte of a 16-bit value.
             // The catalog keys on the low byte (kissproxy convention).
             if (TryParseHexByte(brdSwchMod.AsSpan(6, 2), out var lowZ))
             {

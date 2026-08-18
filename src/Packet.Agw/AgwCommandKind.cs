@@ -10,11 +10,11 @@ namespace Packet.Agw;
 /// dispatch commands. Application → server letters are uppercase
 /// (commands sent by us); server → application letters are mostly
 /// lowercase or capital depending on the verb. The reverse case
-/// distinction is the only schema-level handshake — no length prefix,
+/// distinction is the only schema-level handshake - no length prefix,
 /// no negotiation. Reading the command letter is enough to know what
 /// the remaining frame body means.
 ///
-/// We deliberately do NOT enum these — the wire field is a byte and
+/// We deliberately do NOT enum these - the wire field is a byte and
 /// some servers send letters not in the formal spec (custom modem
 /// integrations occasionally use private letters). Treating it as a
 /// raw byte keeps us tolerant.

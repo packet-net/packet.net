@@ -6,10 +6,10 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// v2.2 arc V2 — SABME establishment + version negotiation.
+/// v2.2 arc V2 - SABME establishment + version negotiation.
 ///
 /// figc4.2 routes the Disconnected DL-CONNECT-request unconditionally to
-/// AwaitingConnection (no version branch — confirmed against the authoritative
+/// AwaitingConnection (no version branch - confirmed against the authoritative
 /// graphml). The figc4.7 Establish_Data_Link subroutine *does* send a SABME when
 /// mod_128, so a v2.2-preferred connect emits the right first frame but parks in
 /// the mod-8 establishment state, whose T1 retry downgrades to SABM and which has
@@ -19,12 +19,12 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 ///
 /// These tests drive the full handshake end-to-end through the two-station
 /// harness with the real dispatcher, asserting the figc4.6 transitions fire and
-/// the fallbacks behave — closing the AwaitingV22Connection (0/25) behavioural
+/// the fallbacks behave - closing the AwaitingV22Connection (0/25) behavioural
 /// coverage gap that existed because nothing could drive a SABME connect.
 /// </summary>
 public class Mod128EstablishmentConformanceTests
 {
-    // U-frame base control octets (P/F masked out) — what the receiver sees.
+    // U-frame base control octets (P/F masked out) - what the receiver sees.
     private const int SabmeBase = 0x6F;
     private const int SabmBase = 0x2F;
 
@@ -32,7 +32,7 @@ public class Mod128EstablishmentConformanceTests
     private static bool IsSabme(Ax25Frame f) => UBase(f) == SabmeBase;
     private static bool IsSabm(Ax25Frame f) => UBase(f) == SabmBase;
 
-    /// <summary>1 — a mod-128 connect routes the initiator through
+    /// <summary>1 - a mod-128 connect routes the initiator through
     /// AwaitingV22Connection (figc4.6), and both stations reach Connected with
     /// IsExtended. Proven on the live FiredTransitions ledger.</summary>
     [Fact]
@@ -47,7 +47,7 @@ public class Mod128EstablishmentConformanceTests
 
         // The initiator transited the figc4.6 AwaitingV22Connection state: its
         // DL-CONNECT left Disconnected via t03, and the connection completed via
-        // the figc4.6 UA-received transition — a transition that exists ONLY in
+        // the figc4.6 UA-received transition - a transition that exists ONLY in
         // AwaitingV22Connection, so its firing proves the route.
         h.FiredTransitions.Should().Contain(("Disconnected", "t03_dl_connect_request"),
             "the connect leaves Disconnected via figc4.2 t03 (Establish Data Link → SABME)");
@@ -66,7 +66,7 @@ public class Mod128EstablishmentConformanceTests
         h.B.ReceivedFromPeer.Should().NotContain(f => IsSabm(f), "no SABM is sent on a v2.2-preferred connect");
     }
 
-    /// <summary>2 — when the initial SABME is lost, the T1 retry resends a SABME
+    /// <summary>2 - when the initial SABME is lost, the T1 retry resends a SABME
     /// (figc4.6 t13_t1_expiry_no), NOT a SABM. The mis-routed figc4.2 path would
     /// downgrade the link to mod-8 on the first retry; the redirect prevents
     /// that.</summary>
@@ -102,7 +102,7 @@ public class Mod128EstablishmentConformanceTests
         h.FiredTransitions.Should().Contain(("AwaitingV22Connection", "t13_t1_expiry_no"),
             "the T1 retry runs the figc4.6 resend-SABME transition, not the figc4.2 resend-SABM one");
         h.B.ReceivedFromPeer.Should().NotBeEmpty("the retry was sent (and this time delivered)");
-        // Every *establishment* frame the responder sees is a SABME — the link
+        // Every *establishment* frame the responder sees is a SABME - the link
         // did NOT downgrade to mod-8. (Filter to SABM/SABME: a successful v2.2
         // connect is now followed by the MDL's XID command, a legitimate
         // non-establishment frame that arrives once both reach Connected.)
@@ -118,7 +118,7 @@ public class Mod128EstablishmentConformanceTests
         h.B.Context.IsExtended.Should().BeTrue();
     }
 
-    /// <summary>3 — a pre-v2.2 peer answers a SABME with FRMR (§975): the initiator
+    /// <summary>3 - a pre-v2.2 peer answers a SABME with FRMR (§975): the initiator
     /// falls back to v2.0 and re-establishes with a <b>SABM</b>, completing a mod-8
     /// connection. figc4.6 t14_frmr_received forces Version 2.0 and re-establishes;
     /// the #44 redirect is what makes that handler reachable (figc4.2's
@@ -128,10 +128,10 @@ public class Mod128EstablishmentConformanceTests
     /// figc4.6 t14 draws <c>Establish Data Link</c> BEFORE <c>Set Version 2.0</c>
     /// (confirmed in awaiting_v22_connection.sdl.yaml). Because figc4.7
     /// <c>Establish_Data_Link</c> branches on <c>mod_128</c>, the figure as drawn
-    /// re-establishes with a <b>SABME</b> while still extended — useless against the
+    /// re-establishes with a <b>SABME</b> while still extended - useless against the
     /// pre-v2.2 peer that just FRMR'd. <see cref="Ax25SessionQuirks.Ax25Spec45FrmrFallbackReestablishesV20"/>
     /// (default on; ax25spec#45) forces Version 2.0 before the t14 actions run, so the
-    /// re-establish is a SABM — matching direwolf's <c>frmr_frame</c> case state_5,
+    /// re-establish is a SABM - matching direwolf's <c>frmr_frame</c> case state_5,
     /// which runs <c>set_version_2_0</c> ("Erratum: Need to force v2.0. This is not in
     /// flow chart") before <c>establish_data_link</c>. This test therefore drops only
     /// the initiator's SABME (so the v2.2 peer never adopts mod-128) and lets the SABM
@@ -170,13 +170,13 @@ public class Mod128EstablishmentConformanceTests
         h.B.Context.IsExtended.Should().BeFalse("the peer adopted mod-8 from the SABM (figc4.1 SABM-received → Set Version 2.0)");
     }
 
-    /// <summary>4 — a not-capable peer answers a SABME with DM. The figure-literal
+    /// <summary>4 - a not-capable peer answers a SABME with DM. The figure-literal
     /// figc4.6 t11_dm_received_yes (DM with F=1) would tear the connect down to
-    /// Disconnected as a §975 refusal — but a DM is precisely the signal the peer
+    /// Disconnected as a §975 refusal - but a DM is precisely the signal the peer
     /// can't do v2.2, and a peer that DMs our polled SABME (P=1) answers F=1, so the
     /// figure-literal path fails a real v2.2-preferred dial against a DM-ing peer
     /// (XRouter does exactly this). Ax25Spec48DmRejectionDegradesToV20 (default on)
-    /// makes the DM degrade to v2.0 and re-establish via SABM instead — the DM
+    /// makes the DM degrade to v2.0 and re-establish via SABM instead - the DM
     /// analogue of the FRMR fallback above. Proven end-to-end against the v2.2-capable
     /// peer station B: A degrades, re-sends SABM, B UAs it, both reach mod-8 Connected.</summary>
     [Fact]
@@ -197,7 +197,7 @@ public class Mod128EstablishmentConformanceTests
             Ax25Frame.Dm(h.A.Context.Local, h.A.Context.Remote, finalBit: true)));
 
         // Ax25Spec48: the DM is rewritten to run figc4.6's FRMR-fallback transition
-        // (t14_frmr_received) — version 2.0 is forced and the link re-establishes
+        // (t14_frmr_received) - version 2.0 is forced and the link re-establishes
         // via SABM, exactly like the FRMR fallback. The peer B (v2.2-capable) UAs
         // the SABM and both reach mod-8 Connected.
         h.FiredTransitions.Should().Contain(("AwaitingV22Connection", "t14_frmr_received"),
@@ -210,12 +210,12 @@ public class Mod128EstablishmentConformanceTests
         h.B.Context.IsExtended.Should().BeFalse("the peer adopted mod-8 from the SABM (figc4.1 SABM-received → Set Version 2.0)");
     }
 
-    /// <summary>4b — with Ax25Spec48 off the figure runs as drawn: a DM with F=1
+    /// <summary>4b - with Ax25Spec48 off the figure runs as drawn: a DM with F=1
     /// runs figc4.6 t11_dm_received_yes and tears the connect attempt down to
     /// Disconnected (the §975 refusal, no fallback). Pins the quirk's off-behaviour
     /// so the degrade stays a deliberate, named deviation. Note we keep Ax25Spec44
     /// ON (so the connect still reaches AwaitingV22Connection) and turn off ONLY
-    /// Ax25Spec48 — full StrictlyFaithful would park the connect in the mod-8
+    /// Ax25Spec48 - full StrictlyFaithful would park the connect in the mod-8
     /// AwaitingConnection state (the figc4.2 defect) and never reach figc4.6 at all.</summary>
     [Fact]
     public void Spec48Off_DM_F1_to_a_SABME_tears_the_connect_down_to_Disconnected()

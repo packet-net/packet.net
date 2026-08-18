@@ -3,12 +3,12 @@ using Packet.AprsIs.Spike;
 // SP-001b: APRS-IS UI-frame ingestion spike.
 //
 // Two modes:
-//   oneshot — original behaviour: connect, read N frames, run each through
+//   oneshot - original behaviour: connect, read N frames, run each through
 //             the TNC2 parser → reconstruct → round-trip pipeline, persist
 //             failures to JSONL, write a summary markdown. Good for short
 //             experimentation.
 //
-//   collect — long-running daemon: persists every TNC2 line to per-day
+//   collect - long-running daemon: persists every TNC2 line to per-day
 //             SQLite files (gb7rdg-YYYY-MM-DD.sqlite or whatever
 //             --filename-prefix you pass). Daily rotation at UTC midnight,
 //             exponential-backoff reconnect, graceful SIGTERM shutdown.

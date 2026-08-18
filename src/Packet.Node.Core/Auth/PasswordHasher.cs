@@ -12,13 +12,13 @@ namespace Packet.Node.Core.Auth;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Algorithm: Argon2id</b> (the hybrid OWASP recommends for password storage —
+/// <b>Algorithm: Argon2id</b> (the hybrid OWASP recommends for password storage -
 /// the data-dependent + data-independent mix that resists both GPU and
 /// side-channel attack). Provided by the maintained, MIT-licensed
 /// <c>Konscious.Security.Cryptography.Argon2</c>.
 /// </para>
 /// <para>
-/// <b>Parameters</b> (OWASP "Argon2id" minimum, the second configuration —
+/// <b>Parameters</b> (OWASP "Argon2id" minimum, the second configuration -
 /// memory-leaning, which OWASP lists first): <c>m = 19456 KiB (19 MiB)</c>,
 /// <c>t = 2</c> iterations, <c>p = 1</c> degree of parallelism, a 16-byte
 /// CSPRNG salt, and a 32-byte digest. These are encoded into the stored string,
@@ -33,7 +33,7 @@ namespace Packet.Node.Core.Auth;
 /// <para>
 /// <b>Fixed-time verify.</b> The digest comparison uses
 /// <see cref="CryptographicOperations.FixedTimeEquals"/> so a verify takes the
-/// same time whether the first byte or the last byte differs — no timing oracle
+/// same time whether the first byte or the last byte differs - no timing oracle
 /// on the hash. (The Argon2 derivation itself dominates the wall-clock and is
 /// input-independent in length.)
 /// </para>
@@ -41,7 +41,7 @@ namespace Packet.Node.Core.Auth;
 /// <b>Encoded format</b> (PHC string format, the de-facto standard so the hash is
 /// self-describing and portable):
 /// <c>$argon2id$v=19$m=19456,t=2,p=1$&lt;base64 salt&gt;$&lt;base64 hash&gt;</c>
-/// (standard base64, no padding — the PHC convention).
+/// (standard base64, no padding - the PHC convention).
 /// </para>
 /// </remarks>
 public static class PasswordHasher
@@ -52,7 +52,7 @@ public static class PasswordHasher
     private const int Parallelism = 1;       // degree of parallelism (p)
     private const int SaltBytes = 16;
     private const int HashBytes = 32;
-    private const int Argon2Version = 19;    // 0x13 — the Argon2 v1.3 constant in the PHC string
+    private const int Argon2Version = 19;    // 0x13 - the Argon2 v1.3 constant in the PHC string
 
     /// <summary>
     /// Hash <paramref name="password"/> with a fresh per-call CSPRNG salt and the
@@ -71,7 +71,7 @@ public static class PasswordHasher
     /// Verify <paramref name="password"/> against a stored PHC-encoded
     /// <paramref name="encodedHash"/>. Re-derives at the hash's <em>own</em>
     /// recorded parameters (so old hashes still verify after a parameter bump) and
-    /// compares in fixed time. Returns <c>false</c> — never throws — on any
+    /// compares in fixed time. Returns <c>false</c> - never throws - on any
     /// malformed / unparseable stored hash.
     /// </summary>
     public static bool Verify(string password, string encodedHash)
@@ -94,7 +94,7 @@ public static class PasswordHasher
     /// <summary>
     /// Spend a verify-equivalent Argon2 derivation against a fixed reference salt and
     /// return <c>false</c>. Call this on the "no such user" path so a login probe for a
-    /// non-existent username costs the same wall-clock as one for a real user — closing
+    /// non-existent username costs the same wall-clock as one for a real user - closing
     /// the timing oracle that would otherwise let an attacker enumerate valid usernames.
     /// Always returns <c>false</c> (there is nothing to match).
     /// </summary>

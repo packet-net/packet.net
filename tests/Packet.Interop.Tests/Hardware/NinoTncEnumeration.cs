@@ -6,7 +6,7 @@ namespace Packet.Interop.Tests.Hardware;
 
 /// <summary>
 /// Phase 0 hardware-loop hello-world. The full target is "TX a UI frame on
-/// TNC-A, observe it on TNC-B" — but that needs Packet.Kiss (Phase 1) and the
+/// TNC-A, observe it on TNC-B" - but that needs Packet.Kiss (Phase 1) and the
 /// AX.25 framer (Phase 1/2). For Phase 0 this is just an enumeration probe:
 /// confirm we can SEE two USB-attached NinoTNCs on the dev host.
 /// </summary>
@@ -56,7 +56,7 @@ public class NinoTncEnumeration
     /// <see cref="SerialPort.GetPortNames"/>.
     /// </summary>
     /// <remarks>
-    /// Phase 0 intentionally does NOT match on VID/PID — at this point we're
+    /// Phase 0 intentionally does NOT match on VID/PID - at this point we're
     /// happy with anything that looks like a USB-CDC serial device. Real
     /// NinoTNC identification (firmware TX-test parsing) lands in Phase 3.
     /// </remarks>

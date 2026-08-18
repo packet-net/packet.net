@@ -6,7 +6,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
 /// Behavioural (real-dispatcher, real-codec) coverage of the inbound
-/// error-recovery frames — <b>FRMR</b> and an unsolicited <b>DM</b> — received in
+/// error-recovery frames - <b>FRMR</b> and an unsolicited <b>DM</b> - received in
 /// the Connected and TimerRecovery states. These frames arrive on a station's
 /// radio that the peer session would never emit during normal operation, so the
 /// two-station harness reaches them via <see cref="TwoStationHarness.InjectFrameBytes"/>:
@@ -16,7 +16,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Why this exists: FRMR_received had <em>no</em> behavioural coverage anywhere —
+/// Why this exists: FRMR_received had <em>no</em> behavioural coverage anywhere -
 /// only the stub-dispatcher smoke test (which records verb names, runs nothing)
 /// and the classifier unit test (bytes → event). Its figc4.4/figc4.5 transitions
 /// run <c>Establish_Data_Link</c> (re-establish the link with a fresh SABM), the
@@ -32,7 +32,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// <c>DataLink*EndToEndTests</c>, and the latter two are never synthesised from a
 /// frame by the runtime receive path (only the classifier's
 /// <c>ControlFieldError</c> fallback and the listener's Disconnected
-/// <c>AllOtherCommands</c> reclassification exist) — a runtime reachability gap
+/// <c>AllOtherCommands</c> reclassification exist) - a runtime reachability gap
 /// tracked separately, not a harness gap.
 /// </para>
 /// </remarks>
@@ -66,7 +66,7 @@ public class ErrorRecoveryConformanceTests
         // A receives a FRMR (its peer rejected a frame as unrecoverable). figc4.4
         // t16_frmr_received_no (mod-8): DL-ERROR(K) up, Establish_Data_Link (fresh
         // SABM), Clear Layer 3 Initiated → AwaitingConnection. The SABM reaches B,
-        // B re-syncs with a UA, and A returns to Connected — the link re-establishes.
+        // B re-syncs with a UA, and A returns to Connected - the link re-establishes.
         h.InjectFrameBytes(h.A, FrmrTo(h.A));
 
         SawSabmFrom(h.B).Should().BeTrue("FRMR must drive Establish_Data_Link → a fresh SABM on the wire");
@@ -91,7 +91,7 @@ public class ErrorRecoveryConformanceTests
         // Clear the channel, then deliver a FRMR. figc4.5 t15_frmr_received:
         // DL-ERROR(K), set_version_2_0, Establish_Data_Link, Clear Layer 3
         // Initiated → AwaitingConnection. The undelivered I-frame is abandoned by
-        // the reset (so the link does NOT converge — that's the point of FRMR).
+        // the reset (so the link does NOT converge - that's the point of FRMR).
         h.Link.Drop = null;
         h.B.ReceivedFromPeer.Clear();
         h.InjectFrameBytes(h.A, FrmrTo(h.A));
@@ -146,7 +146,7 @@ public class ErrorRecoveryConformanceTests
         h.Connect();
 
         // A bare DM tears the link down (t20). A DM *carrying an information field*
-        // is instead the "information not permitted in frame" error (DL-ERROR M) —
+        // is instead the "information not permitted in frame" error (DL-ERROR M) -
         // the classifier surfaces InfoNotPermittedInFrame, and figc4.4
         // t10_info_not_permitted_in_frame (mod-8) runs Establish_Data_Link → a
         // fresh SABM → re-establishment. Same frame type, opposite outcome, decided

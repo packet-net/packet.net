@@ -75,7 +75,7 @@ public class StationHailTelegramTests
         var status = new StationStatus { Callsign = "N0CALL", Mode = 6 };
         status.ModeName.Should().Be("1200 AFSK AX.25");
 
-        // The name never appears on the wire — only the number does.
+        // The name never appears on the wire - only the number does.
         status.ToArgs().Should().NotContain("AFSK");
     }
 

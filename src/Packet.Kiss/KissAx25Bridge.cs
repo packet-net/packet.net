@@ -10,18 +10,18 @@ namespace Packet.Kiss;
 /// (<see cref="IAx25Transport"/>). The bridge does two things:
 /// </summary>
 /// <list type="bullet">
-///   <item><see cref="CreateOutbound"/> — builds an <see cref="Ax25Adapter"/>
+///   <item><see cref="CreateOutbound"/> - builds an <see cref="Ax25Adapter"/>
 ///   whose <c>sendBytes</c> callback fans out to
 ///   <see cref="IAx25Transport.SendAsync"/>, so outgoing frames the
 ///   dispatcher emits end up on the wire.</item>
-///   <item><see cref="RouteInboundToAdapter"/> — translates a typed
+///   <item><see cref="RouteInboundToAdapter"/> - translates a typed
 ///   <see cref="KissInboundEvent"/> from the driver's inbound event
 ///   stream into an <see cref="Ax25Adapter.OnReceivedAx25Frame"/>
 ///   call.</item>
 /// </list>
 /// <remarks>
 /// <para>
-/// The two halves are deliberately separate — KISS driver APIs vary on
+/// The two halves are deliberately separate - KISS driver APIs vary on
 /// the inbound surface (some expose <c>event EventHandler&lt;KissInboundEvent&gt;</c>,
 /// some <c>IAsyncEnumerable</c>, some pull-based <c>ReceiveAsync</c>),
 /// so the bridge offers a uniform routing function rather than imposing

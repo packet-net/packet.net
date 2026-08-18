@@ -33,8 +33,8 @@ public sealed class NodeConsoleEnvironment
 
     /// <summary>
     /// The over-RF sysop dependencies (user store + TOTP verifier + privileged
-    /// operations). Null when sysop elevation isn't wired — older call sites, tests, or a
-    /// node where the host couldn't supply the seam — in which case the <c>SYSOP</c>
+    /// operations). Null when sysop elevation isn't wired - older call sites, tests, or a
+    /// node where the host couldn't supply the seam - in which case the <c>SYSOP</c>
     /// command reports "not available" and the privileged commands are inert. Even when
     /// present, elevation is only honoured while <see cref="AuthEnabled"/> is true.
     /// </summary>
@@ -42,7 +42,7 @@ public sealed class NodeConsoleEnvironment
 
     /// <summary>
     /// The registered-application launcher. Null when the app platform isn't wired (older call
-    /// sites / tests) — the console then has no apps and an unknown verb is just "unknown
+    /// sites / tests) - the console then has no apps and an unknown verb is just "unknown
     /// command", exactly as before. When present, a verb the console doesn't recognise that
     /// matches a registered app launches it over the session.
     /// </summary>
@@ -50,7 +50,7 @@ public sealed class NodeConsoleEnvironment
 
     /// <summary>
     /// Resolves a <c>Connect</c> target to a local-app crossconnect or a port-scoped dial. Null
-    /// when not wired (older call sites / tests) — the console then falls back to
+    /// when not wired (older call sites / tests) - the console then falls back to
     /// <see cref="OutboundConnector"/> and rejects an explicit port. When present, it supersedes
     /// <see cref="OutboundConnector"/> for the <c>Connect</c> command (it returns that same
     /// default connector for the no-port, non-app case).
@@ -60,14 +60,14 @@ public sealed class NodeConsoleEnvironment
     /// <summary>
     /// The per-peer AX.25 capability cache, surfaced by the <c>CAP</c> command (read-only list)
     /// and <c>CAP CLEAR</c> (sysop forget). Null when the cache isn't wired (older call sites /
-    /// tests) — the console then reports "not available" for CAP. The reads (<c>All</c>) need no
+    /// tests) - the console then reports "not available" for CAP. The reads (<c>All</c>) need no
     /// elevation; the forget (<c>Forget</c>) is gated by the command service.
     /// </summary>
     public PeerCapabilityCache? Capabilities { get; }
 
     /// <summary>
     /// The MHeard log, surfaced by the <c>MH</c> console verb (read-only list of stations heard,
-    /// node-wide or per-port). Null when the heard log isn't wired (older call sites / tests) — the
+    /// node-wide or per-port). Null when the heard log isn't wired (older call sites / tests) - the
     /// console then reports "not available" for MH. Read-only; no elevation.
     /// </summary>
     public Heard.HeardLog? Heard { get; }
@@ -112,20 +112,20 @@ public sealed class NodeConsoleEnvironment
     /// <summary>The configured ports, as of the current config.</summary>
     public IReadOnlyList<PortConfig> Ports => config.Current.Ports;
 
-    /// <summary>The current service text (banner/prompt) — read live so a hot
+    /// <summary>The current service text (banner/prompt) - read live so a hot
     /// edit lands on the next prompt without rebuilding the session.</summary>
     public ServicesConfig Services => config.Current.Services;
 
-    /// <summary>The node's display name — alias if set, else the callsign.</summary>
+    /// <summary>The node's display name - alias if set, else the callsign.</summary>
     public string NodeName => string.IsNullOrWhiteSpace(Identity.Alias) ? Identity.Callsign : Identity.Alias!;
 
-    /// <summary>Whether web/management auth is enabled — read live. Over-RF <c>SYSOP</c>
+    /// <summary>Whether web/management auth is enabled - read live. Over-RF <c>SYSOP</c>
     /// elevation is only honoured when this is true (the TOTP secrets + scopes it relies on
     /// only exist in an auth-enabled node); with auth off the command reports "not
     /// available", matching the default-off contract.</summary>
     public bool AuthEnabled => config.Current.Management.Auth.Enabled;
 
-    /// <summary>How long an over-RF elevation lasts — read live from
+    /// <summary>How long an over-RF elevation lasts - read live from
     /// <c>management.auth.sysopElevationMinutes</c> (default
     /// <see cref="DefaultSysopElevationMinutes"/>).</summary>
     public TimeSpan SysopElevationTtl =>

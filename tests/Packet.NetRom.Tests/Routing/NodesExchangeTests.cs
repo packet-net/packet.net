@@ -10,7 +10,7 @@ namespace Packet.NetRom.Tests.Routing;
 /// node A originates a NODES broadcast from its table via
 /// <see cref="NodesBroadcastBuilder"/>, node B ingests it through the production
 /// parser + <see cref="NetRomRoutingTable"/>, and the route appears in B's table at
-/// the multiplicatively-decayed quality — the L3-origination ↔ L3-ingest round-trip
+/// the multiplicatively-decayed quality - the L3-origination ↔ L3-ingest round-trip
 /// the read-only slice only had the ingest half of.
 /// </summary>
 public sealed class NodesExchangeTests
@@ -58,7 +58,7 @@ public sealed class NodesExchangeTests
         snapB.Destinations.Should().Contain(d => d.Destination == ANode);
 
         // B learned SOT via A, at the quality A advertised (A's 192-ish to HUB ×
-        // 255, then B's 192 path to A) — strictly decayed below A's advertised value.
+        // 255, then B's 192 path to A) - strictly decayed below A's advertised value.
         var sot = snapB.Destinations.SingleOrDefault(d => d.Destination == DistantSot);
         sot.Should().NotBeNull("B learned the distant destination A advertised");
         sot!.BestRoute!.Neighbour.Should().Be(ANode, "B forwards to A to reach SOT");
@@ -98,7 +98,7 @@ public sealed class NodesExchangeTests
         table.BuildAdvertisement(opts.ObsoleteMinimum).Should().NotContain(e => e.Destination == DistantSot,
             "a route below OBSMIN is kept + usable but no longer advertised");
 
-        // It is still in the table (resolvable for routing) — not yet purged.
+        // It is still in the table (resolvable for routing) - not yet purged.
         table.Snapshot().ResolveDestination("SOT").Should().NotBeNull();
     }
 }

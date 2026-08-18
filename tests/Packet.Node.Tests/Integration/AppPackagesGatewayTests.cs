@@ -12,7 +12,7 @@ namespace Packet.Node.Tests.Integration;
 /// End-to-end tests for the app-gateway's package union (<c>docs/app-packages.md</c>): the
 /// launcher feed (<c>GET /api/v1/apps</c>) and the reverse proxy (<c>/apps/{id}/*</c>) must
 /// also serve enabled, error-free discovered packages whose manifest declares a <c>ui:</c>
-/// block — with identity-injection/anti-spoof identical to inline upstreams (the same
+/// block - with identity-injection/anti-spoof identical to inline upstreams (the same
 /// transformer serves both sources). Mirrors <see cref="AppGatewayApiTests"/>: the real node
 /// over the in-memory TestServer, the package's <c>ui.upstream</c> pointing at a loopback
 /// stub <see cref="HttpListener"/> that echoes back the rebased path and the injected
@@ -61,7 +61,7 @@ public sealed class AppPackagesGatewayTests : IDisposable
               upstream: http://127.0.0.1:{port}
             """);
 
-        // dead: broken (id mismatch) — the apps: entry below tries to enable it, but a broken
+        // dead: broken (id mismatch) - the apps: entry below tries to enable it, but a broken
         // package never goes live: no tile, no proxy.
         WriteManifest("dead", $"""
             manifest: 1
@@ -72,7 +72,7 @@ public sealed class AppPackagesGatewayTests : IDisposable
 
         // wall (package side): collides with the inline wall entry → the catalog errors it,
         // so the INLINE app keeps serving /apps/wall. Its upstream points at a port nothing
-        // listens on — if the package ever won the route, the proxy would 502, not echo.
+        // listens on - if the package ever won the route, the proxy would 502, not echo.
         WriteManifest("wall", """
             manifest: 1
             id: wall
@@ -171,7 +171,7 @@ public sealed class AppPackagesGatewayTests : IDisposable
         tiles.Should().NotContainKey("offpkg");
         tiles.Should().NotContainKey("dead");
 
-        // The wall id appears exactly once — the inline entry; the colliding package errored.
+        // The wall id appears exactly once - the inline entry; the colliding package errored.
         tiles["wall"].GetProperty("name").GetString().Should().Be("WALL");
         json.Split("\"wall\"").Length.Should().Be(2, "the colliding package must not add a second wall tile");
     }
@@ -179,7 +179,7 @@ public sealed class AppPackagesGatewayTests : IDisposable
     [Fact]
     public async Task Apps_feed_carries_a_uiMode_field_per_app()
     {
-        // The launcher feed surfaces uiMode so the panel's nav knows how to open each app — a full
+        // The launcher feed surfaces uiMode so the panel's nav knows how to open each app - a full
         // navigation (standalone) vs an in-panel iframe (embedded/slot). The pkgui package declares
         // mode: slot; the inline wall entry declares no mode → standalone (the safe default).
         await using var factory = new WebApplicationFactory<Program>();
@@ -271,7 +271,7 @@ public sealed class AppPackagesGatewayTests : IDisposable
         await using var factory = new WebApplicationFactory<Program>();
         using var client = factory.CreateClient();
 
-        // The colliding wall package's upstream is a dead port — reaching the echo stub
+        // The colliding wall package's upstream is a dead port - reaching the echo stub
         // proves the inline entry served the route.
         var resp = await client.GetAsync("/apps/wall/check");
         resp.StatusCode.Should().Be(HttpStatusCode.OK);

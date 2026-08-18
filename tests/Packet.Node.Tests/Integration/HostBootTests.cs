@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// Boots the real <c>Packet.Node</c> composition root (exit criterion i): the
-/// binary comes up from a YAML config and serves <c>GET /healthz</c> — and ONLY
+/// binary comes up from a YAML config and serves <c>GET /healthz</c> - and ONLY
 /// that. The web server is present-but-inert in slice 1; no authenticated
 /// endpoints are mapped, so any other path 404s. Uses
 /// <see cref="WebApplicationFactory{TEntryPoint}"/> (TestServer), so no real port
@@ -50,7 +50,7 @@ public sealed class HostBootTests : IDisposable
     {
         // The factory boots Program.Main's host; Kestrel is replaced by the
         // in-memory TestServer, so the config's http bind is inert here (exactly
-        // the "present-but-inert" shape — we just need the endpoint map).
+        // the "present-but-inert" shape - we just need the endpoint map).
     }
 
     [Fact]

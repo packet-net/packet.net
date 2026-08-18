@@ -98,7 +98,7 @@ public class ReconcilePlannerTests
     {
         // kiss.ackMode decides whether the modem is wrapped in the PacingKissModem
         // decorator at construction time, so it cannot be applied live like the other
-        // KISS knobs — toggling it must RESTART the port so the change takes effect,
+        // KISS knobs - toggling it must RESTART the port so the change takes effect,
         // not land in the (no-op-for-ackmode) live KissParamsChanged bucket.
         var before = Config("M0LTE-1", Tcp("a", kiss: new KissParams { AckMode = false }));
         var to = Config("M0LTE-1", Tcp("a", kiss: new KissParams { AckMode = true }));
@@ -158,7 +158,7 @@ public class ReconcilePlannerTests
     {
         // port.radio is construction-time: the radio control channel is opened and the
         // RSSI-tagging transport wrap decided at bring-up. Adding, removing, or
-        // re-pointing it must restart the port — never a (no-op) hot apply.
+        // re-pointing it must restart the port - never a (no-op) hot apply.
         static PortConfig Serial(string id, PortRadioConfig? radio) => new()
         {
             Id = id,
@@ -171,7 +171,7 @@ public class ReconcilePlannerTests
         var with = Config("M0LTE-1", Serial("a", tait));
         var moved = Config("M0LTE-1", Serial("a", tait with { Port = "/dev/ttyUSB1" }));
 
-        // Added, removed, and re-pointed — each is a restart of exactly port a.
+        // Added, removed, and re-pointed - each is a restart of exactly port a.
         foreach (var (from, to) in new[] { (without, with), (with, without), (with, moved) })
         {
             var plan = ReconcilePlanner.Plan(from, to);
@@ -180,7 +180,7 @@ public class ReconcilePlannerTests
             plan.Ax25ParamsChanged.Should().BeEmpty();
         }
 
-        // Identical radio blocks (value equality) — a no-op.
+        // Identical radio blocks (value equality) - a no-op.
         ReconcilePlanner.Plan(with, Config("M0LTE-1", Serial("a", tait with { }))).IsNoOp.Should().BeTrue();
     }
 
@@ -202,7 +202,7 @@ public class ReconcilePlannerTests
         // The AX.25-params-only change is HOT: classified into Ax25ParamsChanged
         // with no restart class. The supervisor live-reseeds the running listener
         // (UpdateSessionParameters) so new sessions pick up the params while
-        // existing sessions are untouched — see ReconfigDeltaIntegrationTests.
+        // existing sessions are untouched - see ReconfigDeltaIntegrationTests.
         var before = Config("M0LTE-1", Tcp("a", ax25: new Ax25PortParams { N2 = 10 }));
         var to = Config("M0LTE-1", Tcp("a", ax25: new Ax25PortParams { N2 = 12 }));
         var plan = ReconcilePlanner.Plan(before, to);
@@ -216,7 +216,7 @@ public class ReconcilePlannerTests
     public void N1_paclen_change_only_is_a_hot_ax25_reseed()
     {
         // N1 (PACLEN) rides the Ax25PortParams record, so an N1-only edit is the same
-        // HOT live-reseed as any other AX.25 param — no restart, new sessions only.
+        // HOT live-reseed as any other AX.25 param - no restart, new sessions only.
         var before = Config("M0LTE-1", Tcp("a", ax25: new Ax25PortParams { N1 = 256 }));
         var to = Config("M0LTE-1", Tcp("a", ax25: new Ax25PortParams { N1 = 80 }));
         var plan = ReconcilePlanner.Plan(before, to);
@@ -229,7 +229,7 @@ public class ReconcilePlannerTests
     [Fact]
     public void NetRom_quality_change_only_is_hot_no_restart()
     {
-        // A per-port NET/ROM QUALITY edit is the lightest hot class — applied by swapping
+        // A per-port NET/ROM QUALITY edit is the lightest hot class - applied by swapping
         // the port's NET/ROM attachment quality (read-only awareness, never touches a
         // session). It must not trip a restart or an AX.25 reseed.
         var before = Config("M0LTE-1", Tcp("a") with { NetRomQuality = 192 });
@@ -245,7 +245,7 @@ public class ReconcilePlannerTests
     [Fact]
     public void NetRom_minquality_change_only_is_hot_no_restart()
     {
-        // A per-port MINQUAL edit is the same lightest hot class as QUALITY — read-only
+        // A per-port MINQUAL edit is the same lightest hot class as QUALITY - read-only
         // route-keep awareness, never a session. It joins NetRomQualityChanged for the
         // light-touch hot-apply.
         var before = Config("M0LTE-1", Tcp("a") with { NetRomMinQuality = 0 });
@@ -261,7 +261,7 @@ public class ReconcilePlannerTests
     public void Nodespaclen_change_only_is_hot_no_restart()
     {
         // A per-port NODESPACLEN edit only changes how the next NODES broadcast is framed
-        // (outbound advertisement) — never a session — so it is the same light-touch hot class.
+        // (outbound advertisement) - never a session - so it is the same light-touch hot class.
         var before = Config("M0LTE-1", Tcp("a"));   // NodesPaclen null (no cap)
         var to = Config("M0LTE-1", Tcp("a") with { NodesPaclen = 160 });
         var plan = ReconcilePlanner.Plan(before, to);
@@ -277,7 +277,7 @@ public class ReconcilePlannerTests
         // A compat-profile-only change is HOT: classified into CompatChanged with
         // no restart class. The supervisor live-reseeds the running listener so
         // parse options apply from the next inbound frame and quirks seed new
-        // sessions — existing sessions untouched.
+        // sessions - existing sessions untouched.
         var before = Config("M0LTE-1", Tcp("a"));
         var to = Config("M0LTE-1", Tcp("a") with { Compat = new PortCompatConfig { Preset = "bpq" } });
         var plan = ReconcilePlanner.Plan(before, to);
@@ -405,7 +405,7 @@ public class ReconcilePlannerTests
     public void Transport_change_subsumes_a_simultaneous_kiss_change_no_double_action()
     {
         // A port that changes BOTH transport and kiss params restarts (which
-        // re-applies kiss on bring-up) — it must not ALSO appear in KissParamsChanged.
+        // re-applies kiss on bring-up) - it must not ALSO appear in KissParamsChanged.
         var before = Config("M0LTE-1", Tcp("a", 8001, kiss: new KissParams { TxDelay = 10 }));
         var to = Config("M0LTE-1", Tcp("a", 9002, kiss: new KissParams { TxDelay = 20 }));
         var plan = ReconcilePlanner.Plan(before, to);

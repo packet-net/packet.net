@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Packet.LinkBench;
 
-// ── Packet.LinkBench — AX.25 connected-mode link bench (docs/link-bench-plan.md) ──
+// ── Packet.LinkBench - AX.25 connected-mode link bench (docs/link-bench-plan.md) ──
 //
 // Two AX.25 engines in one process, joined by a pluggable channel; a bulk
 // connected-mode transfer A→B; a metrics table. Multi-valued flags sweep.
@@ -309,7 +309,7 @@ internal static class Cli
     }
 
     // A zero-airtime (--baud 0) inproc channel delivers instantly, so the 6 s
-    // spec-default T1V — sized for real ~1200-baud airtime + turnaround — dwarfs
+    // spec-default T1V - sized for real ~1200-baud airtime + turnaround - dwarfs
     // the (zero) round-trip. Under loss, recovery latency is losses × T1V, so a
     // loss-heavy run burns a full 6 s per dropped frame/ack and times out (the
     // engine is fine: pipelining and recovery work; the timer is just mismatched

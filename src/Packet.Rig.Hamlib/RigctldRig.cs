@@ -5,16 +5,16 @@ using System.Text;
 namespace Packet.Rig.Hamlib;
 
 /// <summary>
-/// <see cref="IRigControl"/> over hamlib's NET rigctl protocol — the TCP text protocol served
+/// <see cref="IRigControl"/> over hamlib's NET rigctl protocol - the TCP text protocol served
 /// by <c>rigctld</c> (and emulated by wfview, SDR++, GQRX, SparkSDR, skycatd, nCAT …; only real
 /// rigctld is tested against today). Pure managed sockets: no libhamlib native dependency, which
-/// is the pattern every surviving hamlib client ecosystem converged on — the P/Invoke lineage is
+/// is the pattern every surviving hamlib client ecosystem converged on - the P/Invoke lineage is
 /// uniformly abandoned (see <c>docs/research/rig-control-spike.md</c>).
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Protocol.</b> Every command goes out in the Extended Response Protocol (<c>+</c> prefix),
-/// whose replies always terminate with <c>RPRT n</c> — the only dialect with a deterministic
+/// whose replies always terminate with <c>RPRT n</c> - the only dialect with a deterministic
 /// end-of-reply marker. <c>\chk_vfo</c> is probed at connect: when rigctld runs with
 /// <c>--vfo</c>, commands are rewritten with a <c>currVFO</c> argument, so both server modes
 /// work. Capabilities and identity come from <c>\dump_caps</c> at connect.
@@ -24,7 +24,7 @@ namespace Packet.Rig.Hamlib;
 /// (rigctld processes a connection's commands in order; interleaving replies from concurrent
 /// writers on one socket would desynchronise the stream). rigctld holds rig state server-side,
 /// so the link is stateless for us: on any IO fault, timeout, or cancellation mid-command the
-/// connection is dropped and the next command re-dials — same recover-by-redial shape as
+/// connection is dropped and the next command re-dials - same recover-by-redial shape as
 /// <c>Packet.Kiss.KissTcpClient</c>. Capabilities are re-probed on re-dial only if they were
 /// never obtained.
 /// </para>
@@ -143,7 +143,7 @@ public sealed class RigctldRig : IRigControl
             throw new ArgumentOutOfRangeException(nameof(passbandHz), passbandHz, "Passband must be ≥ 0 Hz.");
         }
 
-        // Passband 0 tells hamlib "the rig's default width for this mode" — the cross-backend
+        // Passband 0 tells hamlib "the rig's default width for this mode" - the cross-backend
         // semantics IRigControl promises for null. (-1/no-change exists on the wire but can't be
         // expressed portably, so it isn't in the abstraction.)
         await TransactAsync(
@@ -232,7 +232,7 @@ public sealed class RigctldRig : IRigControl
     }
 
     /// <summary>
-    /// Read any hamlib level by token (<c>STRENGTH</c>, <c>ALC</c>, <c>TEMP_METER</c>, …) — the
+    /// Read any hamlib level by token (<c>STRENGTH</c>, <c>ALC</c>, <c>TEMP_METER</c>, …) - the
     /// escape hatch below the <see cref="IRigControl"/> common subset, same spirit as
     /// <c>TaitCcdiRadio.TransactRawAsync</c>. Token names come from <c>rigctl</c>'s
     /// <c>l ?</c>.
@@ -246,7 +246,7 @@ public sealed class RigctldRig : IRigControl
     }
 
     /// <summary>
-    /// Send a raw NET-rigctl command line (without the <c>+</c> — it is added for you) and get
+    /// Send a raw NET-rigctl command line (without the <c>+</c> - it is added for you) and get
     /// the reply's payload lines back, echo and <c>RPRT</c> stripped. Escape hatch for
     /// everything not on the abstraction (split, VFO ops, <c>\send_morse</c> …).
     /// </summary>
@@ -407,7 +407,7 @@ public sealed class RigctldRig : IRigControl
 
                 if (first)
                 {
-                    first = false; // echo line ("get_freq:" / "set_freq: 7074000") — drop it.
+                    first = false; // echo line ("get_freq:" / "set_freq: 7074000") - drop it.
                     continue;
                 }
 
@@ -421,7 +421,7 @@ public sealed class RigctldRig : IRigControl
         }
         catch (OperationCanceledException)
         {
-            // Caller cancellation mid-exchange leaves an unread reply in flight — the stream is
+            // Caller cancellation mid-exchange leaves an unread reply in flight - the stream is
             // no longer alignable, so drop and let the next command redial.
             DropConnection();
             throw;
@@ -510,7 +510,7 @@ public sealed class RigctldRig : IRigControl
         try
         {
             // chk_vfo goes out in the DEFAULT protocol (no '+') and is answered with exactly one
-            // line and no RPRT trailer — same exchange hamlib's own netrigctl client does first.
+            // line and no RPRT trailer - same exchange hamlib's own netrigctl client does first.
             // The line's shape varies by server version ("0" on 4.x, "CHKVFO 0" on 3.3, and 4.x
             // echoes "ChkVFO: 0" to an extended request), hence the tolerant parse.
             vfoMode = RigctldProtocol.ParseChkVfo(

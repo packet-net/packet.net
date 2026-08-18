@@ -10,11 +10,11 @@ namespace Packet.Node.Tests.HeadEnd;
 
 /// <summary>
 /// Reconnect supervision for the head-end-bound radio-control channel (#576,
-/// <see cref="ReconnectingRadioControl"/>): when the control socket dies (a head-end bounce — the
+/// <see cref="ReconnectingRadioControl"/>): when the control socket dies (a head-end bounce - the
 /// exact effect of a routine <c>.deb</c> upgrade's <c>try-restart</c>), the facade disposes the
-/// dead driver and re-opens through the factory — re-resolving the head-end inventory (so a
+/// dead driver and re-opens through the factory - re-resolving the head-end inventory (so a
 /// moved raw-pipe TCP port is found), re-clocking the line to the CONFIGURED CCDI rate, and
-/// re-enabling unsolicited PROGRESS — while every consumer that holds the facade
+/// re-enabling unsolicited PROGRESS - while every consumer that holds the facade
 /// (carrier-sense gate, RSSI sampler, events) keeps working across the swap.
 /// </summary>
 [Trait("Category", "Node")]
@@ -32,7 +32,7 @@ public sealed class ReconnectingRadioControlTests
         var responder2 = pipe2.RespondCcdiPromptsAsync(received2);
 
         // The inventory is LIVE: after the bounce the device re-enumerates on a different
-        // raw-pipe TCP port (pipe2) — only a fresh resolve can find it.
+        // raw-pipe TCP port (pipe2) - only a fresh resolve can find it.
         int currentPort = pipe1.Port;
         var handler = new StubHeadEndHandler(() => new HeadEndInventory
         {
@@ -58,7 +58,7 @@ public sealed class ReconnectingRadioControlTests
             logger: null, timeProvider: null,
             minBackoff: TimeSpan.FromMilliseconds(50), maxBackoff: TimeSpan.FromMilliseconds(200));
 
-        // Consumers hold the FACADE for the port's whole life — exactly as the supervisor wires them.
+        // Consumers hold the FACADE for the port's whole life - exactly as the supervisor wires them.
         var gate = new RadioCarrierSense(facade);
         var edges = new List<bool>();
         facade.CarrierSenseChanged += (_, e) =>

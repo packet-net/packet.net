@@ -10,7 +10,7 @@ internal readonly record struct TracedFrame(DateTimeOffset At, FrameDirection Di
 /// Captures an endpoint's full frame stream by tapping
 /// <see cref="Ax25Listener.FrameTraced"/> (TX + RX, never filtered). The bench
 /// owns both listeners, so two taps see every frame each engine emitted and
-/// every frame each engine heard — the raw material for the §5 metrics.
+/// every frame each engine heard - the raw material for the §5 metrics.
 /// </summary>
 internal sealed class FrameTap
 {

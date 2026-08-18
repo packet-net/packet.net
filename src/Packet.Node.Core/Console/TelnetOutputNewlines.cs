@@ -1,8 +1,8 @@
 namespace Packet.Node.Core.Console;
 
 /// <summary>
-/// Normalises a byte stream bound for a telnet terminal so every line ending —
-/// a bare CR (the AX.25 / packet convention), a lone LF, or a CR-LF — renders as
+/// Normalises a byte stream bound for a telnet terminal so every line ending -
+/// a bare CR (the AX.25 / packet convention), a lone LF, or a CR-LF - renders as
 /// CR-LF. Stateful across calls (a CR that ends one chunk coalesces with an LF
 /// that opens the next), so it can be applied chunk-by-chunk to a streamed
 /// connection. The inverse of <see cref="LineAssembler"/>, which collapses the
@@ -11,7 +11,7 @@ namespace Packet.Node.Core.Console;
 /// <remarks>
 /// A telnet terminal advances to a new line only on LF; a bare CR just returns
 /// the cursor to column 0 of the current line. Relayed output from a connected
-/// node/BBS uses bare-CR line endings — e.g. a banner ending <c>"…Help\r"</c> —
+/// node/BBS uses bare-CR line endings - e.g. a banner ending <c>"…Help\r"</c> -
 /// so without this the next thing written (or typed) overtypes that line. We only
 /// <em>complete</em> CR/LF that were already sent; we never inject a break where
 /// none was sent, so a prompt with no trailing terminator keeps the cursor in
@@ -39,7 +39,7 @@ internal static class TelnetOutputNewlines
                     break;
                 case (byte)'\n':
                     // An LF straight after a CR is the second half of a CR-LF we
-                    // already emitted — swallow it. A lone LF becomes CR-LF.
+                    // already emitted - swallow it. A lone LF becomes CR-LF.
                     if (!lastWasCr)
                     {
                         output.Add((byte)'\r');

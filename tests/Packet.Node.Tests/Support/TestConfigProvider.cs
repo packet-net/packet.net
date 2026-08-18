@@ -5,7 +5,7 @@ namespace Packet.Node.Tests.Support;
 /// <summary>
 /// An in-memory <see cref="IConfigProvider"/> for the host / supervisor tests:
 /// set <see cref="Current"/> by calling <see cref="Apply"/>, which swaps the
-/// config and raises <see cref="OnChange"/> — exactly the seam a future
+/// config and raises <see cref="OnChange"/> - exactly the seam a future
 /// SqliteConfigProvider's web-edit path would drive. Deterministic, no files, no
 /// watcher.
 /// </summary>
@@ -29,7 +29,7 @@ public sealed class TestConfigProvider : IConfigProvider
         return new Unsub(this, listener);
     }
 
-    /// <summary>Swap the current config and notify subscribers — the test's way of
+    /// <summary>Swap the current config and notify subscribers - the test's way of
     /// editing the YAML live.</summary>
     public void Apply(NodeConfig next)
     {

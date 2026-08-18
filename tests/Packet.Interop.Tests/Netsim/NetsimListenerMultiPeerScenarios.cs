@@ -19,7 +19,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// listener-under-test and dial 8101 as the connecting peer in tests
 /// that need a second peer on the air. The remaining nodes (c/d/e) are
 /// bound to LinBPQ / XRouter / rax25 and have their own KISS-TCP ports
-/// (8102/8103/8104) but those aren't published on the host — they're
+/// (8102/8103/8104) but those aren't published on the host - they're
 /// reachable only inside docker. For listener-multi-peer-from-the-host
 /// coverage 8100+8101 is enough.
 /// </para>
@@ -54,7 +54,7 @@ public class NetsimListenerMultiPeerScenarios
     /// distinct cached sessions.
     /// </summary>
     /// <remarks>
-    /// Net-sim's afsk1200 channel is shared — both fake peers ride the
+    /// Net-sim's afsk1200 channel is shared - both fake peers ride the
     /// same KISS-TCP socket on 8101. The two peer sessions are
     /// distinguished by their source callsign only; net-sim faithfully
     /// broadcasts each frame to every linked node on the channel.
@@ -182,7 +182,7 @@ public class NetsimListenerMultiPeerScenarios
         }
 
         // Stamp the listener-side context with a probe value the SDL
-        // doesn't reset on reconnect — SentIFrames is not touched by
+        // doesn't reset on reconnect - SentIFrames is not touched by
         // t14's Clear_Exception_Conditions. (T1V is reset by t14.)
         firstListenerSide.Context.SentIFrames[7] =
             (new ReadOnlyMemory<byte>(new byte[] { 0xDE, 0xAD }), Ax25Frame.PidNoLayer3);
@@ -210,7 +210,7 @@ public class NetsimListenerMultiPeerScenarios
         secondListenerSide.Should().BeSameAs(firstListenerSide,
             "the listener's per-peer cache must hand back the same Ax25Session on reconnect");
 
-        // The probe entry survived the disconnect/reconnect — the
+        // The probe entry survived the disconnect/reconnect - the
         // session context really kept its state.
         secondListenerSide.Context.SentIFrames.Should().ContainKey((byte)7,
             "context state outside the SDL t14 reset list must persist across disconnect/reconnect");

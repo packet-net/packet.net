@@ -5,7 +5,7 @@ using Packet.Ax25.Transport;
 namespace Packet.Node.Core.Api;
 
 /// <summary>
-/// One frame as the web monitor sees it — the serialisable projection of an
+/// One frame as the web monitor sees it - the serialisable projection of an
 /// <see cref="Ax25FrameEventArgs"/> (the <see cref="Ax25Listener.FrameTraced"/>
 /// payload). Field names match the web client's <c>MonitorEvent</c>
 /// (<c>web/packetnet-ui/src/lib/types.ts</c>); System.Text.Json's web defaults
@@ -18,7 +18,7 @@ namespace Packet.Node.Core.Api;
 /// the bytes are widened to ints to reach the wire as <c>[129, 3, …]</c>.
 /// </para>
 /// <para>
-/// Produced by <see cref="MonitorEventFactory.From"/> — a pure decode over the
+/// Produced by <see cref="MonitorEventFactory.From"/> - a pure decode over the
 /// frame's bit-level shape (no session state), so it labels a frame the same way on
 /// TX and RX and under either modulo.
 /// </para>
@@ -43,7 +43,7 @@ public sealed record MonitorEvent(
     IReadOnlyList<int> Raw,
     IReadOnlyList<string> Path)
 {
-    /// <summary>The first control octet as decoded (modulo-independent — under
+    /// <summary>The first control octet as decoded (modulo-independent - under
     /// mod-128 the extension octet's sequence bits are already reflected in
     /// <see cref="Ns"/>/<see cref="Nr"/>). Additive (init-only) so the SSE wire
     /// shape gains a <c>control</c> field the web client is free to ignore; the
@@ -51,11 +51,11 @@ public sealed record MonitorEvent(
     public int Control { get; init; }
 
     /// <summary>Length of the information field in bytes (0 for frames without
-    /// one). Additive, like <see cref="Control"/> — previously only embedded in
+    /// one). Additive, like <see cref="Control"/> - previously only embedded in
     /// <see cref="Summary"/> text.</summary>
     public int InfoLength { get; init; }
 
-    /// <summary>Received signal strength attributed to this frame, in dBm — the median of the RSSI
+    /// <summary>Received signal strength attributed to this frame, in dBm - the median of the RSSI
     /// samples taken while its carrier was up, from the port's radio control channel. Additive
     /// (init-only), like <see cref="Control"/>: <c>null</c> on every frame with no radio metadata
     /// (a TX frame, a port with no radio attached, or an inbound frame no sample could be attributed
@@ -94,7 +94,7 @@ public static class MonitorEventFactory
 {
     /// <summary>Project a traced frame into the monitor's wire shape. <paramref name="radio"/> is the
     /// inbound frame's per-frame radio metadata when the node captured it at its consumption point
-    /// (RX frames on a radio-attached port), else <c>null</c> — it fills the additive
+    /// (RX frames on a radio-attached port), else <c>null</c> - it fills the additive
     /// <see cref="MonitorEvent.RssiDbm"/>/<see cref="MonitorEvent.SnrDb"/>/<see cref="MonitorEvent.NoiseFloorDbm"/>
     /// fields, never anything decoded from the frame itself.</summary>
     public static MonitorEvent From(long seq, string portId, Ax25FrameEventArgs e, RadioMetadata? radio = null)

@@ -3,7 +3,7 @@ using Packet.Core;
 namespace Packet.NetRom.Routing;
 
 /// <summary>
-/// The INP3 metric for a learned route — the <em>second</em> metric space a route
+/// The INP3 metric for a learned route - the <em>second</em> metric space a route
 /// can carry, alongside the vanilla NODES quality. Where <see cref="NetRomRoute.Quality"/>
 /// is the multiplicative per-hop quality learned from NODES broadcasts (best =
 /// highest), the INP3 metric is a <em>measured target time</em> learned from a RIF:
@@ -14,7 +14,7 @@ namespace Packet.NetRom.Routing;
 /// <remarks>
 /// <para>
 /// <b>Units &amp; range.</b> <see cref="TargetTimeMs"/> is milliseconds, in
-/// <c>[0, <see cref="Wire.Inp3Rip.HorizonMs"/>)</c> — i.e. strictly below the 600 s
+/// <c>[0, <see cref="Wire.Inp3Rip.HorizonMs"/>)</c> - i.e. strictly below the 600 s
 /// routing horizon. A route at or over the horizon is <em>unreachable</em> and is
 /// withdrawn rather than held (plan §5.3), so a stored <see cref="Inp3RouteMetric"/>
 /// is always a live, finite-time route. The on-wire 10 ms granularity is a codec
@@ -23,7 +23,7 @@ namespace Packet.NetRom.Routing;
 /// </para>
 /// <para>
 /// <b>Ordering.</b> Best INP3 route = lowest <see cref="TargetTimeMs"/> (ties broken
-/// by lowest <see cref="HopCount"/>, then by neighbour callsign for determinism — the
+/// by lowest <see cref="HopCount"/>, then by neighbour callsign for determinism - the
 /// time-space analogue of the quality-space "highest quality, then callsign"
 /// ordering).
 /// </para>
@@ -36,7 +36,7 @@ public sealed record Inp3RouteMetric(int TargetTimeMs, byte HopCount);
 /// <summary>
 /// One learned route to a NET/ROM destination: the next-hop neighbour to forward
 /// through, the quality we derived for it, and its obsolescence count. Immutable
-/// — a member of a <see cref="NetRomDestination"/> in a
+/// - a member of a <see cref="NetRomDestination"/> in a
 /// <see cref="NetRomRoutingSnapshot"/>.
 /// </summary>
 /// <remarks>
@@ -47,7 +47,7 @@ public sealed record Inp3RouteMetric(int TargetTimeMs, byte HopCount);
 /// independent: a destination can simultaneously hold quality-routes (from NODES) and
 /// time-routes (from RIF), and the selection policy (plan §5.2) decides which space
 /// wins per the <c>preferInp3Routes</c> knob. <see cref="Inp3"/> is <c>null</c> on a
-/// route that was only ever learned from NODES — which is every route until INP3 is
+/// route that was only ever learned from NODES - which is every route until INP3 is
 /// enabled, so the default keeps today's behaviour exactly.
 /// </para>
 /// <para>
@@ -78,7 +78,7 @@ public sealed record NetRomRoute(Callsign Neighbour, string PortId, byte Quality
 }
 
 /// <summary>
-/// A destination known to the table — its callsign + alias and its kept routes
+/// A destination known to the table - its callsign + alias and its kept routes
 /// (≤ <see cref="NetRomRoutingOptions.MaxRoutesPerDestination"/>, sorted by
 /// quality, best first). The active route is <see cref="BestRoute"/>.
 /// </summary>
@@ -92,7 +92,7 @@ public sealed record NetRomDestination(Callsign Destination, string Alias, IRead
 }
 
 /// <summary>
-/// A directly-heard NET/ROM neighbour — a node whose NODES broadcast we received
+/// A directly-heard NET/ROM neighbour - a node whose NODES broadcast we received
 /// firsthand, with the path quality we assume to it and the port we heard it on.
 /// Mirrors the canonical neighbour list (the <c>ROUTES</c> command), restricted
 /// to what read-only ingest can know (we don't probe links, so quality is the
@@ -117,7 +117,7 @@ public sealed record NetRomNeighbour(
     DateTimeOffset LastHeard);
 
 /// <summary>
-/// An immutable, point-in-time view of the learned NET/ROM routing table —
+/// An immutable, point-in-time view of the learned NET/ROM routing table -
 /// destinations with their routes, and the directly-heard neighbours. This is
 /// the read-only model the <c>Nodes</c> console command, a future MCP
 /// <c>network_topology</c> tool, and the web monitor all consume; the live table
@@ -142,8 +142,8 @@ public sealed record NetRomRoutingSnapshot(
     public int NeighbourCount => Neighbours.Count;
 
     /// <summary>
-    /// Resolve a connect target — an <em>alias</em> (e.g. <c>SOT</c>) or a
-    /// <em>callsign</em> (e.g. <c>GB7SOT</c>, with or without SSID) — to the known
+    /// Resolve a connect target - an <em>alias</em> (e.g. <c>SOT</c>) or a
+    /// <em>callsign</em> (e.g. <c>GB7SOT</c>, with or without SSID) - to the known
     /// destination, or <c>null</c> if the table has no route to it. Alias match is
     /// case-insensitive; callsign match is exact. This is what <c>connect &lt;alias&gt;</c>
     /// consults to find the best next hop across the network.

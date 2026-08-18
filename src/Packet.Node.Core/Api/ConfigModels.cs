@@ -8,7 +8,7 @@ namespace Packet.Node.Core.Api;
 
 /// <summary>
 /// What applying a candidate config would disrupt, grouped by how disruptive each
-/// change is. Plain-language and never leaks internal type names — it's operator-facing.
+/// change is. Plain-language and never leaks internal type names - it's operator-facing.
 /// </summary>
 public sealed record ReconcilePreview(
     bool Valid,

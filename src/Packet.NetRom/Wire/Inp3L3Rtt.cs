@@ -4,13 +4,13 @@ using Packet.Core;
 namespace Packet.NetRom.Wire;
 
 /// <summary>
-/// The INP3 <c>L3RTT</c> link-time-measurement frame — an <em>ordinary</em> L3
+/// The INP3 <c>L3RTT</c> link-time-measurement frame - an <em>ordinary</em> L3
 /// info datagram, not a new frame family. It is a <see cref="NetRomPacket"/> whose
 /// destination node callsign is the literal <c>L3RTT-0</c>, whose transport opcode
 /// nibble is <c>0x02</c>, and whose payload is space-padded ASCII carrying the
 /// INP3 capability flags (<c>$N</c> = "I speak INP3", <c>$IX</c> = "I accept IP
 /// version X"). The neighbour reflects the frame back verbatim; the originator
-/// times the round trip (RTT ÷ 2 → SNTT) — that timing is a later slice; this type
+/// times the round trip (RTT ÷ 2 → SNTT) - that timing is a later slice; this type
 /// is the codec only: a thin <b>builder + recogniser</b> over
 /// <see cref="NetRomPacket"/>, reusing <see cref="NetRomNetworkHeader"/> (15 B) and
 /// <see cref="NetRomTransportHeader"/> (5 B) unchanged.
@@ -25,7 +25,7 @@ namespace Packet.NetRom.Wire;
 /// <para>
 /// The opcode value <c>0x02</c> collides numerically with
 /// <see cref="NetRomOpcode.ConnectAcknowledge"/>; an L3RTT frame is disambiguated
-/// by its <b>destination = <c>L3RTT-0</c></b>, never by opcode alone — see
+/// by its <b>destination = <c>L3RTT-0</c></b>, never by opcode alone - see
 /// <see cref="IsL3Rtt"/>. A frame is recognised as <em>our own</em> reflection
 /// (vs. a peer's probe we must reflect) when its origin equals our node callsign,
 /// because reflection is byte-for-byte echo (origin stays the original prober).
@@ -35,7 +35,7 @@ namespace Packet.NetRom.Wire;
 /// <c>false</c>/<c>null</c>, never throw. The capability text is parsed by a
 /// width-independent <c>$</c>-token scan, so the emitted pad width
 /// (<see cref="DefaultCapabilityTextWidth"/>) is a cosmetic choice, not something
-/// the recogniser depends on — unknown <c>$</c>-tokens are ignored (forward-compat).
+/// the recogniser depends on - unknown <c>$</c>-tokens are ignored (forward-compat).
 /// </para>
 /// </remarks>
 public sealed record Inp3L3RttFrame
@@ -48,11 +48,11 @@ public sealed record Inp3L3RttFrame
 
     /// <summary>The transport opcode nibble that marks an L3RTT datagram (0x02).
     /// Numerically equal to <see cref="NetRomOpcode.ConnectAcknowledge"/>; the
-    /// destination callsign — not this value — is what disambiguates an L3RTT
+    /// destination callsign - not this value - is what disambiguates an L3RTT
     /// frame from a Connect Acknowledge.</summary>
     public const byte L3RttOpcode = 0x02;
 
-    /// <summary>The <c>$N</c> capability token — "I speak INP3". Its presence
+    /// <summary>The <c>$N</c> capability token - "I speak INP3". Its presence
     /// anywhere in the trimmed payload is how a node advertises INP3 capability;
     /// its absence means fall back to vanilla NODES.</summary>
     public const string CapabilityInp3 = "$N";
@@ -63,7 +63,7 @@ public sealed record Inp3L3RttFrame
 
     /// <summary>The emitted capability-text field width: <c>$N</c> (+ optional
     /// <c>$IX</c>) right-padded with ASCII spaces to this many octets. The INP3 PDF
-    /// does not fix the width (AMBIGUITY-L3RTT-3) — the recogniser is
+    /// does not fix the width (AMBIGUITY-L3RTT-3) - the recogniser is
     /// width-independent, so this is purely an emit-side default to be calibrated
     /// against a live peer in a later slice.</summary>
     public const int DefaultCapabilityTextWidth = 8;
@@ -71,7 +71,7 @@ public sealed record Inp3L3RttFrame
     /// <summary>The <see cref="NetRomPacket"/> that <em>is</em> this L3RTT frame.</summary>
     public required NetRomPacket Packet { get; init; }
 
-    /// <summary>Whether the trimmed payload carried the <c>$N</c> token — i.e. the
+    /// <summary>Whether the trimmed payload carried the <c>$N</c> token - i.e. the
     /// far end advertised INP3 capability.</summary>
     public required bool Inp3Capable { get; init; }
 
@@ -92,7 +92,7 @@ public sealed record Inp3L3RttFrame
     /// </summary>
     /// <param name="origin">The probing node's own callsign (the frame's L3 origin).</param>
     /// <param name="ipAccept">If set (e.g. 4), append a <c>$IX</c> token advertising
-    /// the accepted IP version. Must be a single decimal digit 0–9.</param>
+    /// the accepted IP version. Must be a single decimal digit 0-9.</param>
     /// <param name="timeToLive">The L3 TTL. Defaults to the node's normal initial
     /// TTL (<see cref="NetRomNetworkHeader.DefaultTimeToLive"/>); any value ≥ 1
     /// works for this single-hop neighbour probe.</param>
@@ -155,13 +155,13 @@ public sealed record Inp3L3RttFrame
     }
 
     /// <summary>Allocate and return the full L3RTT datagram bytes (the I-frame
-    /// information field to send with PID 0xCF) — just <see cref="NetRomPacket.ToBytes"/>.</summary>
+    /// information field to send with PID 0xCF) - just <see cref="NetRomPacket.ToBytes"/>.</summary>
     public byte[] ToBytes() => Packet.ToBytes();
 
     /// <summary>
     /// Whether an already-parsed <see cref="NetRomPacket"/> is an L3RTT frame: its
     /// destination decodes to base <c>L3RTT</c> (SSID ignored for the match) and its
-    /// transport opcode nibble is <c>0x02</c>. The destination test comes first —
+    /// transport opcode nibble is <c>0x02</c>. The destination test comes first -
     /// opcode 0x02 alone is also <see cref="NetRomOpcode.ConnectAcknowledge"/>.
     /// </summary>
     public static bool IsL3Rtt(NetRomPacket packet)
@@ -220,7 +220,7 @@ public sealed record Inp3L3RttFrame
     /// <summary>
     /// Whether this frame is a reflection of <em>our own</em> probe (vs. a peer's
     /// probe we are expected to reflect): reflection is verbatim echo, so the origin
-    /// of a returning frame is unchanged — it equals our node callsign.
+    /// of a returning frame is unchanged - it equals our node callsign.
     /// </summary>
     /// <param name="ourNodeCallsign">This node's own L3 callsign.</param>
     public bool IsReflectionOf(Callsign ourNodeCallsign) =>
@@ -228,7 +228,7 @@ public sealed record Inp3L3RttFrame
 
     /// <summary>
     /// Scan a capability text for the <c>$</c>-prefixed tokens. Width-independent
-    /// and total — it never throws. <c>$N</c> sets <paramref name="inp3Capable"/>;
+    /// and total - it never throws. <c>$N</c> sets <paramref name="inp3Capable"/>;
     /// a <c>$IX</c> with a single decimal digit X sets <paramref name="ipAccept"/>.
     /// Unknown <c>$</c>-tokens are ignored (forward-compat).
     /// </summary>
@@ -280,7 +280,7 @@ public sealed record Inp3L3RttFrame
 
     /// <summary>Decode wire bytes to a string for token scanning, one char per byte
     /// (Latin-1-ish). Non-ASCII / high-bit octets become the corresponding char but
-    /// never affect the <c>$</c>-token scan — they are not <c>$</c>, <c>N</c>, or a
+    /// never affect the <c>$</c>-token scan - they are not <c>$</c>, <c>N</c>, or a
     /// digit. Total: any bytes decode without throwing.</summary>
     private static string AsciiString(ReadOnlySpan<byte> bytes)
     {

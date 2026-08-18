@@ -7,12 +7,12 @@ namespace Packet.Tune.Core;
 /// <summary>
 /// The answering end of the mode-coordination protocol (see
 /// <see cref="ModeCoordinator"/> for the choreography). Confirms proposals it can
-/// honour, switches on commit, counts/fires the verification probes, and — the part
-/// that keeps the rig safe — <b>always finds its way back to the session's home
+/// honour, switches on commit, counts/fires the verification probes, and - the part
+/// that keeps the rig safe - <b>always finds its way back to the session's home
 /// mode/channel</b>: on a <c>revert</c> telegram, on a failed local switch, on
 /// <c>BY</c>, on cancellation, and via an idle watchdog when the coordinator goes
 /// silent while this end is away from home (the side channel is mode-agnostic, but a
-/// failed <em>channel</em> switch can split the radios — the watchdog is the recovery
+/// failed <em>channel</em> switch can split the radios - the watchdog is the recovery
 /// for exactly that).
 /// </summary>
 public sealed class ModeResponder
@@ -70,7 +70,7 @@ public sealed class ModeResponder
 
     /// <summary>
     /// Run the responder loop until <c>BY</c> (returns 0) or the link closes
-    /// (returns 1). Cancellation reverts to home before returning 0 — the rig is
+    /// (returns 1). Cancellation reverts to home before returning 0 - the rig is
     /// never abandoned off-home by this end if it can help it.
     /// </summary>
     public async Task<int> RunAsync(CancellationToken cancellationToken = default)
@@ -207,7 +207,7 @@ public sealed class ModeResponder
                 homeVerifyOnly = false;
 
                 // Wedge guard: our radio's auto-ack of this very telegram is in
-                // flight — the settle frame the mode apply transmits must not
+                // flight - the settle frame the mode apply transmits must not
                 // race it.
                 await Task.Delay(options.PreProbeDelay, clock, cancellationToken).ConfigureAwait(false);
                 try
@@ -308,7 +308,7 @@ public sealed class ModeResponder
             case ModeCoordAction.Confirm:
             case ModeCoordAction.Reject:
             default:
-                return; // coordinator-bound messages echoed back — not ours
+                return; // coordinator-bound messages echoed back - not ours
         }
     }
 

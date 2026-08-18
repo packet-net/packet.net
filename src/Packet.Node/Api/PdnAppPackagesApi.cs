@@ -20,7 +20,7 @@ namespace Packet.Node.Api;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Scopes.</b> Reading the inventory is <c>read</c>; every mutation is <c>admin</c> —
+/// <b>Scopes.</b> Reading the inventory is <c>read</c>; every mutation is <c>admin</c> -
 /// enabling a package is the owner's trust grant, a step above day-to-day <c>operate</c>
 /// actions. The gates are no-ops when <c>management.auth.enabled</c> is off, like everywhere
 /// else.
@@ -29,15 +29,15 @@ namespace Packet.Node.Api;
 /// <b>The supervisor is optional by design.</b> These endpoints resolve
 /// <see cref="IAppServiceSupervisor"/> via <see cref="IServiceProvider"/> as a nullable
 /// service: the node composition root registers the real one, but a host without it (a
-/// degraded boot, a test host that strips the registration) must still serve the inventory —
+/// degraded boot, a test host that strips the registration) must still serve the inventory -
 /// the API degrades honestly, reporting managed services as <c>Stopped</c> with a
 /// "supervisor not running" detail, and restart answers 503.
 /// </para>
 /// <para>
 /// <b>Enable/disable is package-scoped.</b> The toggle writes the <c>apps:</c> override list,
 /// which only governs discovered packages (the contract's owner-state surface). An inline
-/// <c>applications:</c> entry keeps its own <c>enabled:</c> flag in config — toggling it is a
-/// config edit, not an override write — so its id answers 404 here (it matches neither a
+/// <c>applications:</c> entry keeps its own <c>enabled:</c> flag in config - toggling it is a
+/// config edit, not an override write - so its id answers 404 here (it matches neither a
 /// discovered package nor an override entry).
 /// </para>
 /// </remarks>

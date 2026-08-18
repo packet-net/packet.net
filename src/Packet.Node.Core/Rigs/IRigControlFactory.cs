@@ -6,7 +6,7 @@ using Packet.Rig.Hamlib;
 namespace Packet.Node.Core.Rigs;
 
 /// <summary>
-/// Builds a live <see cref="IRigControl"/> from a port's <see cref="PortRigConfig"/> — the
+/// Builds a live <see cref="IRigControl"/> from a port's <see cref="PortRigConfig"/> - the
 /// rig-side sibling of <see cref="Radios.IRadioControlFactory"/>. The port supervisor calls this
 /// when a port with a <c>rig:</c> block comes up, and only this seam knows how each rig kind maps
 /// onto a concrete backend (which lets component tests substitute a scripted rig instead of
@@ -24,7 +24,7 @@ public interface IRigControlFactory
     /// the system clock.</param>
     /// <param name="cancellationToken">Cancels the connect/probe.</param>
     /// <exception cref="NotSupportedException">If the rig kind has no implementation in this
-    /// build (unreachable for validated config — the validator and factory share
+    /// build (unreachable for validated config - the validator and factory share
     /// <see cref="RigKinds"/>).</exception>
     Task<IRigControl> CreateAsync(
         PortRigConfig rig,

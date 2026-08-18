@@ -3,12 +3,12 @@ namespace Packet.Radio.Tait;
 /// <summary>
 /// One Tait TM8100/TM8200 <b>band split</b>: the two-character band designator (e.g. <c>B1</c>),
 /// the RF range the hardware covers, and the UK amateur band that range falls in (if any). The
-/// designator is the <c>[A-Z][0-9]</c> code carried in the radio's product code — the character pair
+/// designator is the <c>[A-Z][0-9]</c> code carried in the radio's product code - the character pair
 /// immediately after the first <c>-</c> in the <c>RADIO_VERSIONS</c> record <c>[00]</c> product code
 /// string (e.g. <c>TMAB12-<b>B1</b>00_0201</c>). Table from
 /// <see href="https://wiki.oarc.uk/radios:tait_tm8100">the OARC Tait TM8100 wiki</see>, with the UK
-/// 4&#8239;m allocation added to <c>A4</c> (the wiki marks it "no amateur band", but 66–88&#8239;MHz
-/// covers the UK 70&#8239;MHz / 4&#8239;m band — bench-confirmed on 4&#8239;m A4 radios).
+/// 4&#8239;m allocation added to <c>A4</c> (the wiki marks it "no amateur band", but 66-88&#8239;MHz
+/// covers the UK 70&#8239;MHz / 4&#8239;m band - bench-confirmed on 4&#8239;m A4 radios).
 /// </summary>
 /// <param name="Code">The two-character band designator, e.g. <c>B1</c>.</param>
 /// <param name="MinHz">Bottom of the hardware's RF range, in hertz.</param>
@@ -22,7 +22,7 @@ public sealed record TaitBand(string Code, int MinHz, int MaxHz, string? Amateur
 /// radio's product code. The product code is <see cref="TaitRadioIdentity.Versions"/> record
 /// <c>[00]</c> (the <c>RADIO_VERSIONS</c> query, e.g. <c>TMAB12-B100_0201</c>); the band designator is
 /// the <c>[A-Z][0-9]</c> pair immediately after the <b>first</b> <c>-</c>. The <em>frequency</em> a
-/// radio is tuned to is not CCDI-readable, but the <em>band split</em> — hence the amateur band — is,
+/// radio is tuned to is not CCDI-readable, but the <em>band split</em> - hence the amateur band - is,
 /// so PDN can label a head-end-adopted port by band without operator input.
 /// </summary>
 public static class TaitBandCatalog
@@ -81,7 +81,7 @@ public static class TaitBandCatalog
     }
 
     /// <summary>
-    /// Extract the band split from a radio's assembled <see cref="TaitRadioIdentity"/> — its
+    /// Extract the band split from a radio's assembled <see cref="TaitRadioIdentity"/> - its
     /// <see cref="TaitRadioIdentity.Versions"/> record <c>[00]</c> product code. Returns <c>false</c>
     /// (leaving <paramref name="band"/> null) when the radio reported no product-code record, or the
     /// code is malformed / names no known split (see <see cref="TryParseProductCode"/>).

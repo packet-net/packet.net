@@ -5,10 +5,10 @@ using Packet.Tune.Core;
 namespace Packet.Node.Core.Tuning;
 
 /// <summary>
-/// One live guided deviation-tuning session on a port — the node-side state machine that drives the
+/// One live guided deviation-tuning session on a port - the node-side state machine that drives the
 /// <see cref="TuningSession"/> protocol loop, projects each round and lifecycle transition into a
 /// structured <see cref="TuningEvent"/> feed for the web UI, gates the operator's "next round"
-/// signal, and — above all — <b>guarantees the port is restored to normal service on every exit
+/// signal, and - above all - <b>guarantees the port is restored to normal service on every exit
 /// path</b> (clean finish, link error, operator stop, an exception, or node shutdown).
 /// </summary>
 /// <remarks>
@@ -23,7 +23,7 @@ namespace Packet.Node.Core.Tuning;
 /// <b>Restore discipline.</b> The restore callback (un-pause the port) is invoked exactly once, from
 /// a single-flight cleanup that runs in the background loop's <c>finally</c>. Every stop path funnels
 /// through that loop (cancellation) or, if the loop never started, through <see cref="DisposeAsync"/>
-/// directly — so a session can never leave a port paused or a radio keyed. Mirrors the radio
+/// directly - so a session can never leave a port paused or a radio keyed. Mirrors the radio
 /// unkey-on-dispose discipline.
 /// </para>
 /// <para>The session is testable without hardware: construct it over an in-memory
@@ -58,7 +58,7 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
     private TaskCompletionSource<bool>? pendingNext;
     private volatile bool stopRequested;
 
-    // Round-tracking state — touched only on the link's single-consumer receive/send path.
+    // Round-tracking state - touched only on the link's single-consumer receive/send path.
     private MeterReport? pendingReport;
     private MeterReport? previousRoundReport;
     private int roundCount;
@@ -79,12 +79,12 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
     /// <param name="portId">The port the session runs on.</param>
     /// <param name="peerSdmId">The peer radio's SDM data identity (reported in <see cref="Info"/>).</param>
     /// <param name="role">This port's role.</param>
-    /// <param name="link">The coordination link (owned — disposed during teardown, before restore).</param>
-    /// <param name="stimulus">The burst transmitter — required for the <see cref="TuningRole.Tuned"/> role.</param>
-    /// <param name="meter">The burst meter — required for the <see cref="TuningRole.Meter"/> role.</param>
+    /// <param name="link">The coordination link (owned - disposed during teardown, before restore).</param>
+    /// <param name="stimulus">The burst transmitter - required for the <see cref="TuningRole.Tuned"/> role.</param>
+    /// <param name="meter">The burst meter - required for the <see cref="TuningRole.Meter"/> role.</param>
     /// <param name="options">Session options (burst size, pre-burst guard).</param>
     /// <param name="restore">Un-pause/restore the port. Invoked exactly once during teardown, after
-    /// the link is disposed. Must not throw meaningfully — failures are logged, not propagated.</param>
+    /// the link is disposed. Must not throw meaningfully - failures are logged, not propagated.</param>
     /// <param name="clock">Time source for event timestamps; null = system.</param>
     public PortTuningSession(
         string sessionId,
@@ -197,7 +197,7 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
     }
 
     /// <summary>
-    /// Operator signal: "I've adjusted the pot — run the next measurement round." Applies only to the
+    /// Operator signal: "I've adjusted the pot - run the next measurement round." Applies only to the
     /// <see cref="TuningRole.Tuned"/> role while a round is awaiting the operator.
     /// </summary>
     /// <returns><c>true</c> when the signal advanced a waiting round; <c>false</c> when it does not
@@ -257,7 +257,7 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
         }
         else
         {
-            // Never started — still guarantee the port is restored.
+            // Never started - still guarantee the port is restored.
             await CleanupAsync().ConfigureAwait(false);
         }
 
@@ -343,7 +343,7 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
         }
         catch (Exception ex)
         {
-            // Restore is best-effort by contract, but a failure is a genuine incident — surface it.
+            // Restore is best-effort by contract, but a failure is a genuine incident - surface it.
             Log?.Invoke($"tuning: PORT RESTORE FAILED for '{portId}': {ex.Message}");
         }
     }
@@ -352,7 +352,7 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
 
     private void OnTelegram(TuningTelegram telegram, bool sent)
     {
-        // The first telegram we *receive* is proof the peer is there — a RQ answering our HELLO on
+        // The first telegram we *receive* is proof the peer is there - a RQ answering our HELLO on
         // the tuned side, a HELLO ready-beacon on the meter side (the meter never beacons
         // unsolicited, so we can't key off a received HELLO alone). Announce once.
         if (!sent && !peerAnnounced)
@@ -365,7 +365,7 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
         {
             case TuningVerb.Measurement:
                 // MS flows in the direction we observe it (received on the tuned side, sent on the
-                // meter side) — buffer it for the AD that immediately follows.
+                // meter side) - buffer it for the AD that immediately follows.
                 if (MeterReport.TryParse(telegram.Args, out var report) && report is not null)
                 {
                     pendingReport = report;
@@ -430,7 +430,7 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
                 w.TryWrite(evt);
             }
             // EmitLifecycle sets the new state before publishing, so a terminal event is visible
-            // here as a terminal `state` — complete every live reader so its SSE loop ends cleanly.
+            // here as a terminal `state` - complete every live reader so its SSE loop ends cleanly.
             if (TuningPreflight.IsTerminal(state))
             {
                 foreach (var w in subscribers.Values)

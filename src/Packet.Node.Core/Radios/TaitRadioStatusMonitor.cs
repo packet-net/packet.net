@@ -7,13 +7,13 @@ namespace Packet.Node.Core.Radios;
 /// <summary>
 /// The <see cref="IRadioStatusMonitor"/> for a Tait CCDI radio: it runs a
 /// <see cref="TaitRadioHealthMonitor"/> at the port's configured cadence (default 10 s), keeps the
-/// most recent sample, and queries the radio's identity once at attach — then projects the current
+/// most recent sample, and queries the radio's identity once at attach - then projects the current
 /// connection state, carrier-sense, identity, and latest health into a <see cref="RadioStatus"/>.
 /// </summary>
 /// <remarks>
 /// It owns the health monitor but <b>not</b> the radio (the port supervisor owns the radio's
 /// lifetime): disposing this stops sampling but leaves the radio open, so the port can dispose the
-/// radio last. Every projection reads already-captured state — no serial I/O on the request path —
+/// radio last. Every projection reads already-captured state - no serial I/O on the request path -
 /// so a faulted or silent radio degrades to null health / a <c>faulted</c> connection state rather
 /// than blocking or throwing.
 /// </remarks>
@@ -58,7 +58,7 @@ public sealed class TaitRadioStatusMonitor : IRadioStatusMonitor
         }
     }
 
-    // Best-effort identity query at attach (a few retries — a freshly-opened port can still be
+    // Best-effort identity query at attach (a few retries - a freshly-opened port can still be
     // settling). A radio that never answers leaves identity null, which the snapshot reports honestly.
     private async Task QueryIdentityAsync(CancellationToken ct)
     {

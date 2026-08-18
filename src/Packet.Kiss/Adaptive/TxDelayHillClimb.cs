@@ -5,7 +5,7 @@ namespace Packet.Kiss.Adaptive;
 /// <summary>
 /// A first-pass adaptive TXDELAY estimator. Walks the per-peer TXDELAY value
 /// down while the success rate stays high, and ratchets it back up after
-/// losses. Other KISS parameters are passed through unchanged — those are
+/// losses. Other KISS parameters are passed through unchanged - those are
 /// follow-up work.
 /// </summary>
 /// <remarks>
@@ -23,7 +23,7 @@ namespace Packet.Kiss.Adaptive;
 ///         <see cref="LossPenaltyUnits"/> and reset the success streak.</item>
 ///   <item><see cref="FrameOutcome.AcknowledgedAfterRetransmit"/> is mildly
 ///         penalising (no decrement, success streak resets) but does not
-///         increment TXDELAY directly — it could be a collision rather than
+///         increment TXDELAY directly - it could be a collision rather than
 ///         a preamble miss.</item>
 /// </list>
 /// <para>
@@ -37,10 +37,10 @@ namespace Packet.Kiss.Adaptive;
 public sealed class TxDelayHillClimbEstimator : IAdaptiveParameterEstimator
 {
     /// <summary>Floor for the recommended TXDELAY (10 ms units).</summary>
-    public byte MinTxDelay { get; init; } = 5;   // 50 ms — below this most TNCs won't lock
+    public byte MinTxDelay { get; init; } = 5;   // 50 ms - below this most TNCs won't lock
 
     /// <summary>Ceiling for the recommended TXDELAY (10 ms units).</summary>
-    public byte MaxTxDelay { get; init; } = 100; // 1 s — beyond this we're wasting airtime
+    public byte MaxTxDelay { get; init; } = 100; // 1 s - beyond this we're wasting airtime
 
     /// <summary>How many consecutive first-try ACKs trigger a step-down.</summary>
     public int SuccessesPerStepDown { get; init; } = 8;
@@ -87,7 +87,7 @@ public sealed class TxDelayHillClimbEstimator : IAdaptiveParameterEstimator
                 // The NinoTNC applies a changed TXDELAY from the SECOND frame after the KISS
                 // parameter command, not the first (bench-measured across every step of a
                 // 20/50/100 sweep). The first outcome after a change was transmitted with the
-                // OLD value — attributing it to the new one corrupts the climb, so skip it.
+                // OLD value - attributing it to the new one corrupts the climb, so skip it.
                 // Cheap insurance on other TNCs too: it only delays the climb by one frame.
                 state.SettlingFrames--;
                 return;
@@ -106,7 +106,7 @@ public sealed class TxDelayHillClimbEstimator : IAdaptiveParameterEstimator
                     }
                     break;
                 case FrameOutcome.AcknowledgedAfterRetransmit:
-                    // Probabilistic noise — reset streak but don't bump TXDELAY.
+                    // Probabilistic noise - reset streak but don't bump TXDELAY.
                     state.SuccessStreak = 0;
                     break;
                 case FrameOutcome.Lost:

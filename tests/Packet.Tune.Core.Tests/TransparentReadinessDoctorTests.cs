@@ -9,7 +9,7 @@ namespace Packet.Tune.Core.Tests;
 
 /// <summary>
 /// The Transparent-readiness doctor (<see cref="TransparentReadinessDoctor"/>) over a scripted
-/// radio and in-memory transports — the FAIL/stuck paths the task calls out (the 0/06 "not
+/// radio and in-memory transports - the FAIL/stuck paths the task calls out (the 0/06 "not
 /// enabled", the escape-ignored wedge, the baud garble) without touching hardware. The happy
 /// paths are validated on the bench rig.
 /// </summary>

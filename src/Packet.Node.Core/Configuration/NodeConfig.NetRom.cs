@@ -5,7 +5,7 @@ using YamlDotNet.Serialization;
 namespace Packet.Node.Core.Configuration;
 
 /// <summary>
-/// The node's NET/ROM routing role — the single 3-state knob that replaces the old
+/// The node's NET/ROM routing role - the single 3-state knob that replaces the old
 /// pair of <c>connect</c> + <c>forward</c> bools (which had an inert combination:
 /// <c>forward</c> did nothing unless <c>connect</c> was also on, because forwarding
 /// reuses the connected-mode interlink machinery <c>connect</c> gated). The three
@@ -20,7 +20,7 @@ namespace Packet.Node.Core.Configuration;
 /// </remarks>
 public enum NetRomRouting
 {
-    /// <summary>Passive — listen for NODES and maintain the routing table only; no
+    /// <summary>Passive - listen for NODES and maintain the routing table only; no
     /// connected-mode interlinks, no transit. The default (equivalent to the old
     /// <c>connect: false</c>). A stock node hears the network but transmits nothing
     /// on it and opens no circuits.</summary>
@@ -33,7 +33,7 @@ public enum NetRomRouting
     /// (equivalent to the old <c>connect: true, forward: false</c>).</summary>
     Endpoint,
 
-    /// <summary>Full router — interlinks for our own circuits <b>and</b> relay transit
+    /// <summary>Full router - interlinks for our own circuits <b>and</b> relay transit
     /// datagrams for other stations (TTL-decremented, hop-by-hop). The network-layer
     /// routing role (equivalent to the old <c>connect: true, forward: true</c>).</summary>
     Transit,
@@ -42,19 +42,19 @@ public enum NetRomRouting
 /// <summary>
 /// NET/ROM configuration. The node always <b>hears</b> NODES routing broadcasts
 /// (UI frames to dest <c>NODES</c>, PID 0xCF) via the frame-trace tap, parses
-/// them, and builds a routing table surfaced in <c>Nodes</c> / a future MCP tool —
+/// them, and builds a routing table surfaced in <c>Nodes</c> / a future MCP tool -
 /// the read-only awareness slice. With <see cref="Broadcast"/> on it also
 /// <b>originates</b> its own NODES broadcast on the NODESINTERVAL schedule, and the
 /// <see cref="Routing"/> mode escalates how much it routes:
 /// <see cref="NetRomRouting.Endpoint"/> opens <b>L4 virtual circuits</b> over
 /// connected-mode AX.25 interlinks so <c>connect &lt;alias&gt;</c> routes a user to
 /// a distant node, and <see cref="NetRomRouting.Transit"/> additionally
-/// <b>forwards transit datagrams</b> for other stations — the full network-layer
+/// <b>forwards transit datagrams</b> for other stations - the full network-layer
 /// routing role.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The knobs are exposed because NET/ROM has no single normative standard — the
+/// The knobs are exposed because NET/ROM has no single normative standard - the
 /// canonical defaults apply unless the operator overrides, never a silent BPQ-ism.
 /// Default <see cref="Enabled"/> is <c>true</c> (hearing is free + harmless), but
 /// the TX-bearing escalations (<see cref="Broadcast"/>, <see cref="Routing"/>)
@@ -79,7 +79,7 @@ public sealed record NetRomConfig
 
     /// <summary>
     /// Whether to <b>originate</b> our own NODES routing broadcast (and so advertise
-    /// our presence + learned routes to neighbours). Default <c>false</c> —
+    /// our presence + learned routes to neighbours). Default <c>false</c> -
     /// transmitting on the air is opt-in. Requires <see cref="Enabled"/>.
     /// </summary>
     public bool Broadcast { get; init; }
@@ -87,7 +87,7 @@ public sealed record NetRomConfig
     /// <summary>
     /// The node's routing role (see <see cref="NetRomRouting"/>). The single 3-state
     /// successor to the old <c>connect</c> + <c>forward</c> bools.
-    /// <see cref="NetRomRouting.None"/> (the default) is passive — hear + maintain the
+    /// <see cref="NetRomRouting.None"/> (the default) is passive - hear + maintain the
     /// table, no interlinks, no transit; <see cref="NetRomRouting.Endpoint"/> opens
     /// interlinks for our own <c>connect &lt;alias&gt;</c> but does not relay transit;
     /// <see cref="NetRomRouting.Transit"/> is the full router (interlinks + relay
@@ -96,7 +96,7 @@ public sealed record NetRomConfig
     /// <remarks>
     /// <b>Bound nullable to distinguish unset from explicit <c>None</c>.</b> The YAML
     /// binder writes <c>null</c> when the <c>routing:</c> key is absent and a concrete
-    /// value when it is present — so <see cref="ResolveRouting"/> can tell "operator said
+    /// value when it is present - so <see cref="ResolveRouting"/> can tell "operator said
     /// nothing, fall back to the legacy <c>connect</c>/<c>forward</c> keys" apart from
     /// "operator explicitly chose <c>none</c>, ignore the legacy keys". A non-nullable
     /// enum defaulting to <c>None</c> could not make that distinction. Every consumer
@@ -105,31 +105,31 @@ public sealed record NetRomConfig
     public NetRomRouting? Routing { get; init; }
 
     /// <summary>
-    /// <b>Legacy input (deprecated — use <see cref="Routing"/>).</b> Whether
+    /// <b>Legacy input (deprecated - use <see cref="Routing"/>).</b> Whether
     /// <c>connect &lt;alias&gt;</c> may route across the network via NET/ROM L4
     /// circuits. Retained as a nullable input so existing configs with a <c>connect:</c>
     /// key keep parsing + behaving identically; <c>null</c> = the key was absent. Fed to
     /// <see cref="ResolveRouting"/> only when <see cref="Routing"/> is unset. Never read
-    /// directly by a consumer — read <see cref="EffectiveRouting"/>.
+    /// directly by a consumer - read <see cref="EffectiveRouting"/>.
     /// </summary>
     public bool? Connect { get; init; }
 
     /// <summary>
-    /// <b>Legacy input (deprecated — use <see cref="Routing"/>).</b> Whether this node
+    /// <b>Legacy input (deprecated - use <see cref="Routing"/>).</b> Whether this node
     /// forwarded transit datagrams. Retained as a nullable input so existing configs
     /// with a <c>forward:</c> key keep parsing; <c>null</c> = the key was absent. Note
     /// the old wart this fix removes: <c>forward</c> was inert unless <c>connect</c> was
     /// also on. Fed to <see cref="ResolveRouting"/> only when <see cref="Routing"/> is
     /// unset; see that method for the mapping (including the contradictory
     /// <c>connect:false, forward:true</c> → <see cref="NetRomRouting.None"/> + a warning).
-    /// Never read directly by a consumer — read <see cref="EffectiveRouting"/>.
+    /// Never read directly by a consumer - read <see cref="EffectiveRouting"/>.
     /// </summary>
     public bool? Forward { get; init; }
 
     /// <summary>
     /// How a forwarding node picks among multiple kept routes to a destination
     /// (<see cref="NetRomForwardMode"/>). Default
-    /// <see cref="NetRomForwardMode.PerFlow"/> — a transit node spreads distinct L4
+    /// <see cref="NetRomForwardMode.PerFlow"/> - a transit node spreads distinct L4
     /// circuits across the kept routes, quality-weighted, each circuit pinned to one
     /// path (so its ordering is preserved). Set <see cref="NetRomForwardMode.BestRoute"/>
     /// to always use the single best route. Only consulted when <see cref="Routing"/>
@@ -137,7 +137,7 @@ public sealed record NetRomConfig
     /// </summary>
     public NetRomForwardMode ForwardMode { get; init; } = NetRomForwardMode.PerFlow;
 
-    // The node's NET/ROM alias is no longer a separate field here — it is unified with
+    // The node's NET/ROM alias is no longer a separate field here - it is unified with
     // Identity.Alias (the single node-name concept, the BPQ NODEALIAS model). The NODES broadcast
     // takes its alias from Identity.Alias; a pre-v2 config's netRom.alias is folded into
     // Identity.Alias by the v1→v2 schema migration (NodeConfigSchemaMigrations).
@@ -147,7 +147,7 @@ public sealed record NetRomConfig
     public int? DefaultNeighbourQuality { get; init; }
 
     /// <summary>Worst quality a learned route may have and still be kept (MINQUAL).
-    /// Null = canonical default (0 — keep everything above zero).</summary>
+    /// Null = canonical default (0 - keep everything above zero).</summary>
     public int? MinQuality { get; init; }
 
     /// <summary>Obsolescence count a route is (re)initialised to on a broadcast
@@ -159,7 +159,7 @@ public sealed record NetRomConfig
     public int? ObsoleteMinimum { get; init; }
 
     /// <summary>Seconds between obsolescence sweeps + (when <see cref="Broadcast"/>)
-    /// NODES broadcasts — the canonical NODESINTERVAL. Null = default (3600 — once an
+    /// NODES broadcasts - the canonical NODESINTERVAL. Null = default (3600 - once an
     /// hour).</summary>
     public int? SweepIntervalSeconds { get; init; }
 
@@ -182,27 +182,27 @@ public sealed record NetRomConfig
     /// <summary>
     /// Offer LinBPQ-style negotiated NET/ROM L4 payload compression on circuits (the BPQ
     /// <c>L4Compress</c> / <c>L2Compress</c> capability). <b>Default <c>false</c></b>
-    /// (decline) — compression is always negotiated, so declining simply runs every link
+    /// (decline) - compression is always negotiated, so declining simply runs every link
     /// uncompressed, which any NET/ROM peer can read (the interop-safe path). When set,
     /// the node advertises compression in its Connect Request / Acknowledge and only
     /// actually compresses outbound data to peers that also agreed; a peer that declines
     /// (or doesn't understand the extension) transparently gets uncompressed data. This is
-    /// the only NET/ROM knob whose <em>safe</em> default is to stay off — turn it on only
+    /// the only NET/ROM knob whose <em>safe</em> default is to stay off - turn it on only
     /// for links to compression-capable BPQ neighbours (e.g. GB7RDG).
     /// </summary>
     public bool Compress { get; init; }
 
     /// <summary>
     /// The INP3 link-timing routing overlay (default-off). When
-    /// <see cref="NetRomInp3Options.Enabled"/> is <c>false</c> — which is the
+    /// <see cref="NetRomInp3Options.Enabled"/> is <c>false</c> - which is the
     /// default, since the property initialises to <c>new()</c> ⇒
-    /// <see cref="NetRomInp3Options.Default"/> — the node behaves byte-for-byte as
+    /// <see cref="NetRomInp3Options.Default"/> - the node behaves byte-for-byte as
     /// today: no L3RTT probing, no RIF ingest/emit, no INP3 routes. INP3 is an
     /// opt-in overlay on the vanilla quality-based NET/ROM stack; it requires both
     /// <see cref="Enabled"/> and a <see cref="Routing"/> mode that opens interlinks
-    /// (<see cref="NetRomRouting.Endpoint"/> or <see cref="NetRomRouting.Transit"/>) —
+    /// (<see cref="NetRomRouting.Endpoint"/> or <see cref="NetRomRouting.Transit"/>) -
     /// the L3RTT / RIF frames ride the connected-mode interlink machinery those modes
-    /// gate, so the host constructs the overlay only when interlinks are enabled — the
+    /// gate, so the host constructs the overlay only when interlinks are enabled - the
     /// validator rejects <c>inp3.enabled</c> with <c>routing: none</c> rather than
     /// silently no-op.
     /// </summary>
@@ -226,10 +226,10 @@ public sealed record NetRomConfig
     /// <summary>
     /// The resolved routing role every consumer reads (the <see cref="ResolveRouting"/>
     /// tuple's first element, discarding the warnings). This is the single value
-    /// <c>NetRomService</c> / the validator / the API gate on — never the raw
+    /// <c>NetRomService</c> / the validator / the API gate on - never the raw
     /// <see cref="Routing"/> / <see cref="Connect"/> / <see cref="Forward"/> fields.
     /// </summary>
-    /// <remarks><see cref="YamlIgnoreAttribute"/>: a derived view, not a stored field — it
+    /// <remarks><see cref="YamlIgnoreAttribute"/>: a derived view, not a stored field - it
     /// must never round-trip through the YAML; only <see cref="Routing"/> /
     /// <see cref="Connect"/> / <see cref="Forward"/> are persisted.</remarks>
     [YamlIgnore]
@@ -238,7 +238,7 @@ public sealed record NetRomConfig
     /// <summary>
     /// Resolve the effective <see cref="NetRomRouting"/> from the new <see cref="Routing"/>
     /// knob and the legacy <see cref="Connect"/> / <see cref="Forward"/> bools, returning
-    /// any back-compat warnings the operator should see (surfaced at config load — see
+    /// any back-compat warnings the operator should see (surfaced at config load - see
     /// <c>FileConfigProvider</c>). The mapping, in precedence order:
     /// <list type="bullet">
     /// <item><b><see cref="Routing"/> explicitly set</b> → it wins. If a legacy
@@ -271,11 +271,11 @@ public sealed record NetRomConfig
 
         if (!legacyPresent)
         {
-            return (NetRomRouting.None, []);   // nothing configured — the default.
+            return (NetRomRouting.None, []);   // nothing configured - the default.
         }
 
         // Legacy mapping. Treat absent legacy bools as false (their historical defaults
-        // were connect:false, forward:true — but forward only ever mattered under connect,
+        // were connect:false, forward:true - but forward only ever mattered under connect,
         // so an absent forward under connect:true maps to Transit, matching old behaviour).
         var connect = Connect == true;
         var forward = Forward == true;
@@ -287,7 +287,7 @@ public sealed record NetRomConfig
             return (Forward == false ? NetRomRouting.Endpoint : NetRomRouting.Transit, []);
         }
 
-        // connect not on. forward:true here is the contradictory combo — it was always
+        // connect not on. forward:true here is the contradictory combo - it was always
         // inert (forwarding needs the interlink machinery connect gated). Surface it.
         if (forward)
         {

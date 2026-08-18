@@ -4,7 +4,7 @@ namespace Packet.Kiss.NinoTnc;
 /// Per-register differences between two <see cref="NinoTncStatusFrame"/>
 /// snapshots (later minus earlier). Each field is <c>null</c> when either
 /// snapshot lacked the register. The registers are since-boot counters, so
-/// a delta across a known activity window isolates that window's traffic —
+/// a delta across a known activity window isolates that window's traffic -
 /// e.g. the preamble words spent on one transmission, which is how the
 /// effective TXDELAY is measured (see <see cref="PreambleSeconds"/>).
 /// </summary>
@@ -48,8 +48,8 @@ public sealed record NinoTncStatusDelta
 
     /// <summary>
     /// Dropped ADC samples (labelled <c>LostADCSmp</c> field; no numeric
-    /// register — see <see cref="NinoTncStatusFrame.LostAdcSamples"/>).
-    /// A positive delta while receiving = the RX audio clipped the ADC —
+    /// register - see <see cref="NinoTncStatusFrame.LostAdcSamples"/>).
+    /// A positive delta while receiving = the RX audio clipped the ADC -
     /// gross over-deviation at the transmitting end.
     /// </summary>
     public long? LostAdcSamples { get; init; }
@@ -85,7 +85,7 @@ public sealed record NinoTncStatusDelta
     /// at the given over-air bit rate: seconds = words × 16 ÷ bit rate.
     /// <c>null</c> when the register was missing on either snapshot.
     /// </summary>
-    /// <param name="bitRateHz">The mode's raw bit rate, e.g. 1200 — see <see cref="NinoTncMode.BitRateHz"/>.</param>
+    /// <param name="bitRateHz">The mode's raw bit rate, e.g. 1200 - see <see cref="NinoTncMode.BitRateHz"/>.</param>
     /// <exception cref="ArgumentOutOfRangeException">Bit rate is zero or negative.</exception>
     public double? PreambleSeconds(int bitRateHz)
     {

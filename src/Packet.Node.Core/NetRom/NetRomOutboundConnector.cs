@@ -10,21 +10,21 @@ namespace Packet.Node.Core.NetRom;
 /// prompt typing <c>C SOT</c> (an alias) or <c>C GB7SOT</c> (a distant callsign)
 /// is resolved in the routing table to the best neighbour, an interlink is opened,
 /// an L4 circuit is established end-to-end, and the console relays the user against
-/// it — reaching a node the operator has no direct RF path to, by name.
+/// it - reaching a node the operator has no direct RF path to, by name.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Resolution order: if NET/ROM connect-routing is enabled and the routing table
 /// has a route to the target (matched as an alias <em>or</em> a callsign), open an
 /// L4 circuit. Otherwise defer to the wrapped <see cref="IOutboundConnector"/> (the
-/// slice-1 same-port AX.25 dial) — so a plain <c>C M0LTE-1</c> to a station on the
+/// slice-1 same-port AX.25 dial) - so a plain <c>C M0LTE-1</c> to a station on the
 /// local channel still works exactly as before.
 /// </para>
 /// <para>
 /// The connect command parses its target as a <see cref="Callsign"/>; a NET/ROM
 /// alias (uppercase, ≤6 alphanumerics, no SSID) is a valid <c>Callsign.Base</c>, so
 /// <c>C SOT</c> arrives here as <c>Callsign("SOT")</c> and we resolve its text
-/// against the table's aliases — no parser change needed.
+/// against the table's aliases - no parser change needed.
 /// </para>
 /// </remarks>
 public sealed class NetRomOutboundConnector : IOutboundConnector
@@ -56,7 +56,7 @@ public sealed class NetRomOutboundConnector : IOutboundConnector
             }
         }
 
-        // No NET/ROM route — fall back to a direct AX.25 dial on the local channel.
+        // No NET/ROM route - fall back to a direct AX.25 dial on the local channel.
         if (fallback is not null)
         {
             return await fallback.ConnectAsync(target, cancellationToken).ConfigureAwait(false);

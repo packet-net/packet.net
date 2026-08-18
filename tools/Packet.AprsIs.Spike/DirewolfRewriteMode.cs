@@ -13,7 +13,7 @@ namespace Packet.AprsIs.Spike;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The info-field payload is preserved verbatim — only the
+/// The info-field payload is preserved verbatim - only the
 /// source / destination / digipeater callsigns get rewritten. So this
 /// is a legitimate A/B test of the *payload* decoder: if direwolf still
 /// produces wrong coordinates after the envelope is fixed, the bug
@@ -23,7 +23,7 @@ namespace Packet.AprsIs.Spike;
 /// Strategy: D-Star letter SSIDs (<c>-D</c>, <c>-B</c>, <c>-T</c>) get
 /// mapped to <c>-1</c>. Lowercase bases get uppercased. Bases longer
 /// than 6 chars get truncated. Q-constructs (<c>qAR</c>, <c>qAS</c>)
-/// are preserved verbatim — direwolf strips them anyway.
+/// are preserved verbatim - direwolf strips them anyway.
 /// </para>
 /// </remarks>
 public static class DirewolfRewriteMode

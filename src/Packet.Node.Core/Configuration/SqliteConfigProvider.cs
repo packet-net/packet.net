@@ -8,8 +8,8 @@ namespace Packet.Node.Core.Configuration;
 /// The Slice-2 <see cref="IWritableConfigProvider"/>: the node's live config lives in a
 /// single versioned JSON-blob row in <c>pdn.db</c> (behind <see cref="ISqliteConfigStore"/>),
 /// not in a watched YAML file. It implements the SAME seam as
-/// <see cref="FileConfigProvider"/> — <see cref="Current"/> + <see cref="OnChange"/> +
-/// <see cref="Validate"/> + <see cref="TryApply"/> — so every consumer
+/// <see cref="FileConfigProvider"/> - <see cref="Current"/> + <see cref="OnChange"/> +
+/// <see cref="Validate"/> + <see cref="TryApply"/> - so every consumer
 /// (<see cref="Hosting.NodeHostedService"/>, the control API, the reconcile path) is
 /// unchanged; only where config is stored differs.
 /// </summary>
@@ -25,16 +25,16 @@ namespace Packet.Node.Core.Configuration;
 /// <para>
 /// <b>Persist-before-advance.</b> On <see cref="TryApply"/> the candidate is persisted to
 /// the DB <em>before</em> <see cref="Current"/> advances. A DB write failure therefore does
-/// NOT advance <see cref="Current"/> — the node never runs on un-persisted config; the
+/// NOT advance <see cref="Current"/> - the node never runs on un-persisted config; the
 /// edit surfaces as a failed apply instead. This is stricter than the file provider (which
 /// advanced even when the on-disk write was best-effort) and correct.
 /// </para>
 /// <para>
 /// <b>First-boot migration / seed.</b> When the DB row is ABSENT the ctor resolves a config
-/// in priority order — the <c>--config</c> YAML (the lab carry-over of a hand-tuned
+/// in priority order - the <c>--config</c> YAML (the lab carry-over of a hand-tuned
 /// <c>/etc/packetnet/packetnet.yaml</c>), then <c>PACKETNET_CONFIG_SEED</c>, then the
 /// <c>/usr/share/packetnet/packetnet.yaml.example</c> bootstrap template, then the in-code
-/// <see cref="NodeConfigTemplate"/> so a node ALWAYS boots even with no files at all — and
+/// <see cref="NodeConfigTemplate"/> so a node ALWAYS boots even with no files at all - and
 /// imports it into the row. A present-but-invalid source THROWS (a node never boots on
 /// broken config). The import is idempotent <em>structurally</em>: it only runs when the row
 /// is absent, so a re-run / restart / downgrade-then-upgrade cannot double-import. After an
@@ -45,7 +45,7 @@ namespace Packet.Node.Core.Configuration;
 public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDisposable
 {
     /// <summary>The marker file name written beside <c>pdn.db</c> after a first-boot import,
-    /// recording the source + timestamp so the migration is auditable. Informational only —
+    /// recording the source + timestamp so the migration is auditable. Informational only -
     /// the DB row is the idempotency authority, never this file.</summary>
     public const string MigrationMarkerName = ".config-migrated";
 
@@ -67,10 +67,10 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
     /// Construct the provider over <paramref name="store"/>. Performs the synchronous
     /// load-or-migrate-or-seed before returning, so <see cref="Current"/> is valid
     /// immediately (the host reads the Kestrel bind off it before start). Throws if the
-    /// resolved initial config is invalid — a node should not boot on a broken config.
+    /// resolved initial config is invalid - a node should not boot on a broken config.
     /// </summary>
     /// <param name="store">The config row store (<c>pdn.db</c>).</param>
-    /// <param name="configPath">The resolved <c>--config</c> path — the legacy YAML to
+    /// <param name="configPath">The resolved <c>--config</c> path - the legacy YAML to
     /// import on first boot if it exists (the lab carry-over). May be null/absent.</param>
     /// <param name="seedPath">Optional explicit seed-file path
     /// (<c>PACKETNET_CONFIG_SEED</c>), consulted on first boot only after the
@@ -287,7 +287,7 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
             return config;
         }
 
-        // 4) The in-code template — the ultimate fallback so the node ALWAYS boots idle on
+        // 4) The in-code template - the ultimate fallback so the node ALWAYS boots idle on
         // the placeholder callsign even with no files at all. This must parse + validate (it
         // is curated), so a throw here is a genuine bug, not an operator error.
         var fromTemplate = NodeConfigYaml.Parse(NodeConfigTemplate.Yaml);
@@ -356,7 +356,7 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
     /// is the authority). The source YAML is intentionally left in place (rollback floor).</summary>
     private void WriteMigrationMarker(string sourcePath, MigrationKind kind)
     {
-        // Only write into a directory that ALREADY exists — never create one. The marker is
+        // Only write into a directory that ALREADY exists - never create one. The marker is
         // purely informational (the DB row is the idempotency authority), and creating the
         // dir here would have a side effect: in the unwritable-db case (the state dir absent)
         // it would materialise the dir and make pdn.db writable, defeating the degrade path.
@@ -382,7 +382,7 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
         }
     }
 
-    // Surface non-fatal config warnings at load/apply, on the boot log — parity with
+    // Surface non-fatal config warnings at load/apply, on the boot log - parity with
     // FileConfigProvider.WarnOnConfigQuirks. Pure read of the already-resolved config.
     private void WarnOnConfigQuirks(NodeConfig config)
     {
@@ -474,7 +474,7 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
 
             disposed = true;
         }
-        // No watcher / timer to tear down — the strictly-simpler DB provider holds no OS
+        // No watcher / timer to tear down - the strictly-simpler DB provider holds no OS
         // resources of its own (the store opens a fresh pooled connection per call).
     }
 

@@ -13,8 +13,8 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// End-to-end NET/ROM L3+L4 over the in-memory radio bus, mirroring the AX.25
 /// conformance <c>TwoStationHarness</c> idea at the node-host level: two real
-/// nodes — each a <see cref="PortSupervisor"/> + <see cref="NetRomService"/> on a
-/// shared software-RF channel — exchange NODES routing broadcasts (L3 origination),
+/// nodes - each a <see cref="PortSupervisor"/> + <see cref="NetRomService"/> on a
+/// shared software-RF channel - exchange NODES routing broadcasts (L3 origination),
 /// and a user connects to node A and is routed by <c>connect &lt;alias&gt;</c>
 /// across a NET/ROM L4 circuit to node B's prompt (interlink + circuit + bridge).
 /// </summary>
@@ -60,7 +60,7 @@ public sealed class NetRomL3L4IntegrationTests
         public async ValueTask DisposeAsync()
         {
             // Dispose NET/ROM first (its DisposeAsync DISCs interlinks while the
-            // supervisor's listeners are still alive — mirrors NodeHostedService).
+            // supervisor's listeners are still alive - mirrors NodeHostedService).
             await NetRom.DisposeAsync();
             await Supervisor.DisposeAsync();
         }
@@ -79,7 +79,7 @@ public sealed class NetRomL3L4IntegrationTests
     }
 
     /// <summary>
-    /// Start a node with one or more ports, each on a different software-RF channel —
+    /// Start a node with one or more ports, each on a different software-RF channel -
     /// so a node can <b>bridge</b> two channels (the transit topology). Each port maps
     /// to a distinct transport endpoint (<c>kiss-tcp:{base}:{port}</c>) backed by the
     /// supplied modem.
@@ -103,7 +103,7 @@ public sealed class NetRomL3L4IntegrationTests
             {
                 Enabled = true,
                 Broadcast = true,
-                Connect = true,   // Forward defaults on under Connect — the transit role
+                Connect = true,   // Forward defaults on under Connect - the transit role
                 TransportTimeoutSeconds = 2,
             },
             Ports = [.. ports.Select(p => new PortConfig
@@ -245,7 +245,7 @@ public sealed class NetRomL3L4IntegrationTests
         // Slice 3 (docs/app-packages.md § Application packet identity): node A sets an app
         // NET/ROM advert (alias RDGBBS → the app's resolved callsign GB7AAA-7, via A). When A
         // broadcasts NODES, neighbour B should learn RDGBBS as a routable destination pointing
-        // at the app callsign — composing with A's own node-self advert. (Absent advert = the
+        // at the app callsign - composing with A's own node-self advert. (Absent advert = the
         // default, exercised by every other broadcast test in this file: none learns an app alias.)
         var bus = new SharedRadioBus();
         await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
@@ -276,7 +276,7 @@ public sealed class NetRomL3L4IntegrationTests
     public async Task A_transit_node_forwards_an_L4_circuit_between_two_channels_it_bridges_without_terminating_it()
     {
         // The transit topology: A is on channel 1, C is on channel 2, and B bridges
-        // the two (a port on each). A can NOT hear C directly — it learns C only from
+        // the two (a port on each). A can NOT hear C directly - it learns C only from
         // B's NODES, so A's only route to C is *via B*. When a user routes `C CNODE`
         // from A, A originates an L4 circuit whose datagrams are addressed to C; B
         // forwards them across the ch1↔ch2 bridge (the network-layer routing role)
@@ -325,7 +325,7 @@ public sealed class NetRomL3L4IntegrationTests
             "an Info command runs on node C over the forwarded L4 circuit and the reply relays back", generous);
 
         // The headline: A holds the originating circuit and C the accepted one, but
-        // B holds NONE — it forwarded the circuit's datagrams as a transit node,
+        // B holds NONE - it forwarded the circuit's datagrams as a transit node,
         // never terminating one. (B's OnInterlinkData routes a datagram addressed to
         // C onward instead of handing it to B's circuit manager.)
         a.NetRom.Circuits!.Circuits.Should().NotBeEmpty("node A holds the originating circuit");
@@ -416,7 +416,7 @@ public sealed class NetRomL3L4IntegrationTests
         // the shared channel (which flakes timing-sensitive AX.25 tests, and on real
         // RF leaves a peer like LinBPQ holding a phantom session). Here we open an
         // interlink A→B, capture B's accepted interlink session, dispose A's
-        // NetRomService, and assert B's session reaches Disconnected — i.e. A's DISC
+        // NetRomService, and assert B's session reaches Disconnected - i.e. A's DISC
         // crossed the wire and B tore its half down.
         var bus = new SharedRadioBus();
         var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
@@ -510,7 +510,7 @@ public sealed class NetRomL3L4IntegrationTests
     {
         // The link-down failover signal at the connect path: a `connect <alias>`
         // whose best next-hop neighbour can't be reached marks that neighbour down
-        // (dropping its routes) and re-routes to the destination's next-best route —
+        // (dropping its routes) and re-routes to the destination's next-best route -
         // instead of failing outright or re-dialling a dead link. See
         // NetRomService.ConnectCircuitAsync + EnsureInterlinkAsync, and the routing
         // primitive NetRomRoutingTable.MarkNeighbourDown.
@@ -524,7 +524,7 @@ public sealed class NetRomL3L4IntegrationTests
         IngestRoute(a.NetRom, originator: nb1, dest: CNodeCall, quality: 250);
         IngestRoute(a.NetRom, originator: nb2, dest: CNodeCall, quality: 150);
 
-        // Both interlinks are dead: the dial hook throws immediately (deterministic —
+        // Both interlinks are dead: the dial hook throws immediately (deterministic -
         // no real N2 timeout). Record the dial order to prove the failover walked
         // from the best route to the alternate.
         var dialed = new List<Callsign>();

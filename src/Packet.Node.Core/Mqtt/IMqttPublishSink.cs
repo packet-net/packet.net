@@ -1,7 +1,7 @@
 namespace Packet.Node.Core.Mqtt;
 
 /// <summary>
-/// The narrow publish seam the <see cref="MqttFrameEmitter"/> writes through — one enqueue call
+/// The narrow publish seam the <see cref="MqttFrameEmitter"/> writes through - one enqueue call
 /// carrying exactly the four things a kissproxy publish needs: the topic, the payload bytes, the QoS,
 /// and the retain flag. The production implementation (<see cref="ManagedMqttPublishSink"/>) wraps
 /// MQTTnet's <c>ManagedMqttClient.EnqueueAsync</c>; a test double captures the tuples so the topic +
@@ -14,7 +14,7 @@ namespace Packet.Node.Core.Mqtt;
 /// </remarks>
 internal interface IMqttPublishSink : IAsyncDisposable
 {
-    /// <summary>Enqueue one message for publication. Non-blocking by contract — the managed client
+    /// <summary>Enqueue one message for publication. Non-blocking by contract - the managed client
     /// queues internally and drains as the broker connection allows, so a slow/dead broker never
     /// back-pressures the caller (the frame tap).</summary>
     ValueTask PublishAsync(string topic, byte[] payload, int qos, bool retain, CancellationToken ct);

@@ -3,7 +3,7 @@ namespace Packet.Kiss;
 /// <summary>
 /// One decoded KISS frame: a port number, a command, and the raw payload.
 /// </summary>
-/// <param name="Port">Multi-drop port number, 0–15. 0 for a single-port TNC.</param>
+/// <param name="Port">Multi-drop port number, 0-15. 0 for a single-port TNC.</param>
 /// <param name="Command">KISS command code (low nibble of the command byte).</param>
 /// <param name="Payload">
 /// Raw bytes between the command byte and the closing FEND. For

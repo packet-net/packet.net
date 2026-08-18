@@ -3,17 +3,17 @@ using System.Text.Json.Serialization;
 namespace Packet.Node.Core.Oarc;
 
 /// <summary>
-/// The outbound OARC ingest event DTOs (#459) — one record per typed ingest endpoint, matching the
+/// The outbound OARC ingest event DTOs (#459) - one record per typed ingest endpoint, matching the
 /// collector's models exactly (verified against <c>M0LTE/node-api</c> and probed live, 2026-06-18;
-/// see <c>docs/oarc-reporting-design.md</c> §3–4). camelCase JSON via explicit
-/// <see cref="JsonPropertyNameAttribute"/> — several wire names (<c>frmsSent</c>, <c>cctsIn</c>,
+/// see <c>docs/oarc-reporting-design.md</c> §3-4). camelCase JSON via explicit
+/// <see cref="JsonPropertyNameAttribute"/> - several wire names (<c>frmsSent</c>, <c>cctsIn</c>,
 /// <c>l2rttMs</c>) are not the plain camelCase of the C# member, so the names are pinned, not
 /// inferred. Optional (nullable) members are omitted when null (the client's
 /// <see cref="JsonIgnoreCondition.WhenWritingNull"/>), so a payload carries only what we set.
 /// </summary>
 /// <remarks>
 /// These are sent to the <b>typed</b> routes (e.g. <c>api/ingest/node-up</c>), where the server binds
-/// the concrete type and computes the <c>@type</c> discriminator itself — so we send no <c>@type</c>.
+/// the concrete type and computes the <c>@type</c> discriminator itself - so we send no <c>@type</c>.
 /// <see cref="OarcEvent.EndpointPath"/> carries the route for the client; it is never serialised.
 /// <c>time</c> is Unix epoch seconds (the server stores it as a <c>decimal?</c>); we always send it.
 /// </remarks>
@@ -27,7 +27,7 @@ public abstract record OarcEvent
 
 // ---- Node events ----
 
-/// <summary>An <c>api/ingest/node-up</c> report — the node started (or OARC reporting was enabled).</summary>
+/// <summary>An <c>api/ingest/node-up</c> report - the node started (or OARC reporting was enabled).</summary>
 public sealed record OarcNodeUpEvent : OarcEvent
 {
     [JsonIgnore] public override string EndpointPath => "api/ingest/node-up";
@@ -42,7 +42,7 @@ public sealed record OarcNodeUpEvent : OarcEvent
     [JsonPropertyName("version")] public required string Version { get; init; }
 }
 
-/// <summary>An <c>api/ingest/node-status</c> heartbeat — periodic node state + live counts.</summary>
+/// <summary>An <c>api/ingest/node-status</c> heartbeat - periodic node state + live counts.</summary>
 public sealed record OarcNodeStatusEvent : OarcEvent
 {
     [JsonIgnore] public override string EndpointPath => "api/ingest/node-status";
@@ -63,7 +63,7 @@ public sealed record OarcNodeStatusEvent : OarcEvent
     [JsonPropertyName("l3Relayed")] public long? L3Relayed { get; init; }
 }
 
-/// <summary>An <c>api/ingest/node-down</c> report — the node is stopping or reporting was disabled.
+/// <summary>An <c>api/ingest/node-down</c> report - the node is stopping or reporting was disabled.
 /// <c>nodeAlias</c> is required by the collector (a probe without it 400s).</summary>
 public sealed record OarcNodeDownEvent : OarcEvent
 {
@@ -83,7 +83,7 @@ public sealed record OarcNodeDownEvent : OarcEvent
 
 // ---- Link (L2) events ----
 
-/// <summary>An <c>api/ingest/link-up</c> report — an AX.25 session entered connected state.
+/// <summary>An <c>api/ingest/link-up</c> report - an AX.25 session entered connected state.
 /// <c>direction</c> ∈ {<c>incoming</c> (remote-initiated uplink), <c>outgoing</c> (locally-initiated
 /// downlink)}; <c>id</c> must be &gt; 0.</summary>
 public sealed record OarcLinkUpEvent : OarcEvent
@@ -99,7 +99,7 @@ public sealed record OarcLinkUpEvent : OarcEvent
     [JsonPropertyName("local")] public required string Local { get; init; }
 }
 
-/// <summary>An <c>api/ingest/link-status</c> report — periodic stats for a live L2 link.</summary>
+/// <summary>An <c>api/ingest/link-status</c> report - periodic stats for a live L2 link.</summary>
 public sealed record OarcLinkStatusEvent : OarcEvent
 {
     [JsonIgnore] public override string EndpointPath => "api/ingest/link-status";
@@ -125,7 +125,7 @@ public sealed record OarcLinkStatusEvent : OarcEvent
     [JsonPropertyName("l2rttMs")] public long? L2RttMs { get; init; }
 }
 
-/// <summary>An <c>api/ingest/link-down</c> report — an L2 link was torn down (final stats).</summary>
+/// <summary>An <c>api/ingest/link-down</c> report - an L2 link was torn down (final stats).</summary>
 public sealed record OarcLinkDownEvent : OarcEvent
 {
     [JsonIgnore] public override string EndpointPath => "api/ingest/link-down";
@@ -150,7 +150,7 @@ public sealed record OarcLinkDownEvent : OarcEvent
 
 // ---- Circuit (L4 NET/ROM) events ----
 
-/// <summary>An <c>api/ingest/circuit-up</c> report — a NET/ROM L4 circuit was established.</summary>
+/// <summary>An <c>api/ingest/circuit-up</c> report - a NET/ROM L4 circuit was established.</summary>
 public sealed record OarcCircuitUpEvent : OarcEvent
 {
     [JsonIgnore] public override string EndpointPath => "api/ingest/circuit-up";
@@ -164,7 +164,7 @@ public sealed record OarcCircuitUpEvent : OarcEvent
     [JsonPropertyName("local")] public required string Local { get; init; }
 }
 
-/// <summary>An <c>api/ingest/circuit-status</c> report — periodic stats for a live L4 circuit.</summary>
+/// <summary>An <c>api/ingest/circuit-status</c> report - periodic stats for a live L4 circuit.</summary>
 public sealed record OarcCircuitStatusEvent : OarcEvent
 {
     [JsonIgnore] public override string EndpointPath => "api/ingest/circuit-status";
@@ -185,7 +185,7 @@ public sealed record OarcCircuitStatusEvent : OarcEvent
     [JsonPropertyName("upForSecs")] public long? UpForSecs { get; init; }
 }
 
-/// <summary>An <c>api/ingest/circuit-down</c> report — a NET/ROM L4 circuit was torn down.</summary>
+/// <summary>An <c>api/ingest/circuit-down</c> report - a NET/ROM L4 circuit was torn down.</summary>
 public sealed record OarcCircuitDownEvent : OarcEvent
 {
     [JsonIgnore] public override string EndpointPath => "api/ingest/circuit-down";
@@ -217,7 +217,7 @@ public sealed record OarcDigipeater
 }
 
 /// <summary>
-/// An <c>api/ingest/l2trace</c> report — one decoded AX.25 frame (the wire-monitor view). v1 reports
+/// An <c>api/ingest/l2trace</c> report - one decoded AX.25 frame (the wire-monitor view). v1 reports
 /// the <b>L2 layer only</b>; the NET/ROM L3/L4 decode is a named refinement (design §9), so those
 /// fields are not modelled here. Note the trace dialect (design §3.2): <c>dirn</c> ∈
 /// {<c>sent</c>,<c>rcvd</c>} (NOT incoming/outgoing); <c>l2Type</c> uses the BPQ trace vocabulary

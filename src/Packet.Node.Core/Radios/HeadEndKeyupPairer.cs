@@ -13,16 +13,16 @@ namespace Packet.Node.Core.Radios;
 /// Discovers the <b>physical</b> modem↔radio map on one head-end by keying RF: for each free NinoTNC
 /// it opens the raw pipe and <b>briefly transmits through it</b> (a CQBEEP request frame keys the
 /// NinoTNC's cabled radio) while watching every free Tait's CCDI PROGRESS stream for a
-/// <see cref="TaitCcdiRadio.TransmitterStateChanged"/> (PTT-activated) edge — the Tait whose PTT line
+/// <see cref="TaitCcdiRadio.TransmitterStateChanged"/> (PTT-activated) edge - the Tait whose PTT line
 /// the NinoTNC asserted is its physical pair. This is ground truth: it replaces the scan's free-device
 /// co-location <em>guess</em> for the ambiguous case and verifies the unambiguous one.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>This transmits.</b> It is an explicitly operator-initiated action
-/// (<c>POST /api/v1/radios/headends/{instanceId}/pair-by-keyup</c>, admin-scope — the same bar as
+/// (<c>POST /api/v1/radios/headends/{instanceId}/pair-by-keyup</c>, admin-scope - the same bar as
 /// hail/tuning/doctor, the other transmitting endpoints) with an RF caveat on
-/// the response — never part of the passive <c>GET /radios/headends</c> scan. One NinoTNC is keyed at a
+/// the response - never part of the passive <c>GET /radios/headends</c> scan. One NinoTNC is keyed at a
 /// time, briefly, and each Tait watcher is reset between keyups so an edge is attributed to the right
 /// modem.
 /// </para>
@@ -31,7 +31,7 @@ namespace Packet.Node.Core.Radios;
 /// NinoTNC that fails to open/key is reported unpaired; a keyup that fires no Tait is unpaired; one
 /// that fires more than one is flagged ambiguous rather than guessed. The RF-keying loop is behind an
 /// injectable seam (<see cref="OpenKeyupModem"/> / <see cref="OpenKeyupWatch"/>) so it is unit-tested
-/// entirely with in-memory fakes — no real serial port or socket is opened in tests.
+/// entirely with in-memory fakes - no real serial port or socket is opened in tests.
 /// </para>
 /// </remarks>
 public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
@@ -132,7 +132,7 @@ public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
         }
 
         // Build deviceId → port defensively: an indexer assignment never throws on a duplicate id, so a
-        // malformed inventory degrades instead of crashing — this method is total.
+        // malformed inventory degrades instead of crashing - this method is total.
         var byId = new Dictionary<string, HeadEndPortInfo>(StringComparer.Ordinal);
         foreach (var p in inventory.Ports)
         {
@@ -148,7 +148,7 @@ public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
             .OfType<KeyupTarget>().ToList();
 
         // Free devices the scan saw but this inventory fetch doesn't list (a scan↔inventory race) can't
-        // be dialled — surface them as unpaired rather than dropping them silently.
+        // be dialled - surface them as unpaired rather than dropping them silently.
         var missingTncs = freeTncs.Where(id => !byId.ContainsKey(id)).ToList();
         var missingRadios = freeRadios.Where(d => !byId.ContainsKey(d.DeviceId)).Select(d => d.DeviceId).ToList();
 
@@ -181,7 +181,7 @@ public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
     // edge(s) that fire within the observation window. Single-flight with the fleet scan (#581):
     // the whole open-watch/key/observe phase holds the shared probe gate, so a scan (e.g. a UI tab
     // auto-refreshing GET /radios/headends) can never re-clock a line under a live PTT watcher or
-    // queue probes into the pipes this run has open — it waits (bounded) instead.
+    // queue probes into the pipes this run has open - it waits (bounded) instead.
     internal async Task<HeadEndKeyupResult> RunKeyupAsync(
         string instanceId,
         IReadOnlyList<KeyupTarget> tncs,
@@ -320,7 +320,7 @@ public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
             }
             catch
             {
-                // Best-effort teardown — a watch that already faulted must not mask the result.
+                // Best-effort teardown - a watch that already faulted must not mask the result.
             }
         }
     }
@@ -434,7 +434,7 @@ public interface IHeadEndKeyupPairer
 /// tests pass tiny values.</summary>
 public sealed record HeadEndKeyupOptions
 {
-    /// <summary>Seconds of tone the CQBEEP request asks for (1–15). The local radio only keys for the
+    /// <summary>Seconds of tone the CQBEEP request asks for (1-15). The local radio only keys for the
     /// frame transmission, but the value must be a valid request. Default 2.</summary>
     public int KeySeconds { get; init; } = 2;
 
@@ -448,14 +448,14 @@ public sealed record HeadEndKeyupOptions
 }
 
 /// <summary>One device to open in a keyup-pairing run: the raw-pipe host + TCP port and the CCDI baud
-/// (for a Tait watcher; a NinoTNC keyer uses the fixed KISS baud). Internal — the open seam's currency.</summary>
+/// (for a Tait watcher; a NinoTNC keyer uses the fixed KISS baud). Internal - the open seam's currency.</summary>
 internal sealed record KeyupTarget(string Host, int TcpPort, int Baud, string DeviceId);
 
-/// <summary>Opens a NinoTNC ready to key (transmit through). Internal seam — production wraps
+/// <summary>Opens a NinoTNC ready to key (transmit through). Internal seam - production wraps
 /// <see cref="NinoTncSerialPort"/>; tests return an in-memory fake.</summary>
 internal delegate Task<IKeyupModem> OpenKeyupModem(KeyupTarget target, CancellationToken cancellationToken);
 
-/// <summary>Opens a Tait watching for its transmitter's PTT edge. Internal seam — production wraps
+/// <summary>Opens a Tait watching for its transmitter's PTT edge. Internal seam - production wraps
 /// <see cref="TaitCcdiRadio"/>; tests return an in-memory fake.</summary>
 internal delegate Task<IKeyupWatch> OpenKeyupWatch(KeyupTarget target, CancellationToken cancellationToken);
 

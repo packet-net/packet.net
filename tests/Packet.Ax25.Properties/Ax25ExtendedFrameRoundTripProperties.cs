@@ -9,7 +9,7 @@ namespace Packet.Ax25.Properties;
 
 /// <summary>
 /// Round-trip + fuzz properties for the AX.25 v2.2 EXTENDED (modulo-128) frame
-/// surface — the 2-octet control field (Fig 4.1b) that the mod-8 properties in
+/// surface - the 2-octet control field (Fig 4.1b) that the mod-8 properties in
 /// <see cref="Ax25FrameRoundTripProperties"/> / <see cref="Ax25ParserFuzzProperties"/>
 /// never touch. An extended I/S frame's control field is mode-dependent and not
 /// derivable from the octets alone, so the parse path is exercised with
@@ -29,7 +29,7 @@ namespace Packet.Ax25.Properties;
 /// </list>
 /// <para>
 /// Callsigns are sanitised the same way as <see cref="Ax25FrameRoundTripProperties"/>
-/// so shrinking doesn't chase address-validation rejections — the subject under
+/// so shrinking doesn't chase address-validation rejections - the subject under
 /// test is the control-field codec, not the address codec.
 /// </para>
 /// </remarks>
@@ -151,7 +151,7 @@ public class Ax25ExtendedFrameRoundTripProperties
 
     /// <summary>
     /// The extended parse path (2-octet control branch) degrades gracefully on
-    /// arbitrary input — same contract as the mod-8 <c>TryParse_Never_Throws</c>,
+    /// arbitrary input - same contract as the mod-8 <c>TryParse_Never_Throws</c>,
     /// but exercising the branch the caller takes for a SABME-negotiated link.
     /// </summary>
     [Property(MaxTest = 2_000)]
@@ -181,7 +181,7 @@ public class Ax25ExtendedFrameRoundTripProperties
 
     /// <summary>
     /// Anything the extended parser accepts must round-trip through
-    /// <c>ToBytes</c> + parse-as-extended — the byte form is canonical for the
+    /// <c>ToBytes</c> + parse-as-extended - the byte form is canonical for the
     /// value, control-extension and all.
     /// </summary>
     [Property(MaxTest = 1_000)]
@@ -220,7 +220,7 @@ public class Ax25ExtendedFrameRoundTripProperties
         var dest = SanitiseCallsign(destBase.Get, destSsidRaw);
         var src = SanitiseCallsign(srcBase.Get, srcSsidRaw);
 
-        // SABME is the v2.2 connection U-frame — 1-octet control in both modes.
+        // SABME is the v2.2 connection U-frame - 1-octet control in both modes.
         var sabme = Ax25Frame.Sabme(dest, src, pollBit: pollBit);
         var bytes = sabme.ToBytes();
 
@@ -236,9 +236,9 @@ public class Ax25ExtendedFrameRoundTripProperties
     }
 
     /// <summary>
-    /// Map an arbitrary FsCheck string to a valid AX.25 callsign (1–6 chars,
-    /// uppercase A–Z / 0–9). Same sanitiser as
-    /// <see cref="Ax25FrameRoundTripProperties"/> — keeps shrinking on the
+    /// Map an arbitrary FsCheck string to a valid AX.25 callsign (1-6 chars,
+    /// uppercase A-Z / 0-9). Same sanitiser as
+    /// <see cref="Ax25FrameRoundTripProperties"/> - keeps shrinking on the
     /// control-field codec, not the address validator.
     /// </summary>
     private static Callsign SanitiseCallsign(string raw, byte ssidRaw)

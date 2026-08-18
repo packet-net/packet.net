@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Console;
 /// readable bytes, <see cref="WriteAsync"/> goes out through the listener's
 /// segmentation-aware <see cref="Ax25Listener.SendData"/>, and a disconnect
 /// (indication or confirm) completes the connection. This is the over-the-air
-/// service path — the bridge between the AX.25 engine and the transport-agnostic
+/// service path - the bridge between the AX.25 engine and the transport-agnostic
 /// console.
 /// </summary>
 /// <remarks>
@@ -18,8 +18,8 @@ namespace Packet.Node.Core.Console;
 /// stream via <see cref="Ax25Session.AttachConsumerWithReplay"/> (the same signal seam
 /// axcall's <c>SessionRelay</c> uses). The replay matters for <b>outbound</b> sessions: the
 /// session returned by <see cref="Ax25Listener.ConnectAsync"/> is already connected, so a peer
-/// that sends immediately on accept — another pdn node emits its console banner the moment it
-/// accepts, it does <em>not</em> wait — can put data on the wire in the window between connect
+/// that sends immediately on accept - another pdn node emits its console banner the moment it
+/// accepts, it does <em>not</em> wait - can put data on the wire in the window between connect
 /// and this subscribe. A plain <c>+=</c> would drop it (the bug where an RHP <c>open</c> to a
 /// node callsign connected but the banner never arrived); the replay delivers it instead.
 /// </remarks>
@@ -52,7 +52,7 @@ public sealed class Ax25NodeConnection : INodeConnection
     /// <inheritdoc/>
     public Task Completion => completion.Task;
 
-    /// <summary>The wrapped session — exposed so the AX.25 adapter source
+    /// <summary>The wrapped session - exposed so the AX.25 adapter source
     /// (listener wiring) can correlate, and for tests.</summary>
     public Ax25Session Session => session;
 
@@ -63,7 +63,7 @@ public sealed class Ax25NodeConnection : INodeConnection
             case DataLinkDataIndication di:
                 // The console carries node-text data (PID 0xF0 / no-Layer-3). A
                 // session may ALSO carry NET/ROM (PID 0xCF interlink datagrams),
-                // which the NetRomService taps separately — those must not leak into
+                // which the NetRomService taps separately - those must not leak into
                 // the console as garbage text, so filter them out here.
                 if (di.Pid != Ax25Frame.PidNetRom)
                 {
@@ -90,7 +90,7 @@ public sealed class Ax25NodeConnection : INodeConnection
         }
         catch (ChannelClosedException)
         {
-            // disconnected — fall through to EOF
+            // disconnected - fall through to EOF
         }
         return ReadOnlyMemory<byte>.Empty;
     }
@@ -103,14 +103,14 @@ public sealed class Ax25NodeConnection : INodeConnection
             return ValueTask.CompletedTask;
         }
         // Segmentation-aware send through the listener. SendData throws if the
-        // session is no longer owned by the listener (evicted / torn down) — treat
+        // session is no longer owned by the listener (evicted / torn down) - treat
         // that as a closed connection rather than letting it escape the console.
         try
         {
             // A connected-mode link is a byte stream: the data link frames it into
             // N1-sized I-frames. The listener's SendData treats its input as one SDU
             // and (correctly) throws when it exceeds N1 without the v2.2 segmenter
-            // negotiated — right for an oversized atomic datagram, wrong for a stream
+            // negotiated - right for an oversized atomic datagram, wrong for a stream
             // write. v2.0 peers (e.g. LinBPQ: plain SABM, no XID) never negotiate the
             // segmenter, so an over-N1 application write (a forwarded message body, a
             // long console reply) must be chunked into ordinary <=N1 I-frames here, or
@@ -159,7 +159,7 @@ public sealed class Ax25NodeConnection : INodeConnection
 
         // If still connected, ask the link to disconnect cleanly. The session's
         // disconnect confirm will fire Complete via the (now-removed) handler? No
-        // — we unsubscribed, so complete locally.
+        // - we unsubscribed, so complete locally.
         try
         {
             if (session.CurrentState is "Connected" or "TimerRecovery" or "AwaitingConnection" or "AwaitingV22Connection")

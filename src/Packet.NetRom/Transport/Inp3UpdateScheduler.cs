@@ -5,10 +5,10 @@ namespace Packet.NetRom.Transport;
 
 /// <summary>
 /// The host-free INP3 <em>triggered-update timing</em> state machine (slice I-4,
-/// design §3): it answers <b>"when do we emit a RIF, and toward whom?"</b> — never
+/// design §3): it answers <b>"when do we emit a RIF, and toward whom?"</b> - never
 /// <em>what</em> the RIF contains (that is <c>NetRomRoutingTable.BuildRif</c>, the
 /// content half). It consumes per-destination <em>dirty signals</em> (the table /
-/// ingestion path tells it a destination changed, and how —
+/// ingestion path tells it a destination changed, and how -
 /// <see cref="MarkDirty"/> / <see cref="MarkWithdrawn"/>), consumes a
 /// <see cref="System.TimeProvider"/>-driven <see cref="Tick"/>, and emits
 /// <see cref="Inp3AdvertiseIntent">advertise intents</see> ("advertise to neighbour
@@ -19,7 +19,7 @@ namespace Packet.NetRom.Transport;
 /// <para>
 /// <b>Host-free + intent-emitting.</b> Like <see cref="Inp3Engine"/> and
 /// <see cref="CircuitManager"/>, the scheduler owns no I/O, no routing table, and no
-/// AX.25 session — it speaks only <see cref="Callsign"/> in and
+/// AX.25 session - it speaks only <see cref="Callsign"/> in and
 /// <see cref="Inp3AdvertiseIntent"/> out. It is a pure function of (dirty signals,
 /// clock) → intents. The split keeps each piece pure: <c>BuildRif</c> is a pure read
 /// of table state; the scheduler is pure timing; the host is the only stateful glue
@@ -29,16 +29,16 @@ namespace Packet.NetRom.Transport;
 /// <b>Monotonic clock.</b> Like <see cref="Inp3Engine"/>, it times the debounce and
 /// the periodic interval off the injected provider's <em>monotonic</em> source
 /// (<see cref="TimeProvider.GetTimestamp"/> / <see cref="TimeProvider.GetElapsedTime(long)"/>),
-/// never wall-clock — an NTP / DST step can never fire or suppress a debounce
+/// never wall-clock - an NTP / DST step can never fire or suppress a debounce
 /// (design §3.1). Deterministic under <c>FakeTimeProvider</c>: advance the clock,
 /// call <see cref="Tick"/>, assert the intents drained.
 /// </para>
 /// <para>
 /// <b>Per-destination dirty, per-neighbour fan-out.</b> Dirty state is tracked per
 /// <em>destination</em> (a single change must reach every INP3-capable neighbour,
-/// each with its own poison-reversed RIF at emit time — design §3.2); but the
+/// each with its own poison-reversed RIF at emit time - design §3.2); but the
 /// scheduler only tracks <em>which destinations are dirty and at what priority</em>
-/// to decide <em>whether / when / at what priority</em> to fan out — it never builds
+/// to decide <em>whether / when / at what priority</em> to fan out - it never builds
 /// a partial RIF. Every fan-out emits one intent per target neighbour, and the host
 /// rebuilds the complete (full) poison-reversed RIF for each (design §3.3, "full
 /// RIF"): a NEGATIVE fan-out therefore naturally carries the changed destination's
@@ -47,7 +47,7 @@ namespace Packet.NetRom.Transport;
 /// <para>
 /// <b>Totality.</b> Marking a destination dirty never throws; <see cref="Tick"/>
 /// with no neighbours, no dirty state, and no <see cref="Advertise"/> sink is a
-/// no-op. The recently-withdrawn set is <em>not</em> held here — it is table state
+/// no-op. The recently-withdrawn set is <em>not</em> held here - it is table state
 /// (design AMBIGUITY-I4-5: <c>BuildRif</c> consumes-and-clears it); a withdrawal here
 /// only escalates the destination to NEGATIVE so the fan-out is immediate.
 /// </para>
@@ -70,13 +70,13 @@ public sealed class Inp3UpdateScheduler : IDisposable
     /// a time (design §3.2). Absent ⇒ clean.</summary>
     private readonly Dictionary<Callsign, Inp3UpdateClass> dirty = new();
 
-    /// <summary>The INP3-capable neighbour set to fan out to — host-supplied
+    /// <summary>The INP3-capable neighbour set to fan out to - host-supplied
     /// (<see cref="SetTargetNeighbours"/>); the scheduler never discovers neighbours
     /// (host-free, design §3.2/§3.6). Stored ordered-by-callsign so a fan-out emits
     /// intents in a deterministic order.</summary>
     private Callsign[] targetNeighbours = Array.Empty<Callsign>();
 
-    /// <summary>Monotonic ms of the <em>earliest still-pending</em> POSITIVE mark —
+    /// <summary>Monotonic ms of the <em>earliest still-pending</em> POSITIVE mark -
     /// the debounce anchor (design §3.3 rule 2: a steady positive drip drains within
     /// one <see cref="positiveDebounceMs"/> of the first, not perpetually deferred).
     /// <see cref="NeverMarked"/> when no POSITIVE is pending.</summary>
@@ -84,7 +84,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
 
     /// <summary>Monotonic ms of the last periodic fan-out (design §3.3 rule 3),
     /// anchored at construction (monotonic <c>0</c>) so the first baseline refresh
-    /// fires exactly one <see cref="rifIntervalMs"/> after the scheduler is built —
+    /// fires exactly one <see cref="rifIntervalMs"/> after the scheduler is built -
     /// timing depends only on the injected clock, not on when ticking begins.</summary>
     private long lastPeriodicMs;
 
@@ -97,7 +97,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
     /// prefer)</c> and send it over <paramref>neighbour</paramref>'s interlink now".
     /// The intent carries the <see cref="Inp3AdvertiseReason"/> for observability.
     /// Invoked <em>after</em> the internal lock is released (the
-    /// <see cref="Inp3Engine.Tick"/> discipline — a re-entrant host handler that
+    /// <see cref="Inp3Engine.Tick"/> discipline - a re-entrant host handler that
     /// marks dirty / re-ticks cannot deadlock).
     /// </summary>
     public Action<Inp3AdvertiseIntent>? Advertise { get; set; }
@@ -109,7 +109,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
     /// (the deterministic-test path). Identical to <see cref="Inp3Engine"/>'s
     /// <c>tickInterval</c> semantics.
     /// </summary>
-    /// <param name="options">Timing knobs — <see cref="NetRomInp3Options.RifInterval"/>
+    /// <param name="options">Timing knobs - <see cref="NetRomInp3Options.RifInterval"/>
     /// (periodic cadence) and <see cref="NetRomInp3Options.PositiveDebounce"/> (the
     /// positive-update coalescing window). Defaults to
     /// <see cref="NetRomInp3Options.Default"/>; validated.</param>
@@ -185,12 +185,12 @@ public sealed class Inp3UpdateScheduler : IDisposable
     }
 
     /// <summary>
-    /// Mark a destination's selected INP3 route <em>withdrawn</em> (fully lost — no
+    /// Mark a destination's selected INP3 route <em>withdrawn</em> (fully lost - no
     /// selected INP3 route remains). A withdrawal is <b>always NEGATIVE</b> regardless
     /// of any threshold (design §3.2: it is a removal, not a worsening) so it fans out
     /// on the next <see cref="Tick"/> immediately. The explicit one-shot horizon
     /// withdrawal RIP itself is emitted by <c>BuildRif</c> from the <em>table's</em>
-    /// recently-withdrawn set (design AMBIGUITY-I4-5) — the scheduler only escalates
+    /// recently-withdrawn set (design AMBIGUITY-I4-5) - the scheduler only escalates
     /// the timing here; it does not hold the withdrawn set.
     /// </summary>
     public void MarkWithdrawn(Callsign destination)
@@ -221,7 +221,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
     /// the periodic anchor, clear all dirty, and reset the debounce.</item>
     /// </list>
     /// Intents are collected under the lock and invoked <em>after</em> it is released
-    /// (the <see cref="Inp3Engine.Tick"/> snapshot-then-act discipline — a re-entrant
+    /// (the <see cref="Inp3Engine.Tick"/> snapshot-then-act discipline - a re-entrant
     /// host handler cannot deadlock). Drive it from the internal timer (production) or
     /// manually after advancing a <c>FakeTimeProvider</c> (tests).
     /// </summary>
@@ -233,7 +233,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
         lock (gate)
         {
             // The periodic anchor was seeded to 0 (monotonic construction time), so the
-            // first baseline refresh is due exactly one RifInterval after construction —
+            // first baseline refresh is due exactly one RifInterval after construction -
             // timing depends only on the injected clock, not on when ticking began.
             bool periodicDue = now - lastPeriodicMs >= rifIntervalMs;
 
@@ -246,7 +246,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
                     if (cls == Inp3UpdateClass.Negative)
                     {
                         negativeDue = true;
-                        break;   // NEGATIVE dominates — no need to scan further.
+                        break;   // NEGATIVE dominates - no need to scan further.
                     }
                 }
                 if (!negativeDue
@@ -259,7 +259,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
 
             // A periodic emit subsumes everything (full RIF) and takes the Periodic
             // reason; otherwise a NEGATIVE (immediate) or a debounced POSITIVE fans out
-            // as Triggered. At most one fan-out per tick — the rebuilt full RIF carries
+            // as Triggered. At most one fan-out per tick - the rebuilt full RIF carries
             // all current state, so there is never a reason to fan out twice.
             Inp3AdvertiseReason? reason =
                 periodicDue ? Inp3AdvertiseReason.Periodic
@@ -277,7 +277,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
                 //  - Periodic and NEGATIVE both clear ALL dirty (the full RIF subsumes
                 //    every pending change) and reset the debounce anchor.
                 //  - A pure debounced-POSITIVE fan-out clears only POSITIVE dirty (there
-                //    are no NEGATIVEs by construction — rule 1 would have won) which, in
+                //    are no NEGATIVEs by construction - rule 1 would have won) which, in
                 //    practice, is also all dirty; either way the debounce anchor resets.
                 dirty.Clear();
                 earliestPositiveMarkMs = NeverMarked;
@@ -347,7 +347,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
 
     // ─── Internals ──────────────────────────────────────────────────────
 
-    /// <summary>Monotonic milliseconds since construction (not wall-clock — design
+    /// <summary>Monotonic milliseconds since construction (not wall-clock - design
     /// §3.1, the <see cref="Inp3Engine"/> clock pattern).</summary>
     private long NowMs() => (long)time.GetElapsedTime(startTimestamp).TotalMilliseconds;
 
@@ -381,7 +381,7 @@ public sealed class Inp3UpdateScheduler : IDisposable
 
 /// <summary>
 /// The change class of a destination's selected INP3 route, set by whoever marks it
-/// dirty (the table / ingestion path — design §3.2). NEGATIVE is immediate +
+/// dirty (the table / ingestion path - design §3.2). NEGATIVE is immediate +
 /// prioritised; POSITIVE is debounced + batched.
 /// </summary>
 public enum Inp3UpdateClass
@@ -404,7 +404,7 @@ public enum Inp3UpdateClass
 /// </summary>
 public enum Inp3AdvertiseReason
 {
-    /// <summary>A dirty-driven fan-out — a NEGATIVE change (immediate) or a debounced
+    /// <summary>A dirty-driven fan-out - a NEGATIVE change (immediate) or a debounced
     /// batch of POSITIVE changes.</summary>
     Triggered,
 

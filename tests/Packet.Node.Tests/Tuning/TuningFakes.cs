@@ -4,7 +4,7 @@ using Packet.Tune.Core;
 namespace Packet.Node.Tests.Tuning;
 
 /// <summary>An in-memory <see cref="ITuningLink"/> pair (two crossed channels) for driving a node
-/// tuning session against a scripted peer — no radios, no SDMs.</summary>
+/// tuning session against a scripted peer - no radios, no SDMs.</summary>
 internal sealed class InMemoryTuningLink : ITuningLink
 {
     private readonly Channel<TuningTelegram> outbound;
@@ -37,7 +37,7 @@ internal sealed class InMemoryTuningLink : ITuningLink
 }
 
 /// <summary>An <see cref="ITuningLink"/> that accepts sends and yields no inbound telegrams, then
-/// completes — the tuned/meter loop drops straight out as "link closed without a goodbye" (return 1
+/// completes - the tuned/meter loop drops straight out as "link closed without a goodbye" (return 1
 /// → an <c>error</c> session), for testing the error exit path.</summary>
 internal sealed class DeadTuningLink : ITuningLink
 {

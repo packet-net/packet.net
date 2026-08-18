@@ -5,11 +5,11 @@ using Packet.Node.Tests.Support;
 namespace Packet.Node.Tests.Traffic;
 
 /// <summary>
-/// The SQLite traffic log (<c>traffic.db</c> — deliberately separate from
+/// The SQLite traffic log (<c>traffic.db</c> - deliberately separate from
 /// <c>pdn.db</c>): append/query round-trip incl. the nullable I/S/U field shapes,
 /// newest-first ordering + filters, the per-frame raw cap, prune-by-age,
 /// prune-to-size (the hard cap really bounds the file), and the resilience
-/// contract — a store that cannot open degrades (no throw, false/empty/0) rather
+/// contract - a store that cannot open degrades (no throw, false/empty/0) rather
 /// than take the node down.
 /// </summary>
 [Trait("Category", "Node")]
@@ -77,7 +77,7 @@ public sealed class SqliteTrafficStoreTests : IDisposable
     [Fact]
     public void Nullable_fields_round_trip_as_null_for_a_U_frame()
     {
-        // A SABM carries no N(S)/N(R)/PID — the columns must come back null, not 0.
+        // A SABM carries no N(S)/N(R)/PID - the columns must come back null, not 0.
         var store = Open();
         store.Append([Frame(At(0), kind: "SABM", ns: null, nr: null, pid: null)]).Should().BeTrue();
 
@@ -150,7 +150,7 @@ public sealed class SqliteTrafficStoreTests : IDisposable
     {
         var store = Open();
 
-        // ~300 rows × 2 KB raw ≈ 600 KB of blob data — comfortably over the cap.
+        // ~300 rows × 2 KB raw ≈ 600 KB of blob data - comfortably over the cap.
         var rows = Enumerable.Range(0, 300)
             .Select(i => Frame(At(i), rawLength: SqliteTrafficStore.RawCapBytes))
             .ToArray();
@@ -163,7 +163,7 @@ public sealed class SqliteTrafficStoreTests : IDisposable
         pruned.Should().BeGreaterThan(0);
         store.DatabaseSizeBytes().Should().BeLessThanOrEqualTo(cap, "the cap is a hard bound (incremental vacuum returns freed pages)");
 
-        // The survivors are the NEWEST rows — pruning eats from the oldest end.
+        // The survivors are the NEWEST rows - pruning eats from the oldest end.
         var remaining = store.Query(null, null, null, 1000);
         remaining.Should().NotBeEmpty();
         remaining[0].Timestamp.Should().Be(At(299));

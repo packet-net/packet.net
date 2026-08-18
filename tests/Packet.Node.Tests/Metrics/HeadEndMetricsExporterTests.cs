@@ -78,7 +78,7 @@ public sealed class HeadEndMetricsExporterTests
         ParseSamples(body).Should().NotContainKey("pdn_headend_devices{instance=\"pi-attic\"}");
         ParseSamples(body)["pdn_headend_reachable{instance=\"pi-attic\"}"].Should().Be(0);
 
-        // Reachable via the healthz fallback (BridgeCount null): shape unknown, sample absent —
+        // Reachable via the healthz fallback (BridgeCount null): shape unknown, sample absent -
         // and with no instance reporting devices the whole metric (HELP/TYPE included) is absent.
         var fallback = RenderHeadEnds(Up("old-pi", bridges: null));
         fallback.Should().NotContain("pdn_headend_devices");
@@ -111,7 +111,7 @@ public sealed class HeadEndMetricsExporterTests
     [Fact]
     public void Transport_reconnecting_bucket_is_absent_with_no_supervised_ports()
     {
-        // Local-serial / AXUDP-only nodes have no reconnect decorator — the bucket must not
+        // Local-serial / AXUDP-only nodes have no reconnect decorator - the bucket must not
         // appear at all (no misleading always-0 series for ports that can't reconnect).
         RenderReconnecting().Should().BeEmpty();
     }

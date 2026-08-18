@@ -23,8 +23,8 @@ using Packet.Radio;
 namespace Packet.Node.Core.Hosting;
 
 /// <summary>
-/// Owns the reconcilable set of AX.25 ports — exactly one
-/// <see cref="Ax25Listener"/> per port — and executes a
+/// Owns the reconcilable set of AX.25 ports - exactly one
+/// <see cref="Ax25Listener"/> per port - and executes a
 /// <see cref="ReconcilePlan"/> against it, touching only what changed. This is
 /// the "do" half of hot reconfiguration; <see cref="ReconcilePlanner"/> is the
 /// "decide" half.
@@ -34,12 +34,12 @@ namespace Packet.Node.Core.Hosting;
 /// When a listener accepts a session (inbound or, indirectly, the console's
 /// outbound connect) the supervisor wires it to the node console by wrapping it
 /// as an <see cref="Ax25NodeConnection"/> and running a
-/// <see cref="NodeCommandService"/> over it — same-port connect-out available
+/// <see cref="NodeCommandService"/> over it - same-port connect-out available
 /// via an <see cref="Ax25OutboundConnector"/> on the same listener.
 /// </para>
 /// <para>
 /// A runtime fault bringing one port up (e.g. a serial device that won't open)
-/// faults only that port — it is logged and skipped, the rest of the reconcile
+/// faults only that port - it is logged and skipped, the rest of the reconcile
 /// completes, and <see cref="IConfigProvider.Current"/> still advances. This is
 /// distinct from a whole-config validation failure, which is rejected pre-apply
 /// by the provider and never reaches here.
@@ -93,7 +93,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // the runtime half. See PortSupervisor.State.cs; membership is no longer the state (#722).
     private readonly Dictionary<string, PortEntry> ports = new(StringComparer.Ordinal);
     // Serialises port-set mutation between the caller-serialised paths (StartAsync / ApplyAsync /
-    // RestartPortAsync — the host's supervisor gate already keeps THOSE from overlapping) and the
+    // RestartPortAsync - the host's supervisor gate already keeps THOSE from overlapping) and the
     // supervisor's own background loops (the bring-up retry, #576/#722, and the running-state
     // watchdog), which would otherwise race a reconcile touching the same port set.
     private readonly SemaphoreSlim mutationGate = new(1, 1);
@@ -144,7 +144,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // IRadioControl. Defaults to the production factory (real serial hardware);
         // component tests substitute a scripted radio. The default is built OVER this
         // supervisor's rig seam, so a `radio: kind rig` port dials its dedicated rig
-        // connection through the same factory the status poller uses — inject a fake
+        // connection through the same factory the status poller uses - inject a fake
         // rig factory once and both arms are scripted.
         this.radioFactory = radioFactory ?? new RadioControlFactory(this.rigFactory);
         this.rigTelemetry = rigTelemetry;
@@ -157,11 +157,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Optional live telemetry: when present, each port that comes up has its
         // frame-trace tap subscribed (and unsubscribed on teardown) so the node's
         // frame/byte counters + monitor SSE feed see every frame. Observation-only,
-        // like the NET/ROM tap — it can never disturb a session.
+        // like the NET/ROM tap - it can never disturb a session.
         this.telemetry = telemetry;
         // Optional ID-beacon service: when present, each port that comes up arms a
         // periodic beacon timer IF its effective beacon (per-port override merged over
-        // the system default) is enabled — default-off, so a stock node never beacons.
+        // the system default) is enabled - default-off, so a stock node never beacons.
         // It only ever SENDS a UI frame (never disturbs a session, never mutates the
         // port set), so it attaches alongside telemetry, outside the supervisor gate.
         this.beacons = beacons;
@@ -169,11 +169,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // has its frame-trace tap subscribed (and unsubscribed on teardown) so the
         // service hears NODES broadcasts; with connect-routing enabled it also taps
         // interlink sessions + drives L4 circuits. Hearing can never disturb a
-        // session — the frame tap is observation-only.
+        // session - the frame tap is observation-only.
         this.netRom = netRom;
 
         // When NET/ROM connect-routing is on, an inbound L4 circuit (a user routed to
-        // us across the network) is bridged to a fresh node console — the same prompt
+        // us across the network) is bridged to a fresh node console - the same prompt
         // an AX.25/telnet user gets. The service raises this hook with the circuit
         // wrapped as an INodeConnection.
         if (this.netRom is not null)
@@ -205,7 +205,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // Ax25OutboundConnector claims a console connect-out. The service hands us the
     // PeerDialPlan it computed from the per-peer capability cache (version + pre-connect
     // XID); we just dial it. The default plan (no cache) is mod-8 + the listener's
-    // pre-connect-XID default — byte-for-byte today's behaviour.
+    // pre-connect-XID default - byte-for-byte today's behaviour.
     private async Task<Ax25Session> OpenInterlinkAsync(
         string portId, Callsign neighbour, PeerDialPlan plan, CancellationToken ct)
     {
@@ -291,7 +291,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     // Build a head-end device resolver over the LIVE fleet. With discovery wired (split-station),
     // the headEndId → address step prefers a pinned config address and falls back to an mDNS browse
-    // of the instance id — so a head-end configured in discover mode (blank address) or one that
+    // of the instance id - so a head-end configured in discover mode (blank address) or one that
     // re-addressed resolves at bring-up. Without discovery it is config-address-only (unchanged).
     private HeadEndDeviceResolver BuildHeadEndResolver()
     {
@@ -323,7 +323,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     /// <summary>
     /// Build the connect router a console session uses for <c>C[onnect] [port] &lt;call&gt;</c>:
     /// it bridges to a locally-registered app SSID (loopback crossconnect), dials a chosen
-    /// 1-indexed port directly, or — for a plain <c>C &lt;call&gt;</c> — returns
+    /// 1-indexed port directly, or - for a plain <c>C &lt;call&gt;</c> - returns
     /// <paramref name="defaultConnector"/> (the session's usual same-port / NET/ROM-wrapped
     /// dial). Resolves against the live config + app registry, so a port that comes up or an app
     /// that binds mid-session is reachable on the next command.
@@ -377,7 +377,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             .First();
     }
 
-    // ── ILocalAppRegistry — the live key set, for the bare-verb resolver (packet.net#476) ──
+    // ── ILocalAppRegistry - the live key set, for the bare-verb resolver (packet.net#476) ──
     // A self-deriving app binds an SSID it chose, not the node-resolved PDN_APP_CALLSIGN; the
     // verb resolver consults this to bridge to whatever the app actually bound. Read-only.
 
@@ -585,14 +585,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     // The console's connect router (see CreateConnectRouter). Holds the supervisor + the session's
     // default connector; reads the live config/registry on each Resolve so it tracks port and app
-    // changes within a session. NET/ROM is intentionally not consulted here — an explicit port is
+    // changes within a session. NET/ROM is intentionally not consulted here - an explicit port is
     // a direct dial; aliases come later.
     private sealed class ConnectRouter(PortSupervisor owner, IOutboundConnector? defaultConnector) : IConnectRouter
     {
         public ConnectResolution Resolve(int? port, Callsign target, INodeConnection inbound)
         {
             // No port: a registered app SSID wins (loopback crossconnect to the app); otherwise
-            // the session's default dial. An explicit port skips this — it's a deliberate "go RF".
+            // the session's default dial. An explicit port skips this - it's a deliberate "go RF".
             if (port is null)
             {
                 var localApp = owner.TryResolveLocalAppConnector(target, inbound.PeerId, inbound.TransportKind);
@@ -740,11 +740,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     }
 
     /// <summary>
-    /// Transiently restart one configured, enabled port — tear its listener down and
-    /// bring it back up on the same config — <b>without</b> a config change (a config
+    /// Transiently restart one configured, enabled port - tear its listener down and
+    /// bring it back up on the same config - <b>without</b> a config change (a config
     /// edit can't express "restart an unchanged port": the reconcile planner would see
     /// no diff). Returns <c>false</c> (no-op) if the id is unknown or the port is
-    /// disabled — the caller maps that to a 404/409. Single-threaded by contract, like
+    /// disabled - the caller maps that to a 404/409. Single-threaded by contract, like
     /// <see cref="ApplyAsync"/>: the caller must serialise this against reconciles (the
     /// host runs it under its supervisor gate via <c>RunExclusiveAsync</c>).
     /// </summary>
@@ -755,7 +755,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var port = current.Ports.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
         if (port is null || !port.Enabled)
         {
-            return false;   // nothing to restart — unknown or disabled (use up/down to enable)
+            return false;   // nothing to restart - unknown or disabled (use up/down to enable)
         }
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -771,7 +771,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     }
 
     /// <summary>
-    /// Execute a reconcile plan. Single-threaded by contract — the
+    /// Execute a reconcile plan. Single-threaded by contract - the
     /// <see cref="NodeHostedService"/> serialises calls so two reconciles never
     /// overlap. Touches only the ports the plan names.
     /// </summary>
@@ -902,13 +902,13 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             await BringUpAsync(port, newConfig.Identity, cancellationToken).ConfigureAwait(false);
         }
 
-        // Hot KISS-param changes — apply live, no restart, sessions untouched.
+        // Hot KISS-param changes - apply live, no restart, sessions untouched.
         foreach (var port in plan.KissParamsChanged)
         {
             await ApplyKissParamsAsync(port, cancellationToken).ConfigureAwait(false);
         }
 
-        // AX.25 param changes — live-reseed the running listener so NEW sessions
+        // AX.25 param changes - live-reseed the running listener so NEW sessions
         // pick up the new params, without rebuilding the listener or disturbing any
         // existing session (object identity preserved). See the ReconcilePlanner
         // remarks + Ax25Listener.UpdateSessionParameters.
@@ -920,7 +920,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Compat-profile changes ride the same reseed (the rebuilt parameter
         // record carries the parse options + session quirks); split out only so
         // the log says what actually changed. A port the params loop already
-        // reseeded carries the new compat too — skip it.
+        // reseeded carries the new compat too - skip it.
         foreach (var port in plan.CompatChanged)
         {
             if (!plan.Ax25ParamsChanged.Contains(port))
@@ -940,7 +940,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             }
         }
 
-        // Per-port NET/ROM awareness changes (QUALITY / MINQUAL / NODESPACLEN) — hot-apply
+        // Per-port NET/ROM awareness changes (QUALITY / MINQUAL / NODESPACLEN) - hot-apply
         // the new values to the port's NET/ROM attachment (no restart, no session
         // disturbance). NET/ROM awareness + advertisement is read-only; QUALITY/MINQUAL
         // govern the next NODES ingest, NODESPACLEN the next broadcast's framing.
@@ -1050,7 +1050,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var endpointText = port.Transport.DescribeEndpoint();
 
         // Resolve the port's named channel profile (if any) into effective AX.25 +
-        // KISS params — explicit values win, the profile fills the gaps, no profile
+        // KISS params - explicit values win, the profile fills the gaps, no profile
         // = spec defaults. Opt-in tuning at the node-host layer (see ChannelProfiles).
         var (effectiveAx25, effectiveKiss) = ChannelProfiles.Resolve(port);
 
@@ -1101,9 +1101,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // dropped link reconnects (backoff + KISS-param replay) instead of the port silently dying.
         // The eager connect above preserves initial fault isolation; this only adds
         // reconnect-after-drop. Covers kiss-tcp (a TNC/softmodem bounce, #50), nino-tnc-tcp (a
-        // split-station head-end bounce or re-address — the reconnect re-resolves the inventory from
+        // split-station head-end bounce or re-address - the reconnect re-resolves the inventory from
         // the LIVE head-end fleet, so a moved head-end's new tcpPort is picked up), AND a
-        // head-end-bound tait-transparent port (#585 — the transport IS an IAx25Transport whose
+        // head-end-bound tait-transparent port (#585 - the transport IS an IAx25Transport whose
         // inbound stream ENDS when the pipe dies, so the same wrapper supervises it; the reconnect
         // re-resolves, re-clocks via the line verb, and re-enters Transparent, recovering a radio
         // left as a stale byte pipe by escaping it first). The Stage-1 TCP IO faults on half-open
@@ -1128,7 +1128,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         // ACKMODE pacing (opt-in, default-off): when this port's kiss.ackMode is set,
         // wrap the transport so the listener's outbound frames are serialised over the
-        // half-duplex channel — each sent awaiting TX-completion, the next held until the
+        // half-duplex channel - each sent awaiting TX-completion, the next held until the
         // prior frame's completion arrives (or a short timeout). The pacing decorator needs
         // a TX-completion-capable inner; a transport with no completion signal (plain serial
         // KISS, AXUDP) cannot be paced, so the wrap is skipped and the port stays
@@ -1152,10 +1152,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // In-process soundmodem: attach the per-frame receive-quality early-warning log (#635).
         // Cumulative FEC counters ride on the transport snapshot (pdn_port_fec_* + the /quality
         // API); here we tap the per-frame push only to emit a structured line when a frame needed
-        // FEC repair — persistently non-zero corrections mean the link is spending its error
+        // FEC repair - persistently non-zero corrections mean the link is spending its error
         // budget before frames start dropping. Subscribed once per transport instance at bring-up:
         // the reconcile-rebuild path (RebaselineConfig) reuses the same transport, so it does not
-        // re-subscribe. Handler runs on the receive-pump thread — the LoggerMessage call is cheap
+        // re-subscribe. Handler runs on the receive-pump thread - the LoggerMessage call is cheap
         // and self-gates on level.
         if (modemTransport is SoundModemFrameTransport soundModemQuality)
         {
@@ -1170,14 +1170,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
 
         // Node-managed rigctld (plug-and-play rig): a rig: block bound by device/model
-        // (instead of host/port) means the NODE owns the daemon — spawn a supervised rigctld
+        // (instead of host/port) means the NODE owns the daemon - spawn a supervised rigctld
         // on a loopback port allocated once, wait for it to listen, and point every rig dial
         // below (the radio kind-rig arm AND the rig status attach) at it via the effective
         // config. Started FIRST because both dials need a live endpoint. Degrade-cleanly, like
         // an unreachable BYO daemon: a spawn failure or a daemon that never starts listening
         // leaves the effective rig config null, so the rest of bring-up sees "no rig" (a
         // radio: kind rig port then degrades its radio exactly as it does when a BYO daemon is
-        // down). Once ready, the daemon self-heals for the port's lifetime — it respawns with
+        // down). Once ready, the daemon self-heals for the port's lifetime - it respawns with
         // capped backoff on the SAME port, so the re-dialling clients recover when an unplugged
         // USB CAT device comes back.
         ManagedRigDaemon? rigDaemon = null;
@@ -1219,7 +1219,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // radio's control channel and wrap the transport OUTERMOST so every inbound
         // frame the listener sees carries per-frame RSSI/SNR metadata
         // (Ax25InboundFrame.Radio), plus start the radio-health/status monitor. A radio
-        // open failure degrades cleanly — log and run the port without metadata; an
+        // open failure degrades cleanly - log and run the port without metadata; an
         // unplugged control cable (or a serial-bound radio that isn't plugged in) must
         // never take a working packet channel down. RunningPort tracks the pieces and
         // disposes them in order (node tap → modem chain → status monitor → radio).
@@ -1231,8 +1231,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             // Describe the attachment by whichever key pins it: a rig-backed radio (kind rig) by
             // the rig daemon it dials a dedicated connection to (the EFFECTIVE config, so a
             // node-managed daemon shows its device + allocated loopback port); a cabled radio by
-            // its control device, or — serial-bound radios have an empty Port (the device is
-            // resolved by scanning) — its CCDI serial.
+            // its control device, or - serial-bound radios have an empty Port (the device is
+            // resolved by scanning) - its CCDI serial.
             var radioEndpoint = RadioKinds.Is(radioConfig.Kind, RadioKinds.Rig)
                 ? (effectiveRig is { } rigCfg
                     ? $"rig:{rigCfg.DescribeEndpoint()}"
@@ -1256,12 +1256,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
                 // Head-end-bound radio control gets reconnect supervision (#576): the stable
                 // facade is what every consumer below holds (tagging transport, carrier-sense
-                // gate, status monitor, RunningPort.Radio), so when the control socket dies —
-                // a head-end restart, a .deb upgrade's try-restart, a replug — the facade
+                // gate, status monitor, RunningPort.Radio), so when the control socket dies -
+                // a head-end restart, a .deb upgrade's try-restart, a replug - the facade
                 // disposes the dead driver and re-opens it (fresh inventory resolve, configured
                 // baud re-clock, progress re-enable) underneath them all. A local-serial radio
                 // keeps today's behaviour: a USB unplug is a physical event, not a bounce. A
-                // rig-backed radio (kind rig, never head-end-bound) also skips the wrap — the
+                // rig-backed radio (kind rig, never head-end-bound) also skips the wrap - the
                 // rig backends re-dial per command, so the adapter self-heals on its own.
                 if (radioConfig.IsHeadEndBound)
                 {
@@ -1274,7 +1274,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 {
                     // Outer→inner: node tap → RSSI-tagging wrapper → modem chain. The listener consumes
                     // the tap; the tap reads each inbound frame's RSSI/SNR (populated by the wrapper) so
-                    // NodeTelemetry can stamp it onto the monitor/heard/traffic surfaces — a node-telemetry
+                    // NodeTelemetry can stamp it onto the monitor/heard/traffic surfaces - a node-telemetry
                     // concern kept entirely OFF the parity-tracked AX.25 listener contract.
                     var tagging = new RssiTaggingTransport(
                         transport,
@@ -1294,8 +1294,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 else
                 {
                     // A radio without RSSI reads (e.g. a rig whose DCD is calibrated but whose
-                    // strength meter isn't): no tagging wrapper — the inbound path stays exactly
-                    // as a no-radio port's — but the carrier-sense gate and the status monitor
+                    // strength meter isn't): no tagging wrapper - the inbound path stays exactly
+                    // as a no-radio port's - but the carrier-sense gate and the status monitor
                     // below still get the radio.
                     LogRadioAttachedNoRssi(port.Id, radioConfig.Kind, radioEndpoint, radio.Capabilities);
                 }
@@ -1330,20 +1330,20 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         // Native carrier-sense CSMA (OQ-012): when a radio with hardware DCD is attached, feed
         // its carrier-sense into the listener's medium-access gate so the AX.25 stack itself
-        // defers keyups while the channel is busy — the native seam, owned by the stack rather
+        // defers keyups while the channel is busy - the native seam, owned by the stack rather
         // than an opaque transport wrapper. A radio without carrier-sense (or no radio at all)
-        // yields a null source, i.e. the always-clear gate — byte-for-byte today's behaviour.
+        // yields a null source, i.e. the always-clear gate - byte-for-byte today's behaviour.
         // Passed on the first-class, ax25-ts-parity-tracked Ax25ListenerOptions.CarrierSense
         // member (mirrors the TS carrierSense option). (The coming Nino KISS DCD extension lands
         // in the same gate.)
         // A transport that IS its own carrier-sense source (the in-process soundmodem's
-        // native DCD; a future Nino KISS DCD extension) plugs into the same gate — probe
+        // native DCD; a future Nino KISS DCD extension) plugs into the same gate - probe
         // the modem chain, not the decorators, which don't forward optional facets.
         ICarrierSense? carrierSense = radio is not null && radio.Capabilities.HasFlag(RadioCapabilities.CarrierSense)
             ? new RadioCarrierSense(radio)
             : modemTransport as ICarrierSense;
         // TX-complete→T1 (kiss.t1FromTxComplete): construction-time, like the
-        // PacingKissModem wrap above — see KissParams.T1FromTxComplete.
+        // PacingKissModem wrap above - see KissParams.T1FromTxComplete.
         var options = BuildListenerOptions(
             effectiveAx25, port.Compat, myCall,
             restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true,
@@ -1356,9 +1356,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // N1 (PACLEN) is carried on the live-reseed parameter record, not on the
         // parity-tracked Ax25ListenerOptions (it is node-host per-port config, not a
         // library listener flag). The constructor seeds its params from `options`, which
-        // has no N1 — so reseed once now with the full MapAx25Params (which carries N1)
+        // has no N1 - so reseed once now with the full MapAx25Params (which carries N1)
         // so this freshly-built listener's NEW sessions pick up the configured PACLEN. A
-        // null N1 leaves the context default (256) — byte-for-byte today's behaviour.
+        // null N1 leaves the context default (256) - byte-for-byte today's behaviour.
         listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
         var connector = new Ax25OutboundConnector(
             port.Id, listener, r => ClaimOutbound(port.Id, r), localOverride: null, cache: capabilityCache,
@@ -1372,7 +1372,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             await listener.StartAsync(ct).ConfigureAwait(false);
             // Target the modem chain, not the (possibly radio-tagged) outermost
-            // transport — the tagging wrapper doesn't forward ICsmaChannelParams.
+            // transport - the tagging wrapper doesn't forward ICsmaChannelParams.
             await ApplyKissParamsToModemAsync(modemTransport, effectiveKiss, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -1412,7 +1412,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         // Rig-control (CAT) attachment: dial the rig daemon and start the status poller.
         // Placed after every throwing bring-up step so a port-level failure can't leak a
-        // connected rig, and self-degrading — an unreachable rigctld/flrig must never take
+        // connected rig, and self-degrading - an unreachable rigctld/flrig must never take
         // a working packet channel down. The rig never touches the packet path (it is the
         // station-control sibling of the radio: seam, plan OQ-011), so no transport
         // wrapping happens here. After attach, backend transport drops self-heal (the
@@ -1473,7 +1473,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         ApplyAppCallsignsTo(running);
 
         // NET/ROM read-only awareness: subscribe this port's frame-trace tap so the
-        // node-level service hears NODES broadcasts on it. Observation-only — it
+        // node-level service hears NODES broadcasts on it. Observation-only - it
         // cannot disturb the session path. Detached on teardown. The per-port NET/ROM
         // knobs (all null = inherit the node-wide defaults) govern this port: QUALITY the
         // quality assumed for a neighbour heard here, MINQUAL the route-keep floor, and
@@ -1486,11 +1486,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // onto received frames without widening the AX.25 listener contract.
         telemetry?.AttachPort(port.Id, listener, radioSource);
 
-        // ID beacon: arm the periodic UI-frame beacon on this port (default-off — armed
+        // ID beacon: arm the periodic UI-frame beacon on this port (default-off - armed
         // only when the effective beacon is enabled). Sends-only; detached on teardown.
         beacons?.AttachPort(port.Id, new ListenerBeaconChannel(listener));
 
-        // Hoist the callsign too (CA1873) — endpointText is the one declared above.
+        // Hoist the callsign too (CA1873) - endpointText is the one declared above.
         var callText = myCall.ToString();
         LogPortUp(port.Id, callText, endpointText);
 
@@ -1603,7 +1603,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         });
 
         // Detach the NET/ROM tap and cleanly disconnect any interlink AX.25 sessions
-        // on this port BEFORE disposing the listener — DetachPortAsync DISCs each
+        // on this port BEFORE disposing the listener - DetachPortAsync DISCs each
         // interlink and waits (bounded) for the DISC/UA to round-trip on the wire, so
         // the neighbour isn't left with a half-open link it polls (the #309
         // contamination class). The listener is still alive here to carry the DISC.
@@ -1653,7 +1653,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             p.BeginTeardown();
             SetState(p.Id, PortState.Stopping, reason == TeardownReason.Shutdown ? "shutdown" : "node-wide reset");
-            // Clean interlink DISC (bounded) before disposing the listener — see
+            // Clean interlink DISC (bounded) before disposing the listener - see
             // TearDownAsync for the rationale (avoid leaving a neighbour a half-open
             // link it polls onto the shared channel).
             if (netRom is not null)
@@ -1673,7 +1673,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var running = TryGetRunning(port.Id);
         if (running is null)
         {
-            return;   // not up (e.g. faulted) — nothing live to tune
+            return;   // not up (e.g. faulted) - nothing live to tune
         }
 
         // Resolve the profile here too so a live KISS re-apply uses the same
@@ -1691,7 +1691,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var running = TryGetRunning(port.Id);
         if (running is null)
         {
-            return;   // not up (e.g. faulted) — the next bring-up reads the new config
+            return;   // not up (e.g. faulted) - the next bring-up reads the new config
         }
 
         // Resolve the profile here too so a live AX.25 reseed uses the same
@@ -1710,12 +1710,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var running = TryGetRunning(port.Id);
         if (running is null)
         {
-            return;   // not up (e.g. faulted) — the next bring-up reads the new config
+            return;   // not up (e.g. faulted) - the next bring-up reads the new config
         }
 
         var (effectiveAx25, _) = ChannelProfiles.Resolve(port);
 
-        // Same live reseed as ApplyAx25Params — the parameter record carries the
+        // Same live reseed as ApplyAx25Params - the parameter record carries the
         // compat values. Parse options apply from the next inbound frame; quirks
         // seed sessions built from now on. Existing sessions untouched.
         running.Listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
@@ -1746,26 +1746,26 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private static async Task ApplyKissParamsToModemAsync(IAx25Transport transport, KissParams? kiss, CancellationToken ct)
     {
         // CSMA params are meaningful only on a transport that exposes them. A transport
-        // with no CSMA channel (none today — AXUDP exposes them as no-ops through the
+        // with no CSMA channel (none today - AXUDP exposes them as no-ops through the
         // migration shim) is simply skipped, preserving today's behaviour.
         if (transport is not ICsmaChannelParams csma)
         {
             return;
         }
 
-        // TXDELAY/PERSIST/SLOTTIME stay opt-in — unset means "leave the modem at its
+        // TXDELAY/PERSIST/SLOTTIME stay opt-in - unset means "leave the modem at its
         // own default", because the right value for those is firmware-specific and a
         // wrong guess degrades CSMA. TXTAIL is different (#465): its default is an
-        // IMPLICIT 0, sent UNCONDITIONALLY on every apply — bring-up, the regular
-        // KISS-param cadence, and a hot config change — so the modem always gets a
+        // IMPLICIT 0, sent UNCONDITIONALLY on every apply - bring-up, the regular
+        // KISS-param cadence, and a hot config change - so the modem always gets a
         // deterministic, explicit tail. 0 is correct for most paths (a NinoTNC into a
         // fully analogue audio path, even on a slow AFSK1200 channel); a non-zero tail
-        // is a MODEM + radio-audio-path-latency property (a software modem — samoyed /
-        // Dire Wolf — or a NinoTNC into a non-zero-latency audio path), which the node
+        // is a MODEM + radio-audio-path-latency property (a software modem - samoyed /
+        // Dire Wolf - or a NinoTNC into a non-zero-latency audio path), which the node
         // can't infer, so the operator sets `kiss.txTail` per port and that explicit
         // value wins here (the `?? 0` only supplies the default when unset).
         // The config knobs are int? (so an out-of-range value is a named 422 from
-        // KissParamsValidator rather than an opaque model-binding 400 — #672), while
+        // KissParamsValidator rather than an opaque model-binding 400 - #672), while
         // ICsmaChannelParams is byte, which is the wire truth. Clamp rather than cast:
         // config reaching here has been validated to 0..255, so the clamp is unreachable
         // for a validated path, but an unchecked cast would silently wrap a bad value
@@ -1875,7 +1875,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private void OnSessionAccepted(string portId, Ax25Listener listener, Ax25OutboundConnector connector, Ax25Session session)
     {
         // A session we are dialling OUT to (the console's Connect command) also
-        // raises SessionAccepted on this listener — but it is NOT an inbound
+        // raises SessionAccepted on this listener - but it is NOT an inbound
         // caller, so we must not start a node console against it (that would spew
         // our prompt at the station we connected to). The connector claims the
         // (port, remote) for the duration of the connect; comparing THIS port is what
@@ -1887,7 +1887,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         // Cutover observability: a genuine inbound caller (the outbound guard above ruled out
         // our own connect-out). Logged once here, before the console/app split, so every
-        // accepted inbound circuit is positively visible — not just faults. Guarded so the
+        // accepted inbound circuit is positively visible - not just faults. Guarded so the
         // ToString() is skipped when Information is off (CA1873).
         if (logger.IsEnabled(LogLevel.Information))
         {
@@ -1896,8 +1896,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
 
         // An inbound session addressed to an APP callsign (the session's Local is a
-        // registered alias, not the port's own call) routes to the app's handler —
-        // the RHPv2 server's accept path — never to the node console.
+        // registered alias, not the port's own call) routes to the app's handler -
+        // the RHPv2 server's accept path - never to the node console.
         if (!session.Context.Local.Equals(listener.MyCall))
         {
             OnAppSessionAccepted(portId, listener, session);
@@ -2028,7 +2028,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private partial void LogRadioAttached(string id, string kind, string radioPort);
 
     // Per-frame soundmodem FEC early-warning (#635): only emitted when a frame actually needed
-    // repair (CorrectedBytes > 0), so a clean link stays silent. Not called "BER" — it is an
+    // repair (CorrectedBytes > 0), so a clean link stays silent. Not called "BER" - it is an
     // honest byte-error-rate floor, not a bit-error rate.
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: inbound {Mode} frame needed FEC repair - {CorrectedBytes} of {FrameBytes} byte(s) corrected (early warning: persistently non-zero means the link is spending its error budget).")]
     private partial void LogSoundModemFecCorrections(string id, string mode, int correctedBytes, int frameBytes);

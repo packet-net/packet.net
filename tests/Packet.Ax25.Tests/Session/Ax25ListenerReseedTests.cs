@@ -6,7 +6,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Coverage for <see cref="Ax25Listener.UpdateSessionParameters"/> — the live
+/// Coverage for <see cref="Ax25Listener.UpdateSessionParameters"/> - the live
 /// reseed of per-session AX.25 parameters on a RUNNING listener. The contract:
 /// new sessions built after the reseed pick up the new values; sessions that
 /// already exist keep the parameters (and object identity) they were built with;
@@ -54,7 +54,7 @@ public class Ax25ListenerReseedTests
         listener.SessionAccepted += (_, e) => accepted.Enqueue(e.Session);
         await listener.StartAsync();
 
-        // First peer connects in BEFORE the reseed — built with N2=5, k=3, T1V=4 s.
+        // First peer connects in BEFORE the reseed - built with N2=5, k=3, T1V=4 s.
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
         await WaitUntil(() => !accepted.IsEmpty, "first session accepted");
         accepted.TryDequeue(out var sessionA).Should().BeTrue();
@@ -70,12 +70,12 @@ public class Ax25ListenerReseedTests
             T1V = TimeSpan.FromMilliseconds(9000),
         });
 
-        // The existing session is untouched — same object, same params.
+        // The existing session is untouched - same object, same params.
         sessionA.Context.N2.Should().Be(5, "an existing session keeps the params it was built with");
         sessionA.Context.K.Should().Be(3);
         sessionA.Context.T1V.Should().Be(TimeSpan.FromMilliseconds(4000));
 
-        // A different peer connects in AFTER the reseed — built with the new params.
+        // A different peer connects in AFTER the reseed - built with the new params.
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallB));
         await WaitUntil(() => !accepted.IsEmpty, "second session accepted");
         accepted.TryDequeue(out var sessionB).Should().BeTrue();

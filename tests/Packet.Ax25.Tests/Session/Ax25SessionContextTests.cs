@@ -88,7 +88,7 @@ public class Ax25SessionContextTests
         ctx.AcknowledgePending.Should().BeFalse();
         ctx.IFrameQueue.Count.Should().Be(0);
 
-        // Negotiated link parameters survive a state reset — they're set by XID,
+        // Negotiated link parameters survive a state reset - they're set by XID,
         // not by the connection lifecycle.
         ctx.N1.Should().Be(256);
         ctx.N2.Should().Be(10);

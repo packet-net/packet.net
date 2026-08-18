@@ -36,7 +36,7 @@ public sealed record DataLinkDataIndication(ReadOnlyMemory<byte> Info, byte Pid)
 /// A data-link error has occurred. <see cref="Code"/> is the letter code per
 /// §C5 error indication table (e.g. <c>"C"</c>, <c>"D"</c>, <c>"C_D"</c>,
 /// <c>"E"</c>, …, <c>"O"</c>). The dispatcher derives the code from the
-/// SDL verb spelling — <c>DL_ERROR_indication_C_D</c> → <c>Code = "C_D"</c>.
+/// SDL verb spelling - <c>DL_ERROR_indication_C_D</c> → <c>Code = "C_D"</c>.
 /// </summary>
 public sealed record DataLinkErrorIndication(string Code)
     : DataLinkSignal("DL_ERROR_indication");

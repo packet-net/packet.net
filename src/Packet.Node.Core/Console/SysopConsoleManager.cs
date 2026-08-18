@@ -20,7 +20,7 @@ namespace Packet.Node.Core.Console;
 /// <see cref="INodeConnection"/> here (keyed by the session id <c>"{portId}:{peer}"</c>)
 /// instead of discarding it, so the bytes the peer sends (a LinBPQ banner/prompt, a
 /// command response) are captured and streamed to the browser rather than buffering
-/// unread. The node's own inbound consoles are unaffected — only operator-initiated
+/// unread. The node's own inbound consoles are unaffected - only operator-initiated
 /// outbound connections are adopted here.
 /// </para>
 /// <para>
@@ -29,7 +29,7 @@ namespace Packet.Node.Core.Console;
 /// the backlog is guarded by a per-session lock; subscribers are a concurrent set of
 /// bounded channel writers, and a slow browser drops its oldest output chunks
 /// (<see cref="BoundedChannelFullMode.DropOldest"/>) rather than stalling the pump. The
-/// pump ends — completing every subscriber — when the peer goes away
+/// pump ends - completing every subscriber - when the peer goes away
 /// (<see cref="INodeConnection.ReadAsync"/> returns empty) or on
 /// <see cref="CloseAsync"/>.
 /// </para>
@@ -127,7 +127,7 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
     /// <summary>True if an interactive console is managed for this session id.</summary>
     public bool IsManaged(string id) => sessions.ContainsKey(id);
 
-    /// <summary>Send typed input to the peer (UTF-8 as supplied — the caller decides
+    /// <summary>Send typed input to the peer (UTF-8 as supplied - the caller decides
     /// any line terminator). No-op if the id is not managed.</summary>
     public async ValueTask WriteAsync(string id, ReadOnlyMemory<byte> bytes, CancellationToken ct = default)
     {
@@ -206,7 +206,7 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
 
     // Fire-and-forget dispose of an IAsyncDisposable from a synchronous path (Open's
     // duplicate-adoption reject, the peer-gone callback running in the pump's finally).
-    // Wrapped in a Task (not a bare discarded ValueTask — CA2012) and swallows faults.
+    // Wrapped in a Task (not a bare discarded ValueTask - CA2012) and swallows faults.
     private static void DisposeInBackground(IAsyncDisposable resource)
     {
         _ = Quietly(resource);
@@ -321,7 +321,7 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
-                // CloseAsync / dispose — normal teardown.
+                // CloseAsync / dispose - normal teardown.
             }
             catch (Exception ex)
             {

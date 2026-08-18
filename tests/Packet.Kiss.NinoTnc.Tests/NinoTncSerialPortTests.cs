@@ -96,7 +96,7 @@ public class NinoTncSerialPortTests
         var sendTask = nino.SendFrameWithAckAsync(new byte[] { 0x01 }, TimeSpan.FromSeconds(30), sequenceTag: 0x55);
         await TestWait.ForAsync(() => io.Writes.Length >= 1);   // pending ack registered
 
-        // Dispose awaits the dispatch loop, whose finally runs FailPendingAcks — so by the
+        // Dispose awaits the dispatch loop, whose finally runs FailPendingAcks - so by the
         // time DisposeAsync returns the pending send is already faulted (no hang).
         await nino.DisposeAsync();
 

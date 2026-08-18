@@ -14,7 +14,7 @@ namespace Packet.Node.Core.Ardop;
 /// Hosts the ARDOP virtual TNC: an ardopcf-compatible TCP host interface (command socket + a data
 /// socket on <c>port+1</c>) backed by a dedicated 12 kHz soundmodem channel, so external ARDOP
 /// hosts (BPQ, Pat, Winlink) can drive this node's soundcard/FlexRadio as an ARDOP modem. Off by
-/// default. Reconciles like the RHP server — serialized, teardown-then-rebuild, never throwing on a
+/// default. Reconciles like the RHP server - serialized, teardown-then-rebuild, never throwing on a
 /// device/bind failure.
 /// </summary>
 public sealed partial class ArdopHostedService : IHostedService, IAsyncDisposable
@@ -50,7 +50,7 @@ public sealed partial class ArdopHostedService : IHostedService, IAsyncDisposabl
         {
             if (_running is not null && _running == next)
             {
-                return; // record equality — nothing relevant changed
+                return; // record equality - nothing relevant changed
             }
 
             await TearDownAsync().ConfigureAwait(false);
@@ -69,7 +69,7 @@ public sealed partial class ArdopHostedService : IHostedService, IAsyncDisposabl
                     next.Device, ArdopModulator.SampleRate, next.CaptureRate, next.Ptt, next.Flex,
                     SoundModemFlexDevice.ArdopBuffer, CancellationToken.None).ConfigureAwait(false);
 
-                // ARDOP owns the channel exclusively (single ARQ session) — disable the modem's
+                // ARDOP owns the channel exclusively (single ARQ session) - disable the modem's
                 // p-persistent CSMA backoff, matching the daemon.
                 SoundModemChannel channel = _host.Channel;
                 channel.Csma.Persistence = 255;
@@ -99,7 +99,7 @@ public sealed partial class ArdopHostedService : IHostedService, IAsyncDisposabl
             }
             catch (Exception ex)
             {
-                // A device open or bind clash must not crash the node — log and run without ARDOP.
+                // A device open or bind clash must not crash the node - log and run without ARDOP.
                 LogStartFailed(ex, next.Device, next.Port);
                 await TearDownAsync().ConfigureAwait(false);
             }

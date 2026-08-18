@@ -14,7 +14,7 @@ namespace Packet.Kiss.NinoTnc.Tests;
 /// bytes at all (the head-end bridge is a pure pump; TCP keepalive carries no data), so without a
 /// probe the transport's 5-min read-idle liveness budget faults a perfectly healthy port every
 /// 5 minutes all night. The driver's periodic GETVER (default 2 min of frame-silence, mirroring
-/// the Tait watchdog) generates reply bytes that feed the budget — while a genuinely dead link
+/// the Tait watchdog) generates reply bytes that feed the budget - while a genuinely dead link
 /// gets no reply and still faults on the same budget.
 /// </summary>
 public class NinoTncKeepAliveTests
@@ -51,7 +51,7 @@ public class NinoTncKeepAliveTests
         var clock = new FakeTimeProvider();
         var io = new FakeSerialPortIo();
         await using var modem = KissSerialModem.OpenForTest(io, clock);
-        // OpenForTest with no options mirrors NinoTncSerialPort.Open (local serial): no probe —
+        // OpenForTest with no options mirrors NinoTncSerialPort.Open (local serial): no probe -
         // a local port has no read-idle liveness budget to feed.
         await using var nino = NinoTncSerialPort.OpenForTest(modem, clock);
 
@@ -119,7 +119,7 @@ public class NinoTncKeepAliveTests
 
         // March fake time past the 5-min idle budget, but never let the fake clock outrun the
         // real probe round-trip: whenever 4 fake minutes have passed since the last observed
-        // reply (probes are due every 2), HOLD the clock and wait for the reply to land — so a
+        // reply (probes are due every 2), HOLD the clock and wait for the reply to land - so a
         // spurious idle fault (a pure test-timing artefact) is impossible by construction.
         var step = TimeSpan.FromSeconds(30);
         var fakeElapsed = TimeSpan.Zero;

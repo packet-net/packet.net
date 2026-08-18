@@ -6,7 +6,7 @@ namespace Packet.Ax25.Session;
 
 /// <summary>
 /// The runtime driver for the AX.25 v2.2 <strong>management data-link (MDL)</strong>
-/// state machine — the XID parameter-negotiation FSM of Appendix C5
+/// state machine - the XID parameter-negotiation FSM of Appendix C5
 /// (figc5.1 <c>Ready</c> / figc5.2 <c>Negotiating</c>). It is the consumer of the
 /// <c>MDL-NEGOTIATE Request</c> poke the data-link side emits after the UA on a
 /// v2.2 connect (figc4.6), and it drives the single XID command/response
@@ -19,7 +19,7 @@ namespace Packet.Ax25.Session;
 /// from the same generated tables (<see cref="ManagementDataLink_Ready"/> /
 /// <see cref="ManagementDataLink_Negotiating"/>) through the same
 /// <see cref="Ax25Session"/> / <see cref="ActionDispatcher"/> / <see cref="GuardEvaluator"/>
-/// machinery the data-link uses — reusing that infrastructure rather than
+/// machinery the data-link uses - reusing that infrastructure rather than
 /// hand-rolling a second interpreter. The MDL-specific behaviour rides on the
 /// dispatcher's injectable MDL hooks (the <c>XID_command</c> builder, the
 /// <c>Apply Negotiated Parameters</c> merge, the full-v2.0 <c>Set Version 2.0</c>,
@@ -31,14 +31,14 @@ namespace Packet.Ax25.Session;
 /// retry/timer regimes from colliding, the MDL driver runs the generated tables
 /// against its <em>own</em> <see cref="Ax25SessionContext"/> and timer
 /// scheduler. The negotiated parameters are applied to the <em>real</em>
-/// data-link context (<see cref="LinkContext"/>) — that is the whole point of
+/// data-link context (<see cref="LinkContext"/>) - that is the whole point of
 /// the exercise. <c>NM201</c> (the management retry limit) maps onto the MDL
 /// context's <see cref="Ax25SessionContext.N2"/>.
 /// </para>
 /// <para>
 /// <b>Provenance.</b> The MDL SDL pages are a deliberate prose-derived bootstrap
 /// (Tom-directed; figc5.x not yet redrawn, marked <c>verification_pending</c>).
-/// The figc5.3–figc5.8 per-parameter "reverts-to" subroutines are collapsed in
+/// The figc5.3-figc5.8 per-parameter "reverts-to" subroutines are collapsed in
 /// the SDL to a single <c>Apply Negotiated Parameters</c> placeholder; its
 /// runtime body lives in <see cref="XidNegotiator"/>. See the
 /// management-data-link YAML headers in packet-net/ax25sdl and §5.Z of docs/plan.md.
@@ -53,7 +53,7 @@ public sealed class Ax25ManagementDataLink
     private readonly Action<ReadOnlyMemory<byte>> responderSendFrame;
 
     /// <summary>
-    /// Our XID offer — an explicit set if one was supplied at construction, else
+    /// Our XID offer - an explicit set if one was supplied at construction, else
     /// derived from the <em>current</em> link context (so a context mutated
     /// between construction and negotiation is reflected). Used as the "our
     /// offer" half of the §6.3.2 merge on both the initiator and responder sides,
@@ -64,11 +64,11 @@ public sealed class Ax25ManagementDataLink
     /// <summary>The real data-link session state the negotiated parameters are applied to.</summary>
     public Ax25SessionContext LinkContext => linkContext;
 
-    /// <summary>Current MDL state — <c>Ready</c> or <c>Negotiating</c>.</summary>
+    /// <summary>Current MDL state - <c>Ready</c> or <c>Negotiating</c>.</summary>
     public string State => machine.CurrentState;
 
     /// <summary>
-    /// Raised when the MDL machine emits a Layer-3 signal — <c>MDL-NEGOTIATE
+    /// Raised when the MDL machine emits a Layer-3 signal - <c>MDL-NEGOTIATE
     /// Confirm</c> or <c>MDL-ERROR Indicate (B/C/D)</c>. Subscribers run
     /// synchronously on the posting thread; keep handlers fast.
     /// </summary>
@@ -76,7 +76,7 @@ public sealed class Ax25ManagementDataLink
 
     /// <summary>
     /// Raised after a transition of the underlying <c>management_data_link</c>
-    /// machine commits — forwarded verbatim from the internal
+    /// machine commits - forwarded verbatim from the internal
     /// <see cref="Ax25Session.TransitionFired"/> of the MDL's state machine.
     /// The argument is the matched <see cref="TransitionSpec"/> (its <c>From</c>
     /// is <c>Ready</c>/<c>Negotiating</c>, its <c>Id</c> the codegen transition
@@ -96,18 +96,18 @@ public sealed class Ax25ManagementDataLink
     /// </param>
     /// <param name="scheduler">
     /// The timer scheduler used for TM201. May be shared with the data-link
-    /// session's scheduler — TM201 is a distinct timer name, so it does not
-    /// collide with T1/T2/T3 — or a dedicated one. (In production the listener
+    /// session's scheduler - TM201 is a distinct timer name, so it does not
+    /// collide with T1/T2/T3 - or a dedicated one. (In production the listener
     /// shares the session's scheduler so a single <see cref="TimeProvider"/>
     /// drives everything.)
     /// </param>
     /// <param name="sendFrame">
-    /// Sink for outgoing frame bytes — the MDL uses it to put the XID command on
+    /// Sink for outgoing frame bytes - the MDL uses it to put the XID command on
     /// the wire. Same shape as the data-link session's frame sink (parse / drop /
     /// deliver, or modem write).
     /// </param>
     /// <param name="offered">
-    /// Our offered XID parameter set (our Rx capability / preferences) — sent in
+    /// Our offered XID parameter set (our Rx capability / preferences) - sent in
     /// the XID command and used as the "our offer" half of the §6.3.2 merge. When
     /// <c>null</c>, <see cref="DefaultOfferFor"/> derives a sensible offer from the
     /// current <paramref name="linkContext"/>.
@@ -169,10 +169,10 @@ public sealed class Ax25ManagementDataLink
             // data-link context.
             applyNegotiatedParameters: ApplyNegotiatedParameters,
             // Set Version 2.0 here means the COMPLETE §1436 v2.0 default set
-            // applied to the real link context (not merely IsExtended=false) —
+            // applied to the real link context (not merely IsExtended=false) -
             // the figc5.2 FRMR path draws a single "Set Version 2.0" box.
             setVersion20: _ => XidNegotiator.ApplyVersion20Defaults(linkContext));
-        // NB: TM201's duration is left at the dispatcher default (3000 ms — the
+        // NB: TM201's duration is left at the dispatcher default (3000 ms - the
         // management analogue of T1; §C5.3 gives no numeric default). We do NOT
         // seed it from linkContext.T1V here: the MDL driver is built before the
         // data-link connects, and the figc4.x establishment resets T1V (to
@@ -182,7 +182,7 @@ public sealed class Ax25ManagementDataLink
 
         // The standard exhaustive binding table over the MDL context: it binds
         // every Ax25Guard atom, including RC_eq_NM201 (figc5.2's TM201-expiry
-        // retry-limit diamond — RC == NM201, with NM201 carried in the MDL
+        // retry-limit diamond - RC == NM201, with NM201 carried in the MDL
         // context's N2) and F_eq_1 (the figc5.2 XID-response final-bit diamond,
         // reading the MDL machine's current trigger frame).
         var bindings = Ax25SessionBindings.CreateDefault(
@@ -202,7 +202,7 @@ public sealed class Ax25ManagementDataLink
     }
 
     /// <summary>
-    /// Start a negotiation — posts <c>MDL-NEGOTIATE Request</c>, which (from
+    /// Start a negotiation - posts <c>MDL-NEGOTIATE Request</c>, which (from
     /// <c>Ready</c>) sends the XID command, starts TM201, and moves to
     /// <c>Negotiating</c>. This is the handler the data-link side's
     /// <see cref="MdlNegotiateRequestSignal"/> poke maps to.
@@ -211,7 +211,7 @@ public sealed class Ax25ManagementDataLink
 
     /// <summary>
     /// Feed an inbound XID frame to the MDL machine. The frame is routed as an
-    /// <see cref="XidResponseReceived"/> event — the MDL <c>Negotiating</c> state
+    /// <see cref="XidResponseReceived"/> event - the MDL <c>Negotiating</c> state
     /// reacts only to the XID <em>response</em> (§C5.3); an XID frame arriving in
     /// <c>Ready</c> (no command outstanding) is the error-B "unexpected XID
     /// response" path. The data-link classifier produces a single
@@ -256,8 +256,8 @@ public sealed class Ax25ManagementDataLink
     /// <b>This is the un-transcribed figc5.1 path.</b> The prose-bootstrap MDL
     /// machine encodes only the <em>initiator</em> side (Ready reacts to
     /// MDL-NEGOTIATE Request and an unexpected XID <em>response</em>); the
-    /// XID-<em>command</em>-reception column of figc5.1 — the responder generating
-    /// the XID response — is explicitly NOT transcribed (the YAML header flags it
+    /// XID-<em>command</em>-reception column of figc5.1 - the responder generating
+    /// the XID response - is explicitly NOT transcribed (the YAML header flags it
     /// as figure detail awaiting the figc5.x backfill). So this responder
     /// behaviour cannot be driven from the generated tables; it is implemented
     /// directly in the runtime here, deriving the response from the same
@@ -292,7 +292,7 @@ public sealed class Ax25ManagementDataLink
             source: mdlContext.Local,
             info: XidInfoField.Encode(agreed),
             isCommand: false,
-            pollFinal: true,           // F=1 — the initiator's figc5.2 F_eq_1 diamond requires it
+            pollFinal: true,           // F=1 - the initiator's figc5.2 F_eq_1 diamond requires it
             digipeaters: mdlContext.Digipeaters);
         responderSendFrame(response.ToBytes());
     }
@@ -329,7 +329,7 @@ public sealed class Ax25ManagementDataLink
             digipeaters: mdlContext.Digipeaters);
 
     /// <summary>
-    /// Derive a sensible offered XID parameter set from a session context — our
+    /// Derive a sensible offered XID parameter set from a session context - our
     /// current modulo / SREJ capability, window k, N1, T1, N2. Used when the
     /// caller doesn't supply an explicit offer. We advertise our capability
     /// (mod-128 + SREJ when the context is extended/SREJ-enabled) so the §6.3.2

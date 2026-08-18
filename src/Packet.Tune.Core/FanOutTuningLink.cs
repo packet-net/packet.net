@@ -14,7 +14,7 @@ namespace Packet.Tune.Core;
 /// This is what lets a PDN node run a resident <see cref="StationHailResponder"/> and issue
 /// on-demand hails through a <see cref="StationHailer"/> on the <em>same</em> radio side channel:
 /// a real radio's SDM buffer is one-deep, so two independent <see cref="SdmTuningLink"/>s on one
-/// radio would steal each other's datagrams. Sharing one link via this fan-out avoids that — the
+/// radio would steal each other's datagrams. Sharing one link via this fan-out avoids that - the
 /// responder ignores <c>STAT</c> telegrams and the hailer ignores <c>HAIL</c> telegrams, so the
 /// two never cross-talk even though both see every inbound telegram.
 /// </para>

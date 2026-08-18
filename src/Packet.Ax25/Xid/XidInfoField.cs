@@ -5,16 +5,16 @@ namespace Packet.Ax25.Xid;
 
 /// <summary>
 /// Codec for the AX.25 v2.2 XID (Exchange Identification) <em>information
-/// field</em> — the TLV parameter-negotiation payload carried inside an XID
+/// field</em> - the TLV parameter-negotiation payload carried inside an XID
 /// U-frame (§4.3.3.7 "Exchange Identification (XID) Frame", parameter table
 /// Figure 4.5, worked example Figure 4.6). This is the wire format the MDL
 /// (Management Data-Link, App. C5) exchange negotiates over; the codec is
-/// transport-agnostic — the resulting bytes go into <see cref="Ax25Frame.Xid"/>'s
+/// transport-agnostic - the resulting bytes go into <see cref="Ax25Frame.Xid"/>'s
 /// <c>info</c> argument, and bytes pulled off a received XID frame's
 /// <see cref="Ax25Frame.Info"/> come back here.
 /// </summary>
 /// <remarks>
-/// <para>Layout (§4.3.3.7 ¶1017–1024):</para>
+/// <para>Layout (§4.3.3.7 ¶1017-1024):</para>
 /// <code>
 ///   FI (1)  Format Identifier  = 0x82 (general-purpose XID information)
 ///   GI (1)  Group Identifier   = 0x80 (parameter-negotiation identifier)
@@ -54,37 +54,37 @@ public static class XidInfoField
 
     // ─── Parameter identifiers (Figure 4.5 "PI" column) ──────────────────
 
-    /// <summary>PI=2 — Classes of Procedures (half/full duplex, ABM). Figure 4.5.</summary>
+    /// <summary>PI=2 - Classes of Procedures (half/full duplex, ABM). Figure 4.5.</summary>
     public const byte PiClassesOfProcedures = 0x02;
 
-    /// <summary>PI=3 — HDLC Optional Functions (REJ/SREJ, modulo, segmenter, …). Figure 4.5.</summary>
+    /// <summary>PI=3 - HDLC Optional Functions (REJ/SREJ, modulo, segmenter, …). Figure 4.5.</summary>
     public const byte PiHdlcOptionalFunctions = 0x03;
 
-    /// <summary>PI=6 — I Field Length Receive, in <b>bits</b> (N1×8). Figure 4.5.</summary>
+    /// <summary>PI=6 - I Field Length Receive, in <b>bits</b> (N1×8). Figure 4.5.</summary>
     public const byte PiIFieldLengthRx = 0x06;
 
-    /// <summary>PI=8 — Window Size Receive (k frames). Figure 4.5.</summary>
+    /// <summary>PI=8 - Window Size Receive (k frames). Figure 4.5.</summary>
     public const byte PiWindowSizeRx = 0x08;
 
-    /// <summary>PI=9 — Acknowledge Timer T1, in milliseconds. Figure 4.5.</summary>
+    /// <summary>PI=9 - Acknowledge Timer T1, in milliseconds. Figure 4.5.</summary>
     public const byte PiAckTimer = 0x09;
 
     /// <summary>
-    /// PI=10 (0x0A) — Retries (N2). Figure 4.6 labels this "Retries (N2)".
+    /// PI=10 (0x0A) - Retries (N2). Figure 4.6 labels this "Retries (N2)".
     /// (The §4.3.3.7 / §6.3.2 prose miscalls the retry count "N1"; the table
-    /// name "Retries" and Fig 4.6 are authoritative — this is N2, the link's
+    /// name "Retries" and Fig 4.6 are authoritative - this is N2, the link's
     /// retry limit, not N1, the I-field length.)
     /// </summary>
     public const byte PiRetries = 0x0A;
 
     // ── PI=5 (I Field Length Transmit) and PI=7 (Window Size Transmit) are
-    //    defined in Figure 4.5 but flagged "*" — ISO 8885, not needed to
+    //    defined in Figure 4.5 but flagged "*" - ISO 8885, not needed to
     //    negotiate this version of AX.25. We parse them through (so they
     //    round-trip on a received frame) but do not synthesise them.
-    /// <summary>PI=5 — I Field Length Transmit (bits). ISO 8885; not negotiated by AX.25.</summary>
+    /// <summary>PI=5 - I Field Length Transmit (bits). ISO 8885; not negotiated by AX.25.</summary>
     public const byte PiIFieldLengthTx = 0x05;
 
-    /// <summary>PI=7 — Window Size Transmit. ISO 8885; not negotiated by AX.25.</summary>
+    /// <summary>PI=7 - Window Size Transmit. ISO 8885; not negotiated by AX.25.</summary>
     public const byte PiWindowSizeTx = 0x07;
 
     /// <summary>
@@ -113,7 +113,7 @@ public static class XidInfoField
         {
             // PI=3, PL=3, PV = 24-bit field transmitted most-significant octet
             // first (AX.25 v2.2 Fig 4.6 + direwolf + LinBPQ; see ToOctets). The
-            // historical LSB-first layout was an interop bug — BPQ silently drops
+            // historical LSB-first layout was an interop bug - BPQ silently drops
             // it and never negotiates SREJ (proven on the wire, SrejXidViaNetsim).
             WriteParameter(pf, PiHdlcOptionalFunctions, hof.ToOctets());
         }
@@ -126,7 +126,7 @@ public static class XidInfoField
         if (parameters.WindowSizeRx is { } k)
         {
             // Window size is a single-octet count 0..127 (Figure 4.5: bits
-            // 0–6 = 0..127). One octet is the canonical encoding (Fig 4.6
+            // 0-6 = 0..127). One octet is the canonical encoding (Fig 4.6
             // uses PL=1), which is what we emit.
             WriteParameter(pf, PiWindowSizeRx, new[] { (byte)(k & 0x7F) });
         }
@@ -152,7 +152,7 @@ public static class XidInfoField
     /// <summary>
     /// Parse an XID information field (the bytes from an XID frame's
     /// <see cref="Ax25Frame.Info"/>) into a <see cref="XidParameters"/>.
-    /// Returns <c>false</c> (without throwing) on a malformed buffer — a bad
+    /// Returns <c>false</c> (without throwing) on a malformed buffer - a bad
     /// FI/GI, a truncated header, a Group Length that overruns the buffer, or
     /// (under the strict default) a PI/PL whose PV runs past the parameter
     /// field. Unrecognised PIs are skipped per §4.3.3.7 ¶1024.

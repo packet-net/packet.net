@@ -16,7 +16,7 @@ namespace Packet.Node.Tests.Integration;
 /// The RHPv2 dgram (UI) path end-to-end at the node-host layer over the in-memory radio
 /// (R-6): <see cref="SupervisorRhpGateway.SendUiAsync"/> emits a connectionless UI frame from
 /// an explicit source that a station on the channel hears, and
-/// <see cref="SupervisorRhpGateway.RegisterUiListener"/> promiscuously taps inbound UI —
+/// <see cref="SupervisorRhpGateway.RegisterUiListener"/> promiscuously taps inbound UI -
 /// surfacing the frame's true source / destination / PID / info with the arrival port label.
 /// </summary>
 [Trait("Category", "Node")]
@@ -83,7 +83,7 @@ public sealed class RhpUiDatagramIntegrationTests
             return Task.CompletedTask;
         });
 
-        // The remote sends a broadcast UI frame (dest APRS — NOT the node) — the tap is promiscuous.
+        // The remote sends a broadcast UI frame (dest APRS - NOT the node) - the tap is promiscuous.
         await remote.SendUiAsync(new Callsign("APRS", 0), "!beacon"u8.ToArray(), pid: 0xF0);
 
         var dg = await heard.Task.WaitAsync(TimeSpan.FromSeconds(10));

@@ -5,7 +5,7 @@ namespace Packet.NetRom.Tests.Wire;
 
 /// <summary>
 /// Round-trip + totality tests for the NET/ROM L3 network header (15 B), the L4
-/// transport header (5 B), and the full <see cref="NetRomPacket"/> datagram — the
+/// transport header (5 B), and the full <see cref="NetRomPacket"/> datagram - the
 /// wire foundation the circuit layer rides on.
 /// </summary>
 public sealed class NetRomHeaderCodecTests
@@ -122,7 +122,7 @@ public sealed class NetRomHeaderCodecTests
     [Fact]
     public void Empty_control_packet_is_the_observed_20_byte_form()
     {
-        // The repo's BPQ corpus saw PID-0xCF I-frames "always exactly 20 B" — the
+        // The repo's BPQ corpus saw PID-0xCF I-frames "always exactly 20 B" - the
         // 15-byte network + 5-byte transport header with no payload.
         var packet = new NetRomPacket
         {

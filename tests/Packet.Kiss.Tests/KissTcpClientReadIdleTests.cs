@@ -5,8 +5,8 @@ using Packet.Kiss;
 namespace Packet.Kiss.Tests;
 
 /// <summary>
-/// The #464 fix at its root: a half-open TCP link — the peer rebooted, the
-/// cable was pulled, net-sim was restarted — sends no FIN, so a plain
+/// The #464 fix at its root: a half-open TCP link - the peer rebooted, the
+/// cable was pulled, net-sim was restarted - sends no FIN, so a plain
 /// <c>ReadAsync</c> blocks forever and the port silently dies until someone
 /// restarts the service. <see cref="KissTcpClient"/>'s read-idle timeout
 /// converts that hang into an end-of-stream (the same signal a graceful close
@@ -91,7 +91,7 @@ public sealed class KissTcpClientReadIdleTests
         await WaitForCountAsync(() => got.Count, 1);
 
         // A second frame arrives after another sub-window: because the first read
-        // completed, the idle clock restarted — a busy link must NOT be dropped.
+        // completed, the idle clock restarted - a busy link must NOT be dropped.
         time.Advance(idle - TimeSpan.FromSeconds(30));
         await WriteFrameAsync(peer, Data(0x02));
         await WaitForCountAsync(() => got.Count, 2);
@@ -121,7 +121,7 @@ public sealed class KissTcpClientReadIdleTests
             ended = true;
         });
 
-        // Advancing the clock arbitrarily far must NOT end the stream — there is
+        // Advancing the clock arbitrarily far must NOT end the stream - there is
         // no liveness timer when idle detection is off.
         time.Advance(TimeSpan.FromHours(24));
         await Task.Delay(100);

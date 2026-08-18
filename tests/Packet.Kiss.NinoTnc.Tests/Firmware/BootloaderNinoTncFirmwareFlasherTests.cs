@@ -6,17 +6,17 @@ namespace Packet.Kiss.NinoTnc.Tests.Firmware;
 /// <summary>
 /// Drives <see cref="BootloaderNinoTncFirmwareFlasher"/> over a scripted
 /// fake of the dsPIC bootloader (via the internal
-/// <see cref="INinoTncBootloaderSerialPort"/> seam) so every protocol path —
+/// <see cref="INinoTncBootloaderSerialPort"/> seam) so every protocol path -
 /// entry handshake, stranded-bootloader resume, chip-mismatch abort, the
 /// N/F/X terminal replies, mid-transfer silence, cancellation stranding +
-/// recovery — is exercised without hardware.
+/// recovery - is exercised without hardware.
 /// </summary>
 public class BootloaderNinoTncFirmwareFlasherTests
 {
     private static readonly byte[] TinyEp256Image = NinoTncFirmwareHexImageTests.TinyImage(NinoTncFirmwareHexImageTests.Ep256Magic);
 
     /// <summary>Timings shrunk so the scripted suite runs instantly. The
-    /// elapsed-time-based budgets stay at their defaults — tests that need
+    /// elapsed-time-based budgets stay at their defaults - tests that need
     /// them use <see cref="ManualClock"/> so no real time passes either.</summary>
     private static NinoTncFlashTimings Instant => new()
     {
@@ -67,7 +67,7 @@ public class BootloaderNinoTncFirmwareFlasherTests
         await flasher.FlashAsync("/dev/ttyFAKE", TinyEp256Image);
 
         // The first image line (":020000040000fa" + '\n' = 16 chars) arrives
-        // as 16 single-byte writes — the bootloader erases the flash page
+        // as 16 single-byte writes - the bootloader erases the flash page
         // while it trickles in. Later lines arrive as one write each.
         var lineWrites = tnc.Writes
             .SkipWhile(w => w.Length != 1 || w[0] != (byte)':')
@@ -276,7 +276,7 @@ public class BootloaderNinoTncFirmwareFlasherTests
         public void Advance(TimeSpan by) => Interlocked.Add(ref ticks, by.Ticks);
     }
 
-    /// <summary>A port that never goes quiet — every read produces another
+    /// <summary>A port that never goes quiet - every read produces another
     /// byte, one simulated second apart (a busy radio channel).</summary>
     private sealed class ChatteringPort(ManualClock clock) : INinoTncBootloaderSerialPort
     {
@@ -304,7 +304,7 @@ public class BootloaderNinoTncFirmwareFlasherTests
     /// <summary>
     /// A scripted NinoTNC + dsPIC bootloader: starts in KISS mode (ignores
     /// stray bytes, swallows GETALL probes, enters the bootloader on
-    /// <c>C0 0D 37 C0</c>) — or already stranded in the bootloader — and
+    /// <c>C0 0D 37 C0</c>) - or already stranded in the bootloader - and
     /// then speaks the bootloader protocol ('R'→'K' probe, 'V'→version,
     /// per-line 'K', 'Z' on the end-of-file record, overridable per line).
     /// </summary>
@@ -323,7 +323,7 @@ public class BootloaderNinoTncFirmwareFlasherTests
         /// the end-of-file record); '\0' = stay silent; else that byte.</summary>
         public Func<int, string, char?>? LineReply { get; set; }
 
-        /// <summary>Invoked when a read finds nothing — the fake's stand-in
+        /// <summary>Invoked when a read finds nothing - the fake's stand-in
         /// for one full read-timeout of silence (advance a ManualClock here).</summary>
         public Action? OnReadWhenEmpty { get; set; }
 
@@ -362,7 +362,7 @@ public class BootloaderNinoTncFirmwareFlasherTests
                     InBootloader = true;
                     pendingReplies.Enqueue((byte)'K');
                 }
-                // Everything else (stray 'R', GETALL probes) is swallowed —
+                // Everything else (stray 'R', GETALL probes) is swallowed -
                 // the KISS firmware answers GETALL, but the flasher discards
                 // the output anyway, so silence is equivalent here.
                 return;

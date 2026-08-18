@@ -55,7 +55,7 @@ public class DataLinkTransitionRobustnessTests
         var guards = new GuardEvaluator(Ax25SessionBindings.CreateDefault(ctx, scheduler));
 
         // A transition whose actions run "Stop T1" and then throw before
-        // "Start T1" — the figc4.5-SREJ crash shape (ax25sdl#55).
+        // "Start T1" - the figc4.5-SREJ crash shape (ax25sdl#55).
         var dispatcher = new StopT1ThenThrowDispatcher(scheduler);
         var transitions = new Dictionary<string, IReadOnlyList<TransitionSpec>>
         {
@@ -66,7 +66,7 @@ public class DataLinkTransitionRobustnessTests
                     From: "TimerRecovery",
                     On: Packet.Ax25.Sdl.Ax25Event.T1Expiry,
                     Guard: null,
-                    // The verb is immaterial — StopT1ThenThrowDispatcher ignores it
+                    // The verb is immaterial - StopT1ThenThrowDispatcher ignores it
                     // and throws after cancelling T1 (it never reaches the real switch).
                     Actions: new[] { new ActionStep(Ax25ActionVerb.StopT1, ActionKind.Processing) },
                     Next: "Connected",

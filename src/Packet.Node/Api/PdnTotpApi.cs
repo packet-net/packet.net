@@ -11,13 +11,13 @@ namespace Packet.Node.Api;
 /// <summary>
 /// The over-RF sysop-code (TOTP) ENROLMENT side of the pdn node control API: a signed-in
 /// user enrols, inspects, or removes the rolling one-time code they will present to elevate
-/// a session <em>over the air</em> (AX.25 has no authentication — see
+/// a session <em>over the air</em> (AX.25 has no authentication - see
 /// <see cref="TotpService"/> for why a single-use time-based code, not a static password, is
 /// the right primitive there).
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Scope of this surface.</b> This is the enrolment / identity half only — it provisions
+/// <b>Scope of this surface.</b> This is the enrolment / identity half only - it provisions
 /// and manages a user's TOTP credential. The console <c>SYSOP</c> command, the elevation
 /// state, and the privileged-command gate that <em>verify</em> a presented code over a
 /// packet session are a separate, security-critical piece owned elsewhere; they consume
@@ -26,7 +26,7 @@ namespace Packet.Node.Api;
 /// </para>
 /// <para>
 /// <b>Self-service, read-gated.</b> All four endpoints are gated <c>read</c> (the floor for
-/// an authenticated user managing their OWN credential — the same gate as the passkey
+/// an authenticated user managing their OWN credential - the same gate as the passkey
 /// register group). The username always comes from the authenticated principal
 /// (<see cref="PrincipalUsername"/>), never the request body, so a user can only enrol /
 /// inspect / clear for themselves.
@@ -37,7 +37,7 @@ namespace Packet.Node.Api;
 /// server-side keyed to the user (single-use, expiring off the injected clock) and returns
 /// it ONCE for display; nothing is persisted. <c>complete</c> consumes that pending secret
 /// and only persists it (via <see cref="IUserStore.SetTotpSecret"/>) once the typed code
-/// verifies — and immediately advances the replay counter past the confirming code so it
+/// verifies - and immediately advances the replay counter past the confirming code so it
 /// can't itself be replayed over RF. A never-confirmed secret is never written to the db.
 /// </para>
 /// <para>
@@ -85,7 +85,7 @@ public static class PdnTotpApi
             if (username is null)
             {
                 // Auth off (no principal): no "self" to enrol for. Mirrors the passkey
-                // register group — mapped (not 404), but 409 since the credential would be
+                // register group - mapped (not 404), but 409 since the credential would be
                 // unattributable.
                 return Results.Problem("TOTP enrolment requires an authenticated session.",
                     statusCode: StatusCodes.Status409Conflict);
@@ -100,7 +100,7 @@ public static class PdnTotpApi
 
             var secret = TotpService.GenerateSecret();
             // The label account is the user's already-bound callsign if they have one
-            // (a re-enrol), else the username — the issuer is the node's own callsign so a
+            // (a re-enrol), else the username - the issuer is the node's own callsign so a
             // scanned credential is namespaced to this node in the authenticator app.
             var account = string.IsNullOrWhiteSpace(user.Callsign) ? user.Username : user.Callsign;
             var issuer = NodeIssuer(config);
@@ -139,7 +139,7 @@ public static class PdnTotpApi
             var auditUser = Redact(username);
 
             // Validate the callsign shape FIRST (user-typed input → strict TryParse), but
-            // don't consume the pending secret on a malformed callsign — the user can retry
+            // don't consume the pending secret on a malformed callsign - the user can retry
             // the same begin. (A bad CODE does consume it; see below.)
             if (body is null || string.IsNullOrWhiteSpace(body.Callsign)
                 || !Callsign.TryParse(body.Callsign, out var parsed))
@@ -179,7 +179,7 @@ public static class PdnTotpApi
 
             // Burn the confirming code: advance the replay high-water mark past it so the
             // SAME code presented over RF moments later is rejected. A false here means the
-            // counter could not be persisted — the secret is stored but the confirming code
+            // counter could not be persisted - the secret is stored but the confirming code
             // is briefly replayable until the next accepted code advances it; surface a 500
             // so the user re-confirms rather than silently leaving that window open.
             if (!users.UpdateTotpCounter(username, counter))
@@ -211,7 +211,7 @@ public static class PdnTotpApi
         });
 
         // Remove the signed-in user's over-RF credential. Idempotent (204 even if there was
-        // nothing to clear — there is nothing to leak).
+        // nothing to clear - there is nothing to leak).
         group.MapDelete("/enroll", (HttpContext http, IUserStore users, ILoggerFactory logs, IAuditLog auditLog, TimeProvider clock) =>
         {
             var username = PrincipalUsername(http);

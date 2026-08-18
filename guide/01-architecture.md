@@ -20,11 +20,11 @@ a couple of narrow interfaces.
 | `Packet.NetRom` | `Packet.NetRom.*` | NET/ROM wire types, routing table, forwarding, circuits | `Packet.Ax25` |
 
 The state-machine tables that drive `Packet.Ax25/Session/` are *not* in this
-repo — they come from the [`Packet.Ax25.Sdl`](https://www.nuget.org/packages/Packet.Ax25.Sdl)
+repo - they come from the [`Packet.Ax25.Sdl`](https://www.nuget.org/packages/Packet.Ax25.Sdl)
 package, transcribed from the AX.25 v2.2 SDL diagrams. You consume them
 transitively; you never touch them.
 
-## Seam #1 — `IAx25Transport`: "send and receive AX.25 frames"
+## Seam #1 - `IAx25Transport`: "send and receive AX.25 frames"
 
 Everything below AX.25 reduces to a single idea: a device that takes a buffer of
 AX.25 frame bytes and puts them on the air, and hands you buffers it hears back.
@@ -46,13 +46,13 @@ public interface IAx25Transport : IAsyncDisposable
 The bytes flowing through `SendAsync` / `ReceiveAsync` are **AX.25 frame bodies**:
 address + control + PID + info, *without* the HDLC flags or the FCS (the transport
 adds and strips whatever its medium needs). That is exactly what
-`Ax25Frame.ToBytes()` produces and `Ax25Frame.TryParse(...)` consumes — so the
+`Ax25Frame.ToBytes()` produces and `Ax25Frame.TryParse(...)` consumes - so the
 frame layer and the transport layer meet cleanly at this byte boundary. The
 transport **pre-filters to genuine AX.25 frames**, so what you receive is always
 a frame, never a wire-protocol artefact.
 
 Two *further* abilities are optional, on separate interfaces a transport may also
-implement — `ITxCompletionTransport` (confirm a frame left the wire — the de-KISS-named
+implement - `ITxCompletionTransport` (confirm a frame left the wire - the de-KISS-named
 ACKMODE need) and `ICsmaChannelParams` (the half-duplex-radio TXDELAY/PERSIST/SLOTTIME/TXTAIL
 knobs). You feature-detect them with `is` and degrade when they're absent, so a
 transport that has neither (AXUDP) implements only `IAx25Transport` and fakes
@@ -60,18 +60,18 @@ nothing. [Chapter 2](02-transports.md) covers all three interfaces in detail.
 
 Concrete implementations (covered in [chapter 2](02-transports.md)):
 
-- `KissTcpClient` — KISS over TCP (Dire Wolf, QtSoundModem, a BPQ KISS port).
-- `KissSerialModem` — KISS over any serial port.
-- `NinoTncSerialPort` — a NinoTNC over USB, with extras (mode switching, confirmed TX).
-- an AXUDP adapter (`AxudpFrameTransport`) — AX.25-over-UDP, no KISS at all.
+- `KissTcpClient` - KISS over TCP (Dire Wolf, QtSoundModem, a BPQ KISS port).
+- `KissSerialModem` - KISS over any serial port.
+- `NinoTncSerialPort` - a NinoTNC over USB, with extras (mode switching, confirmed TX).
+- an AXUDP adapter (`AxudpFrameTransport`) - AX.25-over-UDP, no KISS at all.
 
 Because they all implement `IAx25Transport`, **you write your application against
 the interface** and choose the transport at startup. KISS is the dominant
-implementation, but it's just that — an implementation. `Packet.Agw` sits off to
+implementation, but it's just that - an implementation. `Packet.Agw` sits off to
 the side: an AGW server runs the AX.25 link itself, so it's a *session* seam, not
 a frame transport (see [chapter 2](02-transports.md#agw--sv2agw--packetagw)).
 
-## Seam #2 — `Ax25Listener`: "a station"
+## Seam #2 - `Ax25Listener`: "a station"
 
 The next idea up is a *station*: something with a callsign that other stations
 connect to and from. That is `Ax25Listener` (`Packet.Ax25.Session`). It:
@@ -79,7 +79,7 @@ connect to and from. That is `Ax25Listener` (`Packet.Ax25.Session`). It:
 - owns exactly one `IAx25Transport`,
 - runs an inbound pump that decodes every frame off the air,
 - filters by your callsign (and any aliases) at the session layer,
-- maintains one `Ax25Session` — a full AX.25 v2.2 connection state machine — per
+- maintains one `Ax25Session` - a full AX.25 v2.2 connection state machine - per
   peer, building one on first contact (inbound SABM or your outbound
   `ConnectAsync`),
 - exposes connectionless sends (`SendUiAsync`, `SendTestAsync`) that bypass the
@@ -106,8 +106,8 @@ await listener.SendUiAsync(destination: new Callsign("BEACON"), info: "hi"u8.ToA
 You will spend chapters [5](05-axcall.md), [6](06-building-a-node.md) and
 [7](07-netrom.md) inside this class. The key conceptual point now: **a "node" in
 packet.net is an `Ax25Listener` plus a policy for what to do with the sessions it
-hands you.** That's it. The hard part — the timers, retransmission, windowing,
-SREJ recovery, version negotiation — is inside `Ax25Session`, driven by the SDL
+hands you.** That's it. The hard part - the timers, retransmission, windowing,
+SREJ recovery, version negotiation - is inside `Ax25Session`, driven by the SDL
 tables, and you never implement it.
 
 ## The data-link primitives (DL)
@@ -136,9 +136,9 @@ Up (session → you), via the `DataLinkSignalEmitted` event:
 | `DataLinkDisconnectIndication()` | the link dropped |
 | `DataLinkErrorIndication(string Code)` | a protocol error (code per §C5) |
 
-In practice `Ax25Listener` does most of this plumbing for you —
+In practice `Ax25Listener` does most of this plumbing for you -
 `ConnectAsync` posts `DlConnectRequest` and awaits `DataLinkConnectConfirm`;
-`SendData` builds `DlDataRequest`s — but the primitives are public so you can
+`SendData` builds `DlDataRequest`s - but the primitives are public so you can
 drive a session directly when you need to. The connect client in
 [chapter 5](05-axcall.md) uses both styles.
 
@@ -148,15 +148,15 @@ One design rule shapes the whole API and will save you confusion later:
 
 > The libraries produce and accept **exactly** what AX.25 v2.2 describes by
 > default. Accommodations for real-world peers exist, but each is a **named
-> flag** on an options record — never a silent default.
+> flag** on an options record - never a silent default.
 
 You meet this in two places:
 
-- **`Ax25ParseOptions`** — inbound *frame* leniency. Presets: `Strict`,
+- **`Ax25ParseOptions`** - inbound *frame* leniency. Presets: `Strict`,
   `Lenient`, and peer-named (`Bpq`, `Xrouter`, `Direwolf`). The decoder defaults
   to `Lenient`; `Ax25Listener` lets you pick per port. See
   [chapter 3](03-frames-and-callsigns.md).
-- **`Ax25SessionQuirks`** — connected-mode *behaviour* (SDL figure-defect
+- **`Ax25SessionQuirks`** - connected-mode *behaviour* (SDL figure-defect
   workarounds and interop quirks). Presets: `Default` (spec-correct) and
   `StrictlyFaithful`. See [chapter 8](08-beyond.md).
 

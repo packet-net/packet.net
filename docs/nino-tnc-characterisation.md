@@ -1,8 +1,8 @@
-# NinoTNC pair — measured characterisation
+# NinoTNC pair - measured characterisation
 
 This document captures empirical measurements from the back-to-back NinoTNC
 pair (audio-cross-wired, USB-attached) on the dev host. Numbers are
-calibration data — they help us pick sensible defaults, evaluate adaptive
+calibration data - they help us pick sensible defaults, evaluate adaptive
 algorithms, and detect regressions. They are **not** universally
 applicable: real RF links have noise, voltage standing wave ratios that
 shift over temperature, multi-path, etc. that this benchtop setup has
@@ -45,13 +45,13 @@ cross-wire:
 to support every mode; on a real FM-voice link the higher modes are
 out of reach.
 
-### Intermittent demod wedge — unreproducible
+### Intermittent demod wedge - unreproducible
 
 The marathon's 5-frame mode-12 row read "4/5 A→B" and got flagged as
 flaky. Larger samples (N=100 per direction) reveal one robust finding
 and one that we have since retracted.
 
-**Robust finding — first-frame-after-SetMode artefact.** In every
+**Robust finding - first-frame-after-SetMode artefact.** In every
 A→B run across every TXDELAY tried, the failure is the same: the
 very first frame (index 0) is lost. Every other frame in the run is
 fine. The 700 ms post-`SetMode` settle this probe uses is *not*
@@ -61,20 +61,20 @@ first-frame fragility at mode 6 when there's a backed-up TX queue.
 Both point at "warm up the modem before the first measured frame"
 as the right discipline for tests and the session layer.
 
-**Retracted — "mode 12 catastrophic at TXDELAY=100" claim.** One
+**Retracted - "mode 12 catastrophic at TXDELAY=100" claim.** One
 probe in the marathon saw a B→A run go 4/100 at mode 12 +
-TXDELAY=100 (frames 5–99 lost in a contiguous run). That data point
-is real, but the interpretation we hung on it — that mode 12's
+TXDELAY=100 (frames 5-99 lost in a contiguous run). That data point
+is real, but the interpretation we hung on it - that mode 12's
 AFSK-without-PLL demod path was specifically vulnerable to a
-particular preamble length — does not hold up. A focused follow-up
+particular preamble length - does not hold up. A focused follow-up
 investigation on 2026-05-14 PM (~30 short trials across baseline,
 TX-queue back-pressure, SETHW thrash chains, same-port mode swaps,
 close+reopen mode swaps, TXDELAY changes mid-mode, persistent vs.
 non-persistent SETHW, and a dense TXDELAY ladder around the values
 that have historically fired) **could not reproduce the wedge on
 demand**, and the one fire that did occur was in **mode 14**, not
-mode 12. The per-trial rate is ~5–15 % with very high run-to-run
-variance — sometimes a 30-trial session hits several, sometimes a
+mode 12. The per-trial rate is ~5-15 % with very high run-to-run
+variance - sometimes a 30-trial session hits several, sometimes a
 30-trial session is clean.
 
 We have no substantiated theory for the wedge and no reliable
@@ -88,7 +88,7 @@ characterisation of mode 12.
 |---:|---:|---:|---|
 | 20 ms | 99/100 | 100/100 | A→B index 0 |
 | 50 ms | 99/100 | 100/100 | A→B index 0 |
-| 100 ms | 99/100 | **4/100** | A→B index 0 ; B→A 0, 5–99 |
+| 100 ms | 99/100 | **4/100** | A→B index 0 ; B→A 0, 5-99 |
 
 | Mode | Demod / framing | TXDELAY=500 ms | TXDELAY=1000 ms |
 |---:|---|---|---|
@@ -105,7 +105,7 @@ mode, 10 frames each direction:
 |---:|---|---:|---:|---:|---|
 | 6 | 1200 AFSK AX.25 | 1200 | 1 | 10 | |
 | 7 | 1200 AFSK IL2P+CRC | 1200 | 1 | 10 | |
-| 12 | 300 AFSK AX.25 | 300 | — | — | breaks at TXDELAY=50 with 9/10 |
+| 12 | 300 AFSK AX.25 | 300 | - | - | breaks at TXDELAY=50 with 9/10 |
 | 0 | 9600 GFSK AX.25 | 9600 | 1 | 10 | |
 | 2 | 9600 GFSK IL2P+CRC | 9600 | 1 | 10 | |
 | 3 | 9600 4FSK | 9600 | 1 | 10 | |
@@ -114,7 +114,7 @@ mode, 10 frames each direction:
 The KISS spec default of TXDELAY=50 (500 ms) is **50× over-conservative
 on this audio path**. Six of the seven modes maintain 100 % success at
 TXDELAY=1 (10 ms). Mode 12 missed one frame at the spec default in this
-run — consistent with the intermittent demod wedge described above,
+run - consistent with the intermittent demod wedge described above,
 not with a TXDELAY floor.
 
 On real RF this floor will rise significantly (transmitter key-up
@@ -135,7 +135,7 @@ spec-default.
 
 The 230-byte frame's air time at 1200 bps is `(230 + 17 header + 2
 FCS) * 8 / 1200 ≈ 1.66 s`. RTT of ~2.4 s allows ~700 ms for TX-delay
-+ key-up + receive-side decode + ACK echo — consistent with the
++ key-up + receive-side decode + ACK echo - consistent with the
 slower TXDELAYs we used here.
 
 ### Binary payload (KISS escape stress)
@@ -172,7 +172,7 @@ fixed overhead.
 bursted Data frames without awaiting completion; on three of four
 modes it delivered ~0 % of the frames because the TNC silently
 queued and (under sufficient pressure) dropped them. That number is
-**not** representative of the modem's actual throughput — it's a
+**not** representative of the modem's actual throughput - it's a
 property of unmanaged-queue behaviour. The session-layer integration
 must use ACK-pacing or some other queue-depth control.
 
@@ -183,7 +183,7 @@ must use ACK-pacing or some other queue-depth control.
 - **200/200 (100 %) success.**
 - Round-trip ms: min 1166, p50 1600, p95 2443, p99 2763, max 2970.
 
-p99 within ~2× of p50 — well-behaved tail.
+p99 within ~2× of p50 - well-behaved tail.
 
 ### ACKMODE concurrency
 
@@ -201,7 +201,7 @@ just before `ackmode-concurrent`, bursting 20 frames at the modem
 without ACK pacing. The TNC silently queues frames it can't transmit
 immediately. When `ackmode-concurrent`'s first measured frame is
 submitted, its ACKMODE echo correctly waits for every previously-
-queued frame to drain off the TX queue first — that's ~15 s of
+queued frame to drain off the TX queue first - that's ~15 s of
 1200 AFSK at 200 bytes per frame.
 
 The `tools/Packet.NinoTnc.Spike` `ack-warmup-probe` sub-command
@@ -214,7 +214,7 @@ Scenario 5: Open + SetMode + 20 back-to-back Data frames + ACKMODE
 ```
 
 The other four scenarios (vanilla, long settle, prime-with-data,
-prime-with-ack) all return the first ACK in **228–857 ms**. The 15 s
+prime-with-ack) all return the first ACK in **228-857 ms**. The 15 s
 is not a firmware initialisation cost; it is the modem's TX queue
 draining correctly.
 
@@ -222,7 +222,7 @@ draining correctly.
 elapsed time as a *true* TX-completion measure, not a queueing
 measure. If you `await Send(...)` and care about TX completion, use
 `SendFrameWithAckAsync`. Don't burst plain Data frames followed by
-"how long did the next one take" — that measures the queue, not the
+"how long did the next one take" - that measures the queue, not the
 modem.
 
 ### Bidirectional simultaneous send (half-duplex CSMA contention)
@@ -234,7 +234,7 @@ modem.
 CSMA + the modem's built-in deferral does its job. PERSIST=63 /
 SLOTTIME=10 ms defaults are good enough for two-station contention.
 
-### Adaptive estimator (`TxDelayHillClimbEstimator`) — live run
+### Adaptive estimator (`TxDelayHillClimbEstimator`) - live run
 
 40 frames with aggressive tuning (`SuccessesPerStepDown=3`,
 `StepUnits=2`, `MinTxDelay=2`) starting from TXDELAY=50:
@@ -242,7 +242,7 @@ SLOTTIME=10 ms defaults are good enough for two-station contention.
 - All 40 ACKMODE round trips succeeded.
 - Estimator walked TXDELAY 50 → 24 across the 40 frames (reproducible
   across runs).
-- Final 240 ms is still wildly above the 10 ms floor — the algorithm
+- Final 240 ms is still wildly above the 10 ms floor - the algorithm
   is conservative. For production on a stable benchtop link, tune
   `StepUnits` higher or `SuccessesPerStepDown` lower; for production
   on real RF, the current cadence is sensible (frame-loss penalty is
@@ -265,7 +265,7 @@ The driver is quiet when there's nothing to do.
   different TXDELAY floors.
 - **No noise, no fading, no real radios.** The bench audio cross-wire
   is artificially clean. **Adaptive TXDELAY tuning is essentially
-  unexercised here** — every mode hits the 10 ms floor and the
+  unexercised here** - every mode hits the 10 ms floor and the
   estimator has no failures to ratchet against. The estimator's value
   shows up when there are real transmitters with hundreds of ms of
   key-up delay, real receivers needing meaningful preamble for AGC
@@ -273,7 +273,7 @@ The driver is quiet when there's nothing to do.
   document are a benchtop floor, not a tuning target.**
 - **Firmware v3.44.** Future firmware may change TX behaviour.
 - **Intermittent AFSK demod wedge, unreproducible.** See the section
-  above. We have seen it at mode 12 and mode 14, ~5–15 % per-trial
+  above. We have seen it at mode 12 and mode 14, ~5-15 % per-trial
   in some sessions, no reliable trigger. No mode-specific avoidance
   rule follows.
 

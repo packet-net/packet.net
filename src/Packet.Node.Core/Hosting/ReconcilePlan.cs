@@ -4,7 +4,7 @@ namespace Packet.Node.Core.Hosting;
 
 /// <summary>
 /// The field-level delta between two <see cref="NodeConfig"/>s, expressed as the
-/// minimal set of reconcile actions. Pure and deterministic — computed by
+/// minimal set of reconcile actions. Pure and deterministic - computed by
 /// <see cref="ReconcilePlanner.Plan"/>, then executed by the
 /// <see cref="PortSupervisor"/> / <see cref="NodeHostedService"/>. Splitting the
 /// "decide" from the "do" makes the marquee invariant
@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Hosting;
 /// </summary>
 public sealed record ReconcilePlan
 {
-    /// <summary>True if the station callsign changed — a node-wide reset
+    /// <summary>True if the station callsign changed - a node-wide reset
     /// (every listener recreated, all sessions end). When set, the per-port
     /// lists describe the post-reset target set rather than incremental diffs.</summary>
     public bool NodeWideReset { get; init; }
@@ -49,7 +49,7 @@ public sealed record ReconcilePlan
     /// changed but nothing restart-class did → same live reseed mechanism as
     /// <see cref="Ax25ParamsChanged"/> (the reseeded parameter record carries the
     /// parse options + session quirks). Parse options take effect on the next
-    /// inbound frame; quirks on the next-built session — existing sessions
+    /// inbound frame; quirks on the next-built session - existing sessions
     /// untouched. Keyed by the new config.</summary>
     public IReadOnlyList<PortConfig> CompatChanged { get; init; } = [];
 
@@ -63,8 +63,8 @@ public sealed record ReconcilePlan
     /// <summary>Ports whose per-port NET/ROM <see cref="PortConfig.NetRomQuality"/>
     /// changed but nothing restart-class did → hot-apply the new route quality to the
     /// port's NET/ROM attachment (no restart). QUALITY only affects how the next NODES
-    /// broadcast on this port is quality-combined — read-only awareness/advertisement, it
-    /// can never disturb a live session — so it is the lightest possible hot edit. Keyed
+    /// broadcast on this port is quality-combined - read-only awareness/advertisement, it
+    /// can never disturb a live session - so it is the lightest possible hot edit. Keyed
     /// by the new config.</summary>
     public IReadOnlyList<PortConfig> NetRomQualityChanged { get; init; } = [];
 
@@ -90,7 +90,7 @@ public sealed record ReconcilePlan
     /// (the console reads it live; nothing to restart).</summary>
     public bool ServicesChanged { get; init; }
 
-    /// <summary>True when the plan would touch nothing — an idempotent re-apply
+    /// <summary>True when the plan would touch nothing - an idempotent re-apply
     /// of the same config.</summary>
     public bool IsNoOp =>
         !NodeWideReset && !TelnetChanged && !ServicesChanged &&

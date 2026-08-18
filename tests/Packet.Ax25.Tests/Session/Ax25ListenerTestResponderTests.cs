@@ -9,7 +9,7 @@ namespace Packet.Ax25.Tests.Session;
 /// Tests for the connectionless AX.25 TEST responder (§4.3.4.2) wired into
 /// <see cref="Ax25Listener.DispatchInbound"/>: a station receiving a TEST
 /// <em>command</em> addressed to it replies with a TEST <em>response</em> echoing
-/// the command's information field — the "axping" answer side. The exchange is
+/// the command's information field - the "axping" answer side. The exchange is
 /// link-independent: it must never create or disturb a session.
 /// </summary>
 /// <remarks>
@@ -56,7 +56,7 @@ public sealed class Ax25ListenerTestResponderTests
         // ... with the F bit mirroring the command's P bit (we sent P=1).
         sent.PollFinal.Should().BeTrue("the response's F bit mirrors the command's P bit");
 
-        // The TEST exchange is connectionless — no session may have been created.
+        // The TEST exchange is connectionless - no session may have been created.
         listener.ActiveSessions.Should().BeEmpty("a TEST command must not create or disturb any session");
     }
 
@@ -67,7 +67,7 @@ public sealed class Ax25ListenerTestResponderTests
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = LocalCall });
         await listener.StartAsync();
 
-        // TEST command with P=0 — the F bit of the response must also be 0.
+        // TEST command with P=0 - the F bit of the response must also be 0.
         modem.InjectInbound(Ax25Frame.Test(
             destination: LocalCall, source: PeerCall, info: new byte[] { 0x01 }, isCommand: true, pollFinal: false));
 
@@ -110,7 +110,7 @@ public sealed class Ax25ListenerTestResponderTests
             }
         };
 
-        // Inject a TEST RESPONSE (the echo to someone's axping) — NOT a command.
+        // Inject a TEST RESPONSE (the echo to someone's axping) - NOT a command.
         // It must flow as a normal inbound frame (so the AxPinger initiator can
         // correlate it via FrameTraced), and must NOT trigger another response.
         modem.InjectInbound(Ax25Frame.Test(

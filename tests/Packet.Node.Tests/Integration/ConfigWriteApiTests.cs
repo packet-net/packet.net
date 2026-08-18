@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// Boots the real <c>Packet.Node</c> composition root and exercises the Slice 3
 /// write API (step 2): <c>PUT /api/v1/config</c> + its dry-run, the 422 validation
-/// path, and the raw-YAML round-trip. Mirrors <see cref="ReadApiTests"/> — a temp
+/// path, and the raw-YAML round-trip. Mirrors <see cref="ReadApiTests"/> - a temp
 /// YAML config with telnet disabled (so no fixed TCP port is bound under the WAF)
 /// and the routing store pointed at the same temp dir. The config file is writable
 /// in the temp dir, so a successful PUT persists through the live

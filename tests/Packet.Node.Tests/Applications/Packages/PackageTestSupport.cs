@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Applications.Packages;
 
 /// <summary>
 /// A hand-rolled <see cref="IAppPackageCatalog"/> returning canned
-/// <see cref="DiscoveredAppPackage"/> snapshots — the supervisor / union tests own the catalog
+/// <see cref="DiscoveredAppPackage"/> snapshots - the supervisor / union tests own the catalog
 /// seam without touching the real discovery/YAML implementation (a sibling deliverable).
 /// <see cref="Set"/> swaps the snapshot, standing in for "the owner edited config / dropped a
 /// package and the catalog re-scanned".
@@ -36,7 +36,7 @@ internal sealed class FakeAppPackageCatalog : IAppPackageCatalog
 /// <summary>
 /// One on-disk package fixture: a real temp package dir (where scripts live, exercising the
 /// package-dir path-resolution rule) and a state dir path the code under test is expected to
-/// create. Children are real <c>/bin/sh</c> processes — Linux-only, like the existing app
+/// create. Children are real <c>/bin/sh</c> processes - Linux-only, like the existing app
 /// platform tests (CI is Linux).
 /// </summary>
 internal sealed class TempAppPackage : IDisposable
@@ -48,7 +48,7 @@ internal sealed class TempAppPackage : IDisposable
         PackageDir = Path.Combine(Root, id);
         StateDir = Path.Combine(Root, "state", id);
         Directory.CreateDirectory(PackageDir);
-        // StateDir is deliberately NOT created here — creating it is the code under test's job.
+        // StateDir is deliberately NOT created here - creating it is the code under test's job.
     }
 
     public string Id { get; }
@@ -142,10 +142,10 @@ internal static class PackageTestSupport
     };
 
     /// <summary>True once no live process holds <paramref name="pid"/> (Linux: its /proc entry
-    /// is gone — direct children are reaped by the supervisor, grandchildren by init).</summary>
+    /// is gone - direct children are reaped by the supervisor, grandchildren by init).</summary>
     public static bool ProcessGone(int pid) => !Directory.Exists($"/proc/{pid}");
 
-    /// <summary>Whether <c>setsid(1)</c> is available — when it is, the supervisor spawns each
+    /// <summary>Whether <c>setsid(1)</c> is available - when it is, the supervisor spawns each
     /// service as a process-group leader and a stop signals the whole group (grandchildren
     /// included).</summary>
     public static bool SetsidAvailable => File.Exists("/usr/bin/setsid") || File.Exists("/bin/setsid");

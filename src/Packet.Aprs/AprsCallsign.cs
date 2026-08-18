@@ -11,14 +11,14 @@ namespace Packet.Aprs;
 /// <remarks>
 /// <para>
 /// This type is **monitor-layer / display-only**. For outbound AX.25
-/// frame production, use <see cref="Packet.Core.Callsign"/> — that
-/// enforces the spec's 1–6 alphanumeric base + 0–15 numeric SSID.
+/// frame production, use <see cref="Packet.Core.Callsign"/> - that
+/// enforces the spec's 1-6 alphanumeric base + 0-15 numeric SSID.
 /// </para>
 /// <para>
 /// Per the corpus differential (see
 /// <c>tools/Packet.AprsIs.Spike/findings.md</c>), ~31% of APRS-IS
 /// frames carry sources that don't validate against the strict AX.25
-/// callsign rules — direwolf rejects those outright. This type lets
+/// callsign rules - direwolf rejects those outright. This type lets
 /// us still surface the callsign in monitor / web-UI contexts where
 /// "the bytes the gateway sent" matters more than "is this a
 /// spec-compliant AX.25 address."
@@ -26,17 +26,17 @@ namespace Packet.Aprs;
 /// <para>
 /// Accepted shapes:
 /// <list type="bullet">
-///   <item>Base: 1–9 chars, A–Z, a–z, 0–9</item>
-///   <item>SSID: empty, or 1–3 chars of A–Z, a–z, 0–9 after a single dash</item>
+///   <item>Base: 1-9 chars, A-Z, a-z, 0-9</item>
+///   <item>SSID: empty, or 1-3 chars of A-Z, a-z, 0-9 after a single dash</item>
 /// </list>
 /// </para>
 /// </remarks>
 public readonly record struct AprsCallsign
 {
-    /// <summary>Base callsign — case-preserving (firmware bugs sometimes ship lowercase).</summary>
+    /// <summary>Base callsign - case-preserving (firmware bugs sometimes ship lowercase).</summary>
     public string Base { get; }
 
-    /// <summary>SSID as-text. Empty when no SSID; otherwise 1–3 alphanumeric chars.</summary>
+    /// <summary>SSID as-text. Empty when no SSID; otherwise 1-3 alphanumeric chars.</summary>
     public string Ssid { get; }
 
     /// <summary>Construct a permissive callsign with the supplied base + SSID.</summary>

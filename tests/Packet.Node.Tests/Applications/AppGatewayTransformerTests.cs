@@ -9,7 +9,7 @@ namespace Packet.Node.Tests.Applications;
 /// <summary>
 /// Unit tests for the app-gateway request transformer (the security-critical injection logic):
 /// the path is rebased (the <c>/apps/{id}</c> prefix stripped), any client-supplied
-/// <c>X-Pdn-*</c> is stripped, and the authenticated identity is injected — robust to the
+/// <c>X-Pdn-*</c> is stripped, and the authenticated identity is injected - robust to the
 /// inbound-claim mapping that can surface the username as the raw <c>sub</c> claim or the mapped
 /// <c>NameIdentifier</c> rather than <c>Identity.Name</c> (the bug a lab live-verify caught: the
 /// gateway injected an empty <c>X-Pdn-User</c> for a genuinely-authenticated user).
@@ -53,7 +53,7 @@ public sealed class AppGatewayTransformerTests
         ctx.Request.RouteValues["rest"] = "page";
         ctx.Request.Headers["X-Pdn-User"] = "attacker";   // a client trying to spoof identity
         // A genuinely-authenticated principal whose subject is only on the raw sub claim
-        // (Identity.Name is null) — the case that produced an empty X-Pdn-User on the lab.
+        // (Identity.Name is null) - the case that produced an empty X-Pdn-User on the lab.
         ctx.User = new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(JwtRegisteredClaimNames.Sub, "tom"), new Claim("scope", "admin")], "test"));
 

@@ -2,13 +2,13 @@
 
 This chapter is about the bottom of the cake: getting AX.25 frames on and off the
 air. By the end you'll have a tiny program that opens a transport and dumps every
-frame it hears — the "hello world" of packet radio — and you'll know how to swap
+frame it hears - the "hello world" of packet radio - and you'll know how to swap
 the transport without touching the rest of your code.
 
 Everything here lives behind one interface, `IAx25Transport` (namespace
 `Packet.Ax25.Transport`, in the package `Packet.Ax25.Transport.Abstractions`),
 introduced in [chapter 1](01-architecture.md#seam-1--iax25transport-send-and-receive-ax25-frames).
-KISS — the host↔TNC protocol you may have met elsewhere — is **one
+KISS - the host↔TNC protocol you may have met elsewhere - is **one
 implementation** behind this seam, not the seam itself. We'll meet the KISS
 transports below, and also AXUDP, which carries AX.25 over UDP with no KISS at
 all. The point of the seam is that the layers above don't care which.
@@ -30,7 +30,7 @@ public interface IAx25Transport : IAsyncDisposable
 }
 ```
 
-The currency is the **AX.25 frame body** — address + control + PID + info,
+The currency is the **AX.25 frame body** - address + control + PID + info,
 *without* the HDLC flags or the FCS (the transport adds and strips whatever its
 medium needs). That is exactly what `Ax25Frame.ToBytes()` produces and
 `Ax25Frame.TryParse(...)` consumes, so the frame layer and the transport layer
@@ -55,12 +55,12 @@ public readonly record struct Ax25InboundFrame(
     RadioMetadata? Radio = null);         // optional per-frame RSSI/SNR, null on most transports
 ```
 
-- `Ax25` — the AX.25 frame body, ready for `Ax25Frame.TryParse` ([chapter 4](04-listen.md)).
-- `PortId` — the channel index for multi-port serial / AGW; `0` for a
+- `Ax25` - the AX.25 frame body, ready for `Ax25Frame.TryParse` ([chapter 4](04-listen.md)).
+- `PortId` - the channel index for multi-port serial / AGW; `0` for a
   single-channel transport.
-- `ReceivedAt` — the true receive instant, stamped when the frame arrived (not
+- `ReceivedAt` - the true receive instant, stamped when the frame arrived (not
   reconstructed later), so timing-sensitive code sees real latency.
-- `Radio` — optional signal metadata; `null` for every transport with no radio
+- `Radio` - optional signal metadata; `null` for every transport with no radio
   control channel. [Chapter 9](09-radios-and-rigs.md) shows the decorator that
   populates it.
 
@@ -79,12 +79,12 @@ guard, because the transport already did that for you.
 
 ### Two optional capabilities
 
-The seam above is deliberately minimal — it's the surface `Ax25Listener` actually
+The seam above is deliberately minimal - it's the surface `Ax25Listener` actually
 needs. Two *further* abilities are not part of every transport, so they live on
 separate interfaces a transport **may** also implement. You feature-detect them
 with `is` and degrade gracefully when they're absent:
 
-- **`ITxCompletionTransport`** — confirmed transmit. A transport that can observe
+- **`ITxCompletionTransport`** - confirmed transmit. A transport that can observe
   when a frame actually left the wire (a KISS TNC that echoes the G8BPQ ACKMODE
   tag) implements this; the AX.25 layer uses it to re-arm its T1 timer on real
   TX-completion, and a pacing layer uses it for back-pressure.
@@ -125,7 +125,7 @@ with `is` and degrade gracefully when they're absent:
         do not blindly retransmit. That's different from the capability being
         absent, which you avoid by feature-detecting first.
 
-- **`ICsmaChannelParams`** — the half-duplex-radio channel-access knobs (the
+- **`ICsmaChannelParams`** - the half-duplex-radio channel-access knobs (the
   TXDELAY / PERSIST / SLOTTIME / TXTAIL parameters). Meaningful only on a shared
   CSMA radio channel, so a UDP tunnel or an AGW server simply doesn't implement
   it:
@@ -148,7 +148,7 @@ with `is` and degrade gracefully when they're absent:
     ```
 
 The whole design hangs on this: a transport with neither capability (AXUDP)
-implements only `IAx25Transport` and **fakes nothing** — no no-op CSMA setters,
+implements only `IAx25Transport` and **fakes nothing** - no no-op CSMA setters,
 no throwing ACKMODE method. A consumer that wants a capability discovers its
 absence honestly and copes.
 
@@ -158,7 +158,7 @@ KISS is the dominant host↔TNC protocol, so most of the concrete transports are
 KISS speakers. They all implement `IAx25Transport`; KISS is purely how they talk
 to their hardware. You pick one at startup and the rest of your code never knows.
 
-### KISS over TCP — `KissTcpClient`
+### KISS over TCP - `KissTcpClient`
 
 The most common setup: a software modem (Dire Wolf, QtSoundModem) or a BPQ KISS
 port listening on TCP.
@@ -172,12 +172,12 @@ await using IAx25Transport transport = await KissTcpClient.ConnectAsync("127.0.0
 
 `KissTcpClient` adds a couple of robustness features over a bare socket: a
 read-idle timeout that detects a half-open link (default 5 minutes), and
-confirmed transmit. It implements **both** capabilities —
-`ITxCompletionTransport` (via G8BPQ ACKMODE) and `ICsmaChannelParams` — so you
+confirmed transmit. It implements **both** capabilities -
+`ITxCompletionTransport` (via G8BPQ ACKMODE) and `ICsmaChannelParams` - so you
 can correlate a TX with its on-air completion and set channel parameters when the
 far end supports them.
 
-### KISS over a serial port — `KissSerialModem`
+### KISS over a serial port - `KissSerialModem`
 
 For a hardware TNC or a USB-CDC modem on a COM port / `/dev/tty*`:
 
@@ -189,12 +189,12 @@ await using IAx25Transport transport = KissSerialModem.Open("/dev/ttyUSB0", baud
 ```
 
 `KissSerialModem` implements `IAx25Transport` and `ICsmaChannelParams`, but **not**
-`ITxCompletionTransport` — a generic serial KISS TNC has no TX-completion signal,
+`ITxCompletionTransport` - a generic serial KISS TNC has no TX-completion signal,
 so it honestly doesn't offer that capability (a probe with `is
 ITxCompletionTransport` correctly skips it). Use `NinoTncSerialPort` if you need
 confirmed transmit on a serial link.
 
-### A NinoTNC over USB — `NinoTncSerialPort`
+### A NinoTNC over USB - `NinoTncSerialPort`
 
 The NinoTNC gets a dedicated driver because it speaks a few extensions: hardware
 mode switching (`SETHW`), confirmed-transmit ACKMODE, and typed inbound
@@ -219,12 +219,12 @@ tnc.InboundEvent += (_, evt) =>
 };
 ```
 
-Mode switching (`SetModeAsync`) is deliberately *not* on the transport seam — it
+Mode switching (`SetModeAsync`) is deliberately *not* on the transport seam - it
 varies per modem and is selected from config at construction, so it lives on the
 NinoTNC type itself, not on `IAx25Transport`.
 
 `SetModeAsync` **verifies the mode took** and throws `NinoTncModeNotAppliedException`
-if it didn't. KISS SETHW is unacknowledged and does silently fail to apply — the TNC
+if it didn't. KISS SETHW is unacknowledged and does silently fail to apply - the TNC
 carries on in its old mode, transmitting happily, and everything downstream scores
 zero in both directions, which reads as broken RF rather than an ignored command. So
 the driver settles ~1.5 s, reads the running mode back with GETALL, and re-sends up to
@@ -246,7 +246,7 @@ await tnc.SetModeAsync(11, verification: new NinoTncModeVerification { Attempts 
 await tnc.SetModeAsync(11, verification: NinoTncModeVerification.None);   // fire-and-forget
 ```
 
-Mode 15 ("Set from KISS") is sent but never verified — it names where the mode comes
+Mode 15 ("Set from KISS") is sent but never verified - it names where the mode comes
 from, not a mode to run, so there's nothing meaningful to read back.
 
 You can discover attached NinoTNCs by VID/PID rather than hard-coding a port:
@@ -257,10 +257,10 @@ foreach (var c in NinoTncPortDiscovery.EnumerateCandidates())
 ```
 
 The NinoTNC library has [its own README](../src/Packet.Kiss.NinoTnc/README.md)
-covering adaptive TX parameters, TX-Test frames, and firmware checks — read it if
+covering adaptive TX parameters, TX-Test frames, and firmware checks - read it if
 you're targeting that hardware specifically.
 
-!!! note "The KISS codec is still there — one layer down"
+!!! note "The KISS codec is still there - one layer down"
     A KISS transport has to encode and decode the KISS wire framing internally,
     and those codec types live in `Packet.Kiss`: `KissFrame`, `KissCommand`,
     `KissEncoder`, `KissDecoder`. You only reach for them if you're *implementing*
@@ -270,12 +270,12 @@ you're targeting that hardware specifically.
 
 ## Transports that aren't KISS
 
-### AXUDP (RFC 1226) — over `Packet.Axudp`
+### AXUDP (RFC 1226) - over `Packet.Axudp`
 
 AXUDP carries AX.25 frames in UDP datagrams (each with a mandatory 2-octet FCS).
 This is the transport whose mere existence proves KISS is one implementation
 behind the seam, not a property of it: a datagram's payload *is* the AX.25 frame
-body, so an AXUDP transport implements **only** the neutral `IAx25Transport` —
+body, so an AXUDP transport implements **only** the neutral `IAx25Transport` -
 **no** `ICsmaChannelParams` (a UDP link has no carrier to sense) and **no**
 `ITxCompletionTransport` (there's no TNC to echo a completion). It constructs no
 KISS object at all.
@@ -312,14 +312,14 @@ await using IAx25Transport transport =
     first) on send, yield `socket.ReceiveAsync().RawFrame` on receive — and the
     node host's implementation is your reference.
 
-### AGW / SV2AGW — `Packet.Agw`
+### AGW / SV2AGW - `Packet.Agw`
 
 AGWPE-style servers (LinBPQ's AGW port, Dire Wolf's AGW port, the real AGWPE)
 speak a different wire protocol *and run the AX.25 data link themselves*. That
 makes AGW a different kind of seam: it's a **session** transport, not a
 frame transport, so it is deliberately **not** an `IAx25Transport`. `AgwClient`
 wraps it and notably gives you a connected AX.25 session as a
-`System.IO.Stream` — the server owns the state machine, you just read and write
+`System.IO.Stream` - the server owns the state machine, you just read and write
 bytes:
 
 ```csharp
@@ -335,15 +335,15 @@ int n = await s.ReadAsync(buf);
 ```
 
 This is the quickest path to a connect client *if* you already have an AGW
-server — you skip `Ax25Listener` entirely. The trade-off is that you're bound to
+server - you skip `Ax25Listener` entirely. The trade-off is that you're bound to
 the server's behaviour and policy. The native path (`Ax25Listener` over an
 `IAx25Transport`, [chapter 5](05-axcall.md)) gives you the full
 strict-vs-pragmatic control the engine is built around.
 
-## Tool #1 — a raw frame dumper
+## Tool #1 - a raw frame dumper
 
 Putting it together: open a transport, dump everything. The only
-transport-specific line is the `Open`/`ConnectAsync` call — everything below it is
+transport-specific line is the `Open`/`ConnectAsync` call - everything below it is
 the `IAx25Transport` seam.
 
 ```csharp
@@ -371,7 +371,7 @@ catch (OperationCanceledException) { /* Ctrl-C */ }
 ```
 
 This prints hex, which isn't very satisfying. In [chapter 4](04-listen.md) we'll
-parse `f.Ax25` into an `Ax25Frame` and print callsigns and text — but first we
+parse `f.Ax25` into an `Ax25Frame` and print callsigns and text - but first we
 need the frame layer itself, which is also how we'll *send*.
 
 ---

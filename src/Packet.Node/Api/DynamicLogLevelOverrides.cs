@@ -16,26 +16,26 @@ namespace Packet.Node.Api;
 /// <para>
 /// <b>Why this takes effect on already-created loggers.</b> Microsoft.Extensions.Logging has
 /// no built-in runtime level switch: a logger's effective filter rules are computed once from
-/// <see cref="LoggerFilterOptions"/> and cached. The robust hook is the options pipeline —
+/// <see cref="LoggerFilterOptions"/> and cached. The robust hook is the options pipeline -
 /// this class is registered as BOTH an <see cref="IConfigureOptions{TOptions}"/> of
 /// <see cref="LoggerFilterOptions"/> (it appends one <see cref="LoggerFilterRule"/> per active
 /// override) AND an <see cref="IOptionsChangeTokenSource{TOptions}"/>. MEL's
 /// <c>LoggerFactory</c> subscribes to that change token; when a mutation fires it, the factory
 /// re-runs every <c>IConfigureOptions&lt;LoggerFilterOptions&gt;</c> (including this one) and
-/// re-applies the rebuilt rules to <b>every cached logger</b> — so a category created at
+/// re-applies the rebuilt rules to <b>every cached logger</b> - so a category created at
 /// startup picks up the new level immediately, no restart. (Proven by a focused test that
 /// flips a category and observes <c>ILogger.IsEnabled</c> change.)
 /// </para>
 /// <para>
 /// <b>Category matching = longest-prefix wins</b>, which is exactly MEL's own
-/// <see cref="LoggerFilterRule"/> selection semantics — a rule whose category name is the
+/// <see cref="LoggerFilterRule"/> selection semantics - a rule whose category name is the
 /// longest prefix of the logger's category is selected. Our rules are appended <em>after</em>
 /// the config-bound rules (appsettings), so an override of equal specificity wins over the
 /// configured value. Removing an override drops its rule, restoring the configured behaviour.
 /// </para>
 /// <para>
 /// <b>Default state = no overrides.</b> With the map empty this contributes zero rules, so
-/// logging behaves exactly as configured by <c>appsettings.json</c> — the capability is
+/// logging behaves exactly as configured by <c>appsettings.json</c> - the capability is
 /// strictly additive and behaviour-preserving until an operator uses it.
 /// </para>
 /// </remarks>
@@ -49,7 +49,7 @@ public sealed class DynamicLogLevelOverrides
     // the factory re-runs Configure(...) and refreshes all cached loggers' filter rules.
     private ChangeTokenHolder token = new();
 
-    /// <summary>The options instance name this source/configurator targets — the default
+    /// <summary>The options instance name this source/configurator targets - the default
     /// (unnamed) <see cref="LoggerFilterOptions"/>, which is what <c>LoggerFactory</c> reads.</summary>
     public string Name => Options.DefaultName;
 

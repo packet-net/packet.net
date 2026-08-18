@@ -7,12 +7,12 @@ using Packet.Tune.Core;
 namespace Packet.Tune;
 
 /// <summary>
-/// <c>txdelay-min</c>: find — and optionally apply — the minimum reliable TXDELAY of a
+/// <c>txdelay-min</c>: find - and optionally apply - the minimum reliable TXDELAY of a
 /// working RF link, coordinated over the radios' own SDM side channel (which does not
 /// depend on the TXDELAY under test). The coordinator steps its own KISS TXDELAY DOWN
 /// from the configured value, keying K SEPARATE probe transmissions per step (never one
-/// multi-frame train — that shares a single preamble); the meter counts decodes per step
-/// and, with DCD available, measures each probe's carrier-rise→data lead — the as-heard
+/// multi-frame train - that shares a single preamble); the meter counts decodes per step
+/// and, with DCD available, measures each probe's carrier-rise→data lead - the as-heard
 /// effective TXDELAY that makes the sweep table self-evidencing. Ends with a Markdown
 /// sweep table + recommendation (knee + margin) on the coordinator. The sweep always
 /// restores the original TXDELAY + polite channel access; <c>--apply</c> is the separate

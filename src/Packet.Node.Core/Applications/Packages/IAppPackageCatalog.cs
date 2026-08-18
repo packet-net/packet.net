@@ -5,7 +5,7 @@ namespace Packet.Node.Core.Applications.Packages;
 /// <summary>
 /// Discovers app packages (<c>pdn-app.yaml</c> under the package roots), merges each manifest
 /// with the owner's <c>apps:</c> override, and validates the result. The catalog is re-scanned
-/// at startup and on every config apply — discovery is cheap and the result is a pure snapshot.
+/// at startup and on every config apply - discovery is cheap and the result is a pure snapshot.
 /// Contract: <c>docs/app-packages.md</c> § Discovery.
 /// </summary>
 public interface IAppPackageCatalog
@@ -13,7 +13,7 @@ public interface IAppPackageCatalog
     /// <summary>Scan the package roots (the config's <c>appPackageRoots:</c> when set, else
     /// the defaults) and return every discovered package merged with its override from
     /// <paramref name="config"/>. Unreadable or invalid manifests are returned as
-    /// <see cref="DiscoveredAppPackage.Error"/> entries rather than thrown — the owner sees
+    /// <see cref="DiscoveredAppPackage.Error"/> entries rather than thrown - the owner sees
     /// the problem in the UI instead of losing the whole inventory.</summary>
     IReadOnlyList<DiscoveredAppPackage> Discover(NodeConfig config);
 }
@@ -34,7 +34,7 @@ public sealed record DiscoveredAppPackage
     /// convention; under the test/dev root when overridden).</summary>
     public required string StateDir { get; init; }
 
-    /// <summary>The owner's resolved trust state — false unless an <c>apps:</c> entry enables it.</summary>
+    /// <summary>The owner's resolved trust state - false unless an <c>apps:</c> entry enables it.</summary>
     public bool Enabled { get; init; }
 
     /// <summary>The owner's override entry, when present.</summary>
@@ -44,24 +44,24 @@ public sealed record DiscoveredAppPackage
     /// (broken entries are never enabled, sessions never resolve, services never start).</summary>
     public string? Error { get; init; }
 
-    /// <summary>The effective node-prompt command verb — the owner's
+    /// <summary>The effective node-prompt command verb - the owner's
     /// <see cref="AppOverrideConfig.Command"/> when set, else the manifest's
     /// <c>packet.command</c> (<see cref="AppPacketSpec.Command"/>). Null when neither declares
     /// one (the app is then reachable only by callsign / NET/ROM alias). This is the value the
     /// catalog's verb-collision rules run on, the value the session-verb resolution uses, and
-    /// the bare node-prompt verb the console registers. Computed, never stored — not part of
+    /// the bare node-prompt verb the console registers. Computed, never stored - not part of
     /// record equality.</summary>
     public string? EffectiveCommand =>
         string.IsNullOrWhiteSpace(Override?.Command) ? Manifest?.Packet?.Command : Override!.Command;
 
-    /// <summary>The declared tailnet port forwards (the manifest's <c>forward:</c> block) — the
+    /// <summary>The declared tailnet port forwards (the manifest's <c>forward:</c> block) - the
     /// capabilities the API/UI surface and the supervisor collects for an enabled, error-free
     /// package. Empty when the manifest declares none (or failed to parse). Computed from the
     /// manifest, not stored.</summary>
     public IReadOnlyList<AppForwardSpec> Forwards => Manifest?.Forward ?? [];
 
     /// <summary>The effective service environment: the manifest's <c>environment</c> map with
-    /// the owner's override merged over it key-by-key (owner wins) — the order the contract
+    /// the owner's override merged over it key-by-key (owner wins) - the order the contract
     /// pins for the supervised child (after the <c>PDN_APP_*</c> injections, which are the
     /// supervisor's concern). Empty when neither side declares anything.</summary>
     public IReadOnlyDictionary<string, string> EffectiveEnvironment

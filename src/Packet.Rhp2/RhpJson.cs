@@ -13,13 +13,13 @@ namespace Packet.Rhp2;
 /// <list type="bullet">
 /// <item><description>
 /// Replies carry <c>errCode</c> / <c>errText</c> with capital C / T on
-/// EVERY reply type — the published spec implies lowercase except on
+/// EVERY reply type - the published spec implies lowercase except on
 /// <c>authReply</c>, but XRouter capitalises throughout. We emit the
 /// capitalised form (so our output is byte-compatible with XRouter's) and
 /// read case-insensitively (so the spec's lowercase form still parses).
 /// </description></item>
 /// <item><description>
-/// Unrecognised <c>type</c> values must not kill the session — they map to
+/// Unrecognised <c>type</c> values must not kill the session - they map to
 /// <see cref="UnknownMessage"/> so a newer XRouter can add messages freely.
 /// Only a missing (or non-string) <c>type</c> is a protocol violation.
 /// </description></item>

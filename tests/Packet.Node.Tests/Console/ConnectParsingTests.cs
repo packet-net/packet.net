@@ -7,7 +7,7 @@ namespace Packet.Node.Tests.Console;
 /// <summary>
 /// The <c>C[onnect] [port] &lt;call&gt;</c> grammar (a 1-indexed port may precede the callsign,
 /// XRouter/BPQ convention) and the in-memory <see cref="LoopbackNodeConnection"/> that backs a
-/// local app crossconnect. Pure units — no supervisor.
+/// local app crossconnect. Pure units - no supervisor.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class ConnectParsingTests

@@ -54,7 +54,7 @@ public sealed record TuningSessionInfo(
 /// (<c>round</c> events of a txdelay session only). Additive (trailing optional): deviation-session
 /// events omit it.</param>
 /// <param name="PreDataCarrierMs">The meter's median measured carrier-rise→data lead for the step,
-/// in ms — the as-heard effective TXDELAY cross-check (<c>round</c> events of a txdelay session,
+/// in ms - the as-heard effective TXDELAY cross-check (<c>round</c> events of a txdelay session,
 /// when the meter has a carrier-sensing radio).</param>
 /// <param name="RecommendedTxDelayMs">The sweep's recommendation, in ms (the final <c>ended</c>
 /// event of a completed txdelay sweep only).</param>

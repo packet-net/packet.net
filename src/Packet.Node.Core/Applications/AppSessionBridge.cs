@@ -7,9 +7,9 @@ namespace Packet.Node.Core.Applications;
 /// The transport-agnostic core of the <c>pdn-app/1</c> wire: writes the connect header to the
 /// app, then bridges a connected user's <see cref="INodeConnection"/> session to the app's
 /// byte streams as line-oriented UTF-8 text. The same logic backs both local-session
-/// transports — the spawn-per-connect process floor (<see cref="ExternalProcessApplication"/>,
+/// transports - the spawn-per-connect process floor (<see cref="ExternalProcessApplication"/>,
 /// streams = the child's stdio) and the long-running-socket rung
-/// (<see cref="SocketApplication"/>, streams = a per-session socket) — so the wire is defined
+/// (<see cref="SocketApplication"/>, streams = a per-session socket) - so the wire is defined
 /// once. See <c>docs/app-local-session-wire.md</c>.
 /// </summary>
 /// <remarks>
@@ -18,12 +18,12 @@ namespace Packet.Node.Core.Applications;
 /// <c>toApp</c> (terminator-normalised to a single <c>\n</c> via <see cref="LineAssembler"/>),
 /// and the app's bytes → the user (decoded UTF-8 incrementally so a multi-byte char or a CR-LF
 /// can split across reads, every <c>\n</c>/<c>\r</c>/<c>\r\n</c> translated to the transport's
-/// newline). The bridge never closes the transport — the caller owns teardown (killing the
+/// newline). The bridge never closes the transport - the caller owns teardown (killing the
 /// process / closing the socket), which is what finally signals EOF to the app.
 /// </remarks>
 internal static class AppSessionBridge
 {
-    // The newline fed to the app on its input — always a single LF, whatever the user's transport.
+    // The newline fed to the app on its input - always a single LF, whatever the user's transport.
     private static readonly byte[] AppNewline = [(byte)'\n'];
 
     /// <summary>
@@ -48,14 +48,14 @@ internal static class AppSessionBridge
     /// Write the header to <paramref name="toApp"/>, then bridge <paramref name="session"/> to the
     /// app until the app closes <paramref name="fromApp"/> (EOF) or the user drops. Returns then;
     /// the caller tears the transport down. The initial header write may throw (the app died
-    /// instantly) — the caller maps that to an unavailable-app failure; the pumps themselves
+    /// instantly) - the caller maps that to an unavailable-app failure; the pumps themselves
     /// never throw on a normal close.
     /// </summary>
     public static async Task RunAsync(
         INodeConnection session, Stream toApp, Stream fromApp, byte[] header, CancellationToken cancellationToken = default)
     {
         // Best-effort header delivery. A one-shot app may have produced its output and already
-        // closed its input by now (broken pipe), and a daemon may drop us — neither is fatal:
+        // closed its input by now (broken pipe), and a daemon may drop us - neither is fatal:
         // still forward whatever output the app produced, then return. The actual "app
         // unavailable" failures are the spawn / connect step, handled by the caller before here.
         try
@@ -65,7 +65,7 @@ internal static class AppSessionBridge
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            // app closed its input before reading the header — proceed to drain its output.
+            // app closed its input before reading the header - proceed to drain its output.
         }
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -99,7 +99,7 @@ internal static class AppSessionBridge
                 {
                     if (readTask.IsCompletedSuccessfully)
                     {
-                        chunk = readTask.Result;   // a read also landed — deliver it, next loop sees the drop
+                        chunk = readTask.Result;   // a read also landed - deliver it, next loop sees the drop
                     }
                     else
                     {
@@ -126,15 +126,15 @@ internal static class AppSessionBridge
         }
         catch (OperationCanceledException)
         {
-            // teardown — normal.
+            // teardown - normal.
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            // The app closed its input / went away — nothing more to feed.
+            // The app closed its input / went away - nothing more to feed.
         }
     }
 
-    // App → user: decode the app's bytes as UTF-8 (incrementally — a multi-byte char may split
+    // App → user: decode the app's bytes as UTF-8 (incrementally - a multi-byte char may split
     // across reads) and translate every \n / \r / \r-\n to the transport's newline (CR for AX.25
     // / NET-ROM, CR-LF for telnet). The \r-state carries across reads so a CR-LF on a buffer
     // boundary stays one line.
@@ -153,7 +153,7 @@ internal static class AppSessionBridge
                 var done = await Task.WhenAny(readTask, session.Completion).ConfigureAwait(false);
                 if (done != readTask)
                 {
-                    break;   // user gone — stop forwarding
+                    break;   // user gone - stop forwarding
                 }
 
                 int n = await readTask.ConfigureAwait(false);
@@ -195,11 +195,11 @@ internal static class AppSessionBridge
         }
         catch (OperationCanceledException)
         {
-            // teardown — normal.
+            // teardown - normal.
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            // The session went away mid-write / the app transport faulted — done.
+            // The session went away mid-write / the app transport faulted - done.
         }
     }
 

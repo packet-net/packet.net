@@ -2,7 +2,7 @@ namespace Packet.Node.Core.Console;
 
 /// <summary>
 /// A bidirectional byte stream to a connected user, plus the metadata the node
-/// console needs — independent of how the user reached us. The command service
+/// console needs - independent of how the user reached us. The command service
 /// runs over this interface and over this interface <b>only</b>, so the prompt
 /// logic never depends on AX.25.
 /// </summary>
@@ -16,7 +16,7 @@ namespace Packet.Node.Core.Console;
 /// </remarks>
 public interface INodeConnection : IAsyncDisposable
 {
-    /// <summary>An identifier for the peer — a callsign for AX.25, a remote
+    /// <summary>An identifier for the peer - a callsign for AX.25, a remote
     /// endpoint string for telnet. For logging and the <c>Info</c> command.</summary>
     string PeerId { get; }
 
@@ -25,7 +25,7 @@ public interface INodeConnection : IAsyncDisposable
 
     /// <summary>
     /// Read the next chunk of inbound bytes from the peer. Returns an empty
-    /// buffer when the connection has closed (EOF) — the command loop treats
+    /// buffer when the connection has closed (EOF) - the command loop treats
     /// that as "the user is gone". Never throws on a normal close.
     /// </summary>
     ValueTask<ReadOnlyMemory<byte>> ReadAsync(CancellationToken cancellationToken = default);

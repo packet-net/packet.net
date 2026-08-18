@@ -5,7 +5,7 @@ using Packet.Kiss.NinoTnc;
 namespace Packet.Tune.Core;
 
 /// <summary>
-/// One station's <b>status</b> — the payload of a <see cref="TuningVerb.Status"/>
+/// One station's <b>status</b> - the payload of a <see cref="TuningVerb.Status"/>
 /// (<c>STAT</c>) telegram, sent in reply to a <see cref="StationHail"/>. It answers
 /// "who are you, what modulation/modem are you on, and what can you do?" over the
 /// mode-agnostic SDM side channel, so a hailer learns a peer's state even when the
@@ -13,16 +13,16 @@ namespace Packet.Tune.Core;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The wire form is a compact keyed line — <c>cs:&lt;call&gt;|m:&lt;mode&gt;|b:&lt;bitrate&gt;|
-/// ch:&lt;channel&gt;|sm:&lt;m1.m2…&gt;|cap:&lt;t1.t2…&gt;|rh:&lt;dbm&gt;</c> — with every field
+/// The wire form is a compact keyed line - <c>cs:&lt;call&gt;|m:&lt;mode&gt;|b:&lt;bitrate&gt;|
+/// ch:&lt;channel&gt;|sm:&lt;m1.m2…&gt;|cap:&lt;t1.t2…&gt;|rh:&lt;dbm&gt;</c> - with every field
 /// past the callsign optional. Only <c>cs</c> is mandatory. Unknown keys are ignored on
 /// parse (forward compatibility). A minimal status (callsign + mode) fits a plain 32-character
 /// SDM; a full status with the supported-mode and capability lists exceeds it and must ride an
-/// <b>extended SDM</b> (128 characters — <see cref="Packet.Radio.Tait.TaitSdmSideChannelOptions.EnableExtendedSdm"/>).
+/// <b>extended SDM</b> (128 characters - <see cref="Packet.Radio.Tait.TaitSdmSideChannelOptions.EnableExtendedSdm"/>).
 /// </para>
 /// <para>
 /// <see cref="ModeName"/> is <em>derived</em> from <see cref="Mode"/> through
-/// <see cref="NinoTncCatalog"/> rather than carried on the wire — both ends share the catalog,
+/// <see cref="NinoTncCatalog"/> rather than carried on the wire - both ends share the catalog,
 /// so sending the human name would only waste budget and risk disagreeing with the number.
 /// </para>
 /// </remarks>
@@ -36,8 +36,8 @@ public sealed record StationStatus
     public byte? Mode { get; init; }
 
     /// <summary>The over-air bit rate (bits/s) of the current mode, or <c>null</c> when unknown.
-    /// Authoritative — sourced from the responder's own modem rather than re-derived by the
-    /// hailer — so it stays correct even for the variable "Set from KISS" mode.</summary>
+    /// Authoritative - sourced from the responder's own modem rather than re-derived by the
+    /// hailer - so it stays correct even for the variable "Set from KISS" mode.</summary>
     public int? BitRateHz { get; init; }
 
     /// <summary>The radio channel the station is on, as the radio reports it (e.g. <c>"0"</c>),
@@ -52,7 +52,7 @@ public sealed record StationStatus
     /// <c>modecoord</c>, <c>extsdm</c>). Each is a single dot/pipe-free word. Empty when none.</summary>
     public IReadOnlyList<string> Capabilities { get; init; } = [];
 
-    /// <summary>The responder's receiver RSSI (dBm) sampled at hail receipt — a best-effort
+    /// <summary>The responder's receiver RSSI (dBm) sampled at hail receipt - a best-effort
     /// link-quality snapshot of the hail as heard at this end. <c>null</c> when not sampled.</summary>
     public double? RssiOfHailDbm { get; init; }
 
@@ -151,7 +151,7 @@ public sealed record StationStatus
                     rssi = r;
                     break;
                 default:
-                    break; // unknown key — forward compatibility
+                    break; // unknown key - forward compatibility
             }
         }
 

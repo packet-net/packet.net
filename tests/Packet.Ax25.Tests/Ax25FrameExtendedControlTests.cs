@@ -15,7 +15,7 @@ namespace Packet.Ax25.Tests;
 /// <item>U frames stay 1 octet in both modulos.</item>
 /// </list>
 /// The control-field width is not derivable from the octets alone, so parsing
-/// requires the link's negotiated modulo — these tests exercise both the
+/// requires the link's negotiated modulo - these tests exercise both the
 /// correct (extended) parse and the deliberately-wrong modulo-8 parse to show
 /// why the receive path must be mode-aware.
 /// </summary>
@@ -141,7 +141,7 @@ public class Ax25FrameExtendedControlTests
     public void Extended_IFrame_Parsed_As_Mod8_Misframes()
     {
         // An extended I-frame decoded at the wrong modulo (mod-8) swallows the
-        // second control octet as the PID and mis-reads N(S) — demonstrating the
+        // second control octet as the PID and mis-reads N(S) - demonstrating the
         // width genuinely can't be inferred from the bytes.
         var sent = Ax25Frame.I(Dest, Src, nr: 9, ns: 70, info: new byte[] { 0xAA }, pollBit: true, extended: true);
         var bytes = sent.ToBytes();

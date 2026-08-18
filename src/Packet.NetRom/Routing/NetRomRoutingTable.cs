@@ -12,7 +12,7 @@ namespace Packet.NetRom.Routing;
 /// <remarks>
 /// <para>
 /// <b>Read-only by construction.</b> The table is a pure consumer of heard
-/// broadcasts — it transmits nothing, originates no NODES, opens no circuits.
+/// broadcasts - it transmits nothing, originates no NODES, opens no circuits.
 /// It implements the canonical processing heuristics from the NET/ROM appendix:
 /// </para>
 /// <list type="number">
@@ -25,7 +25,7 @@ namespace Packet.NetRom.Routing;
 ///   neighbour</em> is the advertised quality combined with the path quality
 ///   (<see cref="NetRomQuality.Combine"/>, heuristic 5).</item>
 ///   <item><b>Trivial-loop guard</b>: if the advertised best-neighbour is our own
-///   callsign, the route is quality 0 — a last resort that is never kept
+///   callsign, the route is quality 0 - a last resort that is never kept
 ///   (heuristic 6).</item>
 ///   <item>Only the <see cref="NetRomRoutingOptions.MaxRoutesPerDestination"/>
 ///   best routes per destination are kept (heuristic 7).</item>
@@ -45,7 +45,7 @@ namespace Packet.NetRom.Routing;
 /// <b>Thread-safety.</b> All mutation and snapshotting is under a single lock, so
 /// the table can be fed from every port's frame tap concurrently and read by the
 /// console / MCP at any time without tearing. <see cref="TimeProvider"/> is
-/// injected (no wall-clock — §2.7) for last-heard stamps.
+/// injected (no wall-clock - §2.7) for last-heard stamps.
 /// </para>
 /// </remarks>
 public sealed class NetRomRoutingTable
@@ -53,7 +53,7 @@ public sealed class NetRomRoutingTable
     /// <summary>
     /// The fixed INP3 per-hop target-time increment, in milliseconds (design §2.2,
     /// plan §6.3). Added to every learned time-route so target time is strictly
-    /// increasing per hop even across a ~0 ms link (a loopback or same-host fleet) —
+    /// increasing per hop even across a ~0 ms link (a loopback or same-host fleet) -
     /// the loop-safety invariant "target time monotonic-nondecreasing per hop".
     /// </summary>
     public const int PerHopIncrementMs = 10;
@@ -88,10 +88,10 @@ public sealed class NetRomRoutingTable
     // closes the host-thread race: a concurrent IngestRif / MarkNeighbourDown / Sweep that
     // withdraws a destination mid-round lands in the live set AFTER the snapshot was taken,
     // so it is captured by the NEXT round's drain instead of being cleared unadvertised.
-    // Populated under `gate` only when an Inp3-bearing route fully leaves — so a vanilla
+    // Populated under `gate` only when an Inp3-bearing route fully leaves - so a vanilla
     // (quality-only) MarkNeighbourDown / Sweep, the INP3-off path, never touches it (the
     // default-off guarantee, design §7.1). RecentlyWithdrawn() is a read-only peek (tests /
-    // monitoring); the host never reads it directly — only DrainRecentlyWithdrawn().
+    // monitoring); the host never reads it directly - only DrainRecentlyWithdrawn().
     private readonly HashSet<Callsign> recentlyWithdrawn = new();
 
     /// <summary>Construct a table with the canonical default options and the system clock.</summary>
@@ -134,7 +134,7 @@ public sealed class NetRomRoutingTable
     /// Ingest a NODES broadcast heard from <paramref name="originator"/> on
     /// <paramref name="portId"/>, with this node's own callsign
     /// <paramref name="myCall"/> (for the trivial-loop guard). Pure table
-    /// maintenance — never transmits.
+    /// maintenance - never transmits.
     /// </summary>
     /// <param name="originator">The AX.25 source callsign of the UI frame (the broadcasting neighbour).</param>
     /// <param name="myCall">Our own node callsign. An advertised entry whose <em>destination</em>
@@ -146,7 +146,7 @@ public sealed class NetRomRoutingTable
     /// <param name="neighbourQuality">
     /// The path quality to assume for the directly-heard neighbour on this port (the BPQ
     /// per-port <c>QUALITY</c>). <c>null</c> (the default) ⇒ the table-wide
-    /// <see cref="NetRomRoutingOptions.DefaultNeighbourQuality"/> — byte-for-byte the prior
+    /// <see cref="NetRomRoutingOptions.DefaultNeighbourQuality"/> - byte-for-byte the prior
     /// behaviour. When supplied, it overrides that default for routes learned on this port,
     /// so a mixed-grade node advertises an accurate per-port quality. Clamped to 0..255.
     /// The cached neighbour path quality is refreshed to this value on every ingest, so a
@@ -155,13 +155,13 @@ public sealed class NetRomRoutingTable
     /// <param name="minQuality">
     /// The worst quality a learned route may have and still be kept on this port (the BPQ
     /// per-port <c>MINQUAL</c>). <c>null</c> (the default) ⇒ the table-wide
-    /// <see cref="NetRomRoutingOptions.MinQuality"/> — byte-for-byte the prior behaviour. When
+    /// <see cref="NetRomRoutingOptions.MinQuality"/> - byte-for-byte the prior behaviour. When
     /// supplied, it overrides that floor for routes <em>learned via this ingest</em> (a NODES
     /// broadcast heard on this port), so a node can keep only high-grade routes off a busy port
     /// (e.g. <c>MINQUAL 100</c> on RF) while keeping everything off another. Clamped to 0..255.
     /// A re-advertisement that derives below the effective floor removes an existing route, exactly
     /// as the table-wide floor does. Note this gates the <em>direct</em> route to the originator
-    /// too — a neighbour whose own assumed path quality is below the floor is not kept.
+    /// too - a neighbour whose own assumed path quality is below the floor is not kept.
     /// </param>
     public void Ingest(Callsign originator, Callsign myCall, string portId, NodesBroadcast broadcast, int? neighbourQuality = null, int? minQuality = null)
     {
@@ -197,7 +197,7 @@ public sealed class NetRomRoutingTable
 
             // Heuristic 4: assume a direct route to the originator at the
             // neighbour path quality. (The originator may also appear as a
-            // destination in its own list with a different quality — that is
+            // destination in its own list with a different quality - that is
             // merged as a normal indirect route below; the direct route via
             // itself usually wins.)
             UpsertRoute(
@@ -243,7 +243,7 @@ public sealed class NetRomRoutingTable
     /// route (the second metric space) per RIP. This is the time-space analogue of
     /// <see cref="Ingest(Callsign, Callsign, string, NodesBroadcast, int?, int?)"/> for the quality
     /// space: it mirrors <see cref="UpsertRoute"/>'s discipline (per-destination route
-    /// cap, best-first ordering, the trivial-loop guard) and is pure table maintenance —
+    /// cap, best-first ordering, the trivial-loop guard) and is pure table maintenance -
     /// it never transmits.
     /// </summary>
     /// <remarks>
@@ -266,14 +266,14 @@ public sealed class NetRomRoutingTable
     /// <b>Horizon = withdrawal</b> (design §2.3). If the RIP is at/over the 600 s horizon
     /// (<see cref="Inp3Rip.IsHorizon"/>), or the computed <c>localTargetTimeMs</c> reaches
     /// the horizon, the INP3 metric for <c>(destination via receivedFromNeighbour)</c> is
-    /// <em>withdrawn</em> — its <see cref="Inp3RouteMetric"/> is cleared, leaving any
+    /// <em>withdrawn</em> - its <see cref="Inp3RouteMetric"/> is cleared, leaving any
     /// coexisting quality route intact; a route then left with neither a usable quality
     /// nor an INP3 metric is removed, and a destination left with no route is removed.
     /// Withdrawal feeds the same next-decision failover as <see cref="MarkNeighbourDown"/>.
     /// </para>
     /// <para>
     /// <b>Skips</b> (no learn, no withdraw). A RIP is skipped when the link cost is not yet
-    /// measured (<paramref name="neighbourSnttMs"/> == <see cref="Inp3Sntt.Unset"/> — an
+    /// measured (<paramref name="neighbourSnttMs"/> == <see cref="Inp3Sntt.Unset"/> - an
     /// un-probed link must never <em>remove</em> a time-route it never learned), when
     /// <c>localHopCount</c> exceeds <paramref name="hopLimit"/> (the hop horizon), or when
     /// the destination is <paramref name="myCall"/> (the receive-side trivial-loop guard,
@@ -285,23 +285,23 @@ public sealed class NetRomRoutingTable
     /// the route as a pure time-route (quality 0) if none existed, or attaching the metric
     /// to an existing quality route without touching its quality/obsolescence. The
     /// per-destination cap evicts by quality (an INP3-only route counts as quality 0 for
-    /// eviction ordering only — design AMBIGUITY-I3-2), so a node that never prefers INP3
+    /// eviction ordering only - design AMBIGUITY-I3-2), so a node that never prefers INP3
     /// routes evicts byte-identically to today. Best INP3 route per destination = lowest
     /// <see cref="Inp3RouteMetric.TargetTimeMs"/>, then lowest hop count, then neighbour
     /// callsign (projected by <see cref="Snapshot"/>).
     /// </para>
     /// </remarks>
-    /// <param name="receivedFromNeighbour">The interlink neighbour the RIF arrived on — the
+    /// <param name="receivedFromNeighbour">The interlink neighbour the RIF arrived on - the
     /// next-hop (via) for every route this RIF teaches.</param>
     /// <param name="portId">The port that interlink runs on. Together with
     /// <paramref name="receivedFromNeighbour"/> it is the <see cref="NeighbourKey"/> every route
     /// this RIF teaches is filed under, so a RIF from one station over two ports keeps two
     /// independent time-routes (and a withdrawal on one leaves the other standing).</param>
-    /// <param name="myCall">Our own node callsign — a RIP whose destination is us is skipped
+    /// <param name="myCall">Our own node callsign - a RIP whose destination is us is skipped
     /// (the trivial-loop guard).</param>
     /// <param name="neighbourSnttMs">The smoothed transport time to
     /// <paramref name="receivedFromNeighbour"/> in milliseconds (<c>Inp3Sntt.Ms</c>);
-    /// <see cref="Inp3Sntt.Unset"/> (<c>uint.MaxValue</c>) means "no measurement yet" — every
+    /// <see cref="Inp3Sntt.Unset"/> (<c>uint.MaxValue</c>) means "no measurement yet" - every
     /// RIP is then skipped (no time-route learned, none withdrawn).</param>
     /// <param name="rif">The parsed RIF (the I-1 wire type).</param>
     /// <param name="hopLimit">The maximum learned hop count (the hop horizon, plan §8
@@ -322,7 +322,7 @@ public sealed class NetRomRoutingTable
 
         lock (gate)
         {
-            // An un-probed link has no measured cost — learn no time-route, and (crucially)
+            // An un-probed link has no measured cost - learn no time-route, and (crucially)
             // withdraw none either: an Unset SNTT must never remove a route it never taught.
             bool linkMeasured = neighbourSnttMs != Inp3Sntt.Unset;
 
@@ -334,10 +334,10 @@ public sealed class NetRomRoutingTable
                 long localTargetTime = (long)rip.TargetTimeMs + neighbourSnttMs + PerHopIncrementMs;
 
                 // Horizon = withdrawal (clears the INP3 metric only), independent of the SNTT
-                // measurement — a peer advertising the horizon withdraws regardless. The
+                // measurement - a peer advertising the horizon withdraws regardless. The
                 // computed-over-horizon case only applies once the link is measured (an Unset
                 // SNTT would trivially overflow the horizon, which we must NOT treat as a
-                // withdrawal — hence the linkMeasured guard on the second clause).
+                // withdrawal - hence the linkMeasured guard on the second clause).
                 if (rip.IsHorizon || (linkMeasured && localTargetTime >= Inp3Rip.HorizonMs))
                 {
                     WithdrawInp3(rip.Destination, via);
@@ -346,13 +346,13 @@ public sealed class NetRomRoutingTable
 
                 if (!linkMeasured)
                 {
-                    continue;   // link cost unknown — learn no time-route (and withdrew none)
+                    continue;   // link cost unknown - learn no time-route (and withdrew none)
                 }
 
                 int localHopCount = rip.HopCount + 1;
                 if (localHopCount > effectiveHopLimit)
                 {
-                    continue;   // hop horizon — path too long to learn
+                    continue;   // hop horizon - path too long to learn
                 }
 
                 if (rip.Destination.Equals(myCall))
@@ -439,8 +439,8 @@ public sealed class NetRomRoutingTable
     }
 
     /// <summary>
-    /// React to a neighbour going down — its interlink could not be raised (it did
-    /// not answer the connect) or its quality collapsed — by immediately dropping
+    /// React to a neighbour going down - its interlink could not be raised (it did
+    /// not answer the connect) or its quality collapsed - by immediately dropping
     /// every route that forwards through it, and the neighbour entry itself. This is
     /// the explicit link-down failover signal: instead of waiting for the
     /// obsolescence <see cref="Sweep"/> to age the now-dead routes out over the
@@ -449,7 +449,7 @@ public sealed class NetRomRoutingTable
     /// once, so the very next forward or connect decision fails over to an alternate
     /// next hop. A destination that loses all its routes is removed; it and the
     /// neighbour re-learn naturally from the next NODES broadcast if the neighbour
-    /// returns. Idempotent — marking an unknown / already-removed neighbour down is a
+    /// returns. Idempotent - marking an unknown / already-removed neighbour down is a
     /// no-op returning 0.
     /// </summary>
     /// <remarks>
@@ -552,7 +552,7 @@ public sealed class NetRomRoutingTable
     }
 
     /// <summary>
-    /// Take an immutable snapshot of the current table — destinations with their
+    /// Take an immutable snapshot of the current table - destinations with their
     /// best-first routes, and the directly-heard neighbours. Ordering is stable
     /// (alias-or-callsign for destinations, callsign for neighbours) so the
     /// surfaced output is deterministic.
@@ -627,14 +627,14 @@ public sealed class NetRomRoutingTable
 
     /// <summary>
     /// Replace the table's contents with a persisted <see cref="NetRomRoutingSnapshot"/>
-    /// — the hydrate path a node host uses at startup to restore the routing table it
+    /// - the hydrate path a node host uses at startup to restore the routing table it
     /// had learned before a restart, so the node is not blind until the next NODES
     /// broadcast. Pure table maintenance (no I/O). Each restored route's obsolescence
     /// is reduced by <paramref name="obsolescenceDecay"/> (the number of broadcast
     /// intervals that elapsed while the node was down), so a route last refreshed long
     /// ago is not resurrected at full strength; a route decaying to ≤ 0 is dropped, a
     /// destination left with no routes is not restored, and a neighbour left with no
-    /// route is pruned — matching what the elapsed <see cref="Sweep"/>s would have
+    /// route is pruned - matching what the elapsed <see cref="Sweep"/>s would have
     /// produced. Intended to run once on a fresh table before any ingest.
     /// </summary>
     /// <param name="snapshot">The persisted snapshot to load.</param>
@@ -689,18 +689,18 @@ public sealed class NetRomRoutingTable
                 };
             }
 
-            // A neighbour whose only routes aged out is now an orphan — drop it, so the
+            // A neighbour whose only routes aged out is now an orphan - drop it, so the
             // restored table matches what the elapsed live Sweeps would have produced.
             PruneOrphanNeighbours();
         }
     }
 
     /// <summary>
-    /// Build the destination entries to advertise in our own NODES broadcast — the
+    /// Build the destination entries to advertise in our own NODES broadcast - the
     /// L3-origination view of the table. For each known destination we advertise its
     /// best route's quality via its best next-hop neighbour, gated by
     /// <paramref name="obsoleteMinimum"/> (OBSMIN: a route whose obsolescence has
-    /// decayed below this is still kept but no longer advertised — it ages out of
+    /// decayed below this is still kept but no longer advertised - it ages out of
     /// broadcasts before it is purged). Quality-0 routes are never advertised.
     /// </summary>
     /// <param name="obsoleteMinimum">The OBSMIN advertise-gate (routes with
@@ -751,11 +751,11 @@ public sealed class NetRomRoutingTable
 
     /// <summary>
     /// Build the per-neighbour, poison-reversed INP3 RIF to advertise <em>toward</em>
-    /// <paramref name="toTargetNeighbour"/> — the INP3 (measured target-time) analogue of
+    /// <paramref name="toTargetNeighbour"/> - the INP3 (measured target-time) analogue of
     /// <see cref="BuildAdvertisement(int)"/> (the quality/NODES view). A pure read under the
     /// table lock; the host calls <see cref="Inp3Rif.ToBytes"/> on the result and wraps it in
     /// a PID-0xCF I-frame on the neighbour's interlink session. Host-free: it takes
-    /// <paramref name="myCall"/> as a parameter (the table never reaches for identity — the
+    /// <paramref name="myCall"/> as a parameter (the table never reaches for identity - the
     /// same discipline as <see cref="IngestRif"/>). Advertisement is independent of the local
     /// <c>preferInp3Routes</c> forwarding knob: a destination is advertised iff we hold an INP3
     /// time-route for it, regardless of whether this node forwards by time or by quality. Locked
@@ -763,30 +763,30 @@ public sealed class NetRomRoutingTable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The RIF emits, in order (AMBIGUITY-I4-4 — deterministic + cross-stack byte-identical):
+    /// The RIF emits, in order (AMBIGUITY-I4-4 - deterministic + cross-stack byte-identical):
     /// </para>
     /// <list type="number">
-    ///   <item><description><b>Our own node</b> — exactly one RIP for <paramref name="myCall"/>
+    ///   <item><description><b>Our own node</b> - exactly one RIP for <paramref name="myCall"/>
     ///   at <b>target-time 0 ms, hop 0</b>, no TLVs. We are the source of ourselves (the cost
     ///   to reach us from us is zero, in zero hops); a neighbour ingesting this learns the
     ///   direct cost to us. The own-node RIP is <b>always</b> present and is <b>never poisoned</b>
-    ///   — it is the source identity, not a learned route (design §1.1 rule 1, §2.2 exemption,
+    ///   - it is the source identity, not a learned route (design §1.1 rule 1, §2.2 exemption,
     ///   invariant (Source)).</description></item>
     ///   <item><description><b>Every destination D (≠ <paramref name="myCall"/>) holding a
-    ///   <em>selected</em> INP3 time-route</b> — D's best (lowest-target-time) held route whose
+    ///   <em>selected</em> INP3 time-route</b> - D's best (lowest-target-time) held route whose
     ///   <see cref="NetRomRoute.Inp3"/> is non-null, chosen independently of the local
     ///   <c>preferInp3Routes</c> forwarding knob (advertisement is not gated by the forwarding
-    ///   preference) —
+    ///   preference) -
     ///   ordered by ascending local target time then destination callsign (ordinal). One RIP
     ///   each: hop = the selected route's <see cref="Inp3RouteMetric.HopCount"/>; target time =
     ///   <b>POISON-REVERSE</b>: if the selected route's next-hop neighbour <em>is</em>
     ///   <paramref name="toTargetNeighbour"/> the RIP is advertised at the
-    ///   <see cref="Inp3Rip.HorizonMs"/> (unreachable — breaks the would-be two-hop loop, design
+    ///   <see cref="Inp3Rip.HorizonMs"/> (unreachable - breaks the would-be two-hop loop, design
     ///   §2, invariant (P)); otherwise at the route's real local target time, quantised to the
     ///   10 ms wire granule. No TLVs (alias emission gated off, AMBIGUITY-I4-1).</description></item>
     /// </list>
     /// <para>
-    /// Quality-only destinations (no INP3 route) are <b>not</b> in the RIF — they are carried
+    /// Quality-only destinations (no INP3 route) are <b>not</b> in the RIF - they are carried
     /// by NODES. A destination's "selected" route mirrors
     /// <see cref="BuildAdvertisement(int)"/> advertising each destination's <em>best</em> route
     /// (not every kept route), so poison-reverse is a clean per-destination decision (one
@@ -796,19 +796,19 @@ public sealed class NetRomRoutingTable
     /// storage invariant) so <see cref="Inp3Rip.Write"/> never throws on emitter output.
     /// </para>
     /// </remarks>
-    /// <param name="myCall">Our own node callsign — emitted as the source RIP (target-time 0 /
+    /// <param name="myCall">Our own node callsign - emitted as the source RIP (target-time 0 /
     /// hop 0, never poisoned) and used as the loop-guard identity (a route whose destination is
     /// us is never in the RIF).</param>
-    /// <param name="toTargetNeighbour">N — the neighbour this RIF is built <em>for</em>: any
+    /// <param name="toTargetNeighbour">N - the neighbour this RIF is built <em>for</em>: any
     /// destination whose selected route is via N is poison-reversed (advertised at the horizon)
     /// in this RIF (design §1.4).</param>
     /// <param name="recentlyWithdrawn">The recently-withdrawn snapshot the host
     /// <see cref="DrainRecentlyWithdrawn"/>ed once at the start of this fan-out round and passes to
-    /// every neighbour's RIF — one explicit horizon RIP is appended per entry (minus any that were
+    /// every neighbour's RIF - one explicit horizon RIP is appended per entry (minus any that were
     /// re-learned finite this round, and our own node). <c>null</c> (or empty) appends no
     /// withdrawal RIPs (the default for callers that don't drive the withdrawn set, e.g. unit
-    /// tests of pure poison-reverse). Passing the host-drained snapshot — not reading the live set
-    /// — is what makes the fan-out race-free (design §6.4).</param>
+    /// tests of pure poison-reverse). Passing the host-drained snapshot - not reading the live set
+    /// - is what makes the fan-out race-free (design §6.4).</param>
     /// <returns>The poison-reversed INP3 RIF to advertise toward
     /// <paramref name="toTargetNeighbour"/>.</returns>
     public Inp3Rif BuildRif(Callsign myCall, Callsign toTargetNeighbour, IReadOnlyCollection<Callsign>? recentlyWithdrawn = null)
@@ -828,7 +828,7 @@ public sealed class NetRomRoutingTable
                     continue;   // our own node is emitted as the 0/0 source RIP below, never as a learned route.
                 }
 
-                // We ADVERTISE a destination iff we HOLD an INP3 time-route for it (design §1) —
+                // We ADVERTISE a destination iff we HOLD an INP3 time-route for it (design §1) -
                 // independent of preferInp3Routes, which is a local *forwarding* preference, not
                 // an advertisement gate. (A node that forwards by quality should still tell its
                 // neighbours the time it can reach D in, so they can route to us by time.) Pick
@@ -859,13 +859,13 @@ public sealed class NetRomRoutingTable
 
                 // POISON-REVERSE (design §2, loop-safety): advertise D back at the horizon
                 // (unreachable) if the neighbour we are building this RIF for is ANY of D's kept
-                // forwarding next hops — not merely D's *best* INP3 next hop. The shipped
+                // forwarding next hops - not merely D's *best* INP3 next hop. The shipped
                 // multi-route load-balancer (NetRomForwarding.SelectWeighted, PerFlow default)
                 // spreads D's traffic across every kept route, so advertising D back at a finite
                 // metric to any neighbour we'd forward D through seeds a two-hop loop (that
                 // neighbour installs D-via-us, then bounces D's share back). Split-horizon over
                 // the full kept-route set is the safe rule; over-poisoning at worst costs a
-                // backup-path advertisement (which alternate-reverse would recover — deferred).
+                // backup-path advertisement (which alternate-reverse would recover - deferred).
                 int advertisedTargetTimeMs = poison
                     ? Inp3Rip.HorizonMs
                     : Quantise10(inp3.TargetTimeMs);
@@ -906,7 +906,7 @@ public sealed class NetRomRoutingTable
             // the peer withdraws it immediately (rather than waiting for its obsolescence sweep).
             // The set is the snapshot the host DRAINED once at the start of this fan-out round and
             // passes to every neighbour's BuildRif, so every neighbour's RIF carries the withdrawal
-            // exactly once (the host-thread race fix — design §6.4). A destination that was
+            // exactly once (the host-thread race fix - design §6.4). A destination that was
             // withdrawn-then-relearned in the same round is carried by its FINITE RIP above (it's in
             // `emitted`), not poisoned; and our own node is never withdrawn (the Source invariant).
             if (withdrawnCount > 0)
@@ -933,9 +933,9 @@ public sealed class NetRomRoutingTable
     }
 
     /// <summary>
-    /// A read-only <b>peek</b> at the recently-withdrawn destinations (INP3 invariant W) —
+    /// A read-only <b>peek</b> at the recently-withdrawn destinations (INP3 invariant W) -
     /// destinations that have lost their last <see cref="Inp3RouteMetric"/>-bearing route since the
-    /// host last <see cref="DrainRecentlyWithdrawn"/>ed the set. Does <b>not</b> clear — for tests
+    /// host last <see cref="DrainRecentlyWithdrawn"/>ed the set. Does <b>not</b> clear - for tests
     /// and monitoring only. The host never reads this on the fan-out path; it
     /// <see cref="DrainRecentlyWithdrawn"/>s once at the start of a round and hands the snapshot to
     /// each neighbour's <see cref="BuildRif"/> (so reading and clearing are a single atomic step,
@@ -955,7 +955,7 @@ public sealed class NetRomRoutingTable
     /// <summary>
     /// Atomically snapshot <b>and clear</b> the recently-withdrawn set (INP3 invariant W) under a
     /// single <c>gate</c> hold. The host calls this <b>once</b> at the start of a fan-out round and
-    /// hands the returned snapshot to every neighbour's <see cref="BuildRif"/> — so the one-shot
+    /// hands the returned snapshot to every neighbour's <see cref="BuildRif"/> - so the one-shot
     /// horizon RIP reaches each neighbour exactly once. Draining as one atomic step (rather than the
     /// old read-then-clear-after-round) closes the host-thread race: a concurrent
     /// <see cref="IngestRif"/> / <see cref="MarkNeighbourDown"/> / <see cref="Sweep"/> that withdraws
@@ -980,7 +980,7 @@ public sealed class NetRomRoutingTable
     }
 
     // Quantise a full-ms local target time down to the 10 ms wire granule the RIP codec
-    // carries (the stored metric is full-ms — the granule is an emission-only concern,
+    // carries (the stored metric is full-ms - the granule is an emission-only concern,
     // design I-3 AMBIGUITY-I3-3). Floor, so the emitted finite time never exceeds the
     // stored one; clamped to one granule below the horizon so a near-horizon finite metric
     // can never round up to read as a withdrawal.
@@ -1014,7 +1014,7 @@ public sealed class NetRomRoutingTable
             }
             if (destinations.Count >= options.MaxDestinations)
             {
-                return;   // heuristic 9: destination list full — ignore new destinations
+                return;   // heuristic 9: destination list full - ignore new destinations
             }
             dest = new DestinationState { Alias = alias };
             destinations[destination] = dest;
@@ -1037,7 +1037,7 @@ public sealed class NetRomRoutingTable
         }
 
         // Preserve any INP3 metric already learned for this (dest via adjacency)
-        // route — a NODES quality refresh must not wipe a coexisting time-route
+        // route - a NODES quality refresh must not wipe a coexisting time-route
         // (the two metric spaces are independent; see IngestRif).
         dest.Routes.TryGetValue(via, out var existing);
         dest.Routes[via] = new RouteState
@@ -1078,7 +1078,7 @@ public sealed class NetRomRoutingTable
     }
 
     // Attach (or refresh) an INP3 time-route metric on the (destination via
-    // viaNeighbour) route — the time-space analogue of UpsertRoute. If the route
+    // viaNeighbour) route - the time-space analogue of UpsertRoute. If the route
     // already exists (as a quality route, or a prior time-route) the metric is set in
     // place, preserving its quality + obsolescence; if it does not exist the route is
     // created as a pure time-route (quality 0, obsolescence OBSINIT). The per-dest cap
@@ -1092,7 +1092,7 @@ public sealed class NetRomRoutingTable
         {
             if (destinations.Count >= options.MaxDestinations)
             {
-                return;   // heuristic 9: destination list full — ignore new destinations
+                return;   // heuristic 9: destination list full - ignore new destinations
             }
             dest = new DestinationState { Alias = alias };
             destinations[destination] = dest;
@@ -1131,7 +1131,7 @@ public sealed class NetRomRoutingTable
     }
 
     // Withdraw the INP3 metric of the (destination via viaNeighbour) route (a horizon
-    // withdrawal). Clears Inp3 only — a coexisting quality route stays. A route left
+    // withdrawal). Clears Inp3 only - a coexisting quality route stays. A route left
     // with neither a usable quality (≤ MINQUAL / 0) nor an INP3 metric is removed; a
     // destination left with no route is removed. A no-op if the route / destination is
     // unknown or the route had no INP3 metric. Caller holds the lock.
@@ -1146,8 +1146,8 @@ public sealed class NetRomRoutingTable
             return;   // nothing INP3 to withdraw on this route
         }
 
-        // A route whose only reason to exist was its (now-withdrawn) time metric — i.e.
-        // it carries no usable quality — is removed outright; otherwise it survives as a
+        // A route whose only reason to exist was its (now-withdrawn) time metric - i.e.
+        // it carries no usable quality - is removed outright; otherwise it survives as a
         // pure quality route with Inp3 cleared.
         bool hasUsableQuality = route.Quality > NetRomQuality.Min && route.Quality >= options.MinQuality;
         if (hasUsableQuality)
@@ -1164,7 +1164,7 @@ public sealed class NetRomRoutingTable
         }
 
         // Invariant (W): if the destination now holds NO Inp3-bearing route at all, it has
-        // left the INP3 time-space — record it so the next RIF to every neighbour carries a
+        // left the INP3 time-space - record it so the next RIF to every neighbour carries a
         // one-shot horizon withdrawal. (We had an Inp3 metric on this route a moment ago, so
         // this add is only ever reached on a genuine INP3 withdrawal.)
         if (!HasAnyInp3Route(destination))
@@ -1194,7 +1194,7 @@ public sealed class NetRomRoutingTable
 
     // Drop neighbours that are no longer the next hop for any kept route. Caller
     // holds the lock. (A neighbour we heard directly always has its own direct
-    // route, so it survives until that route ages out — at which point it is a
+    // route, so it survives until that route ages out - at which point it is a
     // genuine orphan.)
     private void PruneOrphanNeighbours()
     {

@@ -7,17 +7,17 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 /// protocol that upstream <c>flashtnc.py</c> speaks, byte-for-byte compatible
 /// with the sequence validated by repeated successful flashes on real
 /// hardware (seven with the reference implementation on the bench rig, then
-/// this implementation itself — see <c>docs/research/tait-ccdi-spike.md</c>).
+/// this implementation itself - see <c>docs/research/tait-ccdi-spike.md</c>).
 /// </summary>
 /// <remarks>
 /// <para>The protocol, end to end:</para>
 /// <list type="number">
 ///   <item>Open the port at 57 600 8N1, no flow control, 5 s read timeout.</item>
 ///   <item>Classify the hex image's target chip from its known
-///     first-bootloader lines (<see cref="NinoTncFirmwareHexImage"/>) —
+///     first-bootloader lines (<see cref="NinoTncFirmwareHexImage"/>) -
 ///     before touching the modem.</item>
 ///   <item>Drain the receive path until a full read-timeout of silence
-///     (abort if it is still chattering after 15 s — busy radio channel).</item>
+///     (abort if it is still chattering after 15 s - busy radio channel).</item>
 ///   <item>Probe for a stranded bootloader: write <c>'R'</c>; a <c>'K'</c>
 ///     reply means the modem is already in the bootloader (a previous flash
 ///     was interrupted) and the entry handshake is skipped.</item>
@@ -29,23 +29,23 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 ///   <item><c>'V'</c> queries the one-letter bootloader version: lowercase
 ///     means dsPIC33EP256GP, uppercase means dsPIC33EP512GP. A mismatch with
 ///     the image target aborts (<c>'R'</c> returns the modem to its current
-///     firmware) — the wrong image bricks the chip.</item>
+///     firmware) - the wrong image bricks the chip.</item>
 ///   <item>The image is sent line-by-line as ASCII. The <em>first</em> line
 ///     goes char-by-char at 100 ms per character (the bootloader is erasing
 ///     the flash page). Each line is answered: <c>'K'</c> next line,
 ///     <c>'Z'</c> done, <c>'F'</c> flash failure, <c>'N'</c> bad line
-///     checksum, <c>'X'</c> invalid character. A full image is ~16–17 k
-///     lines, 2–4 minutes.</item>
+///     checksum, <c>'X'</c> invalid character. A full image is ~16-17 k
+///     lines, 2-4 minutes.</item>
 ///   <item>On <c>'Z'</c> the modem reboots into the new firmware. The first
 ///     boot also runs a bootloader self-update (~2 s), and the RAM operating
-///     mode is cleared (boots mode 0) — re-verify with GETVER and re-apply
+///     mode is cleared (boots mode 0) - re-verify with GETVER and re-apply
 ///     the mode via SETHW.</item>
 /// </list>
 /// <para>
 /// <b>Cancellation:</b> honoured between protocol steps and between lines
 /// (reads block up to the 5 s port timeout, so observation can lag by that
 /// much). Cancelling <em>before</em> bootloader entry is completely safe.
-/// Cancelling after entry — including mid-transfer — <b>strands the modem in
+/// Cancelling after entry - including mid-transfer - <b>strands the modem in
 /// the bootloader</b> (LEDs dark, KISS silent, current firmware gone). That
 /// state is recoverable without hardware tools: run <see cref="FlashAsync"/>
 /// again and the stranded-bootloader probe resumes with a fresh transfer.
@@ -103,7 +103,7 @@ public sealed class BootloaderNinoTncFirmwareFlasher : INinoTncFirmwareFlasher
         // never get as far as opening the port.
         var image = NinoTncFirmwareHexImage.Parse(hexImage);
 
-        // The protocol is blocking serial IO with real-time pacing — run it
+        // The protocol is blocking serial IO with real-time pacing - run it
         // on a worker so the caller's context stays responsive.
         return Task.Run(() => FlashCoreAsync(portName, image, progress, cancellationToken), CancellationToken.None);
     }
@@ -190,7 +190,7 @@ public sealed class BootloaderNinoTncFirmwareFlasher : INinoTncFirmwareFlasher
             if (i == 0)
             {
                 // The bootloader erases the flash page while the first line
-                // trickles in — pace it at one character per delay tick.
+                // trickles in - pace it at one character per delay tick.
                 foreach (byte ch in lineBytes)
                 {
                     port.Write([ch]);
@@ -211,7 +211,7 @@ public sealed class BootloaderNinoTncFirmwareFlasher : INinoTncFirmwareFlasher
                     continue;
 
                 case 'Z':
-                    // Done — the modem is rebooting into the new firmware
+                    // Done - the modem is rebooting into the new firmware
                     // (first boot: bootloader self-update, ~2 s, then KISS).
                     linesWritten++;
                     progress?.Report(new NinoTncFlashProgress(lines.Count, lines.Count));
@@ -388,7 +388,7 @@ public sealed class BootloaderNinoTncFirmwareFlasher : INinoTncFirmwareFlasher
         }
         catch (Exception ex) when (ex is IOException or TimeoutException or InvalidOperationException)
         {
-            // Best-effort only — the abort path must surface the original
+            // Best-effort only - the abort path must surface the original
             // protocol failure, not a secondary write error.
         }
     }

@@ -24,8 +24,8 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
                 $"(expected one of: {string.Join(", ", ChannelProfiles.Names)} - or omit it for spec defaults).");
 
         // Discriminated-union dispatch: validate the concrete transport arm.
-        // A `kind:` the deserialiser didn't recognise never reaches here — it
-        // fails at parse time — so every value is one of the known subtypes.
+        // A `kind:` the deserialiser didn't recognise never reaches here - it
+        // fails at parse time - so every value is one of the known subtypes.
         When(p => p.Transport is SerialKissTransport, () =>
             RuleFor(p => (SerialKissTransport)p.Transport).SetValidator(new SerialKissValidator()));
         When(p => p.Transport is NinoTncTransport, () =>
@@ -49,21 +49,21 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         When(p => p.Kiss is not null, () =>
             RuleFor(p => p.Kiss!).SetValidator(new KissParamsValidator()));
 
-        // Per-port NET/ROM route quality (BPQ per-port QUALITY): 0..255 — the NET/ROM
+        // Per-port NET/ROM route quality (BPQ per-port QUALITY): 0..255 - the NET/ROM
         // quality range. A typo'd value is rejected rather than silently clamped,
         // matching the per-port tuning discipline. Null = inherit the global default.
         RuleFor(p => p.NetRomQuality!.Value).InclusiveBetween(0, 255)
             .When(p => p.NetRomQuality.HasValue)
             .WithMessage("Port.netRomQuality must be in 0..255 (the NET/ROM quality range).");
 
-        // Per-port NET/ROM MINQUAL (BPQ per-port MINQUAL): 0..255 — the NET/ROM quality
+        // Per-port NET/ROM MINQUAL (BPQ per-port MINQUAL): 0..255 - the NET/ROM quality
         // range, same discipline as netRomQuality above. Null = inherit the global default.
         RuleFor(p => p.NetRomMinQuality!.Value).InclusiveBetween(0, 255)
             .When(p => p.NetRomMinQuality.HasValue)
             .WithMessage("Port.netRomMinQuality must be in 0..255 (the NET/ROM quality range).");
 
         // Per-port NODESPACLEN: the NODES-broadcast UI-frame octet cap. A floor of one whole
-        // entry past the header (7 + 21 = 28) — below that no entry fits — up to the AX.25 UI
+        // entry past the header (7 + 21 = 28) - below that no entry fits - up to the AX.25 UI
         // ceiling (256). Out-of-range is rejected, not clamped (the per-port tuning discipline).
         // Null = no cap (today's behaviour).
         RuleFor(p => p.NodesPaclen!.Value).InclusiveBetween(28, 256)
@@ -82,15 +82,15 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         // Optional radio-control attachment. Its own fields are validated by PortRadioValidator;
         // additionally the block must pair with a transport that has a co-located radio:
         //  - a LOCAL radio (port/serial) needs a local serial-modem transport (serial-kiss /
-        //    nino-tnc) — its control channel is a second serial cable beside the modem's, which a
+        //    nino-tnc) - its control channel is a second serial cable beside the modem's, which a
         //    kiss-tcp / AXUDP port doesn't physically have.
         //  - a HEAD-END-bound radio needs the co-located full-control NinoTNC on the same head-end
-        //    (nino-tnc-tcp) — the modem+radio pair is always on one instance. This lifts the
+        //    (nino-tnc-tcp) - the modem+radio pair is always on one instance. This lifts the
         //    serial-only rule specifically for head-end ports; a kiss-tcp (LinBPQ) port still can't
         //    carry a cabled radio.
-        //  - a RIG-backed radio (kind rig) has no cable at all — it dials the port's rig: daemon —
+        //  - a RIG-backed radio (kind rig) has no cable at all - it dials the port's rig: daemon -
         //    so it pairs with ANY transport but requires the rig: block (rules inside the arm).
-        // A rig (CAT/station-control) attachment has no transport pairing to enforce — rigctld and
+        // A rig (CAT/station-control) attachment has no transport pairing to enforce - rigctld and
         // flrig are always TCP daemons beside any kind of port (an HF kiss-tcp port with an IC-7300
         // behind it is the motivating case), so the block validates standalone.
         When(p => p.Rig is not null, () =>
@@ -100,7 +100,7 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         {
             RuleFor(p => p.Radio!).SetValidator(new PortRadioValidator());
 
-            // radio: kind rig — the port's rig: (CAT) daemon re-presented as the packet-medium
+            // radio: kind rig - the port's rig: (CAT) daemon re-presented as the packet-medium
             // seam over a dedicated second connection. It has no control cable of its own, so
             // NONE of the transport-pairing rules below apply: a rig-backed radio works with any
             // transport (the headline case is a kiss-tcp soundmodem beside rigctld). What it DOES
@@ -114,7 +114,7 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
 
             When(p => !RadioKinds.Is(p.Radio!.Kind, RadioKinds.Rig), () =>
             {
-                // The tait-ccdi (and future cabled-control) pairing rules, exactly as before —
+                // The tait-ccdi (and future cabled-control) pairing rules, exactly as before -
                 // the rig arm above must not weaken any of them.
                 When(p => !p.Radio!.IsHeadEndBound, () =>
                     RuleFor(p => p.Transport)
@@ -155,12 +155,12 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
 /// <summary>
 /// Validates a per-port radio-control attachment (<see cref="PortRadioConfig"/>):
 /// a known <c>kind</c> (a typo'd one would otherwise silently fail at bring-up),
-/// the binding-mode discipline for a cabled (non-<c>rig</c>) kind — <b>exactly one</b> of
-/// <c>port</c> (the local control-channel device), <c>serial</c> (the local CCDI serial — the
+/// the binding-mode discipline for a cabled (non-<c>rig</c>) kind - <b>exactly one</b> of
+/// <c>port</c> (the local control-channel device), <c>serial</c> (the local CCDI serial - the
 /// stable identity that survives device renumbering), or <c>headEndId</c>+<c>deviceId</c> (a Tait
-/// CCDI device on a split-station head-end, both halves required) — or, for kind <c>rig</c>,
+/// CCDI device on a split-station head-end, both halves required) - or, for kind <c>rig</c>,
 /// that NO binding-mode field is set (the rig-backed radio dials the port's <c>rig:</c> daemon
-/// instead) — plus a positive baud and a positive health interval when set. Kind knowledge lives
+/// instead) - plus a positive baud and a positive health interval when set. Kind knowledge lives
 /// in <see cref="RadioKinds"/> (the same authority the radio factory resolves with), not here.
 /// </summary>
 public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
@@ -173,8 +173,8 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
                 $"radio.kind '{r.Kind}' is not a known radio-control kind " +
                 $"(expected one of: {string.Join(", ", RadioKinds.Names)}).");
 
-        // Kind rig has no control channel of its own — it dials a SECOND, dedicated connection to
-        // the port's rig: daemon — so the binding-mode fields (which describe a Tait CCDI link)
+        // Kind rig has no control channel of its own - it dials a SECOND, dedicated connection to
+        // the port's rig: daemon - so the binding-mode fields (which describe a Tait CCDI link)
         // are meaningless and must stay unset. (That the rig: block exists is a cross-field rule
         // at the PortConfig level, where the sibling block is visible.)
         When(r => RadioKinds.Is(r.Kind, RadioKinds.Rig), () =>
@@ -199,7 +199,7 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
                     "renumbering), or `headEndId`+`deviceId` (a Tait CCDI device on a split-station head-end); " +
                     "set one mode, not several, not none.");
 
-            // A head-end binding needs BOTH halves — the instance id AND the device id on it.
+            // A head-end binding needs BOTH halves - the instance id AND the device id on it.
             RuleFor(r => r)
                 .Must(r => HasNonEmptyHeadEndId(r) && HasNonEmptyDeviceId(r))
                 .When(r => HasNonEmptyHeadEndId(r) || HasNonEmptyDeviceId(r))
@@ -232,7 +232,7 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
     private static bool HasNonEmptyDeviceId(PortRadioConfig r) => !string.IsNullOrWhiteSpace(r.DeviceId);
 
     // Exactly one of the three binding modes. A partial head-end binding (only one of
-    // headEndId/deviceId) still counts as "attempting head-end mode" for exclusivity — the
+    // headEndId/deviceId) still counts as "attempting head-end mode" for exclusivity - the
     // completeness rule above reports the missing half separately, so a lone headEndId gives one
     // clear error, not a confusing "no binding mode".
     private static bool ExactlyOneBindingMode(PortRadioConfig r)
@@ -247,9 +247,9 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
 
 /// <summary>
 /// Validates a port's <c>rig:</c> attachment (<see cref="PortRigConfig"/>): a known kind, the
-/// binding-shape discipline — the BYO-daemon shape (<c>host</c>/<c>port</c>, either rig kind) or
+/// binding-shape discipline - the BYO-daemon shape (<c>host</c>/<c>port</c>, either rig kind) or
 /// the node-managed shape (<c>device</c>+<c>model</c>, hamlib only, no <c>port</c>, no remote
-/// <c>host</c>) — plus a non-empty host, a sane TCP port when set, and positive poll cadences
+/// <c>host</c>) - plus a non-empty host, a sane TCP port when set, and positive poll cadences
 /// when set. Kind and shape knowledge live in <see cref="RigKinds"/> /
 /// <see cref="PortRigConfig.IsNodeManaged"/> (the same authorities the rig factory and the port
 /// supervisor resolve with), not here.
@@ -319,7 +319,7 @@ public sealed class PortRigValidator : AbstractValidator<PortRigConfig>
             .WithMessage("rig.serialSpeed must be positive (baud; omit it for hamlib's per-model default).");
 
         // `model`/`serialSpeed` describe the daemon the node spawns; without `device` there is
-        // no spawned daemon for them to describe — a BYO daemon already knows its own rig.
+        // no spawned daemon for them to describe - a BYO daemon already knows its own rig.
         When(r => !r.IsNodeManaged, () =>
         {
             RuleFor(r => r.Model)
@@ -347,7 +347,7 @@ public sealed class PortRigValidator : AbstractValidator<PortRigConfig>
 }
 
 /// <summary>
-/// Validates a <see cref="NinoTncTcpTransport"/> — the full-control NinoTNC over a split-station
+/// Validates a <see cref="NinoTncTcpTransport"/> - the full-control NinoTNC over a split-station
 /// head-end: a non-empty head-end id + device id (the <c>(headEndId, deviceId)</c> binding resolved
 /// at bring-up) and the 0..15 mode range (mirroring the local <see cref="NinoTncValidator"/>). That
 /// the referenced head-end id actually exists is a whole-config check in
@@ -368,7 +368,7 @@ public sealed class NinoTncTcpValidator : AbstractValidator<NinoTncTcpTransport>
 
 /// <summary>
 /// Validates a per-port AX.25 compatibility profile (<see cref="PortCompatConfig"/>).
-/// A typo'd preset or quirks name is a config error — it would otherwise silently
+/// A typo'd preset or quirks name is a config error - it would otherwise silently
 /// resolve as the default, the accept-then-ignore failure the named-flag discipline
 /// exists to prevent. Name knowledge lives in <see cref="Ax25CompatPresets"/> (the
 /// same authority the supervisor resolves with), not here.
@@ -416,13 +416,13 @@ public sealed class PortLinkValidator : AbstractValidator<PortLinkConfig>
 
 /// <summary>
 /// Validates the per-port KISS knobs. Every one is a single <b>byte on the wire</b>
-/// (0..255) — that is the KISS protocol — so an out-of-range value is rejected here,
+/// (0..255) - that is the KISS protocol - so an out-of-range value is rejected here,
 /// by name and with its units, rather than reaching the transport.
 /// <para>
 /// This validator is why <see cref="KissParams"/> is <c>int?</c> rather than <c>byte?</c>
 /// (#672): a <c>byte?</c> made an out-of-range value fail JSON model binding, so the API
 /// answered a bare <b>400</b> with no field name instead of the 422 every other bad value
-/// gets. The messages name the unit, because the trap is thinking in milliseconds — the
+/// gets. The messages name the unit, because the trap is thinking in milliseconds - the
 /// panel itself made exactly that mistake and posted <c>txDelay: 300</c>.
 /// </para>
 /// </summary>
@@ -461,7 +461,7 @@ public sealed class SerialKissValidator : AbstractValidator<SerialKissTransport>
     }
 }
 
-/// <summary>Validates a <see cref="NinoTncTransport"/> incl. the 0–15 mode range.</summary>
+/// <summary>Validates a <see cref="NinoTncTransport"/> incl. the 0-15 mode range.</summary>
 public sealed class NinoTncValidator : AbstractValidator<NinoTncTransport>
 {
     public NinoTncValidator()
@@ -497,9 +497,9 @@ public sealed class AxudpValidator : AbstractValidator<AxudpTransport>
 }
 
 /// <summary>
-/// Validates a <see cref="TaitTransparentTransportConfig"/>: exactly one binding mode —
+/// Validates a <see cref="TaitTransparentTransportConfig"/>: exactly one binding mode -
 /// <c>device</c> (local path), <c>serial</c> (local CCDI serial), or <c>headEndId</c>+<c>deviceId</c>
-/// (a split-station head-end device, both halves required, #585) — the two bauds and the FFSK
+/// (a split-station head-end device, both halves required, #585) - the two bauds and the FFSK
 /// baud are positive, and the lead-in is non-negative. Mirrors <see cref="PortRadioValidator"/>'s
 /// binding-mode discipline. That a referenced head-end id is actually declared is a whole-config
 /// check in <see cref="NodeConfigValidator"/> (it needs the head-ends list).
@@ -519,7 +519,7 @@ public sealed class TaitTransparentValidator : AbstractValidator<TaitTransparent
                 "device renumbering), or `headEndId`+`deviceId` (the radio's serial port on a " +
                 "split-station head-end); set one mode, not several, not none.");
 
-        // A head-end binding needs BOTH halves — the instance id AND the device id on it.
+        // A head-end binding needs BOTH halves - the instance id AND the device id on it.
         RuleFor(t => t)
             .Must(t => HasNonEmptyHeadEndId(t) && HasNonEmptyDeviceId(t))
             .When(t => HasNonEmptyHeadEndId(t) || HasNonEmptyDeviceId(t))
@@ -542,7 +542,7 @@ public sealed class TaitTransparentValidator : AbstractValidator<TaitTransparent
     private static bool HasNonEmptyDeviceId(TaitTransparentTransportConfig t) => !string.IsNullOrWhiteSpace(t.DeviceId);
 
     // Exactly one of the three binding modes. A partial head-end binding (only one of
-    // headEndId/deviceId) still counts as "attempting head-end mode" for exclusivity — the
+    // headEndId/deviceId) still counts as "attempting head-end mode" for exclusivity - the
     // completeness rule above reports the missing half separately, so a lone headEndId gives one
     // clear error, not a confusing "no binding mode". Mirrors PortRadioValidator.
     private static bool ExactlyOneBindingMode(TaitTransparentTransportConfig t)
@@ -558,7 +558,7 @@ public sealed class TaitTransparentValidator : AbstractValidator<TaitTransparent
 /// <summary>
 /// Validates an <see cref="AxudpMultipointTransport"/> (the BPQ <c>BPQAXIP</c> analog):
 /// the local bind port, each peer's callsign / host / port, and that no two peers share
-/// a callsign (the routing key must be unique — a duplicate would make routing ambiguous).
+/// a callsign (the routing key must be unique - a duplicate would make routing ambiguous).
 /// </summary>
 public sealed class AxudpMultipointValidator : AbstractValidator<AxudpMultipointTransport>
 {
@@ -571,7 +571,7 @@ public sealed class AxudpMultipointValidator : AbstractValidator<AxudpMultipoint
 
         RuleForEach(t => t.Peers).SetValidator(new AxudpPeerValidator());
 
-        // No two peers may share a callsign — the callsign is the outbound routing key, so a
+        // No two peers may share a callsign - the callsign is the outbound routing key, so a
         // duplicate is an ambiguous MAP. Compared on the parsed Callsign (so "G7XYZ-0" and
         // "G7XYZ" collide), skipping peers whose callsign doesn't parse (the per-peer rule
         // already reports those).
@@ -629,9 +629,9 @@ public sealed class Ax25ParamsValidator : AbstractValidator<Ax25PortParams>
         // extended links; NodeConfigWarnings.WideWindowSeeds says so on the boot log.
         RuleFor(p => p.WindowSize!.Value).InclusiveBetween(1, 127).When(p => p.WindowSize.HasValue)
             .WithMessage("WindowSize (k) must be in 1..127 (values above 7 only take effect on mod-128 links; mod-8 sessions clamp to 7).");
-        // N1 / PACLEN: a sensible floor (>= 16 — below that an I-frame is almost all
+        // N1 / PACLEN: a sensible floor (>= 16 - below that an I-frame is almost all
         // header, and the segmenter needs room for a payload) up to the AX.25 v2.2
-        // ceiling (256 octets — the XID-default N1 and the largest the spec negotiates).
+        // ceiling (256 octets - the XID-default N1 and the largest the spec negotiates).
         // An HF port wanting ~80 sits comfortably in range. Out-of-range is rejected,
         // not clamped, matching the per-port tuning discipline.
         RuleFor(p => p.N1!.Value).InclusiveBetween(16, 256).When(p => p.N1.HasValue)
@@ -649,7 +649,7 @@ public sealed class Ax25ParamsValidator : AbstractValidator<Ax25PortParams>
 public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportConfig>
 {
     // The exposed mode set is the shared catalogue's, minus bpsk1200-multi: the 1200-baud
-    // diversity bank is not exposed (no over-the-air evidence yet — bpsk1200 stays the legacy
+    // diversity bank is not exposed (no over-the-air evidence yet - bpsk1200 stays the legacy
     // single-carrier modem). Sourcing this from ModemCatalog keeps it from drifting again.
     private static readonly string[] KnownModes =
         ModemCatalog.KnownModes.Where(m => m != "bpsk1200-multi").ToArray();
@@ -715,7 +715,7 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
             .WithMessage(
                 "soundmodem `ptt` must be empty (VOX), `serial:<device>[:rts|:dtr]`, or `cm108:<hidraw>[:gpio]`.");
 
-        // A flex: device keys itself over CAT — a configured PTT would be ignored, so reject it.
+        // A flex: device keys itself over CAT - a configured PTT would be ignored, so reject it.
         RuleFor(t => t.Ptt)
             .Must(string.IsNullOrEmpty)
             .When(t => FlexDevice.IsFlex(t.Device))

@@ -6,9 +6,9 @@ namespace Packet.NetRom.Routing;
 /// The pure INP3 route-<b>selection</b> policy: given a destination's kept routes and
 /// the <c>preferInp3Routes</c> knob, decide which single <see cref="NetRomRoute"/> the
 /// node treats as <em>active</em> for that destination (the route a <c>connect</c> or a
-/// best-route forward resolves to). This is the locked truth table of plan risk #4 —
+/// best-route forward resolves to). This is the locked truth table of plan risk #4 -
 /// the coexistence of the two metric spaces (NODES quality vs INP3 measured target
-/// time) — realised as a side-effect-free static function (see
+/// time) - realised as a side-effect-free static function (see
 /// <c>docs/netrom-inp3-i3-design.md</c> §3).
 /// </summary>
 /// <remarks>
@@ -20,24 +20,24 @@ namespace Packet.NetRom.Routing;
 /// at least one INP3 route (a route whose <see cref="NetRomRoute.Inp3"/> is non-null):
 /// select the <b>lowest-<see cref="Inp3RouteMetric.TargetTimeMs"/></b> INP3 route, ties
 /// broken by lowest <see cref="Inp3RouteMetric.HopCount"/> then by neighbour callsign
-/// (ordinal) for determinism — the time-space mirror of the quality-space "highest
+/// (ordinal) for determinism - the time-space mirror of the quality-space "highest
 /// quality, then callsign" ordering.</description></item>
 /// <item><description>Otherwise (the knob is off, <em>or</em> no INP3 route exists):
-/// fall back to the <b>best-quality</b> route — exactly today's behaviour,
+/// fall back to the <b>best-quality</b> route - exactly today's behaviour,
 /// <see cref="NetRomDestination.BestRoute"/> (the first of the best-quality-first
 /// <see cref="NetRomDestination.Routes"/> list). The <see cref="NetRomRoute.Inp3"/>
 /// metric is never read on this path.</description></item>
 /// </list>
 /// <para>
 /// <b>Degenerate-to-today invariant (the acceptance bar, §3.3).</b> Selection collapses
-/// to today's quality path — byte-for-byte — in every case where INP3 cannot win:
+/// to today's quality path - byte-for-byte - in every case where INP3 cannot win:
 /// (1) the knob off ⇒ quality; (2) a destination with no INP3 route ⇒ quality fallback;
 /// (3) a single-route destination ⇒ that one route regardless of mode. INP3 only ever
 /// changes the result for a destination that <em>both</em> opted in via the knob and
 /// actually holds a time-route. The <c>enabled</c> overlay switch sits above this
 /// function: when the overlay is disabled no INP3 route is ever ingested, so
 /// <see cref="NetRomRoute.Inp3"/> is null on every route and the caller passes
-/// <c>preferInp3Routes: false</c> (or it is moot) — either way this function returns the
+/// <c>preferInp3Routes: false</c> (or it is moot) - either way this function returns the
 /// quality route unchanged.
 /// </para>
 /// <para>
@@ -81,7 +81,7 @@ public static class Inp3RouteSelector
         // preferInp3Routes == true: prefer the best INP3 route if the destination holds
         // any time-route; else fall back to quality. A single linear scan keeps a
         // running best by the time-space key (lowest TargetTimeMs, then lowest HopCount,
-        // then neighbour callsign ordinal) — no allocation, no sort.
+        // then neighbour callsign ordinal) - no allocation, no sort.
         NetRomRoute? bestInp3 = null;
         foreach (var route in dest.Routes)
         {
@@ -106,7 +106,7 @@ public static class Inp3RouteSelector
     /// <see cref="Inp3RouteMetric.TargetTimeMs"/> wins; ties broken by lower
     /// <see cref="Inp3RouteMetric.HopCount"/>, then by neighbour callsign (ordinal) for
     /// a stable, deterministic choice. Both routes are assumed INP3-bearing
-    /// (<see cref="NetRomRoute.Inp3"/> non-null) — the caller filters quality-only
+    /// (<see cref="NetRomRoute.Inp3"/> non-null) - the caller filters quality-only
     /// routes out before comparing.
     /// </summary>
     private static bool IsBetterInp3(NetRomRoute candidate, NetRomRoute incumbent)

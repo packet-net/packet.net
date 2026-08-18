@@ -11,7 +11,7 @@ namespace Packet.Tune.Core;
 /// </summary>
 public sealed record TransparentReadinessOptions
 {
-    /// <summary>The Transparent-mode escape character (§1.7.2) — the byte sent ×3 to leave
+    /// <summary>The Transparent-mode escape character (§1.7.2) - the byte sent ×3 to leave
     /// Transparent. Default <c>'+'</c> (the <c>+++</c> sequence).</summary>
     public char EscapeChar { get; init; } = '+';
 
@@ -41,16 +41,16 @@ public sealed record TransparentReadinessOptions
 
 /// <summary>
 /// The outcome of <see cref="TransparentReadinessDoctor.RunEnableAndEscapeProbesAsync"/>: the
-/// probe rows plus the two facts a caller must act on — whether the radio is now wedged in
+/// probe rows plus the two facts a caller must act on - whether the radio is now wedged in
 /// Transparent (needs a power cycle) and whether it entered and cleanly recovered (so a
 /// baud-clean loopback may safely follow).
 /// </summary>
 /// <param name="Probes">The <c>transparent-mode-enabled</c> and <c>escape-recovers</c> probe rows.</param>
 /// <param name="RadioWedged">When <c>true</c> the escape was ignored and the radio is STUCK in
-/// Transparent mode — a power cycle is the only recovery. The caller must surface this loudly and
+/// Transparent mode - a power cycle is the only recovery. The caller must surface this loudly and
 /// must not attempt further CCDI transactions.</param>
 /// <param name="EnteredAndRecovered">When <c>true</c> the radio entered Transparent and the escape
-/// returned it to Command mode — it is safe to continue (e.g. run the baud-clean probe).</param>
+/// returned it to Command mode - it is safe to continue (e.g. run the baud-clean probe).</param>
 public sealed record TransparentReadinessResult(
     IReadOnlyList<DoctorProbe> Probes,
     bool RadioWedged,
@@ -60,19 +60,19 @@ public sealed record TransparentReadinessResult(
 /// The Transparent-mode readiness doctor: the "esoteric radio configuration" checks for a Tait
 /// FFSK <b>Transparent</b> transport (the TNC-less <c>tait-transparent</c> port), folded into the
 /// same <see cref="DoctorProbe"/> pass/fail/unknown shape the <see cref="TuningDoctor"/> uses.
-/// Every check is <b>behavioral</b> — the codeplug settings that matter (Transparent Mode enabled,
+/// Every check is <b>behavioral</b> - the codeplug settings that matter (Transparent Mode enabled,
 /// "Ignore Escape Sequence", the two baud fields, FFSK Baud Rate) are not CCDI-readable, so each
 /// probe exercises the behaviour and maps the result to a remedy naming the exact Data-form field.
 /// <list type="number">
-///   <item><b>transparent-mode-enabled</b> — attempt to enter Transparent mode; error 0/06 means
+///   <item><b>transparent-mode-enabled</b> - attempt to enter Transparent mode; error 0/06 means
 ///     the feature is disabled in the radio's programming.</item>
-///   <item><b>escape-recovers</b> — from Transparent, verify the <c>+++</c> escape returns the
+///   <item><b>escape-recovers</b> - from Transparent, verify the <c>+++</c> escape returns the
 ///     radio to Command mode. THE RISKY ONE: a radio programmed "Ignore Escape Sequence" ON cannot
 ///     leave Transparent and this probe leaves it <b>wedged</b> (power-cycle to recover). It best-
 ///     effort retries the escape and reports the wedge loudly. Because entering Transparent is only
 ///     reversible while the escape works, the whole enter/escape pair is gated behind the doctor's
-///     explicit interrupt/opt-in — never run by default.</item>
-///   <item><b>baud-clean</b> — with two radios both in Transparent, loop a known frame through and
+///     explicit interrupt/opt-in - never run by default.</item>
+///   <item><b>baud-clean</b> - with two radios both in Transparent, loop a known frame through and
 ///     confirm it round-trips byte-for-byte (catches a command-vs-Transparent baud mismatch or an
 ///     FFSK-baud mismatch between the radios). Peer-dependent.</item>
 /// </list>
@@ -136,7 +136,7 @@ public static class TransparentReadinessDoctor
 
         // Probe 1: attempt to enter Transparent mode. A radio with Transparent disabled rejects the
         // `t` command with error 0/06 and stays safely in Command mode (no wedge). A radio with it
-        // enabled enters — and from here on the escape is the only way back out.
+        // enabled enters - and from here on the escape is the only way back out.
         try
         {
             await radio.EnterTransparentModeAsync(opts.EscapeChar, thsd: false, cancellationToken)
@@ -168,7 +168,7 @@ public static class TransparentReadinessDoctor
         }
 
         // Probe 2: the radio is now in Transparent mode. Verify the `+++` escape recovers Command
-        // mode — best-effort retry before declaring the radio wedged.
+        // mode - best-effort retry before declaring the radio wedged.
         bool recovered = await radio.EscapeAndVerifyTransparentAsync(
             opts.EscapeAttempts, opts.EscapeGuard, opts.VerifyTimeout, cancellationToken)
             .ConfigureAwait(false);
@@ -273,7 +273,7 @@ public static class TransparentReadinessDoctor
         byte[] spread = new byte[64];
         for (int i = 0; i < spread.Length; i++)
         {
-            spread[i] = (byte)(i * 4); // 0x00, 0x04, ... 0xFC — covers the full range in steps
+            spread[i] = (byte)(i * 4); // 0x00, 0x04, ... 0xFC - covers the full range in steps
         }
         byte[] specials = [0xC0, 0xDB, 0xDC, 0xDD, 0x00, 0x11, 0x13, 0xFF]; // FEND/FESC/XON/XOFF/…
         return [.. marker, .. spread, .. specials];

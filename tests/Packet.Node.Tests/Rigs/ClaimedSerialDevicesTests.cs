@@ -6,8 +6,8 @@ namespace Packet.Node.Tests.Rigs;
 
 /// <summary>
 /// <see cref="ClaimedSerialDevices"/>: the "what already owns this device?" set behind the rig
-/// scan. Every serial-shaped claim in config must register — transport devices (enabled AND
-/// disabled ports), radio control devices, rig CAT devices — keyed canonically so a by-id
+/// scan. Every serial-shaped claim in config must register - transport devices (enabled AND
+/// disabled ports), radio control devices, rig CAT devices - keyed canonically so a by-id
 /// symlink in config and a raw <c>/dev/ttyUSB*</c> path from a scan collide. Serial-number
 /// bindings (<c>radio.serial:</c>) are deliberately absent: which device they land on is only
 /// knowable by probing, and the helper is passive.
@@ -69,7 +69,7 @@ public sealed class ClaimedSerialDevicesTests : IDisposable
     [Fact]
     public void Disabled_ports_still_claim_their_devices()
     {
-        // A port the operator merely toggled off keeps its hardware — the scan must not offer it.
+        // A port the operator merely toggled off keeps its hardware - the scan must not offer it.
         var claimed = Collect(Config(new PortConfig
         {
             Id = "hf",
@@ -84,7 +84,7 @@ public sealed class ClaimedSerialDevicesTests : IDisposable
     [Fact]
     public void Serial_number_bindings_and_head_end_bindings_claim_nothing()
     {
-        // radio.serial: / tait-transparent serial: name a CCDI serial, not a device — resolving
+        // radio.serial: / tait-transparent serial: name a CCDI serial, not a device - resolving
         // one to a path needs a probe, and this helper is passive. Head-end devices are remote.
         var claimed = Collect(Config(new PortConfig
         {
@@ -138,7 +138,7 @@ public sealed class ClaimedSerialDevicesTests : IDisposable
         var byIdLink = Path.Combine(dir, "usb-Icom_Inc._IC-705_IC-705_12345678-if00");
         File.CreateSymbolicLink(byIdLink, device);
 
-        // Config claims via the (stable) by-id path — the default canonicalisation must land the
+        // Config claims via the (stable) by-id path - the default canonicalisation must land the
         // claim on the same key the scanner computes from the raw device path.
         var claimed = ClaimedSerialDevices.Collect(Config(new PortConfig
         {

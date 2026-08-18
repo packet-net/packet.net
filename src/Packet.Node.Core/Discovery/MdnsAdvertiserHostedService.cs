@@ -14,20 +14,20 @@ namespace Packet.Node.Core.Discovery;
 ///
 /// <para>
 /// Registration is delegated to the system mDNS daemon by supervising an
-/// <c>avahi-publish</c> child — the conflict-free path on the Linux hosts the node deb
+/// <c>avahi-publish</c> child - the conflict-free path on the Linux hosts the node deb
 /// targets (Avahi owns port 5353; we register through it rather than run a second
 /// responder). <c>avahi-publish -s</c> emits only the PTR/SRV/TXT for our service; the SRV
 /// target is the daemon's own <c>&lt;host&gt;.local</c>, whose A/AAAA record avahi-daemon
-/// publishes independently — so a reachable host name depends on avahi-daemon running, not
+/// publishes independently - so a reachable host name depends on avahi-daemon running, not
 /// on this publish. The supervision mirrors
 /// <see cref="Tailscale.TailscaleSidecarHostedService"/>: event-driven off
 /// <see cref="IConfigProvider.OnChange"/>, the child is (re)spawned when the desired advert
 /// (by value <see cref="Signature"/>) changes, and a failed/exited child is retried with
-/// capped backoff — all on the injected <see cref="TimeProvider"/>.
+/// capped backoff - all on the injected <see cref="TimeProvider"/>.
 /// </para>
 /// <para>
 /// The surface is <b>total</b>: a missing <c>avahi-publish</c> (no Avahi, or a non-Linux
-/// dev box), a daemon-down error, or any defect logs and stays dormant — it never throws
+/// dev box), a daemon-down error, or any defect logs and stays dormant - it never throws
 /// out of the run loop or affects the node. Discovery is a convenience; manual add-by-address
 /// in the app always works.
 /// </para>
@@ -41,7 +41,7 @@ public sealed partial class MdnsAdvertiserHostedService : BackgroundService
     private static readonly TimeSpan BackoffBase = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan BackoffCap = TimeSpan.FromSeconds(60);
 
-    /// <summary>A child that survived this long counts as a clean run — the next exit
+    /// <summary>A child that survived this long counts as a clean run - the next exit
     /// starts a fresh backoff streak rather than inheriting an old one.</summary>
     private static readonly TimeSpan StableRun = TimeSpan.FromSeconds(30);
 
@@ -76,7 +76,7 @@ public sealed partial class MdnsAdvertiserHostedService : BackgroundService
             .TrySetResult();
     }
 
-    /// <summary>A value key for an advert plan — so the reconcile compares by content
+    /// <summary>A value key for an advert plan - so the reconcile compares by content
     /// (instance + port + TXT), not by record reference (the TXT list is a fresh instance
     /// each pass, so reference equality would restart the child on every config change).</summary>
     internal static string Signature(AdvertPlan p) =>

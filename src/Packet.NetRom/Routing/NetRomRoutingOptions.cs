@@ -2,7 +2,7 @@ namespace Packet.NetRom.Routing;
 
 /// <summary>
 /// The configurable knobs of NET/ROM route maintenance. These exist because
-/// <b>NET/ROM has no single normative standard</b> — the canonical appendix
+/// <b>NET/ROM has no single normative standard</b> - the canonical appendix
 /// names defaults (OBSINIT 6, three routes per destination), but real nodes set
 /// the quality floors and table caps differently (BPQ's per-port MINQUAL,
 /// XRouter's deliberately-lower qualities), and quality-floor drift is the
@@ -20,10 +20,10 @@ public sealed record NetRomRoutingOptions
 {
     /// <summary>
     /// The path quality assumed for a directly-heard neighbour we have no
-    /// configured link quality for — the quality of the assumed direct route to
+    /// configured link quality for - the quality of the assumed direct route to
     /// a broadcast's originator. Canonical default-port path quality is
     /// <b>192</b> (a common direct-link convention; the appendix's worked
-    /// examples and BPQ both sit in the 192–203 band).
+    /// examples and BPQ both sit in the 192-203 band).
     /// </summary>
     public int DefaultNeighbourQuality { get; init; } = 192;
 
@@ -52,7 +52,7 @@ public sealed record NetRomRoutingOptions
     /// <summary>
     /// The obsolescence advertise-gate (BPQ's OBSMIN): a route whose obsolescence
     /// has decayed <em>below</em> this is still kept + usable but is no longer
-    /// included in our outgoing NODES broadcasts — so a fading route stops being
+    /// included in our outgoing NODES broadcasts - so a fading route stops being
     /// advertised before it is finally purged at 0. Canonical / BPQ default
     /// <b>4</b>; a value ≤ 1 advertises every kept route.
     /// </summary>
@@ -65,7 +65,7 @@ public sealed record NetRomRoutingOptions
     public int MaxRoutesPerDestination { get; init; } = 3;
 
     /// <summary>
-    /// Upper bound on the number of distinct destinations the table will hold — a
+    /// Upper bound on the number of distinct destinations the table will hold - a
     /// memory-safety cap against an unbounded destination list on a busy network
     /// (BPQ's MAXNODES). Once reached, broadcasts advertising a brand-new
     /// destination are ignored (existing destinations still update). Default

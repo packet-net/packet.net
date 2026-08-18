@@ -16,10 +16,10 @@ namespace Packet.Node.Core.Applications;
 public interface IApplicationHost
 {
     /// <summary>Resolve an <b>enabled</b> application whose <see cref="ApplicationConfig.Command"/>
-    /// equals <paramref name="verb"/> (case-insensitive, exact — no abbreviation), reading the
+    /// equals <paramref name="verb"/> (case-insensitive, exact - no abbreviation), reading the
     /// live config so a hot edit applies to the next launch. Resolution is the <b>union</b> of
     /// the inline <c>applications:</c> list and the enabled, error-free app packages with a
-    /// <c>session:</c> block (<c>docs/app-packages.md</c>) — inline first on a verb tie. Null
+    /// <c>session:</c> block (<c>docs/app-packages.md</c>) - inline first on a verb tie. Null
     /// if none matches.</summary>
     ApplicationConfig? Resolve(string verb);
 
@@ -32,7 +32,7 @@ public interface IApplicationHost
     /// Resolve a bare node-prompt command verb to the resolved callsign of a <b>service</b> app
     /// (an enabled packet/service app, inline or package, with a <c>command</c> verb but no
     /// <c>session:</c> attachment). The console typing this verb then issues a loopback connect
-    /// to that callsign — the same path <c>C &lt;callsign&gt;</c> takes. Returns null when the
+    /// to that callsign - the same path <c>C &lt;callsign&gt;</c> takes. Returns null when the
     /// verb matches no service app (a session app is handled by <see cref="Resolve"/> instead, a
     /// built-in verb never reaches here). Reads live config so a hot edit applies immediately.
     /// </summary>
@@ -45,7 +45,7 @@ public sealed partial class ApplicationHost : IApplicationHost
     private readonly IConfigProvider config;
     private readonly ILoggerFactory loggerFactory;
     private readonly ILogger<ApplicationHost> logger;
-    // Optional app-package catalog (docs/app-packages.md). Null = inline applications only —
+    // Optional app-package catalog (docs/app-packages.md). Null = inline applications only -
     // exactly the pre-package behaviour, so every existing caller/test is untouched.
     private readonly IAppPackageCatalog? catalog;
 
@@ -60,7 +60,7 @@ public sealed partial class ApplicationHost : IApplicationHost
     /// <summary>
     /// The live view of which app callsigns are currently bound over RHP. Set by the host after the
     /// <c>PortSupervisor</c> is constructed (the supervisor IS the registry; the host builds it
-    /// after this object — hence a settable seam, not a ctor arg). Null = no registry wired (older
+    /// after this object - hence a settable seam, not a ctor arg). Null = no registry wired (older
     /// hosts / tests): the bare-verb resolver then returns the node-resolved callsign verbatim,
     /// exactly the pre-#476 behaviour. When present it lets the resolver reach a self-deriving app
     /// that bound a different SSID than its node-resolved <c>PDN_APP_CALLSIGN</c> (packet.net#476).
@@ -90,7 +90,7 @@ public sealed partial class ApplicationHost : IApplicationHost
     /// <summary>The package half of the union: an enabled, error-free discovered package with a
     /// <c>session:</c> block whose effective command verb (owner override ?? manifest
     /// <c>packet.command</c>) matches. Mapped to the <see cref="ApplicationConfig"/> shape the
-    /// existing run path already understands — executable/args resolved against the package dir,
+    /// existing run path already understands - executable/args resolved against the package dir,
     /// working dir = the app's state dir.</summary>
     private ApplicationConfig? ResolvePackage(string wanted, NodeConfig current)
     {
@@ -111,7 +111,7 @@ public sealed partial class ApplicationHost : IApplicationHost
                 continue;
             }
 
-            // First use of the app's state dir — make it exist (it is the session's working
+            // First use of the app's state dir - make it exist (it is the session's working
             // directory). A failure is logged and left for the spawn to surface as
             // "unavailable" through the total RunAsync path.
             try
@@ -136,7 +136,7 @@ public sealed partial class ApplicationHost : IApplicationHost
                 Args = session.Args.Select(a => AppPackagePaths.ResolveFile(a, pkg.PackageDir)).ToArray(),
                 WorkingDirectory = pkg.StateDir,
                 Capabilities = pkg.Manifest.Capabilities,
-                Ui = null,   // tiles are the gateway's concern — out of the session union's scope
+                Ui = null,   // tiles are the gateway's concern - out of the session union's scope
             };
         }
         return null;
@@ -175,7 +175,7 @@ public sealed partial class ApplicationHost : IApplicationHost
             {
                 return BridgeToBoundCallsign(resolved.Callsign, callsigns);
             }
-            return null;   // verb matched but the app has no resolvable callsign — nothing to dial.
+            return null;   // verb matched but the app has no resolvable callsign - nothing to dial.
         }
         return null;
     }
@@ -186,8 +186,8 @@ public sealed partial class ApplicationHost : IApplicationHost
     /// resolved callsign is live in the registry → return it unchanged (no regression). An
     /// <b>un-migrated, self-deriving</b> app instead bound some other SSID of the node base; its
     /// resolved callsign is then absent from the registry. In that case, if the registry holds
-    /// exactly one "stray" binding on the same node base — a callsign that is not the node-resolved
-    /// identity of any app, i.e. one the node didn't hand out — that stray is the self-deriving
+    /// exactly one "stray" binding on the same node base - a callsign that is not the node-resolved
+    /// identity of any app, i.e. one the node didn't hand out - that stray is the self-deriving
     /// app, so dial it. Ambiguous (or no) stray ⇒ fall back to the resolved callsign: a best-effort
     /// that never guesses the wrong app, and matches the pre-#476 behaviour. With no registry wired
     /// (older hosts / tests) the resolved callsign is returned verbatim.
@@ -203,7 +203,7 @@ public sealed partial class ApplicationHost : IApplicationHost
         }
 
         // The set of callsigns the node DID hand out (every app's node-resolved identity). A
-        // registered callsign in this set belongs to some other (migrated) app — never the
+        // registered callsign in this set belongs to some other (migrated) app - never the
         // self-deriving one we're looking for.
         var nodeAssigned = new HashSet<Packet.Core.Callsign>(callsigns.Values.Select(c => c.Callsign));
 
@@ -224,7 +224,7 @@ public sealed partial class ApplicationHost : IApplicationHost
         ArgumentNullException.ThrowIfNull(context);
 
         // CA1859: 'impl' is deliberately the INodeApplication abstraction, not the single
-        // concrete type slice 1 happens to build — this is the platform seam, and later
+        // concrete type slice 1 happens to build - this is the platform seam, and later
         // ApplicationKinds (long-running socket, WASM) are dropped into the switch below. The
         // micro-perf of a concrete type is irrelevant against spawning a process per launch.
 #pragma warning disable CA1859
@@ -260,7 +260,7 @@ public sealed partial class ApplicationHost : IApplicationHost
         }
         catch (OperationCanceledException)
         {
-            throw;   // node/session shutting down — let the console loop unwind
+            throw;   // node/session shutting down - let the console loop unwind
         }
         catch (Exception ex)
         {
@@ -270,7 +270,7 @@ public sealed partial class ApplicationHost : IApplicationHost
     }
 
     // Best-effort one-line write to the user, terminated per transport (CR for AX.25 /
-    // NET-ROM, CR-LF for telnet) — matches the console's line discipline.
+    // NET-ROM, CR-LF for telnet) - matches the console's line discipline.
     private static async Task WriteLineAsync(INodeConnection connection, string text, CancellationToken ct)
     {
         var nl = connection.TransportKind == NodeTransportKind.Telnet ? "\r\n" : "\r";
@@ -280,7 +280,7 @@ public sealed partial class ApplicationHost : IApplicationHost
         }
         catch
         {
-            // The user is gone — nothing to report to.
+            // The user is gone - nothing to report to.
         }
     }
 

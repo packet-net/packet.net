@@ -6,7 +6,7 @@ public sealed record FlrigRigOptions
     /// <summary>flrig's stock XML-RPC port.</summary>
     public const int DefaultPort = 12345;
 
-    /// <summary>Host running flrig. Default loopback — flrig's XML-RPC server has no
+    /// <summary>Host running flrig. Default loopback - flrig's XML-RPC server has no
     /// authentication.</summary>
     public string Host { get; init; } = "127.0.0.1";
 

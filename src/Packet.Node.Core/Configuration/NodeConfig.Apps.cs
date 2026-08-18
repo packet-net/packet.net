@@ -11,17 +11,17 @@ public sealed record AppOverrideConfig
     /// An entry whose id matches no discovered package is a warning, not an error.</summary>
     public required string Id { get; init; }
 
-    /// <summary>The trust switch. Default <c>false</c> — a discovered package never runs,
+    /// <summary>The trust switch. Default <c>false</c> - a discovered package never runs,
     /// resolves a verb, or shows a tile until the owner flips this.</summary>
     public bool Enabled { get; init; }
 
     /// <summary>Optional override of the manifest's <c>packet.command</c> node-prompt verb
     /// (<c>docs/app-packages.md</c> § Application packet identity). Null = use the manifest's
-    /// own <see cref="AppPacketSpec.Command"/>. This replaces the old <c>match</c> field — the
+    /// own <see cref="AppPacketSpec.Command"/>. This replaces the old <c>match</c> field - the
     /// verb for a session app is now <see cref="AppPacketSpec.Command"/>, owner-overridable here.</summary>
     public string? Command { get; init; }
 
-    /// <summary>Optional pinned callsign for this app — the node's choice, the on-air L2 identity
+    /// <summary>Optional pinned callsign for this app - the node's choice, the on-air L2 identity
     /// stations dial directly (<c>docs/app-packages.md</c> § Application packet identity). A full
     /// callsign (e.g. <c>M9YYY-1</c>) or a bare <c>-N</c> SSID appended to the node base. Null =
     /// the node auto-assigns <c>&lt;node-base&gt;-&lt;lowest free SSID&gt;</c>. Injected as
@@ -40,7 +40,7 @@ public sealed record AppOverrideConfig
         new Dictionary<string, string>();
 
     // The Environment dictionary is a collection member, which a record compares by
-    // REFERENCE — so a YAML round-trip (which yields a fresh dictionary) would read as
+    // REFERENCE - so a YAML round-trip (which yields a fresh dictionary) would read as
     // changed. Hand-roll value equality over it, matching every other config record
     // with a collection member (see ConfigEquality).
     public bool Equals(AppOverrideConfig? other) =>
@@ -82,7 +82,7 @@ public sealed record AppNetromConfig
     /// (<see cref="DefaultQuality"/>).</summary>
     public int? Quality { get; init; }
 
-    /// <summary>The default advertised quality when <see cref="Quality"/> is unset — high (an
+    /// <summary>The default advertised quality when <see cref="Quality"/> is unset - high (an
     /// app on this node is one hop away, directly reachable), matching the BPQ
     /// <c>APPLICATION ...,Quality</c> convention for a local application.</summary>
     public const int DefaultQuality = 255;
@@ -105,10 +105,10 @@ public enum ApplicationKind
 }
 
 /// <summary>
-/// One registered node application — the inline, owner-authored analog of a BPQ
+/// One registered node application - the inline, owner-authored analog of a BPQ
 /// <c>APPLICATION n,CMD,Call,Alias,Quality</c> line. <see cref="Id"/> is the stable identity
 /// (log / reconcile key); <see cref="Command"/> is the console verb that launches it. Out-of-process
-/// by design — the node never links app code (see <c>docs/app-extensibility.md</c>). The
+/// by design - the node never links app code (see <c>docs/app-extensibility.md</c>). The
 /// packet-identity fields (<see cref="Command"/> verb, <see cref="Callsign"/>, <see cref="Netrom"/>)
 /// mirror the discovered-package <see cref="AppOverrideConfig"/> (<c>docs/app-packages.md</c>
 /// § Application packet identity).
@@ -122,7 +122,7 @@ public sealed record ApplicationConfig
 
     /// <summary>The console verb a connected user types to launch this app (e.g. <c>"MYAPP"</c>).
     /// Matched case-insensitively, exact (no prefix abbreviation), and only after the built-in
-    /// console verbs — so an app can never shadow <c>BYE</c>/<c>CONNECT</c>/etc. Must be unique
+    /// console verbs - so an app can never shadow <c>BYE</c>/<c>CONNECT</c>/etc. Must be unique
     /// within <see cref="NodeConfig.Applications"/> and must not collide with a built-in verb.
     /// This is the <i>verb</i>; the <i>executable</i> is <see cref="Executable"/>.</summary>
     public required string Command { get; init; }
@@ -134,13 +134,13 @@ public sealed record ApplicationConfig
     /// <summary>How to run the app. Default <see cref="ApplicationKind.Process"/>.</summary>
     public ApplicationKind Kind { get; init; } = ApplicationKind.Process;
 
-    /// <summary>The executable to spawn (<see cref="ApplicationKind.Process"/>) — e.g.
+    /// <summary>The executable to spawn (<see cref="ApplicationKind.Process"/>) - e.g.
     /// <c>/usr/bin/python3</c>. Required for a process app. Distinct from <see cref="Command"/>
     /// (the node-prompt verb).</summary>
     public string? Executable { get; init; }
 
     /// <summary>The Unix-domain socket the daemon listens on (<see cref="ApplicationKind.Socket"/>)
-    /// — e.g. <c>/run/packetnet/lobby.sock</c>. The node connects here per session. Required for a
+    /// - e.g. <c>/run/packetnet/lobby.sock</c>. The node connects here per session. Required for a
     /// socket app.</summary>
     public string? SocketPath { get; init; }
 
@@ -164,7 +164,7 @@ public sealed record ApplicationConfig
     /// packet-plane-only app (no launcher tile, no proxy). See <c>docs/app-gateway.md</c>.</summary>
     public AppUiConfig? Ui { get; init; }
 
-    /// <summary>Optional pinned callsign — the node's choice, the on-air L2 identity this inline
+    /// <summary>Optional pinned callsign - the node's choice, the on-air L2 identity this inline
     /// app binds (<c>docs/app-packages.md</c> § Application packet identity). A full callsign or
     /// a bare <c>-N</c> SSID appended to the node base. Null = the node auto-assigns
     /// <c>&lt;node-base&gt;-&lt;lowest free SSID&gt;</c>. Injected as <c>PDN_APP_CALLSIGN</c>.</summary>
@@ -175,7 +175,7 @@ public sealed record ApplicationConfig
     public AppNetromConfig? Netrom { get; init; }
 
     // Args and Capabilities are collection members, which a record compares by REFERENCE
-    // — so a YAML round-trip (which yields fresh lists) would read as changed. Hand-roll
+    // - so a YAML round-trip (which yields fresh lists) would read as changed. Hand-roll
     // value equality over them, matching every other config record with a collection
     // member (see ConfigEquality).
     public bool Equals(ApplicationConfig? other) =>
@@ -213,7 +213,7 @@ public sealed record ApplicationConfig
 }
 
 /// <summary>
-/// How the control panel opens an app's web UI from its left-nav entry — the <c>ui.mode</c>
+/// How the control panel opens an app's web UI from its left-nav entry - the <c>ui.mode</c>
 /// contract (<c>docs/app-packages.md</c> § UI surface modes). The pdn-bbs side is built to this
 /// exact set; unknown/missing → <see cref="Standalone"/>.
 /// </summary>
@@ -225,7 +225,7 @@ public enum AppUiMode
 
     /// <summary>The nav entry is an in-panel SPA route (<c>/apps/:id</c>) that renders the panel
     /// shell around a borderless iframe of the app's <c>/apps/{id}/</c> page. The app renders its
-    /// own full page inside the frame — no signal param is appended.</summary>
+    /// own full page inside the frame - no signal param is appended.</summary>
     Embedded,
 
     /// <summary>Like <see cref="Embedded"/>, but the iframe src carries <c>?pdn_embed=1</c> so the
@@ -236,11 +236,11 @@ public enum AppUiMode
 /// <summary>
 /// The human-plane manifest for an application: where its own web server lives and how its
 /// launcher tile reads. pdn reverse-proxies to <see cref="Upstream"/> and never imports the
-/// app — it is a broker (see <c>docs/app-gateway.md</c>).
+/// app - it is a broker (see <c>docs/app-gateway.md</c>).
 /// </summary>
 public sealed record AppUiConfig
 {
-    /// <summary>The app's own web server base URL — <b>loopback</b> (e.g.
+    /// <summary>The app's own web server base URL - <b>loopback</b> (e.g.
     /// <c>http://127.0.0.1:9090</c>). pdn reverse-proxies <c>/apps/{id}/*</c> here, stripping
     /// the prefix. Required when a <c>ui</c> block is present; must be an absolute http(s) URL.</summary>
     public required string Upstream { get; init; }

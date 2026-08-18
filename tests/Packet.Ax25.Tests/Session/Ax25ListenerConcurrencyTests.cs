@@ -20,7 +20,7 @@ namespace Packet.Ax25.Tests.Session;
 /// The listener pump is single-threaded but its consumers (event
 /// subscribers, ConnectAsync callers) live on whichever thread invoked
 /// them. The tests intentionally exercise the interleavings the listener
-/// has to survive — concurrent SABMs across distinct peers, SABM retries
+/// has to survive - concurrent SABMs across distinct peers, SABM retries
 /// where the previous outbound UA was "lost" (we drop it via
 /// <see cref="LoopbackModem.DropOutbound"/>), and so on.
 /// </remarks>
@@ -39,7 +39,7 @@ public class Ax25ListenerConcurrencyTests
     // ─── Category 1: concurrency / collisions ───────────────────────────
 
     /// <summary>
-    /// figc4.4 t41 — peer sends SABM while we're already Connected with
+    /// figc4.4 t41 - peer sends SABM while we're already Connected with
     /// V(s)==V(a) (no outstanding data). The session re-issues UA and
     /// stays Connected (silent reset). Emulates the SABM-collision
     /// resolution path: one side wins, both end up Connected. Our local
@@ -76,10 +76,10 @@ public class Ax25ListenerConcurrencyTests
         await ListenerTestSupport.WaitFor(() => session.CurrentState == "Connected", TimeSpan.FromSeconds(2));
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
 
-        // Now the "colliding" SABM — second SABM from the same peer
+        // Now the "colliding" SABM - second SABM from the same peer
         // while we're Connected. figc4.4 t41 (V(s)==V(a) path) silently
         // resets and emits another UA. The listener must NOT build a
-        // second session for the same callsign — same instance retained.
+        // second session for the same callsign - same instance retained.
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
         await modem.SentFrames.WaitForCountAsync(2, TimeSpan.FromSeconds(2));
 
@@ -88,7 +88,7 @@ public class Ax25ListenerConcurrencyTests
         (secondReply!.Control & 0xEF).Should().Be(0x63, "t41 emits UA in response to the colliding SABM");
         session.CurrentState.Should().Be("Connected");
 
-        // Crucial invariant: only ONE session was created — the cache
+        // Crucial invariant: only ONE session was created - the cache
         // didn't accidentally branch on the second SABM. The listener
         // does re-fire SessionAccepted on a re-SABM but the underlying
         // Session reference is unchanged.
@@ -101,7 +101,7 @@ public class Ax25ListenerConcurrencyTests
     /// <summary>
     /// Peer sends SABM → we send UA → peer doesn't see UA (modem drops
     /// outbound) → peer retries SABM after T1 window. Listener must not
-    /// build a second session for the same callsign — the existing
+    /// build a second session for the same callsign - the existing
     /// cached session sits in Connected and figc4.4 t41 absorbs the
     /// retry with another UA, idempotently.
     /// </summary>
@@ -127,7 +127,7 @@ public class Ax25ListenerConcurrencyTests
         await ListenerTestSupport.WaitFor(() => modem.OutboundFrameCount >= 1, TimeSpan.FromSeconds(2),
             "listener must have attempted to send UA even though we drop it");
 
-        // 100 ms later the peer retries — re-enable outbound so we can
+        // 100 ms later the peer retries - re-enable outbound so we can
         // observe the retry's UA reaches the wire.
         await Task.Delay(100);
         modem.DropOutbound = false;
@@ -145,7 +145,7 @@ public class Ax25ListenerConcurrencyTests
     /// <summary>
     /// <see cref="Ax25Listener.ConnectAsync"/> against peer B is in flight
     /// (we sent SABM, no UA back yet). Mid-handshake, peer C SABMs us
-    /// inbound. Both should succeed — listener treats peers B and C
+    /// inbound. Both should succeed - listener treats peers B and C
     /// as separate sessions. ConnectAsync's expected timeout against B
     /// is not relevant here: we just check that C's session gets
     /// SessionAccepted while ConnectAsync is still awaiting.
@@ -175,7 +175,7 @@ public class Ax25ListenerConcurrencyTests
 
         await listener.StartAsync();
 
-        // Kick the outbound ConnectAsync(B). It'll never resolve — no
+        // Kick the outbound ConnectAsync(B). It'll never resolve - no
         // peer is going to inject a UA in response. We let it time out
         // in the background.
         var connectBTask = listener.ConnectAsync(PeerCallB);
@@ -196,17 +196,17 @@ public class Ax25ListenerConcurrencyTests
         // (with a generous budget) for it to settle so we don't leak the
         // task into next-test territory.
         try { await connectBTask.WaitAsync(TimeSpan.FromSeconds(5)); }
-        catch (TimeoutException) { /* expected — peer B never responded */ }
-        catch (InvalidOperationException) { /* also acceptable — connect torn down */ }
+        catch (TimeoutException) { /* expected - peer B never responded */ }
+        catch (InvalidOperationException) { /* also acceptable - connect torn down */ }
     }
 
     /// <summary>
-    /// Two connected sessions + StopAsync — the listener should tear
+    /// Two connected sessions + StopAsync - the listener should tear
     /// down cleanly without deadlocking, even though sessions are still
     /// holding scheduler / timer resources.
     /// </summary>
     /// <remarks>
-    /// The listener doesn't proactively send DISC on stop — its contract
+    /// The listener doesn't proactively send DISC on stop - its contract
     /// is to stop the inbound pump, not to drive a graceful disconnect
     /// on every cached peer. We assert the weaker invariant: stop
     /// returns within a reasonable budget and the listener reports
@@ -282,18 +282,18 @@ public class Ax25ListenerConcurrencyTests
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
         await ListenerTestSupport.WaitFor(() => throwingHandlerFires >= 1, TimeSpan.FromSeconds(2));
 
-        // We expect the listener to be alive and processing — the
+        // We expect the listener to be alive and processing - the
         // non-throwing subscriber should still have seen the event.
         // (Implementation note: in .NET, an unhandled exception in a
         // multicast delegate stops downstream subscribers from firing.
         // The listener pump runs on a background task that doesn't
-        // crash because of an event-handler exception — it surfaces as
+        // crash because of an event-handler exception - it surfaces as
         // an unobserved exception unless caught. The listener must not
         // tear itself down.)
         await ListenerTestSupport.WaitFor(() => listener.IsRunning, TimeSpan.FromMilliseconds(200));
         listener.IsRunning.Should().BeTrue("listener must survive a throwing event handler");
 
-        // Second SABM from a different peer — listener should still be
+        // Second SABM from a different peer - listener should still be
         // accepting. The first handler will throw again; we only check
         // that the listener stayed alive.
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallB));
@@ -326,11 +326,11 @@ public class Ax25ListenerConcurrencyTests
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
 
         // RX trace fires for the inbound SABM, TX trace fires for the
-        // outbound UA — at least two fires expected.
+        // outbound UA - at least two fires expected.
         await ListenerTestSupport.WaitFor(() => throwingFires >= 1, TimeSpan.FromSeconds(2));
         listener.IsRunning.Should().BeTrue();
 
-        // Another frame round-trip — listener must still process.
+        // Another frame round-trip - listener must still process.
         modem.InjectInbound(Ax25Frame.Disc(LocalCall, PeerCallA));
         await ListenerTestSupport.WaitFor(() => throwingFires >= 2, TimeSpan.FromSeconds(2));
         listener.IsRunning.Should().BeTrue();

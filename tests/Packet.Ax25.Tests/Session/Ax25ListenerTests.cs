@@ -8,7 +8,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Baseline unit tests for <see cref="Ax25Listener"/> — the first-class
+/// Baseline unit tests for <see cref="Ax25Listener"/> - the first-class
 /// inbound session acceptor. Each test wires a <see cref="LoopbackModem"/>
 /// in place of a real KISS modem so the test owns both ends of the wire.
 /// Inbound SABM/UA/DISC sequences are injected by writing the bytes the
@@ -117,7 +117,7 @@ public class Ax25ListenerTests
             "the listener's per-peer cache must hand back the same Ax25Session on a second connect from the same peer — preserves SRT/T1V history");
         // Listener-built sessions reset most context state via SDL
         // transitions but T1V is recomputed dynamically by Select_T1_Value
-        // — its starting value before the SDL runs should still be the
+        // - its starting value before the SDL runs should still be the
         // value we set above (the cache didn't blow it away).
         // However the SDL's "T1V := 2 * SRT" on (re)connection resets it,
         // so we don't assert T1V here; the session-instance reuse is the
@@ -265,7 +265,7 @@ public class Ax25ListenerTests
         var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
         await ListenerTestSupport.WaitFor(() => session.CurrentState == "Connected", TimeSpan.FromSeconds(2));
 
-        // Before the fix this asserted 6000 ms — the SABM-accept path's
+        // Before the fix this asserted 6000 ms - the SABM-accept path's
         // `SRT := Initial Default (3000); T1V := 2 * SRT` clobbered the seed.
         session.Context.T1V.Should().Be(TimeSpan.FromMilliseconds(10000),
             "the configured T1V must survive the figc4.1 SABM-accept establishment path");
@@ -277,7 +277,7 @@ public class Ax25ListenerTests
     public async Task Configured_T1V_Drives_The_T1_Poll_Cadence_On_The_Wire()
     {
         // A node configured with a 10 s T1 must NOT poll at the spec-default
-        // ~6 s — that is the live-observed bug: setting ax25.t1Ms did not change
+        // ~6 s - that is the live-observed bug: setting ax25.t1Ms did not change
         // the poll cadence. Drive an accepted session, send one I-frame the
         // (loopback) peer never acknowledges, and show T1 expires on the
         // configured 10 s schedule: quiet at 6 s, polling once past 10 s.
@@ -321,7 +321,7 @@ public class Ax25ListenerTests
     // ─── N2 wiring (the #292-class clobber for the retry count) ─────────────
     //
     // The figc4.2 outbound-connect establishment path runs `N2 := 10`
-    // unconditionally — the same defect class as the T1V clobber above — so a
+    // unconditionally - the same defect class as the T1V clobber above - so a
     // configured N2 was reset to the spec default the moment a connect ran. That
     // made the listener's `(N2+1)·T1V` ConnectAsync backstop always the 66 s spec
     // maximum (the dominant symptom of the #47 node-test flake). The fix seeds the
@@ -346,7 +346,7 @@ public class Ax25ListenerTests
 
         var session = await connectTask.WithTimeout(TimeSpan.FromSeconds(2));
         session.CurrentState.Should().Be("Connected");
-        // Before the fix this was 10 — figc4.2's `N2 := 10` clobbered the configured 4.
+        // Before the fix this was 10 - figc4.2's `N2 := 10` clobbered the configured 4.
         session.Context.N2.Should().Be(4,
             "the configured N2 must survive the figc4.2 outbound-connect establishment path");
     }
@@ -356,7 +356,7 @@ public class Ax25ListenerTests
     {
         // Regression for the connect-ack lost-wakeup: ConnectAsync polled
         // cached.Signals and, on budget expiry, broke out and threw a
-        // TimeoutException WITHOUT a final drain — so a DL-CONNECT-confirm enqueued
+        // TimeoutException WITHOUT a final drain - so a DL-CONNECT-confirm enqueued
         // in the last poll window (after the loop's inner drain, as the budget
         // fired) was dropped, and a connect that actually succeeded reported a
         // spurious timeout. The budget runs on the listener's FakeTimeProvider, so
@@ -378,7 +378,7 @@ public class Ax25ListenerTests
         // Deliver the UA and let the inbound pump enqueue the DL-CONNECT-confirm (a
         // brief settle, far under the 25 ms poll cadence so the loop hasn't drained
         // it yet), then expire the fake-clock budget so the poll loop breaks with
-        // the confirm still queued — the exact lost-wakeup window.
+        // the confirm still queued - the exact lost-wakeup window.
         modem.InjectInbound(Ax25Frame.Ua(LocalCall, PeerCallA, finalBit: true));
         await Task.Delay(5);
         time.Advance(TimeSpan.FromSeconds(16));
@@ -392,8 +392,8 @@ public class Ax25ListenerTests
     public async Task Configured_N2_And_T1V_Bound_The_Connect_Backstop()
     {
         // With N2 and T1V both honoured through establishment, a connect to a peer
-        // that never answers resolves quickly — bounded by (N2+1)·T1V, here
-        // (1+1)·200 ms — instead of the 66 s spec maximum. (It surfaces as the SDL
+        // that never answers resolves quickly - bounded by (N2+1)·T1V, here
+        // (1+1)·200 ms - instead of the 66 s spec maximum. (It surfaces as the SDL
         // exhausting its retries → link reset → InvalidOperationException, or as the
         // ConnectAsync deadline → TimeoutException; either way it fails fast, which
         // is the budget the node-test flake hinged on, #47.)
@@ -408,7 +408,7 @@ public class Ax25ListenerTests
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var act = async () => await listener.ConnectAsync(PeerCallA);
-        // Either fast-failure mode is fine — the point is it does NOT burn 66 s.
+        // Either fast-failure mode is fine - the point is it does NOT burn 66 s.
         (await act.Should().ThrowAsync<Exception>())
             .Which.Should().Match(ex => ex is TimeoutException || ex is InvalidOperationException);
         sw.Stop();
@@ -427,7 +427,7 @@ public class Ax25ListenerTests
     // (mod-8) `k := 8` as the remaining hard-coded init verbs. In the current
     // Packet.Ax25.Sdl package the data-link establishment path does NOT invoke
     // Set_Version as a subroutine, so a configured T2 / k already survives a
-    // connect — these tests pin that survival as a behavioural regression — and the
+    // connect - these tests pin that survival as a behavioural regression - and the
     // verbs now read a configurable seed (InitialT2 / InitialK) defaulting to the
     // spec value, so the survival is structural rather than incidental and a future
     // SDL revision that re-introduces Set_Version on the connect path cannot

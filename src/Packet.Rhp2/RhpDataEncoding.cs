@@ -11,7 +11,7 @@ namespace Packet.Rhp2;
 /// serializer's escaping takes care of control characters (0x0D becomes
 /// the two-character escape <c>\r</c> on the wire, 0x00 becomes
 /// the six-character escape <c>\u0000</c>, and so on). Latin-1 is the one single-byte encoding
-/// where every value 0x00–0xFF round-trips to exactly one
+/// where every value 0x00-0xFF round-trips to exactly one
 /// <see cref="char"/>, which is what makes arbitrary binary data safe
 /// through this path.
 /// </remarks>

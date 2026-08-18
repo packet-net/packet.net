@@ -16,7 +16,7 @@ namespace Packet.Kiss;
 /// <remarks>
 /// <para>
 /// CSMA channel params (TXDELAY etc.) are <em>per-modem</em>, not per-peer
-/// — the TNC applies whatever value was last configured to every
+/// - the TNC applies whatever value was last configured to every
 /// subsequent transmission. To realise per-peer adaptive parameters on
 /// a single modem, this transport re-applies the per-peer recommendation
 /// immediately before each TX. That costs one extra short serial write
@@ -153,7 +153,7 @@ public sealed class AdaptiveKissTransport : IAsyncDisposable, IDisposable
     /// <summary>
     /// Record an AX.25-layer retransmit (the frame did eventually get
     /// through but only after one or more replays). Counted as a soft
-    /// signal — the estimator won't bump TXDELAY up but it'll reset the
+    /// signal - the estimator won't bump TXDELAY up but it'll reset the
     /// success streak.
     /// </summary>
     public void RecordRetransmittedAck(string peer, int payloadBytes)

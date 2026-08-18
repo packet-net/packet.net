@@ -34,18 +34,18 @@ var strict = Ax25Address.Read(slot, Ax25ParseOptions.Strict);
 ushort fcs = Crc16Ccitt.Compute("123456789"u8); // 0x906E
 ```
 
-`Callsign.Parse` / `TryParse` stay strict (≥1 char, A–Z / 0–9, SSID 0–15) because they're for user-typed input. The wire-parse path (`Ax25Address.Read`) is lenient by default — it accepts real-world quirks like all-space address slots — and you opt into strictness via `Ax25ParseOptions.Strict`.
+`Callsign.Parse` / `TryParse` stay strict (≥1 char, A-Z / 0-9, SSID 0-15) because they're for user-typed input. The wire-parse path (`Ax25Address.Read`) is lenient by default - it accepts real-world quirks like all-space address slots - and you opt into strictness via `Ax25ParseOptions.Strict`.
 
 ## Key types
-- `Callsign` — a base callsign + SSID (0–15) value type, with strict `Parse`/`TryParse` over text.
-- `Ax25Address` — one 7-octet AX.25 header address slot; `Read`/`Write` between the value and its wire form, with the C/H and extension bits.
-- `Ax25ParseOptions` — named, individually-toggleable pragmatic-parse flags with `Strict` / `Lenient` and peer presets (`Bpq`, `Xrouter`, `Direwolf`).
-- `Crc16Ccitt` — the AX.25 frame check sequence (CRC-16/X-25, polynomial 0x1021).
+- `Callsign` - a base callsign + SSID (0-15) value type, with strict `Parse`/`TryParse` over text.
+- `Ax25Address` - one 7-octet AX.25 header address slot; `Read`/`Write` between the value and its wire form, with the C/H and extension bits.
+- `Ax25ParseOptions` - named, individually-toggleable pragmatic-parse flags with `Strict` / `Lenient` and peer presets (`Bpq`, `Xrouter`, `Direwolf`).
+- `Crc16Ccitt` - the AX.25 frame check sequence (CRC-16/X-25, polynomial 0x1021).
 
 ## See also
 - [Source & issues](https://github.com/packet-net/packet.net)
-- [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) — the AX.25 framing and session layer built on these primitives.
-- [Packet.Kiss](https://www.nuget.org/packages/Packet.Kiss) — KISS TNC framing.
+- [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) - the AX.25 framing and session layer built on these primitives.
+- [Packet.Kiss](https://www.nuget.org/packages/Packet.Kiss) - KISS TNC framing.
 
 ---
 *AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

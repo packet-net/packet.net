@@ -12,19 +12,19 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Api;
 
 /// <summary>
-/// The MCP OAuth 2.1 authorization server (the hosted claude.ai connector path —
+/// The MCP OAuth 2.1 authorization server (the hosted claude.ai connector path -
 /// <c>docs/mcp-oauth-design.md</c>). The node is its own AS + RS: it owns the identities
 /// (<see cref="IUserStore"/>), mints the JWTs (<see cref="JwtTokenService"/>), and hosts the
-/// consent surface — so the whole flow reuses what the panel auth already ships.
+/// consent surface - so the whole flow reuses what the panel auth already ships.
 /// </summary>
 /// <remarks>
 /// <para><b>Default-off + security-critical.</b> Every route here is mapped unconditionally
-/// but short-circuits to 404 unless <c>mcp.oauth.enabled</c> — so nothing is exposed until an
+/// but short-circuits to 404 unless <c>mcp.oauth.enabled</c> - so nothing is exposed until an
 /// operator opts in. Review before enabling in production (cf. the WebAuthn review).</para>
 /// <para><b>Flow:</b> discovery (RFC 9728 + 8414) → dynamic client registration (RFC 7591) →
 /// authorize (code + PKCE S256, owner login + explicit consent) → token (code→JWT). The MCP
 /// access token is a node JWT minted on the dedicated <see cref="JwtTokenService.McpAudience"/>
-/// (so it reaches <c>/mcp</c> only — never the wider control API), validated through the
+/// (so it reaches <c>/mcp</c> only - never the wider control API), validated through the
 /// existing JwtBearer middleware unchanged. <b>No refresh token in this cut</b>
 /// (the connector re-runs authorize on expiry); refresh is a documented follow-up.</para>
 /// <para><b>Hardening:</b> PKCE S256 mandatory; exact redirect-URI match (no wildcards);
@@ -40,7 +40,7 @@ public static class PdnOauthApi
     public const string ScopeRead = "mcp:read";
     public const string ScopeOperate = "mcp:operate";
 
-    /// <summary>Authorization codes live briefly — long enough for the redirect round-trip.</summary>
+    /// <summary>Authorization codes live briefly - long enough for the redirect round-trip.</summary>
     private static readonly TimeSpan CodeTtl = TimeSpan.FromSeconds(60);
 
     // Static metadata arrays (CA1861: hoisted out of the per-request dictionaries).
@@ -244,7 +244,7 @@ public static class PdnOauthApi
             var user = users.FindByUsername(username);
             // Spend an equivalent Argon2 derivation when the user is unknown, so a probe
             // for a non-existent username takes the same wall-clock as one for a real
-            // user — no username enumeration via the response timing.
+            // user - no username enumeration via the response timing.
             bool ok = user is not null
                 ? PasswordHasher.Verify(password, user.PasswordHash)
                 : PasswordHasher.VerifyDummy(password);
@@ -432,7 +432,7 @@ public static class PdnOauthApi
             """;
     }
 
-    /// <summary>DCR request body (RFC 7591 — the subset we honour).</summary>
+    /// <summary>DCR request body (RFC 7591 - the subset we honour).</summary>
     private sealed record DcrRequest(
         [property: System.Text.Json.Serialization.JsonPropertyName("client_name")] string? ClientName,
         [property: System.Text.Json.Serialization.JsonPropertyName("redirect_uris")] List<string>? RedirectUris);

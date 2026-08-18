@@ -76,7 +76,7 @@ public class KissEncoderTests
     {
         // port=13 + cmd=0xB would give 0xDB (FESC). 0xB isn't a defined
         // KissCommand value but the encoder must still produce decodable
-        // output — receivers shouldn't be able to derail us on a hostile
+        // output - receivers shouldn't be able to derail us on a hostile
         // or future command code.
         var encoded = KissEncoder.Encode(port: 13, (KissCommand)0xB, ReadOnlySpan<byte>.Empty);
         encoded.Should().Equal(new byte[] { 0xC0, 0xDB, 0xDD, 0xC0 });

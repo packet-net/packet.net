@@ -1,7 +1,7 @@
 namespace Packet.Rhp2;
 
 /// <summary>
-/// Thrown when a peer violates the RHPv2 protocol at the codec level —
+/// Thrown when a peer violates the RHPv2 protocol at the codec level -
 /// e.g. a frame whose JSON is not an object, or a message with no
 /// <c>type</c> discriminator.
 /// </summary>

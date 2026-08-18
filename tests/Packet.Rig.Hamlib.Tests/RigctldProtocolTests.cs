@@ -2,7 +2,7 @@ namespace Packet.Rig.Hamlib.Tests;
 
 /// <summary>
 /// Parser tests against wire text captured from a REAL <c>rigctld</c> 4.5.5 dummy rig
-/// (transcripts in <c>docs/research/rig-control-spike.md</c>) — the recorded-transcript
+/// (transcripts in <c>docs/research/rig-control-spike.md</c>) - the recorded-transcript
 /// technique, so the parser meets bytes the daemon actually emits.
 /// </summary>
 public class RigctldProtocolTests
@@ -157,7 +157,7 @@ public class RigctldProtocolTests
     public void ParseDumpCaps_Maps_Dcd_And_Strength_To_The_Receive_Side_Flags()
     {
         // Verbatim lines from `+\dump_caps` against rigctld 4.5.5 -m 1. "DCD type:" describes
-        // the detection mechanism, not readability — only "Can get DCD:" gates the flag.
+        // the detection mechanism, not readability - only "Can get DCD:" gates the flag.
         string[] payload =
         [
             "Can get DCD:\tY",

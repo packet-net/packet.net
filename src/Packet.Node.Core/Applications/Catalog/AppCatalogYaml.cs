@@ -8,7 +8,7 @@ namespace Packet.Node.Core.Applications.Catalog;
 /// <summary>
 /// The YAML (de)serialisation of <c>catalog/apps.yaml</c> into an
 /// <see cref="AppCatalogDocument"/>. Mirrors <c>AppPackageManifestYaml</c>: camelCase property
-/// naming, unmatched keys ignored (forward-compatible — the <c>catalog:</c> version is the
+/// naming, unmatched keys ignored (forward-compatible - the <c>catalog:</c> version is the
 /// gate), interface-typed collections mapped to concrete types so YamlDotNet can bind them,
 /// and the closed <see cref="ArtifactKind"/> enum bound by a dedicated converter so an unknown
 /// <c>kind</c> is a clear error rather than a silent default.
@@ -38,7 +38,7 @@ public static class AppCatalogYaml
     /// Parse <c>catalog/apps.yaml</c> text into an <see cref="AppCatalogDocument"/>. Throws a
     /// descriptive <see cref="InvalidDataException"/> on malformed YAML, a non-mapping or empty
     /// document, or an unknown artifact <c>kind</c>. Field-level validation (id shape, https
-    /// urls, sha256 hex, kind-required sub-objects) is <see cref="Validate"/>'s job — this
+    /// urls, sha256 hex, kind-required sub-objects) is <see cref="Validate"/>'s job - this
     /// method only gets the text into the record shape.
     /// </summary>
     public static AppCatalogDocument Parse(string yaml)
@@ -52,7 +52,7 @@ public static class AppCatalogYaml
         }
         catch (YamlException ex)
         {
-            // Surface the innermost message — YamlDotNet wraps converter/typing faults in
+            // Surface the innermost message - YamlDotNet wraps converter/typing faults in
             // generic layers and the useful text (which field, which value, the mark) is at
             // the bottom.
             throw new InvalidDataException($"apps.yaml is not a valid catalog: {Innermost(ex)}", ex);
@@ -196,7 +196,7 @@ public static class AppCatalogYaml
         }
     }
 
-    /// <summary>True for a lowercase <c>[a-z0-9-]</c> id (no regex object needed — the set is
+    /// <summary>True for a lowercase <c>[a-z0-9-]</c> id (no regex object needed - the set is
     /// tiny and this stays allocation-free).</summary>
     private static bool IsValidId(string id)
     {

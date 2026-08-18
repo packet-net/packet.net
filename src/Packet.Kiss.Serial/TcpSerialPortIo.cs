@@ -5,9 +5,9 @@ namespace Packet.Kiss.Serial;
 /// <summary>
 /// A TCP-backed <see cref="ISerialPortIo"/>: the KISS serial modem's byte seam pointed at a
 /// remote "head-end" that bridges a serial port as a raw binary TCP pipe (the split-station
-/// topology — see <c>docs/research/split-station-rf-headend.md</c>). KISS framing rides the
-/// socket unchanged, so a modem — and, layered on top, a NinoTNC's full control surface
-/// (GETVER / mode agility / GETRSSI) — works remotely, distinct from the generic control-less
+/// topology - see <c>docs/research/split-station-rf-headend.md</c>). KISS framing rides the
+/// socket unchanged, so a modem - and, layered on top, a NinoTNC's full control surface
+/// (GETVER / mode agility / GETRSSI) - works remotely, distinct from the generic control-less
 /// <c>kiss-tcp</c> transport.
 /// </summary>
 /// <remarks>
@@ -15,14 +15,14 @@ namespace Packet.Kiss.Serial;
 /// <see cref="KissSerialModem"/>'s pump depends on: a finite per-read timeout that throws
 /// <see cref="TimeoutException"/> when idle (swallowed and looped) via the socket's
 /// <see cref="Socket.ReceiveTimeout"/>, plus a longer read-idle budget that escalates to an
-/// <see cref="IOException"/> to surface a half-open link (peer gone, no FIN) — mirroring
+/// <see cref="IOException"/> to surface a half-open link (peer gone, no FIN) - mirroring
 /// <c>Packet.Kiss.KissTcpClient</c> (#464). OS TCP keepalive is enabled as the faster probe.
-/// NinoTNC baud is fictional over USB-CDC and irrelevant over TCP, so — unlike the Tait
-/// <c>TcpSerialIo</c> — this seam carries no line-rate control.
+/// NinoTNC baud is fictional over USB-CDC and irrelevant over TCP, so - unlike the Tait
+/// <c>TcpSerialIo</c> - this seam carries no line-rate control.
 /// </remarks>
 internal sealed class TcpSerialPortIo : ISerialPortIo
 {
-    /// <summary>Per-read pacing timeout — mirrors the local <see cref="System.IO.Ports.SerialPort.ReadTimeout"/>
+    /// <summary>Per-read pacing timeout - mirrors the local <see cref="System.IO.Ports.SerialPort.ReadTimeout"/>
     /// of 100 ms the modem opens with, so the pump wakes to check cancellation ~10×/s.</summary>
     public static readonly TimeSpan DefaultReadTimeout = TimeSpan.FromMilliseconds(100);
 
@@ -102,7 +102,7 @@ internal sealed class TcpSerialPortIo : ISerialPortIo
         catch (SocketException ex) when (ex.SocketErrorCode is SocketError.TimedOut or SocketError.WouldBlock)
         {
             // No byte within the per-read window. Normally this is the SerialPort.ReadTimeout
-            // contract the pump swallows and loops on — UNLESS the link has been entirely silent
+            // contract the pump swallows and loops on - UNLESS the link has been entirely silent
             // past the idle budget, in which case presume it half-open (dead) and fault the pump.
             if (readIdleTimeout > TimeSpan.Zero && readIdleTimeout != Timeout.InfiniteTimeSpan
                 && clock.GetUtcNow() - lastReadActivity >= readIdleTimeout)
@@ -127,7 +127,7 @@ internal sealed class TcpSerialPortIo : ISerialPortIo
 
     // Ask the OS to probe a quiet peer so a half-open connection surfaces as a read error in
     // bounded time. Best-effort: keepalive knobs are platform-dependent and a failure to set them
-    // is non-fatal — the read-idle timeout is the portable backstop. Mirrors KissTcpClient.
+    // is non-fatal - the read-idle timeout is the portable backstop. Mirrors KissTcpClient.
     private static void EnableTcpKeepAlive(Socket socket)
     {
         try

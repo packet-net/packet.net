@@ -4,7 +4,7 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Tests.Configuration;
 
 /// <summary>
-/// Unit tests for the <see cref="TransportConfigJsonConverter"/> — the JSON twin of
+/// Unit tests for the <see cref="TransportConfigJsonConverter"/> - the JSON twin of
 /// the YAML transport converter that lets a <c>PUT /config</c> body deserialise the
 /// polymorphic <c>transport</c> union. Each concrete kind must survive a
 /// serialise → deserialise round-trip back to its own subtype with its fields

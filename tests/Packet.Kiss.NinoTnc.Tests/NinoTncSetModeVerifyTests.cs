@@ -9,12 +9,12 @@ namespace Packet.Kiss.NinoTnc.Tests;
 
 /// <summary>
 /// SETHW mode verification (#633). KISS SETHW is unacknowledged and <em>does</em> silently fail to
-/// apply — bench-observed twice on firmware 3.44 with DIP 1111, the TNC carrying on in its previous
+/// apply - bench-observed twice on firmware 3.44 with DIP 1111, the TNC carrying on in its previous
 /// mode. Nothing errors; the traffic just scores zero in both directions, which reads as broken RF
 /// rather than an ignored command, and cost real debugging time on both occasions.
 /// <para>
 /// These tests drive <see cref="NinoTncSerialPort.SetModeAsync"/> against a scripted fake TNC that
-/// answers each GETALL with a firmware mode byte of the test's choosing — so "the TNC lies about
+/// answers each GETALL with a firmware mode byte of the test's choosing - so "the TNC lies about
 /// its mode" is reproducible without hardware. The bench evidence in the issue is the script:
 /// <c>BrdSwchMod:040F0091</c> (0x91 = mode 8) when mode 11 was asked for, then
 /// <c>BrdSwchMod:040F00A2</c> (0xA2 = mode 11) after a retry.
@@ -28,7 +28,7 @@ public class NinoTncSetModeVerifyTests
     private const byte Mode8Byte = 0x91;
     private const byte Mode11Byte = 0xA2;
 
-    /// <summary>Verification with the settle removed — the settle itself is pinned separately.</summary>
+    /// <summary>Verification with the settle removed - the settle itself is pinned separately.</summary>
     private static NinoTncModeVerification Instant(int attempts = 3) =>
         new() { SettleTime = TimeSpan.Zero, Attempts = attempts, ReadBackTimeout = Timeout };
 
@@ -88,7 +88,7 @@ public class NinoTncSetModeVerifyTests
     public async Task SetModeAsync_accepts_the_firmware_341_alias_for_mode_14()
     {
         // 3.41 reports mode 14 as 0x90 where 3.44 reports 0x23. Verification goes through the
-        // catalog, so the alias resolves to mode 14 and verifies — a raw byte comparison would
+        // catalog, so the alias resolves to mode 14 and verifies - a raw byte comparison would
         // call this a mis-set and retry forever against a TNC that is already in the right mode.
         var io = new FakeTncIo(0x90) { FirmwareVersion = "3.41" };
         await using var modem = KissSerialModem.OpenForTest(io);
@@ -141,7 +141,7 @@ public class NinoTncSetModeVerifyTests
     [Fact]
     public async Task SetModeAsync_retries_when_the_readback_never_answers()
     {
-        // A GETALL that times out says nothing about the mode — so it is a failed attempt (re-send),
+        // A GETALL that times out says nothing about the mode - so it is a failed attempt (re-send),
         // not a hard error. Script: no reply, then the mode we asked for.
         var io = new FakeTncIo(null, Mode11Byte);
         await using var modem = KissSerialModem.OpenForTest(io);
@@ -160,7 +160,7 @@ public class NinoTncSetModeVerifyTests
     [Fact]
     public async Task Verification_None_is_the_old_fire_and_forget_send()
     {
-        var io = new FakeTncIo();   // answers nothing — nothing should be asked
+        var io = new FakeTncIo();   // answers nothing - nothing should be asked
         await using var modem = KissSerialModem.OpenForTest(io);
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
 
@@ -173,8 +173,8 @@ public class NinoTncSetModeVerifyTests
     [Fact]
     public async Task Mode_15_is_sent_but_not_verified()
     {
-        // 15 is the "Set from KISS" escape — a statement about where the mode comes from, not an
-        // operating mode to run — so there is no meaningful readback to compare against.
+        // 15 is the "Set from KISS" escape - a statement about where the mode comes from, not an
+        // operating mode to run - so there is no meaningful readback to compare against.
         var io = new FakeTncIo();
         await using var modem = KissSerialModem.OpenForTest(io);
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
@@ -261,7 +261,7 @@ public class NinoTncSetModeVerifyTests
 
         /// <summary>
         /// The labelled GETALL reply: <c>BrdSwchMod</c> packs board rev 04, DIP 0F (software
-        /// control — the #633 bench setup), then the 16-bit firmware mode whose LOW byte is the
+        /// control - the #633 bench setup), then the 16-bit firmware mode whose LOW byte is the
         /// running-mode index.
         /// </summary>
         private static byte[] BuildStatusReply(string firmware, byte modeByte) =>

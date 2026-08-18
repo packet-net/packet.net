@@ -5,13 +5,13 @@ namespace Packet.Tune.Core.Tests;
 /// <summary>
 /// The assistant loop end-to-end over a fake in-memory link pair: HI
 /// handshake, RQ-triggered bursts, MS + AD flowing back, operator-prompted
-/// re-rounds, and a clean BY finish — no hardware, no sockets.
+/// re-rounds, and a clean BY finish - no hardware, no sockets.
 /// </summary>
 public class TuningSessionTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
-    /// <summary>No pre-burst guard delay — there is no radio to protect in a fake link.</summary>
+    /// <summary>No pre-burst guard delay - there is no radio to protect in a fake link.</summary>
     private static TuningSessionOptions NoDelay => new() { PreBurstDelay = TimeSpan.Zero };
 
     [Fact]
@@ -63,8 +63,8 @@ public class TuningSessionTests
     [Fact]
     public async Task A_dead_burst_reads_as_sweep_on_both_ends_not_a_directional_up()
     {
-        // 0/5 decode with no clipping: no direction can be inferred — the
-        // meter must say SW ("no decode — sweep the pot"), never UP.
+        // 0/5 decode with no clipping: no direction can be inferred - the
+        // meter must say SW ("no decode - sweep the pot"), never UP.
         var (tunedLink, meterLink) = InMemoryTuningLink.CreatePair();
         var meter = new FakeMeter(new MeterReport(0, 5, 0, 0, -89.5));
         var prompt = new ScriptedPrompt(false);

@@ -1,8 +1,8 @@
 # Cross-runtime conformance scenarios
 
-> A language-neutral library of test scenarios that any runtime consuming the AX.25 SDL codegen can replay through its own session machinery. The strategy that motivates this directory lives at [`../../docs/runtime-capability-strategy.md`](../../docs/runtime-capability-strategy.md), §6 ("Conformance suite — forward-looking").
+> A language-neutral library of test scenarios that any runtime consuming the AX.25 SDL codegen can replay through its own session machinery. The strategy that motivates this directory lives at [`../../docs/runtime-capability-strategy.md`](../../docs/runtime-capability-strategy.md), §6 ("Conformance suite - forward-looking").
 
-This directory is intentionally minimal today: one worked-example scenario file (`connect-sabm-ua-disc.yaml`) and no executors. The scenario file is **the format strawman** — concrete enough that an executor implementation is obvious from reading it, sparse enough that authoring more scenarios is cheap.
+This directory is intentionally minimal today: one worked-example scenario file (`connect-sabm-ua-disc.yaml`) and no executors. The scenario file is **the format strawman** - concrete enough that an executor implementation is obvious from reading it, sparse enough that authoring more scenarios is cheap.
 
 ## What's here
 
@@ -14,9 +14,9 @@ tests/conformance/
 
 ## What's not here yet
 
-- **Executors.** No code today turns a scenario YAML into a passing/failing test in any runtime. The plan is one ~150 LOC executor per runtime — see the strategy doc §6.3.
+- **Executors.** No code today turns a scenario YAML into a passing/failing test in any runtime. The plan is one ~150 LOC executor per runtime - see the strategy doc §6.3.
 - **CI rollup.** Once executors exist, each runtime emits `conformance-<runtime>.json` listing per-scenario pass/fail; a top-level CI job aggregates the JSONs into a heatmap appended to the matrix.
-- **Coverage.** One scenario isn't conformance coverage — it's a format strawman. Future scenarios will cover the figc4.7 subroutines, REJ recovery, N2 exhaustion, and inbound SABM acceptance, at minimum.
+- **Coverage.** One scenario isn't conformance coverage - it's a format strawman. Future scenarios will cover the figc4.7 subroutines, REJ recovery, N2 exhaustion, and inbound SABM acceptance, at minimum.
 
 ## Scenario format
 
@@ -74,27 +74,27 @@ For `post_event` calls whose name is a DL primitive (`DL_CONNECT_request`, etc.)
 
 - Easy to author by hand without losing alignment.
 - Same format as `spec-sdl/*.sdl.yaml`, so each runtime already has a YAML parser dependency in its build.
-- Comment-friendly — non-trivial scenarios benefit from inline `# figc4.4 t12, REJ-recovery happy path` annotations.
+- Comment-friendly - non-trivial scenarios benefit from inline `# figc4.4 t12, REJ-recovery happy path` annotations.
 - Maps cleanly to JSON / Go / TS / C# without bespoke deserialisation.
 
 ## What a scenario is, and isn't
 
 A scenario is **the externally-observable contract of a session over a sequence of inputs.** It says: given these starting parameters and this stream of events, the session must emit *these* frames upward to the upper layer and *these* frames downward to the link layer, transit through *these* states, and arm/disarm *these* timers.
 
-A scenario is **not** a unit test for the inside of the runtime. Inside the runtime, each implementation can do whatever it likes — walk the SDL tables differently, batch frame TX differently, schedule timers differently. The conformance suite only cares about what crosses the seam.
+A scenario is **not** a unit test for the inside of the runtime. Inside the runtime, each implementation can do whatever it likes - walk the SDL tables differently, batch frame TX differently, schedule timers differently. The conformance suite only cares about what crosses the seam.
 
 A scenario is also **not** a wire-format test. The frame codec is tested separately by each runtime's unit suite. The conformance scenarios assume the codec works and assert on the session's behaviour.
 
 ## Authoring a new scenario
 
 1. Pick a single concrete behaviour (one figure transition, one subroutine, one recovery path).
-2. Write the description first — the prose drives the test.
+2. Write the description first - the prose drives the test.
 3. Author the `steps` list. Use `expect_state` liberally to keep the assertions local to each transition.
-4. Run it through each existing-runtime executor (once executors exist). Mismatches between runtimes are the entire point of this artefact — surface them.
+4. Run it through each existing-runtime executor (once executors exist). Mismatches between runtimes are the entire point of this artefact - surface them.
 5. Add the scenario to the conformance-suite section of the runtime-capability matrix.
 
 ## Worked example
 
-[`connect-sabm-ua-disc.yaml`](connect-sabm-ua-disc.yaml) — outbound connect + disconnect against a cooperating peer. Walks figc4.1 t01 → figc4.2 t05 → figc4.4 t01 → figc4.3 t05. Asserts both wire output (SABM, DISC) and upward signals (DL_CONNECT_confirm, DL_DISCONNECT_confirm) end-to-end.
+[`connect-sabm-ua-disc.yaml`](connect-sabm-ua-disc.yaml) - outbound connect + disconnect against a cooperating peer. Walks figc4.1 t01 → figc4.2 t05 → figc4.4 t01 → figc4.3 t05. Asserts both wire output (SABM, DISC) and upward signals (DL_CONNECT_confirm, DL_DISCONNECT_confirm) end-to-end.
 
 This is the simplest non-trivial happy path the C# runtime exercises in interop CI against LinBPQ / XRouter / rax25. Running it through both the C# and TS runtimes (once executors exist) will prove the two runtimes are doing the same thing on the same input.

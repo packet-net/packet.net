@@ -5,7 +5,7 @@ namespace Packet.Node.Core.Applications.Catalog;
 /// <summary>SHA-256 helpers for the catalog installer's hash-verification step.</summary>
 public static class Sha256
 {
-    /// <summary>Compute the SHA-256 of a file and return it as a 64-char lowercase hex string —
+    /// <summary>Compute the SHA-256 of a file and return it as a 64-char lowercase hex string -
     /// the spelling the catalog pins (<see cref="ArtifactRef.Sha256"/>). Streams the file so a
     /// ~100 MB binary never lands in memory whole.</summary>
     public static async Task<string> OfFileHexAsync(string path, CancellationToken cancellationToken = default)

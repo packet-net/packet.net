@@ -3,13 +3,13 @@ using Packet.Ax25;
 namespace Packet.Ax25.Session;
 
 /// <summary>
-/// AX.25 v2.2 §6.6 segmentation — splits a long upper-layer payload
+/// AX.25 v2.2 §6.6 segmentation - splits a long upper-layer payload
 /// into a sequence of I-frame info-field byte arrays, each prefixed
 /// with the segment control byte.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Segment control byte format (AX.25 v2.2 Figure 6.2 — <c>FXXXXXXX</c>,
+/// Segment control byte format (AX.25 v2.2 Figure 6.2 - <c>FXXXXXXX</c>,
 /// value <c>F*128+X</c>):
 /// <code>
 /// bit 7   = First indicator (1 on the first segment of a series)
@@ -21,23 +21,23 @@ namespace Packet.Ax25.Session;
 /// segments. At the default N1=256 the per-segment payload is 255
 /// bytes, so the maximum upper-layer payload through the Segmenter is
 /// 128 × 255 = 32 640 bytes. (Figure 6.2 makes X a 7-bit field; direwolf
-/// masks the count with <c>0x7f</c> — <c>ax25_link.c</c> reassembler — so
+/// masks the count with <c>0x7f</c> - <c>ax25_link.c</c> reassembler - so
 /// both spec and de-facto agree the count is 7-bit, not 6.)
 /// </para>
 /// <para>
 /// Layer-3 packets segmented this way travel as I-frames with PID
 /// <see cref="Ax25Frame.PidSegmented"/> (0x08). Reassembly is the
-/// receiving side's job — see <see cref="Reassembler"/>.
+/// receiving side's job - see <see cref="Reassembler"/>.
 /// </para>
 /// <para>
 /// <b>First-segment inner PID (de-facto-interop format).</b> Figure 6.2's
 /// two-octet header carries no field for the original Layer-3 PID, so the
-/// figure-literal format loses it across a segmented series. Dire Wolf — the
-/// only known v2.2 segmenter — prepends the original PID as an extra octet at
+/// figure-literal format loses it across a segmented series. Dire Wolf - the
+/// only known v2.2 segmenter - prepends the original PID as an extra octet at
 /// the front of the <b>first</b> segment, between the F/X octet and the data, so
 /// its reassembler can recover it. Pass <c>innerPid</c> to
 /// <see cref="Segment(ReadOnlySpan{byte}, int, byte?)"/> to emit that format
-/// (the inner octet counts toward the segment budget — the first segment then
+/// (the inner octet counts toward the segment budget - the first segment then
 /// holds N1−2 data bytes, subsequent segments N1−1). Pass <c>null</c> for the
 /// figure-literal format. The session selects between them via
 /// <see cref="Ax25SessionQuirks.SegmentFirstCarriesL3Pid"/>.
@@ -58,19 +58,19 @@ public static class Segmenter
     /// Split a payload into I-frame info fields. Each info field is
     /// prefixed with the segment control byte; the rest is up to
     /// <c><paramref name="maxInfoFieldBytes"/> − 1</c> bytes of payload
-    /// (figure-literal format), or — when <paramref name="innerPid"/> is
-    /// supplied — the first segment additionally carries that inner-PID octet
+    /// (figure-literal format), or - when <paramref name="innerPid"/> is
+    /// supplied - the first segment additionally carries that inner-PID octet
     /// after the F/X byte (Dire Wolf's de-facto format), so its data capacity is
     /// <c>maxInfoFieldBytes − 2</c>.
     /// </summary>
     /// <param name="payload">The upper-layer payload to segment.</param>
-    /// <param name="maxInfoFieldBytes">N1 — the max info-field size per I-frame.</param>
+    /// <param name="maxInfoFieldBytes">N1 - the max info-field size per I-frame.</param>
     /// <param name="innerPid">When non-<c>null</c>, emit Dire Wolf's format: the
     /// original Layer-3 PID is written as an extra octet on the <i>first</i> segment
     /// (between the F/X octet and the data) and counts toward the segment budget.
     /// When <c>null</c>, emit the figure-literal format (no inner-PID octet).</param>
     /// <exception cref="ArgumentOutOfRangeException">If <paramref name="maxInfoFieldBytes"/>
-    /// is &lt; 2 (figure-literal) or &lt; 3 (inner-PID format — the first segment needs
+    /// is &lt; 2 (figure-literal) or &lt; 3 (inner-PID format - the first segment needs
     /// room for the F/X octet, the inner-PID octet, and at least one data byte).</exception>
     /// <exception cref="ArgumentException">If <paramref name="payload"/> would need
     /// more than <see cref="MaxSegments"/> segments.</exception>
@@ -132,7 +132,7 @@ public static class Segmenter
     /// Dire Wolf's de-facto format: the first segment info field is
     /// <c>[F/X octet][inner-PID octet][≤ N1−2 payload bytes]</c>; subsequent
     /// segments are <c>[F/X octet][≤ N1−1 payload bytes]</c>. The inner-PID octet
-    /// counts toward the budget — Dire Wolf computes the segment count as
+    /// counts toward the budget - Dire Wolf computes the segment count as
     /// <c>ceil((len + 1) / (N1 − 1))</c> ("+1 for the original PID";
     /// <c>ax25_link.c</c> <c>dl_data_request</c>).
     /// </summary>
@@ -148,7 +148,7 @@ public static class Segmenter
         var firstSegmentCapacity = maxInfoFieldBytes - 2;     // first-segment data capacity (F/X + inner PID + data)
 
         // Count of segments, treating the inner-PID octet as one extra payload
-        // byte that consumes a data slot — mirrors Dire Wolf's
+        // byte that consumes a data slot - mirrors Dire Wolf's
         // DIVROUNDUP(len + 1, N1 - 1). For an empty payload, one segment still
         // carries the inner PID.
         var budget = payload.Length + 1;
@@ -203,7 +203,7 @@ public static class Segmenter
 }
 
 /// <summary>
-/// AX.25 v2.2 §6.6 reassembly — accumulates a sequence of segments
+/// AX.25 v2.2 §6.6 reassembly - accumulates a sequence of segments
 /// (each pushed as the info field of one I-frame with PID 0x08) into
 /// a single upper-layer payload.
 /// </summary>
@@ -211,13 +211,13 @@ public static class Segmenter
 /// <para>
 /// One <see cref="Reassembler"/> handles one in-flight multi-segment
 /// payload at a time. A new "First" segment discards any previously
-/// accumulated partial state — matching the spec's behaviour when a
+/// accumulated partial state - matching the spec's behaviour when a
 /// fresh packet arrives mid-way through a prior series.
 /// </para>
 /// <para>
 /// <b>Inner PID (de-facto-interop format).</b> When constructed with
 /// <c>expectInnerPid: true</c>, the reassembler reads an inner-PID octet off the
-/// front of the first segment's data (Dire Wolf's format — see
+/// front of the first segment's data (Dire Wolf's format - see
 /// <see cref="Segmenter"/>) and exposes it via <see cref="LastRecoveredPid"/>, so
 /// the reassembled payload can be delivered with its original Layer-3 PID. When
 /// constructed with <c>expectInnerPid: false</c> (figure-literal), there is no
@@ -261,7 +261,7 @@ public sealed class Reassembler
     /// (inner-PID format) or <c>null</c> (figure-literal format).
     /// </summary>
     /// <exception cref="ArgumentException">If <paramref name="infoField"/> is empty,
-    /// or — for the inner-PID format — a first segment lacks the inner-PID octet.</exception>
+    /// or - for the inner-PID format - a first segment lacks the inner-PID octet.</exception>
     /// <exception cref="InvalidOperationException">If a non-First segment
     /// arrives without a prior First, or if the remaining count is out
     /// of sequence vs. the prior segment.</exception>

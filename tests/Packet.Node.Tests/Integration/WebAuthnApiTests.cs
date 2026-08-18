@@ -14,7 +14,7 @@ namespace Packet.Node.Tests.Integration;
 /// server-issued challenge, that a malformed / replayed assert is rejected, and the
 /// auth-off no-regression contract. The full register→passwordless-sign-in ceremony
 /// (which exercises the real signature + sign-count clone detection) is the
-/// CDP-virtual-authenticator E2E (scripts/passkey-e2e.mjs) — a WAF can't mint a real
+/// CDP-virtual-authenticator E2E (scripts/passkey-e2e.mjs) - a WAF can't mint a real
 /// authenticator signature.
 /// </summary>
 [Trait("Category", "Node")]
@@ -237,7 +237,7 @@ public sealed class WebAuthnApiTests : IDisposable
         await using var factory = Factory();
         using var client = factory.CreateClient();
 
-        // assert/begin is reachable (200, not 404) even with auth off — it's always open.
+        // assert/begin is reachable (200, not 404) even with auth off - it's always open.
         (await client.PostAsJsonAsync("/api/v1/auth/webauthn/assert/begin", new { }, Web))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 

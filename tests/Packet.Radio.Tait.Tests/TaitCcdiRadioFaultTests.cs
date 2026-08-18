@@ -7,7 +7,7 @@ namespace Packet.Radio.Tait.Tests;
 /// The #576 fault-path behaviour of <see cref="TaitCcdiRadio"/>: a faulting link clears the
 /// cached carrier-sense (a radio that died busy must not latch the CSMA gate into deferring
 /// every keyup its full MaxWait), and a busy state latched implausibly long is re-validated with
-/// a solicited probe — reset to unknown when the radio does not answer (the lost-DCD-clear
+/// a solicited probe - reset to unknown when the radio does not answer (the lost-DCD-clear
 /// bench observation), kept when it does.
 /// </summary>
 public class TaitCcdiRadioFaultTests
@@ -15,7 +15,7 @@ public class TaitCcdiRadioFaultTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
     private const string BusyProgress = ".p0205C9\r.";       // PROGRESS: receiver busy (DCD up)
-    private const string RssiQueryWire = "q0450645C";        // CCTM 064 — the watchdog/revalidation probe
+    private const string RssiQueryWire = "q0450645C";        // CCTM 064 - the watchdog/revalidation probe
     private const string RssiReply = ".j07064-456C9\r.";
 
     [Fact]
@@ -51,7 +51,7 @@ public class TaitCcdiRadioFaultTests
         (await carrierSeen.WaitAsync(Timeout)).Should().BeTrue("the DCD edge must arrive first");
         radio.ChannelBusy.Should().BeTrue();
 
-        // The head-end socket dies while DCD is up — the pump faults the radio.
+        // The head-end socket dies while DCD is up - the pump faults the radio.
         io.FailReads(new IOException("head-end socket died"));
         (await faulted.WaitAsync(Timeout)).Should().BeTrue("the pump must fault the connection state");
 
@@ -95,7 +95,7 @@ public class TaitCcdiRadioFaultTests
 
         // Walk fake time forward: the watchdog re-validates once busy has been latched 30 s
         // (a lost DCD-clear PROGRESS leaves exactly this state on a healthy-looking link), and
-        // the unanswered probe times out 2 s later — busy resets to unknown.
+        // the unanswered probe times out 2 s later - busy resets to unknown.
         for (int i = 0; i < 120 && radio.ChannelBusy is not null; i++)
         {
             clock.Advance(TimeSpan.FromSeconds(5));
@@ -117,7 +117,7 @@ public class TaitCcdiRadioFaultTests
     {
         var clock = new FakeTimeProvider();
         var io = new FakeSerialIo();
-        io.RespondTo(RssiQueryWire, RssiReply);   // the radio answers the probe — it is alive
+        io.RespondTo(RssiQueryWire, RssiReply);   // the radio answers the probe - it is alive
         await using var radio = TaitCcdiRadio.OpenForTest(io, new TaitCcdiRadioOptions
         {
             KeepAliveInterval = TimeSpan.FromHours(1),
@@ -137,7 +137,7 @@ public class TaitCcdiRadioFaultTests
         io.Enqueue(BusyProgress);
         await WaitRealAsync(() => radio.ChannelBusy == true, "the DCD-up edge lands");
 
-        // Well past the staleness threshold — the probe must have been issued and answered.
+        // Well past the staleness threshold - the probe must have been issued and answered.
         for (int i = 0; i < 24; i++)
         {
             clock.Advance(TimeSpan.FromSeconds(5));

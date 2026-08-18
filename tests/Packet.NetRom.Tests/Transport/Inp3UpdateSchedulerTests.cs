@@ -9,7 +9,7 @@ namespace Packet.NetRom.Tests.Transport;
 /// Deterministic tests for <see cref="Inp3UpdateScheduler"/> (the INP3 triggered-update
 /// timing state machine, slice I-4) driven by a <see cref="FakeTimeProvider"/>:
 /// negative-fires-immediately, positive-is-debounced-then-fires, periodic-fires-on-interval,
-/// and negative-preempts-a-pending-positive-batch — plus the locked monotonic-class
+/// and negative-preempts-a-pending-positive-batch - plus the locked monotonic-class
 /// (upgrade-not-downgrade) and debounce-coalescing invariants (design §3.3 / §4 Storm).
 /// </summary>
 public sealed class Inp3UpdateSchedulerTests
@@ -57,7 +57,7 @@ public sealed class Inp3UpdateSchedulerTests
         intents.Select(i => i.Neighbour).Should().BeEquivalentTo(new[] { N1, N2, N3 });
         intents.Should().OnlyContain(i => i.Reason == Inp3AdvertiseReason.Triggered);
 
-        // The dirty flag cleared — a follow-up tick with no new change is silent.
+        // The dirty flag cleared - a follow-up tick with no new change is silent.
         intents.Clear();
         scheduler.Tick();
         intents.Should().BeEmpty("the NEGATIVE fan-out cleared the dirty flag");
@@ -86,7 +86,7 @@ public sealed class Inp3UpdateSchedulerTests
         intents.Select(i => i.Neighbour).Should().BeEquivalentTo(new[] { N1, N2 });
         intents.Should().OnlyContain(i => i.Reason == Inp3AdvertiseReason.Triggered);
 
-        // Drained — no repeat.
+        // Drained - no repeat.
         intents.Clear();
         clock.Advance(TimeSpan.FromSeconds(10));
         scheduler.Tick();
@@ -136,7 +136,7 @@ public sealed class Inp3UpdateSchedulerTests
         intents.Select(i => i.Neighbour).Should().BeEquivalentTo(new[] { N1, N2 });
         intents.Should().OnlyContain(i => i.Reason == Inp3AdvertiseReason.Periodic);
 
-        // And again one interval later — it re-anchors each time.
+        // And again one interval later - it re-anchors each time.
         intents.Clear();
         clock.Advance(TimeSpan.FromSeconds(300));
         scheduler.Tick();
@@ -156,7 +156,7 @@ public sealed class Inp3UpdateSchedulerTests
         using var scheduler = NewScheduler(clock, out var intents, opts);   // N1, N2
 
         // Mark a positive at t=6 s (after the first debounce boundary would have been,
-        // had it been marked at t=0) — but here we mark it freshly so it would drain at
+        // had it been marked at t=0) - but here we mark it freshly so it would drain at
         // t=11 s. The periodic at t=10 s pre-empts it as a single Periodic fan-out.
         clock.Advance(TimeSpan.FromSeconds(6));
         scheduler.MarkDirty(DestA, Inp3UpdateClass.Positive);
@@ -194,7 +194,7 @@ public sealed class Inp3UpdateSchedulerTests
         intents.Should().HaveCount(2, "the NEGATIVE pre-empts and fans out immediately to every neighbour");
         intents.Should().OnlyContain(i => i.Reason == Inp3AdvertiseReason.Triggered);
 
-        // The previously-pending positive was subsumed — nothing left to drain at the
+        // The previously-pending positive was subsumed - nothing left to drain at the
         // old debounce boundary.
         intents.Clear();
         clock.Advance(TimeSpan.FromSeconds(10));   // well past the old positive's 5 s boundary
@@ -238,7 +238,7 @@ public sealed class Inp3UpdateSchedulerTests
         scheduler.Tick();
         intents.Should().BeEmpty("with no target neighbours there is no one to advertise to");
 
-        // Adding neighbours later does not resurrect the already-cleared dirty flag —
+        // Adding neighbours later does not resurrect the already-cleared dirty flag -
         // the NEGATIVE was consumed by the (empty) fan-out on the previous tick.
         scheduler.SetTargetNeighbours(new[] { N1 });
         scheduler.Tick();
@@ -264,7 +264,7 @@ public sealed class Inp3UpdateSchedulerTests
         var clock = new FakeTimeProvider();
         using var scheduler = NewScheduler(clock, out var intents);
 
-        // A brand-new scheduler ticked at t=0 must NOT fire a periodic — it waits one
+        // A brand-new scheduler ticked at t=0 must NOT fire a periodic - it waits one
         // full interval (the periodic anchor is set to "now" on the first tick).
         scheduler.Tick();
         intents.Should().BeEmpty("the periodic refresh waits one full interval after the first tick");

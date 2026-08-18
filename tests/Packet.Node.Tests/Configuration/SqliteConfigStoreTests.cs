@@ -9,12 +9,12 @@ using Packet.Node.Tests.Support;
 namespace Packet.Node.Tests.Configuration;
 
 /// <summary>
-/// Tests for <see cref="SqliteConfigStore"/> — the JSON-blob singleton row in pdn.db.
+/// Tests for <see cref="SqliteConfigStore"/> - the JSON-blob singleton row in pdn.db.
 /// The marquee is the full-tree round-trip property: save → load returns a
 /// <see cref="NodeConfig"/> EQUAL to the input across the whole tree, incl. the
 /// polymorphic transport union and the sequence-equality collection records
 /// (WebAuthn.AllowedOrigins, Tailscale.Tags). A reference-equality regression in any
-/// list/dict member would make a reconcile diff see spurious changes — this catches it.
+/// list/dict member would make a reconcile diff see spurious changes - this catches it.
 /// </summary>
 public sealed class SqliteConfigStoreTests : IDisposable
 {
@@ -57,7 +57,7 @@ public sealed class SqliteConfigStoreTests : IDisposable
         got.Tailscale.Should().Be(config.Tailscale, "the tailscale tags list must round-trip by value");
 
         // And the canonical JSON is stable: re-serialising the loaded config equals the
-        // serialisation of the input — one canonical form, byte-for-byte.
+        // serialisation of the input - one canonical form, byte-for-byte.
         NodeConfigJson.Serialize(got).Should().Be(NodeConfigJson.Serialize(config));
     }
 
@@ -76,7 +76,7 @@ public sealed class SqliteConfigStoreTests : IDisposable
         var b = new NodeConfig { Identity = new Identity { Callsign = "G0ABC-2" } };
 
         store.Save(a).Should().BeTrue();
-        store.Save(b).Should().BeTrue();   // ON CONFLICT(id=1) DO UPDATE — replaces, not appends
+        store.Save(b).Should().BeTrue();   // ON CONFLICT(id=1) DO UPDATE - replaces, not appends
 
         var loaded = store.Load();
         loaded!.Value.Config.Identity.Callsign.Should().Be("G0ABC-2");
@@ -85,7 +85,7 @@ public sealed class SqliteConfigStoreTests : IDisposable
     [Fact]
     public void AllowedOrigins_and_Tags_round_trip_by_value()
     {
-        // The two explicit sequence-equality lists in the tree — pin them directly.
+        // The two explicit sequence-equality lists in the tree - pin them directly.
         var store = NewStore();
         var config = new NodeConfig
         {
@@ -191,7 +191,7 @@ public sealed class SqliteConfigStoreTests : IDisposable
     public void Load_at_the_target_with_a_registry_present_is_idempotent_no_migration_log()
     {
         // A blob already at the (synthetic) target v2 must NOT re-run the v1→v2 migration on a
-        // subsequent load — the migration is not re-applied once at current.
+        // subsequent load - the migration is not re-applied once at current.
         var path = Path.Combine(dir, "already-current.db");
         WriteRawRow(path, schemaVer: 2,
             payload: "{\"schemaVersion\":2,\"identity\":{\"callsign\":\"M0LTE-1\"}}");

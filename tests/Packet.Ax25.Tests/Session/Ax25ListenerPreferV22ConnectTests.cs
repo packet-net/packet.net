@@ -9,7 +9,7 @@ namespace Packet.Ax25.Tests.Session;
 /// Outbound CONNECT version-preference unit tests for <see cref="Ax25Listener"/>.
 /// A default dial prefers AX.25 v2.2 (SABME / mod-128) so the link negotiates
 /// SREJ + window against capable peers and degrades cleanly to v2.0/SABM for
-/// peers that can't (FRMR — LinBPQ; DM — XRouter, exercised live in the interop
+/// peers that can't (FRMR - LinBPQ; DM - XRouter, exercised live in the interop
 /// suite). The opt-out (<see cref="Ax25ListenerOptions.PreferExtendedConnect"/>
 /// = <c>false</c>, or the per-call override) initiates a plain v2.0 (SABM) connect.
 /// </summary>
@@ -17,7 +17,7 @@ namespace Packet.Ax25.Tests.Session;
 /// These tests assert the <em>first frame on the wire</em>: a v2.2-preferred dial
 /// emits a SABME, a v2.0 dial emits a SABM. The full SABME → UA → XID round-trip
 /// and the FRMR/DM fallbacks are proven against real peers in the Interop suite
-/// (Direwolf / LinBPQ / XRouter). The inbound answerer is deliberately untouched —
+/// (Direwolf / LinBPQ / XRouter). The inbound answerer is deliberately untouched -
 /// it adopts the peer's version from the SABM/SABME it receives (figc4.1).
 /// </remarks>
 public class Ax25ListenerPreferV22ConnectTests
@@ -39,12 +39,12 @@ public class Ax25ListenerPreferV22ConnectTests
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions
         {
             MyCall = LocalCall,
-            // PreferExtendedConnect defaults to true — assert that default, no override.
+            // PreferExtendedConnect defaults to true - assert that default, no override.
         });
         await listener.StartAsync();
 
         // Fire-and-forget: the connect awaits DL-CONNECT-confirm (which never
-        // arrives — no peer), but the SABME hits the wire synchronously on dispatch.
+        // arrives - no peer), but the SABME hits the wire synchronously on dispatch.
         _ = listener.ConnectAsync(PeerCall);
 
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
@@ -135,7 +135,7 @@ public class Ax25ListenerPreferV22ConnectTests
         _ = listener.ConnectAsync(PeerCall);
 
         // The FIRST frame on a mod-8 dial is now the XID command (the LinBPQ SREJ
-        // accommodation), not the SABM — the SABM follows once the XID exchange
+        // accommodation), not the SABM - the SABM follows once the XID exchange
         // settles or times out. No peer answers here, so we only assert the lead XID.
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
         Ax25Frame.TryParse(modem.SentFrames[0].Span, out var first).Should().BeTrue();
@@ -146,7 +146,7 @@ public class Ax25ListenerPreferV22ConnectTests
     // --- the 5-arg overload's per-call preConnectXidNegotiatesSrej param ----------------------
     // The per-peer capability cache dials through ConnectAsync(remote, local, extended,
     // preConnectXidNegotiatesSrej, ct) so it can SKIP the pre-connect XID for a neighbour it has
-    // learned does not answer one — overriding the listener's default. These two tests prove the
+    // learned does not answer one - overriding the listener's default. These two tests prove the
     // per-call param wins over the listener default in both directions.
 
     [Fact]
@@ -164,7 +164,7 @@ public class Ax25ListenerPreferV22ConnectTests
         // … but this dial overrides it off per-call (the cache's known-non-XID-answerer path).
         _ = listener.ConnectAsync(PeerCall, LocalCall, extended: false, preConnectXidNegotiatesSrej: false);
 
-        // The FIRST frame is the SABM, NOT an XID — the per-call param overrode the listener default.
+        // The FIRST frame is the SABM, NOT an XID - the per-call param overrode the listener default.
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
         Ax25Frame.TryParse(modem.SentFrames[0].Span, out var first).Should().BeTrue();
         UBase(first!).Should().Be(SabmBase,
@@ -187,7 +187,7 @@ public class Ax25ListenerPreferV22ConnectTests
         // … but this dial forces the XID probe on per-call.
         _ = listener.ConnectAsync(PeerCall, LocalCall, extended: false, preConnectXidNegotiatesSrej: true);
 
-        // The FIRST frame is the XID command — the per-call param overrode the listener default.
+        // The FIRST frame is the XID command - the per-call param overrode the listener default.
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
         Ax25Frame.TryParse(modem.SentFrames[0].Span, out var first).Should().BeTrue();
         UBase(first!).Should().Be(XidBase,

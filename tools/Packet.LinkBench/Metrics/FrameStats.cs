@@ -16,21 +16,21 @@ internal sealed class FrameStats
     public int TxU;       // SABM/UA/DISC/DM/FRMR/XID/TEST/UI
     public int RxTotal;
 
-    /// <summary>I-frame transmissions whose N(S) was already outstanding —
+    /// <summary>I-frame transmissions whose N(S) was already outstanding -
     /// i.e. the frame went to the wire a second (third…) time.</summary>
     public int Retransmits;
 
     /// <summary>Extra copies in runs of consecutive identical supervisory frames
-    /// emitted within the dup window — the #79 burst, quantified. 0 = the engine
+    /// emitted within the dup window - the #79 burst, quantified. 0 = the engine
     /// never emitted the same RR/REJ twice back-to-back.</summary>
     public int DupSupervisory;
 
     /// <summary>Longest run of identical consecutive supervisory frames
-    /// (1 = no duplication; #79 reports bursts of 2–6).</summary>
+    /// (1 = no duplication; #79 reports bursts of 2-6).</summary>
     public int MaxSupervisoryBurst = 1;
 
     /// <summary>Cumulative time this endpoint sat with a full send window
-    /// (k I-frames unacknowledged) — blocked on the peer's acks.</summary>
+    /// (k I-frames unacknowledged) - blocked on the peer's acks.</summary>
     public TimeSpan WindowStall;
 
     public int TxSupervisory => TxRr + TxRnr + TxRej + TxSrej;
@@ -131,7 +131,7 @@ internal sealed class FrameStats
                             outstanding.Dequeue();
                         }
                     }
-                    // else: stale N(R) (e.g. a dup ack) — acks nothing new.
+                    // else: stale N(R) (e.g. a dup ack) - acks nothing new.
 
                     if (outstanding.Count < k && stallStart is { } start)
                     {

@@ -15,7 +15,7 @@ using SharpFuzz;
 namespace Packet.Fuzz;
 
 /// <summary>
-/// SP-004 — SharpFuzz harness for the AX.25 and KISS wire-format parsers, plus
+/// SP-004 - SharpFuzz harness for the AX.25 and KISS wire-format parsers, plus
 /// the AX.25 v2.2 parsing/codec surface (extended/mod-128 frames, the XID
 /// information-field codec, and the §6.6 segment reassembler).
 /// </summary>
@@ -25,23 +25,23 @@ namespace Packet.Fuzz;
 /// <c>--smoke</c>):
 /// </para>
 /// <list type="bullet">
-/// <item><c>Ax25Frame.TryParse(ReadOnlySpan&lt;byte&gt;, out _)</c> — the direct AX.25
+/// <item><c>Ax25Frame.TryParse(ReadOnlySpan&lt;byte&gt;, out _)</c> - the direct AX.25
 /// KISS-form (no flags, no FCS) parser, modulo-8 control field.</item>
-/// <item><c>KissDecoder.Push(ReadOnlySpan&lt;byte&gt;)</c> — KISS parser entry. The
+/// <item><c>KissDecoder.Push(ReadOnlySpan&lt;byte&gt;)</c> - KISS parser entry. The
 /// task brief asked for <c>KissFrame.TryParse</c> but no such method exists; KISS
 /// is a stateful framer, not a one-shot parser, so the equivalent harness drives
 /// arbitrary byte sequences through <see cref="KissDecoder"/> instead.</item>
-/// <item><c>Ax25Frame.TryParse(…, extended: true, out _)</c> — the v2.2
+/// <item><c>Ax25Frame.TryParse(…, extended: true, out _)</c> - the v2.2
 /// EXTENDED/mod-128 parse path. The decoder is mode-aware (the caller tells it
 /// the link modulo), so an I/S frame's control field is 2 octets; this target
 /// fuzzes that second-octet parse.</item>
-/// <item><c>XidInfoField.TryParse(ReadOnlySpan&lt;byte&gt;, options, out _)</c> — the
+/// <item><c>XidInfoField.TryParse(ReadOnlySpan&lt;byte&gt;, options, out _)</c> - the
 /// XID (Exchange Identification) info-field TLV codec (§4.3.3.7). Attacker-
-/// controlled FI/GI/GL and a run of PI/PL/PV triples — truncation, bad types,
+/// controlled FI/GI/GL and a run of PI/PL/PV triples - truncation, bad types,
 /// length overruns. Fuzzed under both <see cref="XidParseOptions.Strict"/> and
 /// <see cref="XidParseOptions.Lenient"/>.</item>
 /// <item><c>Reassembler.Push(ReadOnlySpan&lt;byte&gt;)</c> + the on-the-wire
-/// <see cref="SegmentationLayer.OnDataIndication"/> seam — the §6.6 segment
+/// <see cref="SegmentationLayer.OnDataIndication"/> seam - the §6.6 segment
 /// reassembler, fed hostile/malformed segment sequences (out-of-order,
 /// oversized counts, missing-first, inner-PID-quirk edges).</item>
 /// </list>
@@ -63,7 +63,7 @@ namespace Packet.Fuzz;
 /// </para>
 /// <para>
 /// <b>Invariant for every parser/codec target:</b> never throw an unhandled
-/// exception — return false / a clean parse error / no state corruption. The
+/// exception - return false / a clean parse error / no state corruption. The
 /// reassembler is the one exception to that rule by current design (its
 /// <c>Push</c> contract throws on a protocol-violating segment sequence); see
 /// <c>FINDINGS.md</c> 2026-06-03 for the on-the-wire reachability of that throw.
@@ -187,7 +187,7 @@ public static class Program
         }
 
         // ── Extended / mod-128 seeds (KISS form) ─────────────────────
-        // Valid mod-128 I and S frames — 2-octet control field (Fig 4.1b),
+        // Valid mod-128 I and S frames - 2-octet control field (Fig 4.1b),
         // including the 7-bit N(S)/N(R) and the 127 boundary that mod-8 can't
         // reach. The decoder is mode-aware, so these only decode correctly with
         // extended: true (which the ax25ext target / smoke uses).
@@ -290,7 +290,7 @@ public static class Program
     /// </summary>
     private static IEnumerable<(string Name, byte[] Bytes)> XidSeeds()
     {
-        // Figure 4.6 (NJ7P → N7LEM) — FI GI GL + the 6 PI/PL/PV triples. The HDLC
+        // Figure 4.6 (NJ7P → N7LEM) - FI GI GL + the 6 PI/PL/PV triples. The HDLC
         // Optional Functions PV is the MSB-octet-first form (`22 A8 82`) our codec
         // emits/parses; see XidInfoFieldTests.Figure46Info for the octet-order note.
         yield return ("figure-4-6.bin", new byte[]
@@ -335,7 +335,7 @@ public static class Program
         yield return ("figlit-last.bin", new byte[] { 0, 0xC0, 0xC1 });
         // Inner-PID (Dire Wolf): the first segment carries [F/X][inner-PID][data].
         yield return ("innerpid-first.bin", new byte[] { Segmenter.FirstBit | 1, Ax25Frame.PidNetRom, 0xD0, 0xD1 });
-        // A single-segment (First + last) series — remaining count 0 on the First.
+        // A single-segment (First + last) series - remaining count 0 on the First.
         yield return ("single.bin", new byte[] { Segmenter.FirstBit | 0, 0xEE, 0xEF });
     }
 
@@ -388,7 +388,7 @@ public static class Program
         Console.WriteLine();
 
         // Always replay the on-disk seed corpus first so the smoke run is at
-        // least as broad as the AFL seed set — any throw on a known-valid
+        // least as broad as the AFL seed set - any throw on a known-valid
         // sample is a regression we want to catch in CI.
         var ax25Seeds = LoadCorpus("ax25");
         var kissSeeds = LoadCorpus("kiss");
@@ -414,12 +414,12 @@ public static class Program
         // ArgumentException *by design* on protocol-violating segment sequences
         // (its documented contract; see FINDINGS.md 2026-06-03). FuzzSegmentBytes
         // swallows exactly those two documented types and records anything else as
-        // a finding — so the smoke run fails only on a crash-class bug (IOOR,
+        // a finding - so the smoke run fails only on a crash-class bug (IOOR,
         // NRE, …), not on the contractual protocol-violation throw.
         var seg = SmokeOne("Reassembler.Push / SegmentationLayer", iterations, FuzzSegmentBytes, segSeeds, seed,
             structuredGenerator: HostileSegmentSequence);
         Console.WriteLine();
-        // The node console command parser is total by contract — it must never
+        // The node console command parser is total by contract - it must never
         // throw on any byte sequence, must bound its work, and must never produce
         // a spurious Connect/Bye from non-command bytes. FuzzCommandBytes asserts
         // all three; any violation is recorded as a finding (no exception is
@@ -427,18 +427,18 @@ public static class Program
         var cmd = SmokeOne("NodeCommandParser.Parse", iterations, FuzzCommandBytes, cmdSeeds, seed,
             structuredGenerator: MostlyValidCommand);
         Console.WriteLine();
-        // The APRS decoders are total by contract — every public TryDecode must return
+        // The APRS decoders are total by contract - every public TryDecode must return
         // false on a malformed info field, never throw. The target runs each in turn.
         var aprs = SmokeOne("APRS info-field decoders", iterations, FuzzAprsBytes, aprsSeeds, seed,
             structuredGenerator: MostlyValidAprs);
         Console.WriteLine();
         // AgwFrame.Parse throws InvalidDataException by documented contract on a short /
         // over-claiming frame; the target swallows exactly that and records any other
-        // (crash-class) exception as a finding — like the segment target.
+        // (crash-class) exception as a finding - like the segment target.
         var agw = SmokeOne("AgwFrame.Parse", iterations, FuzzAgwBytes, agwSeeds, seed,
             structuredGenerator: MostlyValidAgw);
         Console.WriteLine();
-        // The NET/ROM wire parsers are total by contract — return false, never throw.
+        // The NET/ROM wire parsers are total by contract - return false, never throw.
         var nr = SmokeOne("NET/ROM wire parsers", iterations, FuzzNetRomBytes, nrSeeds, seed,
             structuredGenerator: MostlyValidNetRom);
 
@@ -475,7 +475,7 @@ public static class Program
     /// Run one target through three phases: seed replay, single-mutation of each
     /// seed, and bulk generated inputs. <paramref name="structuredGenerator"/>,
     /// when non-null, supplies target-aware structured inputs that alternate with
-    /// the generic random/structured generator in the bulk phase — so a TLV/XID
+    /// the generic random/structured generator in the bulk phase - so a TLV/XID
     /// or segment target gets deep, format-shaped coverage on top of raw bytes.
     /// </summary>
     private static SmokeResult SmokeOne(
@@ -625,7 +625,7 @@ public static class Program
             0 => RandomBuffer(rng, rng.Next(0, 16)),                 // truncated
             1 => RandomBuffer(rng, rng.Next(14, 32)),                // around min size
             2 => RandomBuffer(rng, rng.Next(15, 350)),               // typical AX.25 KISS payload
-            3 => RandomBuffer(rng, rng.Next(350, 4096)),             // oversized — well beyond paclen
+            3 => RandomBuffer(rng, rng.Next(350, 4096)),             // oversized - well beyond paclen
             4 => SameByteBuffer(rng, (byte)rng.Next(256)),           // all-same-byte (FEND, FESC, 0x00, …)
             5 => SlipPathological(rng),                              // KISS-aware: lots of FENDs / FESCs / dangling escapes
             _ => MostlyValidAx25(rng),                               // structured: looks like an AX.25 frame
@@ -674,7 +674,7 @@ public static class Program
     /// </summary>
     private static byte[] MostlyValidAx25(Random rng)
     {
-        int digiCount = rng.Next(0, 10);                            // 0..9 — one extra to exceed the §6.1 max
+        int digiCount = rng.Next(0, 10);                            // 0..9 - one extra to exceed the §6.1 max
         int infoLen = rng.Next(0, 256);
         int total = (2 + digiCount) * 7 + 1 + 1 + infoLen;     // dest+src+digis + ctrl + pid + info
         var buf = new byte[total];
@@ -694,7 +694,7 @@ public static class Program
 
     private static void WriteAddrSlot(byte[] buf, ref int off, Random rng, bool isLast)
     {
-        // 6 callsign bytes (high 7 bits = ASCII << 1; low bit must be 0) — sometimes
+        // 6 callsign bytes (high 7 bits = ASCII << 1; low bit must be 0) - sometimes
         // valid-looking, sometimes garbage to exercise the address validator.
         for (int i = 0; i < 6; i++)
         {
@@ -830,7 +830,7 @@ public static class Program
             var seg = new byte[len];
             if (len > 0)
             {
-                // Header byte: random First bit + random remaining count — this is
+                // Header byte: random First bit + random remaining count - this is
                 // exactly what produces out-of-sequence / missing-first hostility.
                 byte first = rng.Next(2) == 0 ? Segmenter.FirstBit : (byte)0;
                 seg[0] = (byte)(first | (byte)(rng.Next(128) & Segmenter.CountMask));
@@ -855,7 +855,7 @@ public static class Program
     /// <summary>
     /// Drive arbitrary bytes through a fresh <see cref="KissDecoder"/>. The
     /// decoder is the byte-stream parser entry point for the KISS framing
-    /// layer — equivalent of <c>KissFrame.TryParse</c> for a stream-oriented
+    /// layer - equivalent of <c>KissFrame.TryParse</c> for a stream-oriented
     /// protocol.
     /// </summary>
     private static void FuzzKissBytes(byte[] bytes)
@@ -868,18 +868,18 @@ public static class Program
     /// Parse arbitrary bytes as an EXTENDED (mod-128) frame. The decoder is
     /// mode-aware, so this drives the 2-octet-control-field branch of
     /// <see cref="Ax25Frame.TryParse(ReadOnlySpan{byte}, Ax25ParseOptions, bool, out Ax25Frame?)"/>.
-    /// Invariant: never throw — return false on malformed input.
+    /// Invariant: never throw - return false on malformed input.
     /// </summary>
     private static void FuzzAx25ExtendedBytes(byte[] bytes)
     {
         _ = Ax25Frame.TryParse(bytes, Ax25ParseOptions.Lenient, extended: true, out _);
-        // Also exercise the strict-options path — different reject branches.
+        // Also exercise the strict-options path - different reject branches.
         _ = Ax25Frame.TryParse(bytes, Ax25ParseOptions.Strict, extended: true, out _);
     }
 
     /// <summary>
     /// Parse arbitrary bytes as an XID information field under both the strict
-    /// and lenient option presets. Invariant: never throw — return false on a
+    /// and lenient option presets. Invariant: never throw - return false on a
     /// malformed buffer (bad FI/GI, truncated header, GL overrun, truncated
     /// PI/PL/PV). Re-encoding a successfully-parsed value must also not throw.
     /// </summary>
@@ -906,7 +906,7 @@ public static class Program
     /// <see cref="ArgumentException"/> by documented design on a protocol-
     /// violating segment sequence (see <c>FINDINGS.md</c> 2026-06-03). Those two
     /// types are the contract, so this target swallows exactly them and lets any
-    /// other exception escape to be recorded as a finding — i.e. it asserts "no
+    /// other exception escape to be recorded as a finding - i.e. it asserts "no
     /// <i>crash-class</i> exception (IndexOutOfRange, NullReference, …) escapes",
     /// which is the invariant that actually matters for this target.
     /// </remarks>
@@ -925,7 +925,7 @@ public static class Program
 
         // The on-the-wire seam: deliver each segment as a PID-0x08 DL-DATA
         // indication, exactly as Ax25Listener does. Same documented-throw
-        // tolerance — this is the reachability path the finding documents.
+        // tolerance - this is the reachability path the finding documents.
         foreach (var quirks in new[] { Ax25SessionQuirks.Default, Ax25SessionQuirks.StrictlyFaithful })
         {
             var ctx = new Ax25SessionContext
@@ -967,7 +967,7 @@ public static class Program
 
     private static int RunAx25Fuzzer(string[] args)
     {
-        // SharpFuzz harness — afl-fuzz feeds stdin or a path under
+        // SharpFuzz harness - afl-fuzz feeds stdin or a path under
         // Fuzzer.OutOfProcess.Run; we just call TryParse with whatever we get.
         Fuzzer.OutOfProcess.Run(stream =>
         {
@@ -1028,7 +1028,7 @@ public static class Program
     /// <summary>
     /// Drive the node console command parser with arbitrary bytes, asserting its
     /// three contract invariants: (1) it never throws; (2) every result is a
-    /// bounded, typed command — an over-long line is truncated to
+    /// bounded, typed command - an over-long line is truncated to
     /// <see cref="NodeCommandParser.MaxLineLength"/>; (3) a result is never a
     /// spurious <c>Connect</c> carrying an unparseable callsign, nor a <c>Connect</c>
     /// /<c>Bye</c> from a line whose first token can't be that verb. Both the
@@ -1180,8 +1180,8 @@ public static class Program
 
     /// <summary>
     /// Parse arbitrary bytes as an AGW frame off the head of the buffer. <see cref="AgwFrame.Parse"/>
-    /// reads an attacker-controlled little-endian data-length and slices the body by it —
-    /// a classic over-read / overflow shape — and throws <see cref="InvalidDataException"/>
+    /// reads an attacker-controlled little-endian data-length and slices the body by it -
+    /// a classic over-read / overflow shape - and throws <see cref="InvalidDataException"/>
     /// by documented contract on a short / over-claiming / overflowing frame. This target
     /// swallows exactly that documented type and lets any other (crash-class) exception
     /// escape to be recorded as a finding. <see cref="AgwFrame.TryReadDataLength"/> (a
@@ -1199,7 +1199,7 @@ public static class Program
 
     /// <summary>
     /// Drive arbitrary bytes through the NET/ROM network-layer wire parsers. All are total
-    /// by contract — they return <c>false</c> on a malformed datagram (short header, bad
+    /// by contract - they return <c>false</c> on a malformed datagram (short header, bad
     /// callsign octets, truncated NODES body), never throw. Covers the full datagram
     /// (<see cref="NetRomPacket"/>), the network/transport headers, and a NODES broadcast
     /// under both option presets.

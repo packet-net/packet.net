@@ -50,7 +50,7 @@ internal static class ModeSurveyCommand
 
         Console.WriteLine($"  TNC A firmware {await tncA.GetVersionAsync()}, TNC B firmware {await tncB.GetVersionAsync()}");
 
-        // Status beacons off — a 60 s beacon keying mid-cell would pollute both
+        // Status beacons off - a 60 s beacon keying mid-cell would pollute both
         // the latency figures and the receiver's IL2P counters.
         await tncA.SetBeaconIntervalAsync(0);
         await tncB.SetBeaconIntervalAsync(0);
@@ -220,8 +220,8 @@ internal static class ModeSurveyCommand
     }
 
     /// <summary>
-    /// SETHW the mode (+16, RAM only) — verified through the driver's GETALL
-    /// readback and retried until it takes (#633) — then transmit one throwaway
+    /// SETHW the mode (+16, RAM only) - verified through the driver's GETALL
+    /// readback and retried until it takes (#633) - then transmit one throwaway
     /// settle frame, the NinoTNC applying a changed setting from the SECOND
     /// frame. Returns <c>false</c> when the mode never took, so the caller can
     /// skip the cell instead of measuring the wrong mode.
@@ -371,7 +371,7 @@ internal static class ModeSurveyCommand
         }
         catch (TimeoutException)
         {
-            // No TX-completion echo — the frame may or may not have keyed; the
+            // No TX-completion echo - the frame may or may not have keyed; the
             // receive verdict (not the echo) is what the survey scores.
         }
     }
@@ -397,7 +397,7 @@ internal static class ModeSurveyCommand
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            // Window over — normal completion.
+            // Window over - normal completion.
         }
     }
 

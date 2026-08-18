@@ -3,14 +3,14 @@ using System.Collections.Frozen;
 namespace Packet.Kiss.NinoTnc;
 
 /// <summary>
-/// The NinoTNC mode catalog. Modes 0–14 are concrete operating modes
+/// The NinoTNC mode catalog. Modes 0-14 are concrete operating modes
 /// selected by the front-panel DIP switches; mode 15 is the "Set from KISS"
 /// escape that uses <see cref="KissCommand.SetHardware"/> to choose the
 /// effective mode at runtime.
 /// </summary>
 /// <remarks>
 /// Originally ported from packet-net/kissproxy@web-interface,
-/// <c>KissFrameBuilder.cs</c> lines 45–112; the DIP-position names are now
+/// <c>KissFrameBuilder.cs</c> lines 45-112; the DIP-position names are now
 /// reconciled against Nino's own v44 mode table (see <see cref="ByMode"/>).
 /// The firmware-byte → mode table is kept verbatim because:
 /// <list type="bullet">
@@ -20,7 +20,7 @@ namespace Packet.Kiss.NinoTnc;
 ///         user-facing switch label). We need the reverse lookup to identify
 ///         the operating mode from a TX-Test frame.</item>
 ///   <item>The catalog is firmware-version-specific (base table: v3.44;
-///         bench-verified 3.41 divergences are carried as extra alias rows —
+///         bench-verified 3.41 divergences are carried as extra alias rows -
 ///         see <see cref="FirmwareByteToMode"/>). Newer firmwares may extend
 ///         it; bump when needed.</item>
 /// </list>
@@ -32,7 +32,7 @@ public static class NinoTncCatalog
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Names reconciled 2026-07-15 against Nino's own v44 mode table —
+    /// Names reconciled 2026-07-15 against Nino's own v44 mode table -
     /// <see href="https://github.com/ninocarrillo/flashtnc/blob/master/v44-op-modes.png">v44-op-modes.png</see>
     /// plus the "MODE SWITCH MAPPING v3/4.43" block in
     /// <see href="https://github.com/ninocarrillo/flashtnc/blob/master/release-notes.txt">release-notes.txt</see>,
@@ -41,8 +41,8 @@ public static class NinoTncCatalog
     /// kissproxy, itself predating v42):
     /// </para>
     /// <list type="bullet">
-    ///   <item>Modes 1/3 are <em>C4FSK</em> — coherent 4-level FSK, added in
-    ///         firmware 3/4.42 — not the bare "4FSK" kissproxy called them.</item>
+    ///   <item>Modes 1/3 are <em>C4FSK</em> - coherent 4-level FSK, added in
+    ///         firmware 3/4.42 - not the bare "4FSK" kissproxy called them.</item>
     ///   <item>Modes 13/14 are plain "300 AFSK"; the "AFSKPLL" spelling is
     ///         retired upstream (3/4.42 gave every 300 AFSK mode coherent
     ///         demodulation, so the PLL variant is no longer a distinct
@@ -91,7 +91,7 @@ public static class NinoTncCatalog
     /// <remarks>Firmware-version-specific. The base table is locked to
     /// NinoTNC firmware v3.44; where an older firmware is bench-verified to
     /// report a <em>different</em> byte for a mode, that byte is added as an
-    /// extra row (the reverse lookup tolerates aliases — several bytes may
+    /// extra row (the reverse lookup tolerates aliases - several bytes may
     /// resolve to one mode).</remarks>
     public static readonly FrozenDictionary<byte, byte> FirmwareByteToMode = new Dictionary<byte, byte>
     {
@@ -111,7 +111,7 @@ public static class NinoTncCatalog
         { 0x22, 13 },
         { 0x23, 14 },
         // Firmware 3.41 reports mode 14 (300 AFSK IL2P+CRC) as 0x90 where
-        // 3.44 reports 0x23 — bench evidence: the 2026-07-03 wide-il2pc
+        // 3.44 reports 0x23 - bench evidence: the 2026-07-03 wide-il2pc
         // mode-survey runs, where the GETALL verify read "unrecognised
         // firmware byte 0x90" while the 300 AFSK traffic decoding proved
         // the mode was engaged.
@@ -122,21 +122,21 @@ public static class NinoTncCatalog
     /// <summary>
     /// Modes whose published occupied bandwidth needs a wide (25 kHz) channel:
     /// 0 (9600 GFSK AX.25), 1 (19200 C4FSK IL2P+CRC) and 2 (9600 GFSK
-    /// IL2P+CRC) — exactly the modes Nino's v3/4.43 mode-switch mapping rates
+    /// IL2P+CRC) - exactly the modes Nino's v3/4.43 mode-switch mapping rates
     /// at 20 kHz OBW, the rest being 10 kHz (modes 3, 4) or narrower. Note
     /// mode 3 (9600 C4FSK) is <em>not</em> here: C4FSK carries 9600 bps in
     /// 10 kHz, which is the point of it.
     /// </summary>
     /// <remarks>Planning guidance, not a hard decode limit: the bench rig
     /// decodes mode 2 on its narrow (12.5 kHz) programmed channel at 38 dB SNR
-    /// through an attenuator pad — adjacent-channel behaviour on air is what
+    /// through an attenuator pad - adjacent-channel behaviour on air is what
     /// the 25 kHz rating protects. Sources: flashtnc release-notes.txt
     /// (upstream OBW figures) corroborated by the OARC wiki mode table
     /// (https://wiki.oarc.uk/packet:ninotnc, retrieved 2026-07-03).</remarks>
     public static readonly FrozenSet<byte> WideChannelModes = new byte[] { 0, 1, 2 }.ToFrozenSet();
 
     /// <summary>True when <paramref name="mode"/>'s published occupied bandwidth
-    /// needs a wide (25 kHz) channel — see <see cref="WideChannelModes"/>.</summary>
+    /// needs a wide (25 kHz) channel - see <see cref="WideChannelModes"/>.</summary>
     public static bool RequiresWideChannel(byte mode) => WideChannelModes.Contains(mode);
 
     /// <summary>

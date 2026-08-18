@@ -50,7 +50,7 @@ public class Ax25FrameRoundTripProperties
 
     /// <summary>
     /// Map an arbitrary FsCheck-generated string to a valid AX.25 callsign
-    /// (1–6 chars, uppercase A–Z / 0–9). We don't want the property's
+    /// (1-6 chars, uppercase A-Z / 0-9). We don't want the property's
     /// shrinking to spend time chasing input-validation rejection paths.
     /// </summary>
     private static Callsign SanitiseCallsign(string raw, byte ssidRaw)

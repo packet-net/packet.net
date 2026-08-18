@@ -9,7 +9,7 @@ namespace Packet.Ax25.Session;
 /// <remarks>
 /// The binding table maps every <see cref="Ax25Guard"/> atom the SDL's guard
 /// expressions can reference to a closure that reads its current value. The
-/// table is <em>exhaustive</em> over the <see cref="Ax25Guard"/> closed set —
+/// table is <em>exhaustive</em> over the <see cref="Ax25Guard"/> closed set -
 /// the codegen emits typed atoms, and the <c>switch</c> below binds every
 /// member, so a newly-introduced atom is a compile error (CS8509) here rather
 /// than an unbound-identifier surprise at runtime.
@@ -17,7 +17,7 @@ namespace Packet.Ax25.Session;
 public static class Ax25SessionBindings
 {
     /// <summary>
-    /// Build the standard binding table for an AX.25 session — every
+    /// Build the standard binding table for an AX.25 session - every
     /// <see cref="Ax25Guard"/> atom mapped to a closure over the supplied
     /// context and scheduler.
     /// </summary>
@@ -29,8 +29,8 @@ public static class Ax25SessionBindings
     /// <see cref="Ax25Guard.NsEqVr"/>, <see cref="Ax25Guard.VaLeNrLeVs"/>, …) read
     /// the trigger's attached <see cref="Ax25Frame"/>. When <c>null</c> (or when
     /// the thunk returns <c>null</c>, i.e. the event isn't a frame-receipt), those
-    /// atoms evaluate to safe defaults — <c>false</c> for P/F/command and
-    /// out-of-window for sequence checks — matching the figures' expectation that
+    /// atoms evaluate to safe defaults - <c>false</c> for P/F/command and
+    /// out-of-window for sequence checks - matching the figures' expectation that
     /// frame-aware predicates only matter on frame-arrival transitions.
     /// </param>
     public static IReadOnlyDictionary<Ax25Guard, Func<bool>> CreateDefault(
@@ -41,7 +41,7 @@ public static class Ax25SessionBindings
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(scheduler);
 
-        // Frame-aware helpers — read fields off the trigger's attached frame.
+        // Frame-aware helpers - read fields off the trigger's attached frame.
         // A null trigger thunk, or a trigger that isn't a frame-receipt event
         // (timer expiry, upper-layer primitive), yields a null frame and the
         // closures fall back to safe defaults.
@@ -62,8 +62,8 @@ public static class Ax25SessionBindings
             return diff > 1;
         }
 
-        // `va_le_nr_le_vs` — incoming N(R) lies in the ring-buffer window
-        // [V(a), V(s)] (inclusive of both ends in mod-N arithmetic — N(R) = V(a)
+        // `va_le_nr_le_vs` - incoming N(R) lies in the ring-buffer window
+        // [V(a), V(s)] (inclusive of both ends in mod-N arithmetic - N(R) = V(a)
         // is "all sent frames acked"; N(R) = V(s) is "no outstanding").
         bool NrInWindow()
         {
@@ -77,7 +77,7 @@ public static class Ax25SessionBindings
             return nrDelta <= span;
         }
 
-        // `info_field_length_le_N1_and_content_is_octet_aligned` — heuristic:
+        // `info_field_length_le_N1_and_content_is_octet_aligned` - heuristic:
         // info field present and within ctx.N1 octets. Mod-128 specs permit
         // longer info fields; ctx.N1 is configurable so the session can be set up.
         bool InfoFieldValid()
@@ -112,13 +112,13 @@ public static class Ax25SessionBindings
 
         // Resolve each Ax25Guard atom to its closure. Exhaustive by construction:
         // a missing *named* member trips CS8509 (a build error, not a runtime
-        // surprise) — that's the whole point of the typed closed set. Each atom
+        // surprise) - that's the whole point of the typed closed set. Each atom
         // binds to the SAME closure the pre-typed string-keyed table registered
         // under its legacy name (recorded in spec-sdl/predicates.yaml
         // `# legacy binding:` comments), so protocol behaviour is identical by
         // construction.
         //
-        // CS8524 (only the unnamed out-of-range cast is unhandled — i.e. every
+        // CS8524 (only the unnamed out-of-range cast is unhandled - i.e. every
         // named member IS handled) is suppressed: we never construct an
         // out-of-range Ax25Guard, and adding a `_ =>` arm would silently swallow
         // a future named member instead of failing the build via CS8509.
@@ -158,7 +158,7 @@ public static class Ax25SessionBindings
                 // legacy binding: V_s_eq_V_a_plus_k
                 Ax25Guard.VsEqVaPlusK
                     => () => ((context.VS - context.VA + context.Modulus) % context.Modulus) >= context.EffectiveWindow,
-                // legacy binding: v_s_eq_x — Invoke_Retransmission loop terminator:
+                // legacy binding: v_s_eq_x - Invoke_Retransmission loop terminator:
                 // V(s) caught up to its saved-on-entry value X. False if X unset.
                 Ax25Guard.VsEqX => () => context.X.HasValue && context.VS == context.X.Value,
 
@@ -220,7 +220,7 @@ public static class Ax25SessionBindings
 
         // ─── ax25spec#40 receive-window discard guard ──────────────────────
         // figc4.4's out-of-sequence I_received path has no window guard: any
-        // N(S) ≠ V(R) is SREJ'd/REJ'd, including a duplicate behind V(R) — which
+        // N(S) ≠ V(R) is SREJ'd/REJ'd, including a duplicate behind V(R) - which
         // provokes a re-send that's again out-of-window, ad infinitum (the SREJ
         // livelock). X.25 §2.4.6.4 discards any frame whose N(S) is outside the
         // receive window [V(r), V(r)+k). The figure's `reject_exception` decision
@@ -264,7 +264,7 @@ public static class Ax25SessionBindings
         // ─── ax25spec#43 DL-FLOW-OFF branch inversion ───────────────────────
         // figc4.4 gates DL-FLOW-OFF's Set-Own-Receiver-Busy/RNR actions on the
         // own_receiver_busy=Yes branch, so a not-busy station receiving
-        // DL-FLOW-OFF never enters busy — the primitive can't do its one job
+        // DL-FLOW-OFF never enters busy - the primitive can't do its one job
         // (§6.4.10; the FLOW-ON mirror correctly acts on its Yes/busy branch).
         // Invert the own_receiver_busy guard for the DL_FLOW_OFF_request trigger
         // only, so not-busy takes the action branch and already-busy no-ops.

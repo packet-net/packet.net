@@ -71,7 +71,7 @@ public readonly record struct CcdiFrame(char Ident, string Parameters)
 
     /// <summary>
     /// Parse one received line (CR already stripped). Rejects anything whose SIZE doesn't match
-    /// the actual parameter length or whose checksum fails — CCDI runs over plain async serial,
+    /// the actual parameter length or whose checksum fails - CCDI runs over plain async serial,
     /// so line noise is a normal event, not an exception.
     /// </summary>
     public static bool TryParse(ReadOnlySpan<char> line, out CcdiFrame frame)

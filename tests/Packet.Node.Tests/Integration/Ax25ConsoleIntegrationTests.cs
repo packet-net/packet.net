@@ -11,7 +11,7 @@ namespace Packet.Node.Tests.Integration;
 /// End-to-end over an in-memory radio bus: a node (a real
 /// <see cref="PortSupervisor"/> with one in-memory AX.25 port) accepts an
 /// inbound connect, drives the console, and relays a connect-OUT to a third
-/// station — exit criteria (ii) and (iv). All three stations are real
+/// station - exit criteria (ii) and (iv). All three stations are real
 /// <c>Ax25Listener</c>s on a shared broadcast bus (the <c>TwoStationHarness</c>
 /// shape, extended to three).
 /// </summary>
@@ -67,11 +67,11 @@ public sealed class Ax25ConsoleIntegrationTests
         await Wait.ForAsync(() => remote.Saw("Software: Packet.NET"), "Info should reply with the version");
         remote.Saw("NODE-1").Should().BeTrue();
 
-        // Nodes — the node identity (+ NET/ROM table); ports moved to their own command.
+        // Nodes - the node identity (+ NET/ROM table); ports moved to their own command.
         remote.SendLine("N");
         await Wait.ForAsync(() => remote.Saw("Node "), "Nodes should name the node");
 
-        // Ports — lists the configured port with its 1-indexed CONNECT port number.
+        // Ports - lists the configured port with its 1-indexed CONNECT port number.
         remote.SendLine("PORTS");
         await Wait.ForAsync(() => remote.Saw("Ports:"), "Ports should list ports");
         remote.Saw("1  p1").Should().BeTrue("Ports shows the 1-indexed CONNECT port number next to the id");
@@ -80,7 +80,7 @@ public sealed class Ax25ConsoleIntegrationTests
         remote.SendLine("H");
         await Wait.ForAsync(() => remote.Saw("Commands:"), "Help should list commands");
 
-        // Bye — node says 73 and disconnects.
+        // Bye - node says 73 and disconnects.
         remote.SendLine("B");
         await Wait.ForAsync(() => remote.Saw("73"), "Bye should be acknowledged");
         await Wait.ForAsync(() => remote.CurrentState == "Disconnected", "the link should drop after Bye");

@@ -2,12 +2,12 @@
 
 This is the chapter where the engine earns its keep. *Connected mode* (the AX.25
 data link, LAPB-style) gives you acknowledged, sequenced, flow-controlled,
-automatically-retransmitted delivery over a lossy half-duplex channel — and the
+automatically-retransmitted delivery over a lossy half-duplex channel - and the
 full v2.2 state machine that makes it work is inside `Ax25Session`, driven by the
 SDL tables. You don't implement any of it. You drive it.
 
 We'll build **`axcall`**: connect to a remote station, pipe your keyboard to it
-and its replies to your screen, and disconnect cleanly — the classic terminal
+and its replies to your screen, and disconnect cleanly - the classic terminal
 client (think `call` from ax25-tools, or the connect line of a TNC).
 
 ## The mental model
@@ -15,7 +15,7 @@ client (think `call` from ax25-tools, or the connect line of a TNC).
 A connection is an `Ax25Session`. You almost never construct one directly;
 `Ax25Listener` mints and caches them. Two things flow:
 
-- **You → session:** events, via `session.PostEvent(...)` — or the listener's
+- **You → session:** events, via `session.PostEvent(...)` - or the listener's
   helpers (`ConnectAsync`, `SendData`) which post them for you.
 - **Session → you:** `DataLinkSignal`s, via the `DataLinkSignalEmitted` event (or
   `AttachConsumerWithReplay`, below).
@@ -65,7 +65,7 @@ automatically to v2.0 (SABM / modulo-8) for peers that answer with FRMR or DM.
 You can override per call with the `ConnectAsync(remote, local, extended: false,
 …)` overload, or change the default via
 `Ax25ListenerOptions.PreferExtendedConnect`. You don't have to think about modulo
-or version after this — the session tracks it.
+or version after this - the session tracks it.
 
 ## Receiving data
 
@@ -110,7 +110,7 @@ session.DataLinkSignalEmitted += (_, signal) =>
 
 ## Sending data
 
-Use the listener's `SendData` — it applies §6.6 segmentation if the payload
+Use the listener's `SendData` - it applies §6.6 segmentation if the payload
 exceeds the negotiated frame size and the segmenter was negotiated:
 
 ```csharp
@@ -121,7 +121,7 @@ void SendLine(string line)
 `SendData` posts the right `DlDataRequest`(s) into the session; the session
 sequences them, sends I-frames, and handles acknowledgement and retransmission.
 If you want to bypass segmentation and post a single raw request, you can always
-`session.PostEvent(new DlDataRequest(bytes, pid))` directly — but `SendData` is
+`session.PostEvent(new DlDataRequest(bytes, pid))` directly - but `SendData` is
 the normal path.
 
 ## Disconnecting
@@ -134,10 +134,10 @@ session.PostEvent(new DlDisconnectRequest());
 // via DataLinkSignalEmitted when the link is down.
 ```
 
-## Tool #3 — `axcall`, end to end
+## Tool #3 - `axcall`, end to end
 
 The real `axcall` ([`axcall/src/Axcall`](https://github.com/packet-net/axcall))
-builds its transport from command-line flags — `KissTcpClient.ConnectAsync(host,
+builds its transport from command-line flags - `KissTcpClient.ConnectAsync(host,
 port)` for `--tcp`, `KissSerialModem.Open(port, baud)` for `--port` — into an
 `IAx25Transport`, then hands that to a small `SessionRelay` that wraps an
 `Ax25Listener` and pumps stdin↔session. The condensed version below inlines that
@@ -208,19 +208,19 @@ await listener.DisposeAsync();
 That's a complete, spec-correct connected-mode terminal in ~50 lines, and it
 inherits every hard-won behaviour of the engine: T1/T2/T3 timers, go-back-N or
 SREJ recovery, window management, version fallback, and (with a capable peer) XID
-parameter negotiation — none of which appears in your code.
+parameter negotiation - none of which appears in your code.
 
 ## Inspecting a live session
 
 For status displays, an `Ax25Session` exposes read-only state:
 
-- `session.CurrentState` — the SDL state name (`"Connected"`, `"Disconnected"`,
+- `session.CurrentState` - the SDL state name (`"Connected"`, `"Disconnected"`,
   `"AwaitingConnection"`, …).
-- `session.Context` — the `Ax25SessionContext`: `Remote`, `VS`/`VA`/`VR`,
+- `session.Context` - the `Ax25SessionContext`: `Remote`, `VS`/`VA`/`VR`,
   window `K`, retry count `RC`, smoothed RTT, the negotiated `IsExtended`
   (modulo-128) and `SrejEnabled` flags, and more.
 
-`listener.ActiveSessions` gives a snapshot of all cached sessions — handy for a
+`listener.ActiveSessions` gives a snapshot of all cached sessions - handy for a
 `/sessions` view in a multi-user program. Reading these never disturbs a session.
 
 ---

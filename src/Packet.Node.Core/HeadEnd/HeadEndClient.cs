@@ -51,7 +51,7 @@ public sealed class HeadEndClient
     /// <summary>Build the <c>http://host:port/</c> base for a manual <c>host:port</c> address.</summary>
     public static Uri BaseAddressFor(string address) => HeadEndAddress.ToBaseUri(address);
 
-    /// <summary><c>GET /inventory</c> — the instance id + every bridged device.</summary>
+    /// <summary><c>GET /inventory</c> - the instance id + every bridged device.</summary>
     public async Task<HeadEndInventory> GetInventoryAsync(CancellationToken cancellationToken = default)
     {
         using var response = await http.GetAsync(new Uri(BaseAddress, "inventory"), cancellationToken).ConfigureAwait(false);
@@ -61,7 +61,7 @@ public sealed class HeadEndClient
     }
 
     /// <summary>
-    /// <c>POST /ports/{deviceId}/line</c> — re-clock a bridged UART. This is exactly what the
+    /// <c>POST /ports/{deviceId}/line</c> - re-clock a bridged UART. This is exactly what the
     /// Stage-1 <c>setBaud</c> seam routes to (the data socket is a pure binary pipe and cannot carry
     /// line-rate changes). <paramref name="baud"/> is required; the other params are optional
     /// (omitted ⇒ unchanged). Returns the head-end's effective params.
@@ -83,7 +83,7 @@ public sealed class HeadEndClient
                ?? throw new HttpRequestException("head-end returned an empty line-params body.");
     }
 
-    /// <summary><c>GET /statusz</c> — the richer self-observability surface (#583): instance id,
+    /// <summary><c>GET /statusz</c> - the richer self-observability surface (#583): instance id,
     /// live bridge count, per-bridge client-connection state. Throws on any failure; in particular a
     /// pre-0.1.4 daemon answers 404 (<see cref="HttpRequestException.StatusCode"/> is
     /// <c>NotFound</c>), which callers treat as "fall back to <see cref="HealthAsync"/>".</summary>
@@ -95,7 +95,7 @@ public sealed class HeadEndClient
                ?? throw new HttpRequestException("head-end returned an empty statusz body.");
     }
 
-    /// <summary><c>GET /healthz</c> — true iff the head-end answers 2xx. Never throws (an
+    /// <summary><c>GET /healthz</c> - true iff the head-end answers 2xx. Never throws (an
     /// unreachable / erroring head-end is simply "not healthy").</summary>
     public async Task<bool> HealthAsync(CancellationToken cancellationToken = default)
     {

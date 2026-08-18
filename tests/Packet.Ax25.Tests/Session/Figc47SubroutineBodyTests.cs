@@ -195,7 +195,7 @@ public class Figc47SubroutineBodyTests
         // figc4.7b page 102 draws Check_Need_for_Response's Yes branch as
         // `Enquiry Response (F = 1)`. The "(F = 1)" annotation isn't
         // documented in §C1.2; canonical encoding tracked at packet-net/ax25sdl#45.
-        // The wire contract is unambiguous either way — §4.3 prose: "the
+        // The wire contract is unambiguous either way - §4.3 prose: "the
         // reply to this poll is indicated by setting the response (final)
         // bit in the appropriate frame". DefaultSubroutineRegistry honours
         // that via ContextBindingAliases: invoking the F_1 alias sets
@@ -219,7 +219,7 @@ public class Figc47SubroutineBodyTests
             sendIFrame: _ => { });
 
         // The trigger is what figc4.7's `F=1 & Frame=RR/RNR/I?` predicate
-        // reads — an RR Command with the P bit set (PollFinal=true). The
+        // reads - an RR Command with the P bit set (PollFinal=true). The
         // PfBit binding mirrors that onto Pending so the response inherits
         // F=1 when it goes out the wire.
         var triggerFrame = Ax25Frame.Rr(

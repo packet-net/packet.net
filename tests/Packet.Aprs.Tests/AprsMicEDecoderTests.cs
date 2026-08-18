@@ -35,7 +35,7 @@ public class AprsMicEDecoderTests
     }
 
     [Theory]
-    // Real corpus samples — destination + info bytes from the SQLite.
+    // Real corpus samples - destination + info bytes from the SQLite.
     // info_hex was captured for the first 12 bytes of the info field.
     //
     //   LA1SAR > U9UT82   info=60 26 3F 52 6C 21 76 5B 2F 22 34 4A  →  (59.913666, 10.592333)
@@ -55,7 +55,7 @@ public class AprsMicEDecoderTests
     [Fact]
     public void Decodes_Emergency_Code_When_All_Msg_Bits_Zero()
     {
-        // Destination "234567" → all digits 0–9 → all msg bits 0 → emergency.
+        // Destination "234567" → all digits 0-9 → all msg bits 0 → emergency.
         // (lat 23.45.67 → 23°45.67′S, msg=Emergency)
         var info = new byte[] { (byte)'`', (byte)'(', (byte)'(', (byte)'N', (byte)'$', (byte)'Z', (byte)'O', (byte)'>', (byte)'/' };
         AprsMicEDecoder.TryDecode("234567", info, out var r).Should().BeTrue();

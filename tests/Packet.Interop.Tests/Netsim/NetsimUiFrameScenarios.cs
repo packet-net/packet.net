@@ -47,7 +47,7 @@ public class NetsimUiFrameScenarios
     {
         // Previously unconditionally skipped pending live-stack
         // investigation. Un-skipped 2026-05-15 to let the interop
-        // workflow tell us whether the scenario actually fails — the
+        // workflow tell us whether the scenario actually fails - the
         // SkipIfNetsimDown guard still prevents the test running when
         // the docker stack isn't up (i.e. on a default `dotnet test`).
         await SkipIfNetsimDown();
@@ -57,7 +57,7 @@ public class NetsimUiFrameScenarios
         await Task.Delay(200, cts.Token);
 
         // Per-test source callsign so the receiver socket can pick this
-        // test's frame out from any in-flight siblings — every test in
+        // test's frame out from any in-flight siblings - every test in
         // this class shares the same KISS-TCP receive port on node B.
         var ourSource = new Callsign("PNDIGI", 9);
         var digis = new[] { new Callsign("WIDE1", 1), new Callsign("WIDE2", 2) };
@@ -84,7 +84,7 @@ public class NetsimUiFrameScenarios
         await using var receiver = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
         await Task.Delay(200, cts.Token);
 
-        // NET/ROM L3 PID 0xCF — 20-byte typical payload shape from our BPQ
+        // NET/ROM L3 PID 0xCF - 20-byte typical payload shape from our BPQ
         // corpus: source 7 bytes + dest 7 bytes + TTL 1 byte + circuit-id
         // 2 bytes + opcode/flags 1 byte + 2 reserved.
         var info = new byte[20];
@@ -146,8 +146,8 @@ public class NetsimUiFrameScenarios
         await Task.Delay(200, cts.Token);
 
         // 5 frames in quick succession. afsk1200 won't transmit them in
-        // parallel — net-sim will queue them and key the TX in sequence
-        // — but the receive side should see all 5 within the budget.
+        // parallel - net-sim will queue them and key the TX in sequence
+        // - but the receive side should see all 5 within the budget.
         var ourSource = new Callsign("PNBRST", 9);  // 6-char limit on AX.25 callsign base
         const int N = 5;
         for (int i = 0; i < N; i++)
@@ -200,7 +200,7 @@ public class NetsimUiFrameScenarios
     /// <summary>
     /// Wait for a UI frame originating from <paramref name="ourSource"/>.
     /// Each test in this class uses a distinct source callsign so the
-    /// receiver socket doesn't deliver another test's frame to us — the
+    /// receiver socket doesn't deliver another test's frame to us - the
     /// KISS-TCP receiver sees every frame that arrives on node B, and
     /// in-flight frames from siblings can outlive their test's scope.
     /// </summary>

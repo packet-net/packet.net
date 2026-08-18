@@ -5,7 +5,7 @@ using Packet.Node.Core.Hosting;
 namespace Packet.Node.Core.Rigs;
 
 /// <summary>
-/// Projects the live node's rig-control attachments into <see cref="RigStatus"/> read models —
+/// Projects the live node's rig-control attachments into <see cref="RigStatus"/> read models -
 /// the shared logic behind <c>GET /api/v1/rigs</c> and <c>GET /api/v1/ports/{id}/rig</c>. Kept in
 /// <c>Packet.Node.Core</c> (not the web layer) so it can be exercised directly against a live
 /// <see cref="PortSupervisor"/> without booting an HTTP host. (Mirrors
@@ -41,7 +41,7 @@ public static class RigReadModels
     /// <summary>
     /// The rig status for one port. Returns <c>null</c> when <paramref name="portId"/> names no
     /// configured port (the endpoint maps that to 404). A configured port with no <c>rig:</c>
-    /// block yields an <c>attached: false</c> status with an empty kind — an honest "this port
+    /// block yields an <c>attached: false</c> status with an empty kind - an honest "this port
     /// has no rig", distinct from "no such port".
     /// </summary>
     public static RigStatus? ForPort(PortSupervisor? supervisor, NodeConfig config, string portId)

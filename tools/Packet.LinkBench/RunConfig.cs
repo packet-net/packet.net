@@ -12,7 +12,7 @@ internal sealed record RunConfig
     public int Paclen { get; init; } = 256;                   // bytes per I-frame (≤ N1)
     public bool AckMode { get; init; } = true;                // §2: ackmode is the assumed default
     public bool T1FromTxComplete { get; init; }               // re-arm T1 on the frame's TX-complete echo
-    public bool Srej { get; init; }                           // force SREJ (selective reject) on both ends — only bites under loss
+    public bool Srej { get; init; }                           // force SREJ (selective reject) on both ends - only bites under loss
     public bool Bidirectional { get; init; }
 
     // InProcChannel model knobs (ignored on axudp/netsim).
@@ -30,7 +30,7 @@ internal sealed record RunConfig
     public double TimeScale { get; init; } = 1.0;
 
     /// <summary>Set when <see cref="T1"/>/<see cref="T2"/> were auto-scaled down from
-    /// the spec defaults because this is a zero-airtime (<c>--baud 0</c>) inproc run —
+    /// the spec defaults because this is a zero-airtime (<c>--baud 0</c>) inproc run -
     /// see <c>Cli.ApplyZeroAirtimeTimerDefaults</c>. Purely informational; drives the
     /// one-time startup notice.</summary>
     public bool ZeroAirtimeTimersAutoScaled { get; init; }

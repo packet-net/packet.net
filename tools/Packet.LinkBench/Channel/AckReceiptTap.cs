@@ -5,7 +5,7 @@ namespace Packet.LinkBench.Channel;
 /// <summary>
 /// Pass-through decorator that records every <see cref="TxCompletion"/> the
 /// inner transport returns. Slots between <c>PacingKissModem</c> and the channel
-/// endpoint so the bench can report TX-completion echo round-trip stats — in
+/// endpoint so the bench can report TX-completion echo round-trip stats - in
 /// particular rung 2's open question (plan §7): is net-sim's 0x0C echo
 /// immediate-on-receive (pacing is a no-op) or post-transmission (pacing real)?
 /// Compare the recorded RTTs against the frame's modeled airtime.

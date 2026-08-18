@@ -14,7 +14,7 @@ namespace Packet.Node.Tests.Oarc;
 public sealed class OarcIngestClientTests
 {
     /// <summary>A handler that records every request (method, URI, body) and returns a scripted
-    /// response — or throws, to exercise the transport-error path.</summary>
+    /// response - or throws, to exercise the transport-error path.</summary>
     private sealed class CapturingHandler : HttpMessageHandler
     {
         private readonly HttpStatusCode status;
@@ -72,7 +72,7 @@ public sealed class OarcIngestClientTests
 
     [Theory]
     [InlineData("https://node-api.packet.oarc.uk/")]   // trailing slash
-    [InlineData("https://node-api.packet.oarc.uk")]    // no trailing slash — must still combine right
+    [InlineData("https://node-api.packet.oarc.uk")]    // no trailing slash - must still combine right
     public async Task Composes_the_url_regardless_of_trailing_slash(string baseUrl)
     {
         var handler = new CapturingHandler();
@@ -219,7 +219,7 @@ public sealed class OarcIngestClientTests
     [Fact]
     public async Task A_genuine_shutdown_cancellation_propagates()
     {
-        // A cancelled token (node stopping) must NOT be swallowed as a transport error — it ends the loop.
+        // A cancelled token (node stopping) must NOT be swallowed as a transport error - it ends the loop.
         var handler = new CapturingHandler(throwThis: new OperationCanceledException());
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
@@ -231,7 +231,7 @@ public sealed class OarcIngestClientTests
     [Fact]
     public async Task A_request_timeout_is_a_retryable_transport_error_not_a_shutdown()
     {
-        // A per-request timeout surfaces as TaskCanceledException WITHOUT our token being cancelled —
+        // A per-request timeout surfaces as TaskCanceledException WITHOUT our token being cancelled -
         // it must classify as a (retryable) transport error, not propagate as shutdown.
         var handler = new CapturingHandler(throwThis: new TaskCanceledException("timed out"));
         var result = await Client(handler).ReportAsync(NodeUp(), Base, CancellationToken.None);

@@ -16,7 +16,7 @@ namespace Packet.Node.Api;
 /// <summary>
 /// The read side of the pdn node control API (Slice 3, step 1). Maps the
 /// unauthenticated <c>GET /api/v1/*</c> endpoints the web monitor consumes,
-/// projecting each from the live node state — the <see cref="NodeHostedService"/>
+/// projecting each from the live node state - the <see cref="NodeHostedService"/>
 /// singleton's <see cref="NodeHostedService.Supervisor"/> / <see cref="NodeHostedService.NetRom"/>
 /// handles, the <see cref="IConfigProvider"/>, and the injected <see cref="TimeProvider"/>.
 /// </summary>
@@ -28,7 +28,7 @@ namespace Packet.Node.Api;
 /// boot returns a sensible 200 instead of a 500.
 /// </para>
 /// <para>
-/// Auth is a later step — these are read-only and the node binds 127.0.0.1 by
+/// Auth is a later step - these are read-only and the node binds 127.0.0.1 by
 /// default. As of step 1b the frame/byte/REJ/SREJ counters that back the port,
 /// link, and session projections are live (read from <see cref="NodeHostedService.Telemetry"/>);
 /// the live SSE feed lives next door in <see cref="PdnEventsApi"/>. The per-port state,
@@ -41,7 +41,7 @@ public static class PdnReadApi
 {
     // Node start instant on a monotonic source (Stopwatch ticks). Captured once at
     // module load so UptimeSeconds is wall-clock-independent (repo rule §2.7: no
-    // DateTime.Now in logic — TimeProvider / Stopwatch only). Stopwatch.GetTimestamp
+    // DateTime.Now in logic - TimeProvider / Stopwatch only). Stopwatch.GetTimestamp
     // is the process-relative monotonic clock; close enough to "node start" for an
     // uptime read (the API maps as the host comes up).
     private static readonly long StartTimestamp = Stopwatch.GetTimestamp();
@@ -68,7 +68,7 @@ public static class PdnReadApi
         var v1 = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Read);
 
         // The traffic-log pieces resolve [FromServices] + nullable because they are
-        // only registered when traffic.enabled (same pattern as JwtTokenService —
+        // only registered when traffic.enabled (same pattern as JwtTokenService -
         // without [FromServices] an unregistered complex type fails endpoint
         // inference at startup instead of degrading).
         v1.MapGet("/status", (NodeHostedService host, IConfigProvider config, TimeProvider clock,
@@ -102,7 +102,7 @@ public static class PdnReadApi
         // The persisted MHeard log (#454): recently heard stations, the REST companion to the MH
         // console verb. No `port` query ⇒ the node-wide view (each callsign merged across ports);
         // `?port=<id>` ⇒ that port's stations. Most-recently-heard first. Empty when the heard log
-        // is absent (default-off host) or nothing has been heard yet — never a throw.
+        // is absent (default-off host) or nothing has been heard yet - never a throw.
         // `?txdelayThresholdMs=` overrides the excess-TXDELAY advisory threshold (default 250 ms).
         v1.MapGet("/heard", (NodeHostedService host, TimeProvider clock, string? port, double? txdelayThresholdMs)
             => Results.Ok(BuildHeard(host, clock, port, txdelayThresholdMs)));
@@ -187,7 +187,7 @@ public static class PdnReadApi
         var running = RunningPorts(supervisor);
         var now = clock.GetUtcNow();
 
-        // Callsigns of directly-heard NET/ROM neighbours — a peer in this set on an
+        // Callsigns of directly-heard NET/ROM neighbours - a peer in this set on an
         // active session is treated as an interlink (NET/ROM datagrams), else a
         // console user. Best-effort classification (the role isn't tracked on the
         // session itself yet).
@@ -215,12 +215,12 @@ public static class PdnReadApi
 
     /// <summary>
     /// Project a single live <see cref="Ax25Session"/> on a given port to the
-    /// <see cref="SessionInfo"/> the <c>/sessions</c> family serves — the per-session
+    /// <see cref="SessionInfo"/> the <c>/sessions</c> family serves - the per-session
     /// half of <see cref="BuildSessions"/>, factored out so the actions API
     /// (<c>PdnSessionsApi</c>) projects a freshly-opened session through the exact same
     /// shape (id convention, role classification, telemetry-backed byte/uptime fields).
     /// </summary>
-    /// <param name="neighbours">The directly-heard NET/ROM neighbour callsigns — a peer
+    /// <param name="neighbours">The directly-heard NET/ROM neighbour callsigns - a peer
     /// in this set is classified <c>interlink</c>, else <c>console</c>. Pass the result of
     /// <c>host.NetRom?.Snapshot()</c>'s neighbour set, or empty to default everything to
     /// <c>console</c>.</param>
@@ -297,8 +297,8 @@ public static class PdnReadApi
     internal static LinkStats[] BuildLinks(NodeHostedService host)
     {
         // Frame/byte counts and REJ/SREJ tallies come from the frame tap. SmoothedRttMs
-        // and Retries can't come from the tap — they live in the connected-mode session's
-        // T1/SRTT timer state — so they're read from the live session for the (port, peer)
+        // and Retries can't come from the tap - they live in the connected-mode session's
+        // T1/SRTT timer state - so they're read from the live session for the (port, peer)
         // when one exists (the monitor-v2 seam, #173); a link with no live session (UI-only
         // traffic, or a session that has since closed) keeps 0, which is honest.
         return host.Telemetry.Links().Select(link =>
@@ -317,8 +317,8 @@ public static class PdnReadApi
     }
 
     /// <summary>
-    /// The live connected-mode timer state for a link — the smoothed round-trip time
-    /// (SRT, ms) and the current retry count (RC) — read from the matching live
+    /// The live connected-mode timer state for a link - the smoothed round-trip time
+    /// (SRT, ms) and the current retry count (RC) - read from the matching live
     /// <see cref="Packet.Ax25.Session.Ax25Session"/> on the port. Returns <c>(0, 0)</c>
     /// when no connected session exists for <paramref name="peer"/> (e.g. UI-only
     /// traffic, or after the session closed). This is the monitor-v2 source feeding both
@@ -341,7 +341,7 @@ public static class PdnReadApi
         NodeHostedService host, TimeProvider clock, string? port, double? txdelayThresholdMs = null)
     {
         // The log handle is null on a host built without one (older tests / an embedder that didn't
-        // register the singleton) — an empty array is the honest read, never a throw.
+        // register the singleton) - an empty array is the honest read, never a throw.
         var log = host.Heard;
         if (log is null)
         {
@@ -350,7 +350,7 @@ public static class PdnReadApi
         var now = clock.GetUtcNow();
 
         // The passive excess-TXDELAY advisory (docs/research/txdelay-optimisation.md): peers whose
-        // rolling median pre-data carrier exceeds the threshold get a one-line flag on their row —
+        // rolling median pre-data carrier exceeds the threshold get a one-line flag on their row -
         // the "link health" read the tuning view lists. Threshold overridable per request.
         var advisorOptions = txdelayThresholdMs is { } t and > 0
             ? new Packet.Tune.Core.ExcessTxDelayAdvisorOptions { ThresholdMs = t }
@@ -394,7 +394,7 @@ public static class PdnReadApi
     {
         // The cache handle is null on a host built without one (older tests / an embedder that
         // didn't register the singleton) and the records are absent until a dial has learned
-        // something — either way an empty array is the honest read, never a throw.
+        // something - either way an empty array is the honest read, never a throw.
         var cache = host.Capabilities;
         if (cache is null)
         {

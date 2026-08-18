@@ -28,7 +28,7 @@ public class AxudpSocketEdgeTests
     {
         // Shorter than the 17-byte minimum (2 addresses + control + 2-octet FCS):
         // dropped before any CRC check, exactly like a bad-FCS datagram. Proving the
-        // drop, not a hang — the next valid datagram is delivered.
+        // drop, not a hang - the next valid datagram is delivered.
         using var receiver = new AxudpSocket(localPort: 0);
         using var sender = new AxudpSocket(localPort: 0);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));

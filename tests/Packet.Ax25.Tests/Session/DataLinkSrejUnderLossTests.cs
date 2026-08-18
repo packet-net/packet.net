@@ -12,7 +12,7 @@ namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
 /// End-to-end deterministic reproduction of connected-mode recovery under
-/// scripted single-frame loss — the in-process, FakeTimeProvider-driven
+/// scripted single-frame loss - the in-process, FakeTimeProvider-driven
 /// analogue of the #214 30%-loss hardware row. Two real <see cref="Ax25Session"/>
 /// instances exchange frames over a controllable link.
 /// </summary>
@@ -21,7 +21,7 @@ namespace Packet.Ax25.Tests.Session;
 /// I-frames were renumbered with a fresh N(s) (the drained queue assigned
 /// N(s):=V(s)), so the peer never recognised the resend and no loss was
 /// recoverable. With the fix (retransmits emit with their original N(s)) a lost
-/// frame is recovered — selectively for SREJ, go-back-N for REJ — and the link
+/// frame is recovered - selectively for SREJ, go-back-N for REJ - and the link
 /// stays up.
 /// </remarks>
 public class DataLinkSrejUnderLossTests
@@ -63,7 +63,7 @@ public class DataLinkSrejUnderLossTests
     }
 
     // NOTE: this variant pumps each recovery cycle to quiescence with Settle(),
-    // which has NO T1 pacing — so the many T1-spaced retransmits of a real link
+    // which has NO T1 pacing - so the many T1-spaced retransmits of a real link
     // collapse into one instantaneous burst and the trace looks like a retransmit
     // storm (packet-net/packet.net#233). It still recovers correctly. The T1-PACED
     // companion Srej_under_loss_converges_under_T1_pacing_no_storm proves the
@@ -125,11 +125,11 @@ public class DataLinkSrejUnderLossTests
     // response, and swallow A's reply before B can feed back more SREJs, so we
     // observe only the frames A puts on the wire in *direct* response to that one
     // SREJ. A emits the single requested frame N(s)=1
-    // — NOT go-back-N (which would put 1,2,3 on the wire). This is the on-the-wire
+    // - NOT go-back-N (which would put 1,2,3 on the wire). This is the on-the-wire
     // proof that complements the verb-level Ax25SessionQuirksTests: the figc4.5
     // SREJ-received transition (t24_srej_received_yes_yes_*_no, the push-bearing
     // response paths) really does drive a selective retransmit in a live two-session
-    // exchange — natively since ax25sdl 0.10.2 corrected the figure, where the retired
+    // exchange - natively since ax25sdl 0.10.2 corrected the figure, where the retired
     // #38 quirk used to rewrite the figure's go-back-N into it.
     [Fact]
     public void Srej_response_drives_single_frame_selective_retransmit_on_the_wire()
@@ -156,11 +156,11 @@ public class DataLinkSrejUnderLossTests
     // SFRAME). So nobody sends SREJ as a command and nobody acts on receiving
     // one. The figc4.5 response:No paths (t24_srej_received_no_yes_*) carry only
     // a go-back-N "Invoke Retransmission" (no push verb), which the then-current #38
-    // workaround skipped — so the command form was a no-op retransmit BY ACCIDENT.
+    // workaround skipped - so the command form was a no-op retransmit BY ACCIDENT.
     // ax25sdl 0.10.2's corrected figc4.5 gives the command paths a real selective
     // retransmit, so keeping the old behaviour is now the deliberate SrejCommandIgnored
     // quirk (packet-net/packet.net#674) rather than a side effect. This test PINS it:
-    // the response form selectively retransmits, the command form does not — matching
+    // the response form selectively retransmits, the command form does not - matching
     // direwolf and linbpq.
     [Theory]
     [InlineData(true, new byte[] { 1 })] // response (F=1): selective retransmit of N(r)=1
@@ -182,18 +182,18 @@ public class DataLinkSrejUnderLossTests
                 : "an SREJ COMMAND is response-only per §4.3.2.4 — Default retransmits nothing (matches direwolf/linbpq)");
 
         // Either way the N(R) acknowledgement is honoured: SrejCommandIgnored suppresses the
-        // RETRANSMISSION, not the ack — same as linbpq, which gates only the resend on RESP.
+        // RETRANSMISSION, not the ack - same as linbpq, which gates only the resend on RESP.
         rig.A.Context.VA.Should().Be((byte)1,
             "the SREJ's N(r)=1 acks through frame 0 whichever form it arrived in");
     }
 
     // The other half of the SrejCommandIgnored pair (packet-net/packet.net#674). Clearing the
-    // quirk — as StrictlyFaithful does — runs the CORRECTED figc4.5 exactly as drawn, and the
+    // quirk - as StrictlyFaithful does - runs the CORRECTED figc4.5 exactly as drawn, and the
     // corrected figure gives the command paths (t24_srej_received_no_yes_*_no) a native
     // single-frame selective retransmit: `PushOldIFrameNROnQueue | LMDataRequest | StopT3 |
     // StartT1 | ClearAcknowledgePending`. So with the quirk off the command form DOES honour
     // the request. Without this test the flag would be strict-rejects-with-nothing-accepting,
-    // which the repo treats as a smell — it would mean we could not say what the flag buys.
+    // which the repo treats as a smell - it would mean we could not say what the flag buys.
     [Fact]
     public void Srej_command_retransmits_when_the_ignore_quirk_is_cleared()
     {
@@ -214,16 +214,16 @@ public class DataLinkSrejUnderLossTests
 
     // packet-net/packet.net#233 (b)+(c): the same recovery as
     // Srej_under_loss_recovers_from_TimerRecovery_with_default_quirk, but driven
-    // with T1 PACING — advance the FakeTimeProvider one T1 interval per round and
+    // with T1 PACING - advance the FakeTimeProvider one T1 interval per round and
     // process only the frames already on the wire (DrainOnce), instead of pumping
     // every cascade to quiescence. This is the realistic-link model: each
     // retransmit is one T1 apart. The unpaced Settle() collapses many T1 rounds
     // into one instant, which is what makes the #231 trace look like a
     // "retransmit storm". Under pacing the link CONVERGES in a bounded number of
-    // rounds — proving the storm is a Settle artifact, not a recovery defect. (A
+    // rounds - proving the storm is a Settle artifact, not a recovery defect. (A
     // secondary, smaller inefficiency remains: the figc4.4/figc4.5 Connected
-    // I-frame table has no out-of-window duplicate-discard guard — direwolf adds
-    // one per X.25 §2.4.6.4(a), the SDL figures don't — so duplicate retransmits
+    // I-frame table has no out-of-window duplicate-discard guard - direwolf adds
+    // one per X.25 §2.4.6.4(a), the SDL figures don't - so duplicate retransmits
     // briefly draw extra SREJs. That is a spec-efficiency gap, flagged upstream;
     // it does not stop convergence and is NOT the quirk.)
     [Fact]
@@ -249,17 +249,17 @@ public class DataLinkSrejUnderLossTests
         rig.A.Context.VA.Should().Be((byte)4, "every I-frame must end acknowledged");
     }
 
-    // #214 — a BULK multi-frame transfer survives scripted loss across sequence-ring
+    // #214 - a BULK multi-frame transfer survives scripted loss across sequence-ring
     // wraps and recovers, for BOTH go-back-N (SREJ off) and Selective Repeat (SREJ on).
     // The deterministic in-process proof of the Phase-2 §5.2 "10 kB transfer with
-    // 0–30 % scripted loss" criterion that the hardware matrix (HardwareLoop10KBTransfer,
+    // 0-30 % scripted loss" criterion that the hardware matrix (HardwareLoop10KBTransfer,
     // [SkippableFact]) can only check on real TNCs. The broader exploration is
     // tools/Packet.LinkBench's `--loss`/`--srej` sweep over a modelled-airtime channel;
     // this distils it to a CI-deterministic regression. Driven with T1 PACING (advance
     // the FakeTimeProvider one T1 interval per round, then drain what's on the wire) so
     // it models a real link rather than the unpaced-Settle "storm" (#233): the first
-    // transmission of every third frame is dropped — recurring through every mod-8 ring
-    // cycle — so the gap→recover→advance loop is exercised dozens of times, including at
+    // transmission of every third frame is dropped - recurring through every mod-8 ring
+    // cycle - so the gap→recover→advance loop is exercised dozens of times, including at
     // the V(R) wrap where #393's stale-stored-frame bug lived. Asserts every payload
     // byte reaches B exactly once, in order, and the link ends Connected + fully acked.
     [Theory]
@@ -389,7 +389,7 @@ public class DataLinkSrejUnderLossTests
         return iFramesFromA;
     }
 
-    // Process exactly the events currently queued on both endpoints — ONE pass,
+    // Process exactly the events currently queued on both endpoints - ONE pass,
     // no pump-to-quiescence. Models a single T1-spaced round: each side reacts
     // to what is already on the wire; any frame it emits in response lands in
     // the peer's queue but is not processed until the NEXT advance/drain.

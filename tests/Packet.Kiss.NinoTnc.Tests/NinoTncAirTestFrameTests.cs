@@ -68,7 +68,7 @@ public class NinoTncAirTestFrameTests
     [Fact]
     public void Any_CqBeep_Ssid_Is_Recognised_And_Exposed()
     {
-        // CQBEEP-N with any N is a valid air-test/beep-request frame — the
+        // CQBEEP-N with any N is a valid air-test/beep-request frame - the
         // SSID is the seconds of tone an armed responder will transmit
         // (the front-panel button's own frames use SSID 5; host-built
         // requests built by NinoTncCqBeep vary N deliberately).
@@ -86,7 +86,7 @@ public class NinoTncAirTestFrameTests
     {
         // Build a UI then mutate to a non-UI control byte via parse round-trip.
         // Easier: build a valid AX.25 frame with wrong control via raw bytes.
-        // Skipping for simplicity — the IsUi check is exercised by the
+        // Skipping for simplicity - the IsUi check is exercised by the
         // other "wrong shape" tests already.
         true.Should().BeTrue();
     }

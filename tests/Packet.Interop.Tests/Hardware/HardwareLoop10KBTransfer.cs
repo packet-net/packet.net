@@ -14,9 +14,9 @@ namespace Packet.Interop.Tests.Hardware;
 /// AX.25 session-level hardware-loop tests across two USB-attached
 /// NinoTNCs whose audio paths are cross-wired. Drives a full
 /// connect / 10 240-byte transfer / disconnect through two
-/// <see cref="Ax25Session"/> instances — one per TNC — against real
+/// <see cref="Ax25Session"/> instances - one per TNC - against real
 /// wall-clock time. Phase 2 exit criterion: *"Hardware loop sustains
-/// 10 kB transfer across NinoTNCs with 0–30 % scripted loss."* per
+/// 10 kB transfer across NinoTNCs with 0-30 % scripted loss."* per
 /// <c>docs/plan.md</c> §5.2 (and issue #213).
 /// </summary>
 /// <remarks>
@@ -29,28 +29,28 @@ namespace Packet.Interop.Tests.Hardware;
 /// the test matrix doesn't burn the TNC's flash. The analogue SIGNALS
 /// DIP block must be configured for the loopback profile documented
 /// in the NinoTNC manual (see
-/// <a href="https://wiki.oarc.uk/packet:ninotnc">oarc.uk/packet:ninotnc</a>) —
+/// <a href="https://wiki.oarc.uk/packet:ninotnc">oarc.uk/packet:ninotnc</a>) -
 /// the default field-radio profile decodes unreliably on the bench
 /// audio cross-wire because the receiver expects a discriminator-
 /// shaped signal that the partner TNC's TX isn't producing.
 /// </para>
 /// <para>
 /// The cross-wired audio path emulates a half-duplex FM link with no
-/// radios involved — no RF, no antenna. Scripted loss is injected by
+/// radios involved - no RF, no antenna. Scripted loss is injected by
 /// <see cref="LossyHardwareSender"/> at the TX side of each session
-/// so the partner TNC never hears the dropped frame — identical in
+/// so the partner TNC never hears the dropped frame - identical in
 /// shape to an RF channel where the frame was corrupted into nothing.
 /// </para>
 /// <para>
-/// <b>The bench audio path is not perfectly lossless</b> — occasional
+/// <b>The bench audio path is not perfectly lossless</b> - occasional
 /// frame-level dropouts happen even with no scripted loss, especially
 /// for the slower modes whose longer airtime increases per-frame
 /// exposure. Each wire dropout hits the same upstream SDL gaps as
-/// the scripted-loss path — both
+/// the scripted-loss path - both
 /// <a href="https://github.com/packet-net/ax25sdl/issues/44">ax25sdl#44</a>
 /// (<c>Invoke_Retransmission</c> single-iteration) and
 /// <a href="https://github.com/packet-net/ax25sdl/issues/43">ax25sdl#43</a>
-/// (<c>Enquiry_Response</c> doesn't set <c>F := 1</c>) — so the
+/// (<c>Enquiry_Response</c> doesn't set <c>F := 1</c>) - so the
 /// no-loss matrix is best-effort: each entry passes in the normal
 /// case, but a wire dropout during the ~60 s transfer can stall the
 /// link in a perpetual RR-poll cycle. Re-runs typically pass. The
@@ -80,9 +80,9 @@ public class HardwareLoop10KBTransfer
     /// <summary>
     /// Clean (no scripted loss) 10 kB transfer across a representative
     /// matrix of NinoTNC modes × TXDELAY values. Each mode is an
-    /// AX.25-native catalog entry — 9600 GFSK (mode 0) and 1200 AFSK
+    /// AX.25-native catalog entry - 9600 GFSK (mode 0) and 1200 AFSK
     /// (mode 6) cover the fast and slow ends of the host's KISS frame
-    /// path. TXDELAY values span 50 ms – 400 ms so the audio-only loop
+    /// path. TXDELAY values span 50 ms - 400 ms so the audio-only loop
     /// is exercised across the inter-frame pacing the production CSMA /
     /// TX-keying path uses on real radios. The 1200 AFSK row starts at
     /// 150 ms because tighter TXDELAYs cause back-to-back modem-receive
@@ -102,7 +102,7 @@ public class HardwareLoop10KBTransfer
     /// <summary>
     /// 10 kB go-back-N transfer survives scripted loss in each direction. Loss
     /// is an independent per-transmission Bernoulli draw in each direction (a
-    /// real-channel model, not a replayed seed — see
+    /// real-channel model, not a replayed seed - see
     /// <see cref="LossyHardwareSender"/> for why determinism is avoided).
     /// Assertion shape: the transfer completes within a recovery-aware budget;
     /// the lossy sender records non-zero drops; the session reaches
@@ -116,14 +116,14 @@ public class HardwareLoop10KBTransfer
     /// ax25sdl#43 (<c>Enquiry_Response</c> F:=1), ax25sdl#44
     /// (<c>Invoke_Retransmission</c> loop), the runtime retransmit-N(s)
     /// renumbering bug, and ax25sdl#53 (recovery-complete <c>vs_eq_nr</c>
-    /// guard) — all cleared (Packet.Ax25.Sdl 0.7.1 + runtime fixes).
+    /// guard) - all cleared (Packet.Ax25.Sdl 0.7.1 + runtime fixes).
     /// </para>
     /// <para>
     /// <b>SREJ on-air rows are deferred</b> (the <c>srejEnabled = true</c>
     /// plumbing is in place, and SREJ recovery is proven in-process by
     /// <c>DataLinkConnectedRetransmitTests.SREJ_Recovery_Delivers_Whole_Window_When_Head_Frame_Is_Lost</c>).
     /// On-air at 30 % the link reaches the SREJ × Timer-Recovery path, which
-    /// hits a runtime bug — <c>push_frame_on_queue</c> throws on a non-DL-DATA
+    /// hits a runtime bug - <c>push_frame_on_queue</c> throws on a non-DL-DATA
     /// trigger, killing the session's T1 mid-transition (#225). Re-enable the
     /// SREJ / 30 % rows once that is fixed.
     /// </para>
@@ -161,7 +161,7 @@ public class HardwareLoop10KBTransfer
 
         // Mode and TXDELAY take a beat to settle in the NinoTNC after
         // SETHW + KISS TXDELAY. A static wait alone isn't enough for
-        // a sustained back-to-back I-frame stream — observed empirically
+        // a sustained back-to-back I-frame stream - observed empirically
         // that the first window of session-level I-frames after a mode
         // switch decodes unreliably on the bench cross-wire. Prime each
         // modem with a handful of UI frames in both directions so the
@@ -173,7 +173,7 @@ public class HardwareLoop10KBTransfer
         await PrimeModemPathAsync(portA, portB, aCall, bCall, cts.Token);
 
         // Each side draws loss independently (real-channel Bernoulli, not a
-        // replayed seeded sequence) — see LossyHardwareSender for why the seed
+        // replayed seeded sequence) - see LossyHardwareSender for why the seed
         // was removed (deterministic loss × deterministic protocol livelocks
         // at high loss, #214).
         var senderA = new LossyHardwareSender(portA, lossProbability);
@@ -185,7 +185,7 @@ public class HardwareLoop10KBTransfer
 
         // Inbound pump: classify each AX.25 frame the partner TNC
         // delivers and post it into our session. Address-filter so we
-        // ignore anything not addressed to our local callsign — the
+        // ignore anything not addressed to our local callsign - the
         // audio cross-wire is one-way (A-TX → B-RX, B-TX → A-RX) so
         // there's no self-echo to worry about, but the filter keeps
         // the code symmetric with Ax25Listener's pump.
@@ -256,7 +256,7 @@ public class HardwareLoop10KBTransfer
                 $"Trace ({trace.Count} entries): {TraceTail(trace, 40)}");
         }
 
-        // Assert reception integrity — every byte arrived and in order.
+        // Assert reception integrity - every byte arrived and in order.
         byte[] reassembled;
         lock (receivedSegments)
         {
@@ -312,7 +312,7 @@ public class HardwareLoop10KBTransfer
         {
             Local = local,
             Remote = remote,
-            // Start with a generous initial T1V — the SRT IIR converges
+            // Start with a generous initial T1V - the SRT IIR converges
             // T1V toward observed RTT, but the SDL only updates SRT on
             // successful ack windows. With K=4 and a fast hardware loop
             // it takes a few cycles to settle; an overly small initial
@@ -324,7 +324,7 @@ public class HardwareLoop10KBTransfer
             // loss in each direction.
             N2 = 20,
             // Selective reject: the modems are dumb KISS, so SREJ lives
-            // entirely in our session layer — forcing the flag (rather than
+            // entirely in our session layer - forcing the flag (rather than
             // negotiating via XID) is sufficient. With SREJ the receiver
             // keeps post-gap frames instead of discarding the whole window
             // on a lost head, which is what lets it survive heavier loss.
@@ -387,7 +387,7 @@ public class HardwareLoop10KBTransfer
             // wire in ~225 ms; default T2 = 1500 ms is way too long
             // and causes A's T1 (which shrinks toward the observed RTT
             // via figc4.7's SRT IIR) to expire before B's piggyback ack
-            // arrives — manifests as a RR-poll cycle between every
+            // arrives - manifests as a RR-poll cycle between every
             // K-window. 200 ms keeps T2 well under any steady-state T1
             // value we'd reasonably converge to on a back-to-back link.
             T2Duration = TimeSpan.FromMilliseconds(200),
@@ -431,7 +431,7 @@ public class HardwareLoop10KBTransfer
     /// </summary>
     private static void SafePost(Ax25Session session, Ax25Event evt)
     {
-        // Session-local lock — the dispatcher closure doesn't have a
+        // Session-local lock - the dispatcher closure doesn't have a
         // handle to the rig, so we lock on the session itself. The
         // session is the same object the rig's PostGate is gating, so
         // a single per-rig lock would be cleaner; this fallback path
@@ -513,7 +513,7 @@ public class HardwareLoop10KBTransfer
     /// the round-trip success rate is (1-p)², so the base 30 s is inflated by
     /// the odds of loss to keep the handshake from timing out on an unlucky
     /// run (e.g. ~80 s at 30 %). Loss is now uncorrelated per transmission, so
-    /// a handshake that stalls escapes on the next retry — given enough budget.
+    /// a handshake that stalls escapes on the next retry - given enough budget.
     /// </summary>
     private static TimeSpan ComputeHandshakeBudget(double lossProbability)
     {
@@ -549,7 +549,7 @@ public class HardwareLoop10KBTransfer
         // get back (or a dropped poll / poll-response) falls back to a full T1V
         // wait before the next poll. Each such cycle costs ~T1V, and the count
         // grows with the per-direction loss rate. Calibrated against a measured
-        // bench run — 15 % loss on 9600 GFSK completed in ~205 s (≈ 5 s/segment,
+        // bench run - 15 % loss on 9600 GFSK completed in ~205 s (≈ 5 s/segment,
         // T1V = 8 s): the recovery term below yields ~377 s there (≈1.8× headroom
         // for run-to-run bench variance) and scales up with p and slower modes.
         const double T1VSeconds = 8.0;       // matches the session's initial T1V
@@ -592,7 +592,7 @@ public class HardwareLoop10KBTransfer
     private static async Task PrepareTncAsync(NinoTncSerialPort tnc, byte modeId, byte txDelayTenMsUnits, CancellationToken ct)
     {
         // persistToFlash=false applies the +16 non-persist offset so the
-        // mode lives only for this power cycle — repeated theory
+        // mode lives only for this power cycle - repeated theory
         // invocations don't burn flash.
         await tnc.SetModeAsync(modeId, persistToFlash: false, cancellationToken: ct).ConfigureAwait(false);
         await tnc.SetTxDelayAsync(txDelayTenMsUnits, ct).ConfigureAwait(false);
@@ -607,7 +607,7 @@ public class HardwareLoop10KBTransfer
     /// <remarks>
     /// A static <c>Task.Delay</c> after SETHW lets the firmware settle
     /// the mode register but does <em>not</em> exercise the analogue
-    /// TX/RX path — the first session-level I-frame still hits a cold
+    /// TX/RX path - the first session-level I-frame still hits a cold
     /// modulator/demodulator. Priming with real frames forces a few
     /// FCS-validated round-trips up front so the carrier-lock, AGC,
     /// and clock-recovery loops are already at steady state when the
@@ -652,8 +652,8 @@ public class HardwareLoop10KBTransfer
                 await tx.SendFrameAsync(frame.ToBytes(), ct).ConfigureAwait(false);
                 // Brief inter-frame gap so the partner's demodulator
                 // can finish the previous frame before the next one
-                // hits the wire. The exact value isn't load-bearing —
-                // anything in the 100–500 ms range gives the modem
+                // hits the wire. The exact value isn't load-bearing -
+                // anything in the 100-500 ms range gives the modem
                 // time to drop carrier and re-acquire.
                 await Task.Delay(300, ct).ConfigureAwait(false);
             }

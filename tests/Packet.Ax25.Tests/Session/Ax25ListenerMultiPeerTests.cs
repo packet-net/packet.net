@@ -132,7 +132,7 @@ public class Ax25ListenerMultiPeerTests
         aData!.Info.ToArray().Should().Equal(payloadA);
         dataFromB.Should().BeEmpty("peer B's session must not have received peer A's data");
 
-        // And the reverse — payload from peer B routes to peer B only.
+        // And the reverse - payload from peer B routes to peer B only.
         var payloadB = System.Text.Encoding.ASCII.GetBytes("HELLO-B");
         modem.InjectInbound(Ax25Frame.I(LocalCall, peerB, nr: 0, ns: 0, info: payloadB, pollBit: false));
 
@@ -220,13 +220,13 @@ public class Ax25ListenerMultiPeerTests
         // reconnect. Srt is updated by Select_T1_Value during normal
         // operation; the t14 chain sets `SRT := Initial Default` so
         // checking Srt is unreliable. Instead we use SrejExceptionCount
-        // — figc4.1 t14 calls Clear_Exception_Conditions but that
+        // - figc4.1 t14 calls Clear_Exception_Conditions but that
         // resets SrejExceptionCount to 0. So both routes wipe it.
         //
         // The cleanest survivor across the reconnect is the session
         // instance itself (already asserted by the BeSameAs check below)
         // plus the IFrameQueue / SentIFrames / StoredReceivedIFrames
-        // dictionaries — they are not reset by t14's
+        // dictionaries - they are not reset by t14's
         // Clear_Exception_Conditions either (those are flag/seqvar
         // resets per §C4.3). Stick a probe entry into SentIFrames; on
         // reconnect, t14 does NOT call IFrameQueue.Clear() etc., so
@@ -243,7 +243,7 @@ public class Ax25ListenerMultiPeerTests
         var second = accepted[1];
         second.Should().BeSameAs(first, "the cached session instance must be returned on reconnect");
 
-        // The probe entry survived — the cache really kept the same
+        // The probe entry survived - the cache really kept the same
         // context, not just the same identity.
         second.Context.SentIFrames.Should().ContainKey((byte)42,
             "session-context state outside the SDL t14 reset list must persist across disconnect/reconnect");
@@ -285,7 +285,7 @@ public class Ax25ListenerMultiPeerTests
         }
 
         // SABM-then-DISC each peer in turn, in order. Eviction policy
-        // is LRU on "most-recently-touched" — sequential connects move
+        // is LRU on "most-recently-touched" - sequential connects move
         // each new peer to the back of the queue; the oldest (peers[0])
         // gets evicted when the (cap+1)th peer connects.
         for (int i = 0; i < peers.Count; i++)
@@ -302,7 +302,7 @@ public class Ax25ListenerMultiPeerTests
                 () => firstAcceptedByPeer[peers[i]].CurrentState == "Disconnected", TimeSpan.FromSeconds(2));
         }
 
-        // peers[0] should now be evicted. Reconnect to peers[0] — the
+        // peers[0] should now be evicted. Reconnect to peers[0] - the
         // listener should build a NEW session instance (not the one
         // first captured).
         var oldFirst = firstAcceptedByPeer[peers[0]];
@@ -356,7 +356,7 @@ public class Ax25ListenerMultiPeerTests
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, p0));
         await ListenerTestSupport.WaitFor(() => firstAccepted.ContainsKey(p0), TimeSpan.FromSeconds(2));
         var s0Original = firstAccepted[p0];
-        // Stash a probe entry — confirms freshness after eviction.
+        // Stash a probe entry - confirms freshness after eviction.
         s0Original.Context.SentIFrames[1] = (new ReadOnlyMemory<byte>(new byte[] { 0xCC }), Ax25Frame.PidNoLayer3);
         modem.InjectInbound(Ax25Frame.Disc(LocalCall, p0));
         await ListenerTestSupport.WaitFor(() => s0Original.CurrentState == "Disconnected", TimeSpan.FromSeconds(2));
@@ -412,7 +412,7 @@ public class Ax25ListenerMultiPeerTests
         await twoAccepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
 
         // Bring both peers cleanly back to Disconnected before dispose
-        // so we're not testing "abort an active session" — that's
+        // so we're not testing "abort an active session" - that's
         // covered separately.
         modem.InjectInbound(Ax25Frame.Disc(LocalCall, new Callsign("G7AAA", 0)));
         modem.InjectInbound(Ax25Frame.Disc(LocalCall, new Callsign("G7BBB", 0)));

@@ -12,7 +12,7 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// The R-3 keystone, end-to-end at the node-host layer over the in-memory radio: an app
 /// callsign registered via <see cref="PortSupervisor.RegisterAppCallsign"/> (what the RHPv2
-/// server's <c>bind</c>+<c>listen</c> drives) makes the node ANSWER for that callsign — an
+/// server's <c>bind</c>+<c>listen</c> drives) makes the node ANSWER for that callsign - an
 /// over-the-air connect to it lands at the registration's handler as an
 /// <see cref="INodeConnection"/> (never at the node console), data flows both ways, and the
 /// node's own callsign keeps serving the ordinary console untouched.
@@ -72,7 +72,7 @@ public sealed class RhpAppCallsignIntegrationTests
         await remote.ConnectAsync(AppCall);
 
         // The handler got the session (with the arrival port), the caller got the APP's
-        // greeting — and never the node console banner.
+        // greeting - and never the node console banner.
         var (conn, portId) = await handled.Task.WaitAsync(TimeSpan.FromSeconds(10));
         portId.Should().Be("p1");
         conn.PeerId.Should().Be(RemoteCall.ToString());

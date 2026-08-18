@@ -8,7 +8,7 @@ namespace Packet.Node.Core.Capabilities;
 /// <remarks>
 /// Resilient like <see cref="Auth.IRefreshTokenStore"/> and the NET/ROM routing store:
 /// a backing-store fault logs and degrades (a read returns null / empty, a write is
-/// dropped) — it never throws out to crash the node. Implementations open a fresh
+/// dropped) - it never throws out to crash the node. Implementations open a fresh
 /// pooled connection per call. Keyed by the (port, peer) pair, because capability is
 /// per-link.
 /// </remarks>

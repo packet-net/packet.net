@@ -23,24 +23,24 @@ namespace Packet.Interop.Tests.Rax25;
 /// <remarks>
 /// <para>
 /// Third third-party AX.25 stack in the netsim interop matrix
-/// (LinBPQ — C / mature; XRouter — C / mature; rax25 — Rust / young).
+/// (LinBPQ - C / mature; XRouter - C / mature; rax25 - Rust / young).
 /// Mirrors <c>LinbpqViaNetsimConnectedMode.Connect_Then_Disconnect_Against_Linbpq_Across_Netsim</c>
 /// and <c>XrouterViaNetsimConnectedMode.Connect_Then_Disconnect_Against_Xrouter_Across_Netsim</c>
-/// — minimum useful assertion (SABM/UA connect, DISC/UA disconnect)
+/// - minimum useful assertion (SABM/UA connect, DISC/UA disconnect)
 /// against a Rust implementation as the remote peer.
 /// </para>
 /// <para>
 /// <b>Scope is deliberately narrow.</b> rax25's README flags REJ and
 /// SREJ as "untested / probably broken" and notes that segmentation
-/// is not implemented. SABM/UA/DISC/UA — the only frames this test
-/// exchanges — do NOT touch any of those paths. A future I-frame
+/// is not implemented. SABM/UA/DISC/UA - the only frames this test
+/// exchanges - do NOT touch any of those paths. A future I-frame
 /// round-trip test against rax25 may need to gate on, or avoid,
 /// those features. Don't assume rax25-based assertions generalise.
 /// </para>
 /// <para>
 /// <b>No CTEXT-equivalent needed.</b> rax25's <c>async_server</c> calls
 /// <c>builder.accept()</c> which loops waiting for an incoming SABM
-/// and replies UA when it arrives — no per-call configuration. After
+/// and replies UA when it arrives - no per-call configuration. After
 /// the handshake it writes a short welcome banner ("Welcome to the
 /// server!\n") as an I-frame, which our session will collect into the
 /// signal queue but this test doesn't assert on. The DISC tears the
@@ -55,7 +55,7 @@ namespace Packet.Interop.Tests.Rax25;
 /// Bring the stack up with
 /// <c>docker compose -f docker/compose.interop.yml up -d --wait</c>.
 /// Compose's <c>depends_on netsim: healthy</c> ensures rax25's KISS
-/// dial finds the listener on first attempt — rax25 doesn't retry the
+/// dial finds the listener on first attempt - rax25 doesn't retry the
 /// dial, so this ordering matters.
 /// </para>
 /// </remarks>
@@ -92,7 +92,7 @@ public class Rax25ViaNetsimConnectedMode
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         // Brief settle so net-sim's per-port TX queue is ready before
@@ -152,7 +152,7 @@ public class Rax25ViaNetsimConnectedMode
             sendInternal: _ => { },
             subroutines: subroutines)
         {
-            // Faster RR-ack turnaround on the shared half-duplex channel —
+            // Faster RR-ack turnaround on the shared half-duplex channel -
             // see AckTimer remarks. T1/T3 keep spec defaults.
             T2Duration = AckTimer,
         };
@@ -188,7 +188,7 @@ public class Rax25ViaNetsimConnectedMode
                     continue;
                 }
 
-                // net-sim's afsk1200 channel is broadcast — every node
+                // net-sim's afsk1200 channel is broadcast - every node
                 // on the channel hears every TX. Filter to frames
                 // addressed to our local callsign.
                 if (!parsed.Destination.Callsign.Equals(rig.Session.Context.Local))

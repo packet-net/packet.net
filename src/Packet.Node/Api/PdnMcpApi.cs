@@ -13,7 +13,7 @@ namespace Packet.Node.Api;
 /// LAN/Tailscale. Login JWTs are too short-lived for a static <c>Authorization</c>
 /// header, so this issues one with the configured <c>mcp.tokenLifetimeDays</c> lifetime
 /// (default 90), scoped <c>read</c> (default) or <c>operate</c>, via the same
-/// <see cref="JwtTokenService"/> — so it validates through the existing JwtBearer
+/// <see cref="JwtTokenService"/> - so it validates through the existing JwtBearer
 /// middleware unchanged. Admin-gated + audited. See docs/mcp-design.md § Deployment.
 /// </summary>
 /// <remarks>
@@ -46,7 +46,7 @@ public static class PdnMcpApi
             IAuditLog audit, TimeProvider clock, [FromServices] JwtTokenService? tokens) =>
         {
             // The signing key (hence JwtTokenService) is unavailable if pdn.db couldn't
-            // produce one — there's then nothing to sign with.
+            // produce one - there's then nothing to sign with.
             if (tokens is null)
             {
                 return Results.Problem(

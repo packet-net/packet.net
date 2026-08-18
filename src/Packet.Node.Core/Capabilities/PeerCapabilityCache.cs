@@ -17,7 +17,7 @@ namespace Packet.Node.Core.Capabilities;
 /// </para>
 /// <para>
 /// The store is <b>optional</b> (mirroring <see cref="NetRom.NetRomService"/>): a null store ⇒ in-memory
-/// only — the cache still works for the run, it just doesn't survive a restart. That keeps tests and
+/// only - the cache still works for the run, it just doesn't survive a restart. That keeps tests and
 /// embedders that don't supply a <c>pdn.db</c> unaffected.
 /// </para>
 /// </remarks>
@@ -154,7 +154,7 @@ public sealed class PeerCapabilityCache
 
     /// <summary>
     /// Record what a returned dial observed. <b>Plan-aware</b>: a dimension is only updated when the dial
-    /// actually probed it — a mod-8 dial proves nothing about extended capability, so it leaves
+    /// actually probed it - a mod-8 dial proves nothing about extended capability, so it leaves
     /// <see cref="PeerCapabilityRecord.SupportsExtended"/> untouched; a dial that sent no pre-connect XID
     /// leaves <see cref="PeerCapabilityRecord.SupportsSrejViaXid"/> untouched. The unprobed dimension is
     /// preserved from the existing record.
@@ -243,7 +243,7 @@ public sealed class PeerCapabilityCache
     /// <summary>Every cached record (operator surface for later phases).</summary>
     public IReadOnlyList<PeerCapabilityRecord> All() => hot.Values.ToList();
 
-    /// <summary>Forget one (port, peer) — clears the store and the hot dictionary. Returns whether the hot
+    /// <summary>Forget one (port, peer) - clears the store and the hot dictionary. Returns whether the hot
     /// entry was present (the store delete is best-effort).</summary>
     public bool Forget(string portId, string peer)
     {

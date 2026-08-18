@@ -13,8 +13,8 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// The read-only "NET/ROM aware" slice, end-to-end over the in-memory radio bus:
 /// a third station broadcasts a NODES routing frame (UI, PID 0xCF, dest
-/// <c>NODES</c>); the node — a real <see cref="PortSupervisor"/> wired to a
-/// <see cref="NetRomService"/> — hears it on the port's frame-trace tap, builds
+/// <c>NODES</c>); the node - a real <see cref="PortSupervisor"/> wired to a
+/// <see cref="NetRomService"/> - hears it on the port's frame-trace tap, builds
 /// a routing table, surfaces it in the <c>Nodes</c> console command, and is
 /// proven unable to disturb a live QSO while doing so.
 /// </summary>
@@ -48,7 +48,7 @@ public sealed class NetRomAwareIntegrationTests
     {
         var bus = new SharedRadioBus();
         var nodeModem = bus.Attach();
-        var broadcaster = bus.Attach();   // the third station's modem — broadcasts raw UI
+        var broadcaster = bus.Attach();   // the third station's modem - broadcasts raw UI
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 4, 12, 0, 0, TimeSpan.Zero));
         var netRom = new NetRomService(new NetRomConfig { Enabled = true }, clock, NullLogger<NetRomService>.Instance);
@@ -159,7 +159,7 @@ public sealed class NetRomAwareIntegrationTests
         await supervisor.StartAsync();
         await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("p1"), "port p1 should come up");
 
-        var info = BuildNodesInfo("RDGBPQ", (DestSot, "SOT", ViaXyz, 80));   // derived 60 — below the floor
+        var info = BuildNodesInfo("RDGBPQ", (DestSot, "SOT", ViaXyz, 80));   // derived 60 - below the floor
         await BroadcastNodesAsync(broadcaster, Neighbour, info);
         await Wait.ForAsync(() => netRom.Snapshot().NeighbourCount > 0, "the node should hear the NODES broadcast");
 

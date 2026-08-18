@@ -97,7 +97,7 @@ public sealed class AgwClient : IAsyncDisposable
     /// Wrap an existing <see cref="Stream"/> (e.g. a paired
     /// <see cref="System.IO.Pipelines.Pipe"/> in tests, or a TLS-
     /// wrapped socket for production). The caller owns the stream's
-    /// lifetime — disposal of this client does NOT close it.
+    /// lifetime - disposal of this client does NOT close it.
     /// </summary>
     public static AgwClient FromStream(Stream stream, TimeSpan? keepaliveInterval = null)
     {
@@ -110,7 +110,7 @@ public sealed class AgwClient : IAsyncDisposable
     /// Send an <c>X</c> (register callsign) command. Some servers
     /// reply with a single-byte status (BPQ uses 0x01 = "registered",
     /// XRouter uses 0x00 = "already registered" with a different
-    /// convention). We tolerate either — registration is considered
+    /// convention). We tolerate either - registration is considered
     /// successful if the reply frame arrives at all.
     /// </summary>
     public async Task RegisterCallsignAsync(string callsign, CancellationToken ct = default)

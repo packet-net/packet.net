@@ -6,7 +6,7 @@ namespace Packet.Node.Core.Configuration;
 /// <remarks>
 /// A C# <c>record</c> synthesises member-wise equality, but a collection member
 /// (<see cref="IReadOnlyList{T}"/> / <see cref="IReadOnlyDictionary{TKey,TValue}"/>)
-/// compares by <b>reference</b> — so two configs with equal-but-distinct lists
+/// compares by <b>reference</b> - so two configs with equal-but-distinct lists
 /// (which is exactly what a YAML serialise→parse round-trip produces) would be
 /// unequal, breaking change-detection identity. Every config record with a
 /// collection member therefore hand-rolls <c>Equals</c>/<c>GetHashCode</c> and

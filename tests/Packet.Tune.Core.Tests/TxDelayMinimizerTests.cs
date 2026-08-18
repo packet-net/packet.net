@@ -6,7 +6,7 @@ namespace Packet.Tune.Core.Tests;
 /// <summary>
 /// Coordinator + meter end-to-end over the in-memory link pair with fake stations
 /// (NO RF): the propose→confirm→step→sent→report sweep choreography, the knee + margin
-/// arithmetic, the pre-data cross-check plumb, the explicit APPLY — and the safety
+/// arithmetic, the pre-data cross-check plumb, the explicit APPLY - and the safety
 /// properties: settle-before-probes ordering, K separate keyings per step, and every
 /// failure path restoring the original TXDELAY + channel access.
 /// </summary>
@@ -14,7 +14,7 @@ public class TxDelayMinimizerTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
 
-    /// <summary>Near-zero timings — no radios to guard in a fake rig.</summary>
+    /// <summary>Near-zero timings - no radios to guard in a fake rig.</summary>
     private static TxDelayMinOptions FastOptions(
         int start = 500, int step = 40, int min = 20, int probes = 5) => new()
     {
@@ -85,7 +85,7 @@ public class TxDelayMinimizerTests
         ops[0].Should().Be("pin", "channel access is pinned before anything keys");
 
         // Per step (500/460/420/380): the KISS set and its settle frame precede the
-        // step's probes, and the probes are K SEPARATE keyings — never one train.
+        // step's probes, and the probes are K SEPARATE keyings - never one train.
         foreach (int ms in new[] { 500, 460, 420, 380 })
         {
             int set = ops.IndexOf($"set:{ms}");
@@ -104,7 +104,7 @@ public class TxDelayMinimizerTests
     public async Task A_link_that_is_not_solid_at_the_start_produces_no_recommendation()
     {
         var rig = FakeRig.Create();
-        rig.Ether.DecodedAt = _ => 3;   // marginal everywhere — stepping down carries no information
+        rig.Ether.DecodedAt = _ => 3;   // marginal everywhere - stepping down carries no information
         var options = FastOptions();
 
         var meterRun = RunMeter(rig, options, out var meterCts);
@@ -152,8 +152,8 @@ public class TxDelayMinimizerTests
         rig.Ether.DecodedAt = _ => 5;
         var options = FastOptions(start: 500, step: 40);
 
-        // Sends 1–3 (propose, step 500, sent 500) succeed; everything after — including
-        // the abort notification itself — fails. Restore must still happen.
+        // Sends 1-3 (propose, step 500, sent 500) succeed; everything after - including
+        // the abort notification itself - fails. Restore must still happen.
         var failing = new FailingLink(rig.CoordinatorLink, failAfterSends: 3);
 
         var meterRun = RunMeter(rig, options, out var meterCts);
@@ -281,7 +281,7 @@ public class TxDelayMinimizerTests
 
         var meterRun = RunMeter(rig, options, out var meterCts);
         // Drop the coordinator's FIRST send (the propose): with the receipt-tolerant transport the
-        // send still "completes", but the meter never sees it — so no confirm comes, and the
+        // send still "completes", but the meter never sees it - so no confirm comes, and the
         // reply-driven retry must re-propose (fresh sequence) and carry the sweep to completion.
         var droppyLink = new DropFirstSendsLink(rig.CoordinatorLink, 1);
         await using var minimizer = new TxDelayMinimizer(droppyLink, rig.Coordinator, options);
@@ -419,7 +419,7 @@ public class TxDelayMinimizerTests
             }
             Ops.Enqueue(string.Create(CultureInfo.InvariantCulture, $"set:{txDelayMs}"));
             // The settle frame is part of the station's set contract (the NinoTNC applies
-            // the change from the SECOND frame) — model it so ordering is assertable.
+            // the change from the SECOND frame) - model it so ordering is assertable.
             Ops.Enqueue(string.Create(CultureInfo.InvariantCulture, $"settle:{txDelayMs}"));
             ether.CoordinatorTxDelayMs = txDelayMs;
             return Task.CompletedTask;
@@ -430,7 +430,7 @@ public class TxDelayMinimizerTests
         {
             for (int i = 1; i <= count; i++)
             {
-                // One entry per keying — the "separate keyings" record, keyed by the
+                // One entry per keying - the "separate keyings" record, keyed by the
                 // CURRENT commanded TXDELAY so the per-step assertions can find them.
                 Ops.Enqueue(string.Create(
                     CultureInfo.InvariantCulture, $"key:{ether.CoordinatorTxDelayMs}:{i}"));
@@ -468,7 +468,7 @@ public class TxDelayMinimizerTests
     }
 
     /// <summary>Delegates to the real in-memory link but fails every send after the
-    /// first <c>failAfterSends</c> — including the abort notification, proving restore
+    /// first <c>failAfterSends</c> - including the abort notification, proving restore
     /// does not depend on the link.</summary>
     private sealed class FailingLink : ITuningLink
     {
@@ -497,7 +497,7 @@ public class TxDelayMinimizerTests
         public ValueTask DisposeAsync() => inner.DisposeAsync();
     }
 
-    /// <summary>Delegates to the inner link but silently DROPS the first <c>dropCount</c> sends —
+    /// <summary>Delegates to the inner link but silently DROPS the first <c>dropCount</c> sends -
     /// the receipt-tolerant transport reports success, but the peer never sees the telegram, so
     /// the reply-driven retry is what recovers the exchange.</summary>
     private sealed class DropFirstSendsLink : ITuningLink

@@ -8,9 +8,9 @@ namespace Packet.NetRom.Tests.Routing;
 /// <summary>
 /// The locked INP3 selection truth table (plan risk #4,
 /// <c>docs/netrom-inp3-i3-design.md</c> §3) realised as unit + property tests over
-/// <see cref="Inp3RouteSelector.SelectActiveRoute"/>. Covers every row —
+/// <see cref="Inp3RouteSelector.SelectActiveRoute"/>. Covers every row -
 /// disabled⇒quality; prefer+inp3⇒lowest-time; prefer+no-inp3⇒quality fallback;
-/// !prefer⇒quality — plus the three "degenerate to today" invariants (§3.3).
+/// !prefer⇒quality - plus the three "degenerate to today" invariants (§3.3).
 /// </summary>
 public class Inp3RouteSelectorTests
 {
@@ -42,7 +42,7 @@ public class Inp3RouteSelectorTests
     public void NotPrefer_returns_best_quality_route_ignoring_inp3()
     {
         // NbrA is quality-best (first); NbrB carries a far-better (lower) target time.
-        // With prefer off, the INP3 metric is invisible — quality wins.
+        // With prefer off, the INP3 metric is invisible - quality wins.
         var dest = DestOf(
             T(NbrA, quality: 200, targetTimeMs: 9000, hopCount: 3),
             T(NbrB, quality: 100, targetTimeMs: 10, hopCount: 1));
@@ -159,7 +159,7 @@ public class Inp3RouteSelectorTests
     {
         // One route that happens to carry an INP3 metric: prefer picks it as the INP3
         // winner; !prefer picks it as the (only) quality route. Same neighbour either
-        // way — single-route degeneracy holds across the metric spaces.
+        // way - single-route degeneracy holds across the metric spaces.
         var only = T(NbrA, quality: 140, targetTimeMs: 250, hopCount: 2);
         var dest = DestOf(only);
 

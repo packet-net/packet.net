@@ -9,7 +9,7 @@ namespace Packet.Node.Core.Mqtt;
 /// <summary>
 /// The production <see cref="IMqttPublishSink"/>: a started MQTTnet <c>ManagedMqttClient</c>. The
 /// managed client owns auto-reconnect (~5 s) and an internal publish queue, so a slow or unreachable
-/// broker never blocks the caller — publishes are fire-and-forget enqueues at the configured QoS with
+/// broker never blocks the caller - publishes are fire-and-forget enqueues at the configured QoS with
 /// retain=false (matching kissproxy). Connection parameters (host/port/TLS/credentials) are captured
 /// at construction; plain TCP unless <see cref="MqttConfig.UseTls"/>.
 /// </summary>
@@ -17,8 +17,8 @@ internal sealed class ManagedMqttPublishSink : IMqttPublishSink
 {
     /// <summary>The bound on the managed client's pending-publish queue. MQTTnet's default is
     /// <see cref="int.MaxValue"/>, which with the broker down grows RAM without limit (two messages
-    /// per traced frame, forever — #582); 10k messages is hours of typical channel traffic while
-    /// keeping worst-case memory in the tens of MB. Overflow drops the OLDEST queued message —
+    /// per traced frame, forever - #582); 10k messages is hours of typical channel traffic while
+    /// keeping worst-case memory in the tens of MB. Overflow drops the OLDEST queued message -
     /// matching the emitter's telemetry-subscription policy (fresh traffic beats stale backlog).</summary>
     internal const int MaxPendingMessages = 10_000;
 

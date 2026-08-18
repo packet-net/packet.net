@@ -11,21 +11,21 @@ namespace Packet.Node.Core.NetRom;
 /// app contributes an entry <b>only</b> when its owner set <c>netrom.alias</c>. Each entry maps
 /// the alias → the app's node-resolved callsign, advertised AT this node (best-neighbour =
 /// <paramref name="nodeCall"/>) at the configured quality, so a station that <c>C</c>s the alias
-/// routes to us and then to the app. Pure projection — feeds
+/// routes to us and then to the app. Pure projection - feeds
 /// <see cref="NetRomService.AppAdvertSource"/>.
 /// </summary>
 public static class AppNetromAdvert
 {
     /// <summary>
     /// Project the enabled apps in <paramref name="config"/> (inline + the discovered
-    /// <paramref name="packages"/> union) to NODES advert entries — one per app with an
+    /// <paramref name="packages"/> union) to NODES advert entries - one per app with an
     /// <c>netrom.alias</c> set and a resolved callsign. Apps without an alias contribute nothing
     /// (the anti-noise default). Deterministic: inline first (config order), then packages by id.
     /// </summary>
     /// <param name="config">The live node config (inline app list + per-app netrom/pins).</param>
     /// <param name="packages">The discovered packages (the catalog's discover result); empty when
     /// there is no catalog.</param>
-    /// <param name="nodeCall">The node's own callsign — the best-neighbour every app advert points
+    /// <param name="nodeCall">The node's own callsign - the best-neighbour every app advert points
     /// through (the app is one hop away, directly via us).</param>
     public static IReadOnlyList<NodesBroadcastBuilder.Entry> Build(
         NodeConfig config, IReadOnlyList<DiscoveredAppPackage> packages, Callsign nodeCall)
@@ -50,7 +50,7 @@ public static class AppNetromAdvert
             var alias = netrom.Alias!.Trim();
             if (!seen.Add(alias))
             {
-                return;   // a duplicate alias is a config error (the validator flags it) — advertise once.
+                return;   // a duplicate alias is a config error (the validator flags it) - advertise once.
             }
             var quality = (byte)Math.Clamp(netrom.Quality ?? AppNetromConfig.DefaultQuality, 0, 255);
             entries.Add(new NodesBroadcastBuilder.Entry(resolved.Callsign, alias, nodeCall, quality));

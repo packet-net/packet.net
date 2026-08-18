@@ -12,14 +12,14 @@ namespace Packet.Node.Core.Applications.Packages;
 /// side-effect free: <see cref="Discover"/> never throws for a bad package (it yields an
 /// <see cref="DiscoveredAppPackage.Error"/> entry instead, so the owner sees the problem in
 /// the UI rather than losing the whole inventory) and never touches the filesystem beyond
-/// reading — directories (state dirs included) are created by the consumers that use them.
+/// reading - directories (state dirs included) are created by the consumers that use them.
 /// </summary>
 public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IAppPackageCatalog
 {
     /// <summary>The manifest file every package directory must carry.</summary>
     public const string ManifestFileName = "pdn-app.yaml";
 
-    /// <summary>The standard discovery roots, scanned in order — later roots win on id
+    /// <summary>The standard discovery roots, scanned in order - later roots win on id
     /// collision (an owner-installed package overrides a distro-installed one). Replaced
     /// entirely by <see cref="NodeConfig.AppPackageRoots"/> when that is set.</summary>
     public static readonly IReadOnlyList<string> DefaultRoots =
@@ -62,10 +62,10 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
     }
 
     /// <summary>The tailnet listen port reserved for the web reverse-proxy (the sidecar's own
-    /// <c>ListenTLS(":443")</c>) — an app's <c>forward.listen</c> may not claim it.</summary>
+    /// <c>ListenTLS(":443")</c>) - an app's <c>forward.listen</c> may not claim it.</summary>
     private const int ReservedWebPort = 443;
 
-    /// <summary>The loopback hosts a forward target may name — pdn proxies the tailnet only to
+    /// <summary>The loopback hosts a forward target may name - pdn proxies the tailnet only to
     /// the local host, never to an arbitrary one.</summary>
     private static readonly HashSet<string> LoopbackHosts =
         new(["127.0.0.1", "::1", "localhost"], StringComparer.OrdinalIgnoreCase);
@@ -78,14 +78,14 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
         ArgumentNullException.ThrowIfNull(config);
 
         // When the roots are overridden (dev/test), state dirs live inside each package dir
-        // instead of under /var/lib — a test run must never compute paths into system dirs.
+        // instead of under /var/lib - a test run must never compute paths into system dirs.
         bool rootsOverridden = config.AppPackageRoots is not null;
         IReadOnlyList<string> roots = config.AppPackageRoots ?? DefaultRoots;
 
         var drafts = ScanRoots(roots, rootsOverridden, config);
 
         // Cross-package rule: two packages resolving the same effective command verb can't
-        // both go live — mark BOTH (the owner disambiguates with an apps[].command override).
+        // both go live - mark BOTH (the owner disambiguates with an apps[].command override).
         foreach (var group in drafts.Where(d => d.EffectiveVerb is not null)
                      .GroupBy(d => d.EffectiveVerb!, StringComparer.OrdinalIgnoreCase)
                      .Where(g => g.Count() > 1))
@@ -101,7 +101,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
         }
 
         // Cross-package rule (same pattern as the session-verb collision): a tailnet listen
-        // port can be exposed by only one node — two packages claiming the same forward.listen
+        // port can be exposed by only one node - two packages claiming the same forward.listen
         // can't both go live, so mark BOTH. Only forwards whose listen passed the per-package
         // range/reserved checks participate (a draft already flagged for a bad listen is broken
         // regardless, and we don't want a second confusing message on top).
@@ -169,7 +169,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
             {
                 if (!File.Exists(Path.Combine(dir, ManifestFileName)))
                 {
-                    continue;   // not a package — an unrelated directory is fine to ignore.
+                    continue;   // not a package - an unrelated directory is fine to ignore.
                 }
 
                 var name = Path.GetFileName(dir);
@@ -193,7 +193,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
     }
 
     /// <summary>Parse + validate one package directory and resolve its owner override. Any
-    /// problem lands in <see cref="PackageDraft.Problems"/> — never thrown.</summary>
+    /// problem lands in <see cref="PackageDraft.Problems"/> - never thrown.</summary>
     private static PackageDraft InspectPackage(string dirName, string packageDir, bool rootsOverridden, NodeConfig config)
     {
         var draft = new PackageDraft
@@ -201,9 +201,9 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
             Id = dirName,
             PackageDir = packageDir,
             // The state-dir convention: /var/lib/packetnet/apps/<id> normally (for an
-            // owner-installed package that is also the package dir — deliberate); under an
+            // owner-installed package that is also the package dir - deliberate); under an
             // overridden root, <packageDir>/state so tests never compute system paths.
-            // Computed only — Discover is a pure read; the supervisor/host create on use.
+            // Computed only - Discover is a pure read; the supervisor/host create on use.
             StateDir = rootsOverridden
                 ? Path.Combine(packageDir, "state")
                 : Path.Combine(StateRootDir, dirName),
@@ -237,7 +237,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
         }
 
         // The id rules: required, lowercase [a-z0-9-], equal to the directory name. The id is
-        // nominally `required`, but YAML binding can leave it null — validate, don't trust.
+        // nominally `required`, but YAML binding can leave it null - validate, don't trust.
         if (string.IsNullOrWhiteSpace(manifest.Id))
         {
             problems.Add("id: is required.");
@@ -286,7 +286,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
         // not proxy the tailnet to arbitrary hosts, so the target is loopback-only; 443 is the
         // web reverse-proxy's, so a listen of 443 is reserved. Each forward validates
         // independently. The Tls enum is closed at parse time, so an out-of-set value never
-        // reaches here — but a default(ForwardTls) (e.g. a programmatically-built spec) still
+        // reaches here - but a default(ForwardTls) (e.g. a programmatically-built spec) still
         // checks below for completeness.
         for (var i = 0; i < manifest.Forward.Count; i++)
         {
@@ -312,7 +312,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
             }
         }
 
-        // Identity collision across the two sources — the contract makes this an error
+        // Identity collision across the two sources - the contract makes this an error
         // (docs/app-packages.md § Owner state): pdn can't serve two apps under one id.
         var inlineIdClash = config.Applications.FirstOrDefault(a =>
             string.Equals(a.Id, dirName, StringComparison.OrdinalIgnoreCase));
@@ -321,7 +321,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
             problems.Add($"id: '{dirName}' collides with the inline applications: entry '{inlineIdClash.Id}' - remove one.");
         }
 
-        // The effective command verb (owner override wins over the manifest packet.command) —
+        // The effective command verb (owner override wins over the manifest packet.command) -
         // checked against the built-in console verbs and the inline applications here; against
         // the other packages' effective verbs in the cross-package pass. A packet app may omit
         // the verb entirely (reachable only by callsign/alias), in which case nothing registers.
@@ -399,7 +399,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
         public string? EffectiveVerb { get; set; }
         public List<string> Problems { get; } = [];
 
-        /// <summary>The forward listen ports that passed the per-package range/reserved checks —
+        /// <summary>The forward listen ports that passed the per-package range/reserved checks -
         /// the candidates the cross-package dup-listen pass groups on (a listen already flagged
         /// for being out of range or reserved is broken regardless, so it is excluded here to
         /// avoid a confusing second message).</summary>
@@ -418,7 +418,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
                 StateDir = StateDir,
                 Manifest = Manifest,
                 Override = Override,
-                // Broken never runs — the error forces the trust switch off regardless of
+                // Broken never runs - the error forces the trust switch off regardless of
                 // what the owner's apps: entry says.
                 Enabled = error is null && (Override?.Enabled ?? false),
                 Error = error,

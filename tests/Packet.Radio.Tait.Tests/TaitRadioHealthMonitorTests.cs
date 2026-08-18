@@ -85,7 +85,7 @@ public class TaitRadioHealthMonitorTests
         keyed.TxReverseOverIdleMillivolts.Should().Be(172);
         keyed.TxReverseForwardRatio.Should().BeApproximately(172.0 / 373.0, 0.0001);
 
-        // The averaged-RSSI query went out exactly once — for the idle tick, not the keyed one.
+        // The averaged-RSSI query went out exactly once - for the idle tick, not the keyed one.
         CountOf(io.WrittenAscii, Wire('q', "5063")).Should().Be(1);
 
         // TX detector readings must not pollute the idle-offset estimate.

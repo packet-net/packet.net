@@ -31,7 +31,7 @@ public class ExcessTxDelayAdvisorTests
     public void The_window_keeps_only_the_last_capacity_samples()
     {
         var window = new PreDataCarrierWindow(capacity: 4);
-        // Four old high readings, then four new low ones — the old must age out.
+        // Four old high readings, then four new low ones - the old must age out.
         foreach (double ms in new double[] { 900, 900, 900, 900, 100, 110, 120, 130 })
         {
             window.Add(ms);

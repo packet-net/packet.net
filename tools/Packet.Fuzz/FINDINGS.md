@@ -1,4 +1,4 @@
-# Packet.Fuzz — findings
+# Packet.Fuzz - findings
 
 SP-004 fuzzer findings log. One entry per smoke / AFL run that surfaced
 something. Each entry should include the input bytes (hex) and a stack-trace
@@ -6,7 +6,7 @@ summary.
 
 See `Program.cs` for the harness and `corpus/` for the seed inputs.
 
-## 2026-05-15 — initial smoke run
+## 2026-05-15 - initial smoke run
 
 Default smoke configuration, N=1000 per parser, plus the 6 seed-corpus
 files and 32 single-bit / single-byte mutations of each seed
@@ -14,11 +14,11 @@ files and 32 single-bit / single-byte mutations of each seed
 
 Targets:
 
-- `Ax25Frame.TryParse(ReadOnlySpan<byte>, out _)` — direct AX.25 wire-format
+- `Ax25Frame.TryParse(ReadOnlySpan<byte>, out _)` - direct AX.25 wire-format
   parser, KISS-form bytes (no flags, no FCS).
-- `KissDecoder.Push(ReadOnlySpan<byte>)` — KISS framing decoder. The task
+- `KissDecoder.Push(ReadOnlySpan<byte>)` - KISS framing decoder. The task
   brief asked for `KissFrame.TryParse`, but `KissFrame` is a plain record
-  struct (port + command + payload) with no static parser — KISS is a
+  struct (port + command + payload) with no static parser - KISS is a
   stateful SLIP-style framer, not a one-shot parser, so the equivalent
   harness drives arbitrary bytes through a fresh `KissDecoder` for each
   input.
@@ -39,16 +39,16 @@ Packet.Fuzz smoke run: 1000 iterations per parser, seed=0xC0DEFEED
   KissDecoder.Push: clean — 1000 inputs, no throws.
 ```
 
-Extended runs (not part of the default smoke) — same harness with `N=100000`
+Extended runs (not part of the default smoke) - same harness with `N=100000`
 and across five different RNG seeds (`0xC0DEFEED`, `0x00000001`, `0x0000002A`,
-`0x0000270F`, `0x0012D687`, `0xFFFFFFFF`) — were also clean. ~600k total
+`0x0000270F`, `0x0012D687`, `0xFFFFFFFF`) - were also clean. ~600k total
 fuzz inputs hit `Ax25Frame.TryParse`, and the same for `KissDecoder.Push`,
 with zero unhandled exceptions in either.
 
 ### Interpretation
 
 Both parsers handle malformed input by returning `false` / dropping bytes,
-never by throwing — which is the documented contract:
+never by throwing - which is the documented contract:
 
 - `Ax25Frame.TryParse` is already defended at its single throw-prone site
   (`Ax25Address.Read` can throw `ArgumentException` on bad address bytes);
@@ -56,16 +56,16 @@ never by throwing — which is the documented contract:
   existing FsCheck property `TryParse_Never_Throws` in
   `tests/Packet.Ax25.Properties/Ax25ParserFuzzProperties.cs` that asserts
   the same thing across 2000 random inputs (amendment log
-  2026-05-14 — "ax25: fuzz / property tests for the frame parser"). The
+  2026-05-14 - "ax25: fuzz / property tests for the frame parser"). The
   SharpFuzz harness extends that property to a larger, more structured
   input distribution but reaches the same conclusion.
-- `KissDecoder.Push` is by spec lenient (KissDecoder.cs:38–41 — "receivers
+- `KissDecoder.Push` is by spec lenient (KissDecoder.cs:38-41 - "receivers
   should be lenient with malformed escape sequences. Drop the byte and
   continue."). There is no input that can drive it to throw at the framing
   layer.
 
 So: nothing to fix from this run. Good baseline for future regression
-detection — re-running the smoke after any parser change is cheap (<1 sec
+detection - re-running the smoke after any parser change is cheap (<1 sec
 for `N=10000`).
 
 ### Mutation strategies in the smoke run
@@ -84,7 +84,7 @@ The smoke generator mixes seven distributions:
 
 Plus replay + single-byte / single-bit mutation of the on-disk corpus.
 
-## 2026-06-03 — v2.2 surface (extended / XID / segment) + a flagged finding
+## 2026-06-03 - v2.2 surface (extended / XID / segment) + a flagged finding
 
 Extended the harness to the AX.25 v2.2 parsing/codec surface that the original
 SP-004 fuzzer never touched: three new targets, three new seed corpora, and a
@@ -93,15 +93,15 @@ target-aware structured generator for each. New subcommands: `ax25ext`, `xid`,
 
 Targets added:
 
-- `Ax25Frame.TryParse(…, extended: true, out _)` — the EXTENDED / mod-128
+- `Ax25Frame.TryParse(…, extended: true, out _)` - the EXTENDED / mod-128
   parse path (2-octet control field, Fig 4.1b). Fuzzed under both Strict and
   Lenient options.
-- `XidInfoField.TryParse(…, options, out _)` — the XID information-field TLV
+- `XidInfoField.TryParse(…, options, out _)` - the XID information-field TLV
   codec (§4.3.3.7): attacker-controlled FI / GI / GL and a run of PI/PL/PV
   triples. Fuzzed under both Strict and Lenient; a successfully-parsed value is
   also re-encoded (must not throw).
 - `Reassembler.Push` + the on-the-wire `SegmentationLayer.OnDataIndication`
-  seam — hostile segment sequences (missing-first, out-of-sequence, empty /
+  seam - hostile segment sequences (missing-first, out-of-sequence, empty /
   short fields, inner-PID edges), each replayed both directly and as a PID-0x08
   DL-DATA indication exactly as `Ax25Listener` drives it.
 
@@ -113,15 +113,15 @@ Targets added:
 ── Reassembler.Push / SegmentationLayer ── clean — no crash-class throws
 ```
 
-Default smoke (N=1000/target) plus an extended sweep — N=50000 across five RNG
-seeds (`1`, `42`, `9999`, `1234567`, `0`), i.e. ~250k inputs per target —
+Default smoke (N=1000/target) plus an extended sweep - N=50000 across five RNG
+seeds (`1`, `42`, `9999`, `1234567`, `0`), i.e. ~250k inputs per target -
 were all clean. The extended-frame parser and the XID codec never throw on
 arbitrary bytes (return `false` / a clean parse error), matching the documented
 `TryParse` contract; FsCheck round-trip + never-throws properties for both were
 added in `tests/Packet.Ax25.Properties/` (`Ax25ExtendedFrameRoundTripProperties`,
 `XidInfoFieldProperties`, `SegmentationRoundTripProperties`).
 
-### FINDING (flagged, not fixed) — `Reassembler.Push` throws on the wire path
+### FINDING (flagged, not fixed) - `Reassembler.Push` throws on the wire path
 
 The segment reassembler throws on a protocol-violating segment sequence, and
 that throw is **reachable from the wire**: a received I-frame with PID 0x08
@@ -139,7 +139,7 @@ DL-DATA indication):
 - input hex `` (empty info field on a 0x08-PID indication):
   `ArgumentException` ("segment info field must be at least 1 byte…")
   at `Reassembler.Push` (`Segmenter.cs:247`).
-- input hex `80` (inner-PID First — the default quirk — with no inner-PID octet):
+- input hex `80` (inner-PID First - the default quirk - with no inner-PID octet):
   `ArgumentException` ("first segment of an inner-PID series must be at least 2
   bytes…") at `Reassembler.Push` (`Segmenter.cs:257`).
 - inputs hex `85 CC` then `03 DD` (out-of-sequence continuation, remaining 3
@@ -147,7 +147,7 @@ DL-DATA indication):
   sequence…") at `Reassembler.Push` (`Segmenter.cs:281`).
 
 **Why this is flagged, not fixed.** The throw is the *documented and tested*
-contract of `Reassembler.Push` — three asserts in
+contract of `Reassembler.Push` - three asserts in
 `tests/Packet.Ax25.Tests/Session/SegmenterTests.cs` pin it
 (`Reassembler_Throws_On_Non_First_Segment_Without_Prior_First`,
 `Reassembler_Throws_On_Out_Of_Sequence_Segments`, plus the short-field guard).
@@ -158,7 +158,7 @@ workstream rule ("if the fix is non-obvious or would change protocol behaviour,
 STOP and report"), it is reported rather than guessed at.
 
 **Why it isn't a live crash today.** The one production caller, `Ax25Listener`,
-wraps inbound dispatch in a catch-all (`Ax25Listener.cs` ≈ line 350 —
+wraps inbound dispatch in a catch-all (`Ax25Listener.cs` ≈ line 350 -
 "swallowed: see Note on event-handler exceptions"), so the throw is swallowed and
 the read loop survives. The cost is silent: the malformed segment's whole
 DL-DATA indication is dropped, and a reassembler left mid-series can mis-react to
@@ -171,17 +171,17 @@ happy-path counterpart). If the behaviour is deliberately changed, those tests
 fail and force whoever changes it to update them and this finding together. The
 fuzz `segment` target and the `*_Never_Crash_Throws_*` properties additionally
 guarantee no *crash-class* exception (IndexOutOfRange / NullReference / …) ever
-escapes — only the two documented contract types.
+escapes - only the two documented contract types.
 
 **Suggested resolution (for the owner to decide).** The §6.6 prose and Fig C5.2
 (the receiver-side reassembler) treat a bad segment as a discardable error, not a
 fatal one. The natural home for a clean rejection is `SegmentationLayer` (the
 boundary process), which could catch the documented exceptions, reset the
-reassembler, and either drop silently or raise a DL-ERROR — leaving the low-level
+reassembler, and either drop silently or raise a DL-ERROR - leaving the low-level
 `Reassembler.Push` contract (and its existing tests) untouched. That is a small,
 local change, but it changes observable behaviour, so it wants an explicit call.
 
-## 2026-06-13 — higher-layer parsers added (APRS / AGW / NET/ROM) + a fixed AGW finding
+## 2026-06-13 - higher-layer parsers added (APRS / AGW / NET/ROM) + a fixed AGW finding
 
 Extended the harness past the AX.25/KISS/node surface to the three higher-layer
 wire parsers that also take untrusted bytes: the APRS info-field decoders, the
@@ -191,14 +191,14 @@ subcommands: `aprs`, `agw`, `netrom`. All replayed under `--smoke`.
 
 Targets added:
 
-- `FuzzAprsBytes` — every public APRS decoder (`AprsPositionDecoder`,
+- `FuzzAprsBytes` - every public APRS decoder (`AprsPositionDecoder`,
   `AprsMessageDecoder`, `AprsStatusDecoder`, `AprsObjectDecoder`,
   `AprsItemDecoder`, `AprsTelemetryDecoder`, `AprsMicEDecoder`) under both
-  `Strict` and `Lenient`. All total by contract — return `false`, never throw.
-- `FuzzAgwBytes` — `AgwFrame.Parse` (attacker-controlled little-endian
+  `Strict` and `Lenient`. All total by contract - return `false`, never throw.
+- `FuzzAgwBytes` - `AgwFrame.Parse` (attacker-controlled little-endian
   data-length → body slice; throws `InvalidDataException` by contract, swallowed)
   plus `AgwFrame.TryReadDataLength` (a bool length-peek that must never throw).
-- `FuzzNetRomBytes` — `NetRomPacket.TryParse`, `NetRomNetworkHeader.TryParse`,
+- `FuzzNetRomBytes` - `NetRomPacket.TryParse`, `NetRomNetworkHeader.TryParse`,
   `NetRomTransportHeader.TryParse`, and `NodesBroadcast.TryParse` under both
   presets. All total by contract.
 
@@ -213,15 +213,15 @@ Targets added:
 Default smoke (N=1000/target) and an N=50000 sweep are clean for all three after
 the fix below. APRS and NET/ROM were clean from the start.
 
-### FINDING (fixed) — `AgwFrame.TryReadDataLength` threw instead of returning false
+### FINDING (fixed) - `AgwFrame.TryReadDataLength` threw instead of returning false
 
 The first 50k AGW sweep surfaced ~18.5k throws, all the same:
 
 - input hex (50B): `000000004400F0004D304C54452D31000000474237524447000000000E0000800000000068656C6C6F206F76657220616777`
 - `InvalidDataException: AGW frame advertises data length 2147483662 which would overflow Int32` at `Packet.Agw.AgwFrame.TryReadDataLength` (`AgwFrame.cs:124`).
 
-Root cause: `TryReadDataLength` — a `Try*` method documented to *return false* on
-unusable input — instead **threw** when the advertised data-length field exceeded
+Root cause: `TryReadDataLength` - a `Try*` method documented to *return false* on
+unusable input - instead **threw** when the advertised data-length field exceeded
 `int.MaxValue - HeaderSize`. It is wire-reachable: `AgwFrameStream`'s read loop
 calls it on every full header off the socket (`AgwFrameStream.cs:107`), un-guarded,
 so a peer sending a header whose 4-byte LE length field is ≥ `0x7FFFFFDC` throws
@@ -230,12 +230,12 @@ straight into the loop's catch-all (`AgwFrameStream.cs:140`) and tears down the
 exposes it.
 
 **Fixed.** `TryReadDataLength` now returns `false` on the overflow case (consistent
-with its existing too-short branch) — honouring the `Try*` contract. The streaming
+with its existing too-short branch) - honouring the `Try*` contract. The streaming
 caller's now-reachable false branch was updated to a clear "unusable length; stream
 desynced" message (AGW has no frame delimiter, so a corrupt length can't be resynced
-— tearing the stream down stays the correct outcome, just with an honest message and
+- tearing the stream down stays the correct outcome, just with an honest message and
 no unhandled throw). `AgwFrame.Parse` keeps its own documented throwing contract for
-the one-shot path — only the `Try*` peek was wrong. Regression pinned in
+the one-shot path - only the `Try*` peek was wrong. Regression pinned in
 `tests/Packet.Agw.Tests/AgwFrameTests.cs`
 (`TryReadDataLength_returns_false_for_an_overflowing_length_rather_than_throwing`),
 and the `agw` fuzz target guards it from regressing.

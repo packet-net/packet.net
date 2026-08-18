@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.SelfUpdate;
 
 /// <summary>
 /// <see cref="SystemVersionService"/> serves <c>GET /api/v1/system/info</c> a cheap cached snapshot
-/// and refreshes it out of band on a TTL — so <c>/info</c> never blocks on the network. Asserts the
+/// and refreshes it out of band on a TTL - so <c>/info</c> never blocks on the network. Asserts the
 /// snapshot is published after a refresh, that the cache is served within the TTL, and that the
 /// service is total (a throwing probe leaves the prior snapshot, never propagates).
 /// </summary>
@@ -30,7 +30,7 @@ public sealed class SystemVersionServiceTests
         var svc = new SystemVersionService("0.8.0", probe, new FakeTimeProvider(T0), NullLoggerFactory.Instance);
 
         // The synchronous snapshot read returns the default immediately (it only KICKS OFF a
-        // background refresh — it never awaits one), so /info is never blocked.
+        // background refresh - it never awaits one), so /info is never blocked.
         svc.GetAvailabilitySnapshot().Should().Be(SystemUpdateAvailability.None);
     }
 

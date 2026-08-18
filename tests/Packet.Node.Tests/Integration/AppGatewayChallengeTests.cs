@@ -15,9 +15,9 @@ namespace Packet.Node.Tests.Integration;
 /// <item>a sub-frame (iframe/frame) → a renderable <c>200 text/html</c> whose script breaks the
 /// slot out to the top-level login (a frame can't 302 its parent);</item>
 /// <item>an XHR / API fetch (Accept: application/json, no navigation hint) → the bare <c>401</c>
-/// EXACTLY as before — the SPA's on401 handler owns those.</item>
+/// EXACTLY as before - the SPA's on401 handler owns those.</item>
 /// </list>
-/// The redirect never weakens auth — it still rejects the request and requires re-login; it only
+/// The redirect never weakens auth - it still rejects the request and requires re-login; it only
 /// swaps the unrenderable bare 401 for a renderable re-auth on human-plane navigations.
 /// </summary>
 [Trait("Category", "Node")]
@@ -74,7 +74,7 @@ public sealed class AppGatewayChallengeTests : IDisposable
     // Bootstrap an admin (so the user store is non-empty + the signing key exists) with auth OFF,
     // then return a fresh auth-ON factory over the SAME db so the gate enforces. Config now lives
     // in pdn.db (config-in-DB, #473), so auth is flipped on through the live write seam
-    // (PUT /config/raw is ungated while auth is off) — not a YAML rewrite, which the next boot
+    // (PUT /config/raw is ungated while auth is off) - not a YAML rewrite, which the next boot
     // would ignore since the DB row already exists.
     private async Task<NodeAppFactory> AuthOnFactoryAsync()
     {
@@ -116,7 +116,7 @@ public sealed class AppGatewayChallengeTests : IDisposable
         // Same-site relative login URL, with the originally-requested path as an encoded next.
         location.Should().StartWith("/login?next=");
         location.Should().NotContain("//");                     // no protocol-relative open-redirect
-        // next returns to the SPA app route (/apps/bbs), NOT the raw deep gateway path — so login
+        // next returns to the SPA app route (/apps/bbs), NOT the raw deep gateway path - so login
         // lands back in the panel with the slot, not on the headless app full-page.
         Uri.UnescapeDataString(location).Should().Be("/login?next=/apps/bbs");
         // It is NOT the bare 401 challenge.
@@ -153,7 +153,7 @@ public sealed class AppGatewayChallengeTests : IDisposable
         using var client = NoRedirectClient(factory);
 
         using var req = new HttpRequestMessage(HttpMethod.Get, "/apps/bbs/data");
-        // An XHR/fetch: empty fetch-dest, cors mode, JSON accept — the SPA's on401 owns this.
+        // An XHR/fetch: empty fetch-dest, cors mode, JSON accept - the SPA's on401 owns this.
         req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
         req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
         req.Headers.TryAddWithoutValidation("Accept", "application/json");
@@ -183,7 +183,7 @@ public sealed class AppGatewayChallengeTests : IDisposable
     [Fact]
     public async Task A_non_apps_path_navigation_is_untouched_by_the_recovery()
     {
-        // The recovery is scoped to /apps/* only — a gated API path keeps the bare 401 even for a
+        // The recovery is scoped to /apps/* only - a gated API path keeps the bare 401 even for a
         // browser navigation (it's not a human-plane app frame; the SPA handles its own routes).
         await using var factory = await AuthOnFactoryAsync();
         using var client = NoRedirectClient(factory);

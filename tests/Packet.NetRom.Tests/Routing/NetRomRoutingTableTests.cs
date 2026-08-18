@@ -80,10 +80,10 @@ public class NetRomRoutingTableTests
     [Fact]
     public void A_mixed_grade_node_advertises_the_correct_quality_per_port()
     {
-        // The #455 scenario: GB7RDG-style mixed-grade node — 191 on one port, 192 on
+        // The #455 scenario: GB7RDG-style mixed-grade node - 191 on one port, 192 on
         // another. Two neighbours heard on two different-grade ports learn their port's
         // quality independently, and a destination learned via each is combined against
-        // that port's basis — so the node advertises an accurate quality on each leg.
+        // that port's basis - so the node advertises an accurate quality on each leg.
         var table = NewTable(out _);
         table.Ingest(NbrA, Me, "port-191", Broadcast("RDG", (DestSot, "SOT", NbrB, 200)), neighbourQuality: 191);
         table.Ingest(NbrB, Me, "port-192", Broadcast("XYZ", (DestMnc, "MNC", NbrA, 200)), neighbourQuality: 192);
@@ -100,7 +100,7 @@ public class NetRomRoutingTableTests
     [Fact]
     public void A_per_port_quality_change_is_reflected_on_the_next_broadcast()
     {
-        // A QUALITY edit (hot-reload) takes effect on the next NODES ingest — the cached
+        // A QUALITY edit (hot-reload) takes effect on the next NODES ingest - the cached
         // neighbour path quality is refreshed, not pinned to first-heard.
         var table = NewTable(out _);
         table.Ingest(NbrA, Me, "hf", Broadcast("RDGBPQ"), neighbourQuality: 191);
@@ -142,7 +142,7 @@ public class NetRomRoutingTableTests
     public void Trivial_loop_guard_zeroes_a_route_whose_best_neighbour_is_us()
     {
         var table = NewTable(out _);
-        // RDG advertises a destination reachable via US (M0LTE) — a loop. The route
+        // RDG advertises a destination reachable via US (M0LTE) - a loop. The route
         // becomes quality 0, which is never kept, so DestMnc gets no route.
         table.Ingest(NbrA, Me, "vhf", Broadcast("RDGBPQ", (DestMnc, "MNC", Me, 200)));
 
@@ -176,7 +176,7 @@ public class NetRomRoutingTableTests
     {
         var table = NewTable(out _);
         // Four different neighbours each advertise SOT at different qualities.
-        // Each is a distinct originator, so we learn four routes — capped to 3.
+        // Each is a distinct originator, so we learn four routes - capped to 3.
         var n1 = new Callsign("GB7AAA", 0);
         var n2 = new Callsign("GB7BBB", 0);
         var n3 = new Callsign("GB7CCC", 0);
@@ -336,10 +336,10 @@ public class NetRomRoutingTableTests
     public void A_re_advertisement_that_falls_below_the_floor_removes_the_existing_route()
     {
         var table = NewTable(NetRomRoutingOptions.Default with { MinQuality = 128 }, out _);
-        table.Ingest(NbrA, Me, "vhf", Broadcast("RDG", (DestSot, "SOT", NbrB, 250)));   // derived 187 — kept
+        table.Ingest(NbrA, Me, "vhf", Broadcast("RDG", (DestSot, "SOT", NbrB, 250)));   // derived 187 - kept
         table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot);
 
-        table.Ingest(NbrA, Me, "vhf", Broadcast("RDG", (DestSot, "SOT", NbrB, 80)));    // derived 60 — below floor
+        table.Ingest(NbrA, Me, "vhf", Broadcast("RDG", (DestSot, "SOT", NbrB, 80)));    // derived 60 - below floor
         var sot = table.Snapshot().Destinations.FirstOrDefault(d => d.Destination == DestSot);
         sot.Should().BeNull("the route decayed below the floor and the destination has no other route");
     }
@@ -378,7 +378,7 @@ public class NetRomRoutingTableTests
     [Fact]
     public void A_per_port_minqual_overrides_a_higher_table_floor_to_keep_a_route()
     {
-        // Table-wide MINQUAL 128 would drop a derived-60 route — but this port relaxes the
+        // Table-wide MINQUAL 128 would drop a derived-60 route - but this port relaxes the
         // floor to 0, so the route IS kept on that port (the per-port value wins both ways).
         var table = NewTable(NetRomRoutingOptions.Default with { MinQuality = 128 }, out _);
         table.Ingest(NbrA, Me, "open", Broadcast("RDG", (DestSot, "SOT", NbrB, 80)), neighbourQuality: null, minQuality: 0);

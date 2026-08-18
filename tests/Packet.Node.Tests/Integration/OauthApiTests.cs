@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Integration;
 /// Boots the real <c>Packet.Node</c> composition root with <c>mcp.oauth.enabled</c> and
 /// exercises the MCP OAuth 2.1 flow (the hosted-claude.ai connector path): discovery,
 /// dynamic client registration, the interactive authorize/consent, and the code→token
-/// exchange — plus the security guards (PKCE S256, single-use codes, redirect/credential
+/// exchange - plus the security guards (PKCE S256, single-use codes, redirect/credential
 /// checks). All on the in-memory TestServer. See PdnOauthApi + docs/mcp-oauth-design.md.
 /// </summary>
 [Trait("Category", "Node")]

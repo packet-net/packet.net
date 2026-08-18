@@ -9,8 +9,8 @@ namespace Packet.Node.Mcp;
 
 /// <summary>
 /// Composition glue for the in-process MCP server (Phase 8). Registers the tool
-/// surface + the live backend, and — when <c>mcp.enabled</c> and <c>mcp.sse.enabled</c>
-/// — mounts the Streamable-HTTP transport on the web listener at the configured
+/// surface + the live backend, and - when <c>mcp.enabled</c> and <c>mcp.sse.enabled</c>
+/// - mounts the Streamable-HTTP transport on the web listener at the configured
 /// path, gated by the MCP-audience policy (read scope on an MCP-audience token;
 /// pass-through when auth is off, like the REST API). stdio is the separate
 /// <c>pdn mcp</c> subcommand. See docs/mcp-design.md.

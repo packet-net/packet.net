@@ -6,11 +6,11 @@ namespace Packet.Tune.Core;
 /// <summary>
 /// The answering (meter) end of the TXDELAY-minimisation protocol (see
 /// <see cref="TxDelayMinimizer"/> for the choreography). Confirms the proposal, opens a
-/// tagged probe counter on each <c>step</c>/<c>apply</c>, and reports decodes — plus,
+/// tagged probe counter on each <c>step</c>/<c>apply</c>, and reports decodes - plus,
 /// when a carrier-sensing radio is attached, the median measured pre-data carrier time
 /// per step (the as-heard effective TXDELAY, the sweep's self-evidencing cross-check).
 /// The meter is entirely passive on its own hardware: nothing is keyed, nothing is
-/// changed, so there is nothing to revert — a silent coordinator simply times the loop
+/// changed, so there is nothing to revert - a silent coordinator simply times the loop
 /// out (<see cref="TxDelayMinOptions.MeterIdleTimeout"/>).
 /// </summary>
 public sealed class TxDelayMinResponder
@@ -54,8 +54,8 @@ public sealed class TxDelayMinResponder
     public Action<TxDelaySweepStep>? StepReported { get; set; }
 
     /// <summary>
-    /// Run the meter loop until the coordinator says <c>done</c> (or <c>BY</c>) —
-    /// returns 0 — or the link closes / the idle timeout fires — returns 1.
+    /// Run the meter loop until the coordinator says <c>done</c> (or <c>BY</c>) -
+    /// returns 0 - or the link closes / the idle timeout fires - returns 1.
     /// </summary>
     public async Task<int> RunAsync(CancellationToken cancellationToken = default)
     {
@@ -145,7 +145,7 @@ public sealed class TxDelayMinResponder
                     case TxDelayMinAction.Apply:
                     {
                         // The tag every probe of this step carries is the announce
-                        // telegram's sequence number. Open the counter NOW — the
+                        // telegram's sequence number. Open the counter NOW - the
                         // coordinator keys only after its pre-key guard delay, but the
                         // counter is passive and cheap, so first-open-then-wait can
                         // never miss an early probe.
@@ -212,7 +212,7 @@ public sealed class TxDelayMinResponder
                     case TxDelayMinAction.Reject:
                     case TxDelayMinAction.StepReport:
                     default:
-                        break; // coordinator-bound messages echoed back — not ours
+                        break; // coordinator-bound messages echoed back - not ours
                 }
             }
         }

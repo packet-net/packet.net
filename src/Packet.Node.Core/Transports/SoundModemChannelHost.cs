@@ -24,7 +24,7 @@ internal sealed class SoundModemChannelHost : IAsyncDisposable
     private readonly Task _transmitter;
     private bool _disposed;
 
-    /// <summary>The hosted channel — attach receive taps and enqueue transmits here.</summary>
+    /// <summary>The hosted channel - attach receive taps and enqueue transmits here.</summary>
     public SoundModemChannel Channel { get; }
 
     private SoundModemChannelHost(
@@ -170,7 +170,7 @@ internal sealed class SoundModemChannelHost : IAsyncDisposable
 
         if (_deviceOwner is not null)
         {
-            // The device (a FlexRuntime) owns Input/Output/Ptt — dispose it, not them.
+            // The device (a FlexRuntime) owns Input/Output/Ptt - dispose it, not them.
             await _deviceOwner.DisposeAsync().ConfigureAwait(false);
         }
         else

@@ -6,7 +6,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
 /// Behavioural (real-dispatcher, real-codec) coverage of figc4.5 (Timer Recovery)
-/// <b>receive columns</b> — supervisory and I frames arriving from the peer while a
+/// <b>receive columns</b> - supervisory and I frames arriving from the peer while a
 /// station is recovering an unacked I-frame. The existing
 /// <c>DataLinkTimerRecoveryIntegrationTests</c> cover the T1-driven spine (enter on
 /// T1 expiry, N2 exhaustion → Disconnected, retransmit + recover when loss lifts),
@@ -16,8 +16,8 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// <remarks>
 /// Each scenario drives station A into TimerRecovery with one outstanding,
 /// unacked I-frame (drop A's I-frames, let T1 expire), then delivers a specific
-/// frame "from B" via <see cref="TwoStationHarness.InjectFrameBytes"/> — a frame the
-/// peer session wouldn't necessarily emit on cue — and asserts the spec-correct
+/// frame "from B" via <see cref="TwoStationHarness.InjectFrameBytes"/> - a frame the
+/// peer session wouldn't necessarily emit on cue - and asserts the spec-correct
 /// reaction through the real <see cref="ActionDispatcher"/> plus the
 /// <see cref="InvariantChecker"/> oracle.
 /// </remarks>
@@ -68,7 +68,7 @@ public class TimerRecoveryConformanceTests
         // B asks for retransmission from N(R)=0. figc4.5 REJ handling re-sends the
         // unacked I-frame; with the channel now clean it reaches B, which delivers
         // it and acks. The ack (F=0) advances V(a) but doesn't itself leave
-        // TimerRecovery — that happens on the next poll/final cycle.
+        // TimerRecovery - that happens on the next poll/final cycle.
         h.InjectFrameBytes(h.A, RejTo(h.A, nr: 0));
 
         h.B.Delivered.Select(p => p[0]).Should().Equal(new byte[] { 0x00 },
@@ -111,7 +111,7 @@ public class TimerRecoveryConformanceTests
         h.CheckAfterEachStep = false;
 
         // In-sequence (N(s)=0 == A's V(r)): A accepts and delivers B's data even
-        // while in TimerRecovery — recovery of A's own outstanding frame and
+        // while in TimerRecovery - recovery of A's own outstanding frame and
         // reception of the peer's data are independent directions.
         h.InjectFrameBytes(h.A, ITo(h.A, nr: 0, ns: 0, payload: 0xBB));
 

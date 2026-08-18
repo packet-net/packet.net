@@ -3,7 +3,7 @@ using Packet.Core;
 namespace Packet.NetRom.Wire;
 
 /// <summary>
-/// One destination entry inside a NET/ROM NODES broadcast — a 21-octet record
+/// One destination entry inside a NET/ROM NODES broadcast - a 21-octet record
 /// advertising "I (the broadcasting node) can reach <see cref="Destination"/>
 /// (alias <see cref="DestinationAlias"/>) via <see cref="BestNeighbour"/> at
 /// quality <see cref="BestQuality"/>."
@@ -19,7 +19,7 @@ namespace Packet.NetRom.Wire;
 /// <para>
 /// This is the <em>advertised</em> quality as the originator sees it. The
 /// receiving node combines it multiplicatively with its own path quality to the
-/// originator to derive the route quality it stores — see
+/// originator to derive the route quality it stores - see
 /// <c>Packet.NetRom.Routing.NetRomQuality</c>.
 /// </para>
 /// </remarks>
@@ -41,7 +41,7 @@ public sealed record NodesRoutingEntry
 
     /// <summary>
     /// The neighbour the originator forwards through to reach
-    /// <see cref="Destination"/> — the originator's own chosen best next hop.
+    /// <see cref="Destination"/> - the originator's own chosen best next hop.
     /// </summary>
     public required Callsign BestNeighbour { get; init; }
 

@@ -8,10 +8,10 @@ using Packet.Node.Tests.Support;
 namespace Packet.Node.Tests.HeadEnd;
 
 /// <summary>
-/// <see cref="HeadEndHealthMonitor"/> (#583) — the background fleet health poller, driven
+/// <see cref="HeadEndHealthMonitor"/> (#583) - the background fleet health poller, driven
 /// deterministically through its <c>PollOnceAsync</c> seam over the stub head-end control plane:
 /// the statusz-rich poll, the healthz fallback for a pre-0.1.4 daemon, failure counting,
-/// transition-only logging (one WARNING per outage, one recovery info — never per-poll), the
+/// transition-only logging (one WARNING per outage, one recovery info - never per-poll), the
 /// config self-gate (no head-ends ⇒ no polls, no browses), and the config-else-mDNS address rule.
 /// </summary>
 [Trait("Category", "Node")]
@@ -46,7 +46,7 @@ public sealed class HeadEndHealthMonitorTests
     private static Func<Uri, HeadEndClient> ClientOver(StubHeadEndHandler handler) =>
         uri => new HeadEndClient(uri, new HttpClient(handler));
 
-    // A handler that refuses every request — the unreachable head-end (connection refused).
+    // A handler that refuses every request - the unreachable head-end (connection refused).
     private sealed class UnreachableHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -227,7 +227,7 @@ public sealed class HeadEndHealthMonitorTests
     [Fact]
     public async Task Unresolvable_address_counts_as_an_unreachable_poll()
     {
-        // Declared with a blank address and nothing discovered — the poller can't even dial.
+        // Declared with a blank address and nothing discovered - the poller can't even dial.
         var handler = new StubHeadEndHandler(new HeadEndInventory()) { Status = () => Status("ghost") };
         var monitor = Monitor(ConfigWith(new HeadEndConfig { Id = "ghost" }), ClientOver(handler));
 
@@ -282,7 +282,7 @@ public sealed class HeadEndHealthMonitorTests
         monitor.Snapshot().Should().BeEmpty("stale instances must stop emitting metrics rows");
     }
 
-    /// <summary>Captures every log entry from any category — the transition-only logging assertions.</summary>
+    /// <summary>Captures every log entry from any category - the transition-only logging assertions.</summary>
     private sealed class CapturingLoggerFactory : ILoggerFactory
     {
         public sealed record Entry(LogLevel Level, EventId EventId, string Message);

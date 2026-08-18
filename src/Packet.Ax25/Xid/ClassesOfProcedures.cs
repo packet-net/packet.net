@@ -1,7 +1,7 @@
 namespace Packet.Ax25.Xid;
 
 /// <summary>
-/// The XID "Classes of Procedures" parameter (PI=2, PL=2 — a 16-bit field),
+/// The XID "Classes of Procedures" parameter (PI=2, PL=2 - a 16-bit field),
 /// per AX.25 v2.2 §4.3.3.7 (Figure 4.5) and the negotiation rules in §6.3.2.
 /// For AX.25 only the duplex selection is negotiable; the remaining bits are
 /// fixed.
@@ -9,11 +9,11 @@ namespace Packet.Ax25.Xid;
 /// <remarks>
 /// <para>Bit layout (LSB-first within each octet; octet 0 transmitted first):</para>
 /// <list type="bullet">
-/// <item>bit 0 — Balanced ABM: always 1.</item>
-/// <item>bits 1–4 — Unbalanced NRM/ARM primary/secondary: always 0.</item>
-/// <item>bit 5 — Half Duplex.</item>
-/// <item>bit 6 — Full Duplex. Exactly one of bit 5 / bit 6 is set.</item>
-/// <item>bits 7–15 — Reserved: always 0.</item>
+/// <item>bit 0 - Balanced ABM: always 1.</item>
+/// <item>bits 1-4 - Unbalanced NRM/ARM primary/secondary: always 0.</item>
+/// <item>bit 5 - Half Duplex.</item>
+/// <item>bit 6 - Full Duplex. Exactly one of bit 5 / bit 6 is set.</item>
+/// <item>bits 7-15 - Reserved: always 0.</item>
 /// </list>
 /// <para>
 /// Note the spec prose (§6.3.2 ¶1080) talks of "bit 0 always 1" but Figure 4.6
@@ -25,13 +25,13 @@ namespace Packet.Ax25.Xid;
 /// </remarks>
 public sealed record ClassesOfProcedures
 {
-    /// <summary>Balanced ABM — bit 0, always set for AX.25.</summary>
+    /// <summary>Balanced ABM - bit 0, always set for AX.25.</summary>
     private const int BitAbmBalanced = 0;
 
-    /// <summary>Half-duplex operation — bit 5.</summary>
+    /// <summary>Half-duplex operation - bit 5.</summary>
     private const int BitHalfDuplex = 5;
 
-    /// <summary>Full-duplex operation — bit 6.</summary>
+    /// <summary>Full-duplex operation - bit 6.</summary>
     private const int BitFullDuplex = 6;
 
     /// <summary>
@@ -55,14 +55,14 @@ public sealed record ClassesOfProcedures
     public byte[] ToOctets()
     {
         int field = (1 << BitAbmBalanced) | (1 << (HalfDuplex ? BitHalfDuplex : BitFullDuplex));
-        // LSB-first per octet: octet0 = bits 0–7, octet1 = bits 8–15.
+        // LSB-first per octet: octet0 = bits 0-7, octet1 = bits 8-15.
         return new[] { (byte)(field & 0xFF), (byte)((field >> 8) & 0xFF) };
     }
 
     /// <summary>
     /// Decode from the (up to) 2-octet PV. Duplex is read from bits 5/6; if
     /// neither is set we default to half-duplex (the spec default). All other
-    /// bits are ignored on receive — only the duplex selection is meaningful
+    /// bits are ignored on receive - only the duplex selection is meaningful
     /// to AX.25.
     /// </summary>
     public static ClassesOfProcedures FromOctets(byte octet0, byte octet1)

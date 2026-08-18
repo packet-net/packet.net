@@ -11,7 +11,7 @@ namespace Packet.NetRom.Tests.Routing;
 /// vectors: the same <c>(seed, sample…)</c> sequence must produce the same SNTT
 /// trajectory in C#, <c>@packet-net/ax25</c> (TS), and pico-node (Rust). The C#
 /// reference smoother is authoritative; TS and Rust mirror its integer arithmetic
-/// 1:1 (no floating point anywhere — the shift-and-add form is exact and
+/// 1:1 (no floating point anywhere - the shift-and-add form is exact and
 /// language-agnostic, design §7).
 /// </summary>
 public sealed class Inp3SnttTests
@@ -57,13 +57,13 @@ public sealed class Inp3SnttTests
         Inp3Sntt.Seed(0).Should().Be(Inp3Sntt.Fresh.Update(0));
     }
 
-    // ── worked convergence example A — steady link (§0.5) ─────────────────
+    // ── worked convergence example A - steady link (§0.5) ─────────────────
 
     [Fact]
     public void Example_A_steady_link_sits_exactly_on_its_fixed_point()
     {
         // RTT steady at 400 ms ⇒ sample 200. Seed = 200; every subsequent
-        // (7·200 + 200 + 4)/8 = 1604/8 = 200 — the +4 round-to-nearest keeps a
+        // (7·200 + 200 + 4)/8 = 1604/8 = 200 - the +4 round-to-nearest keeps a
         // steady input pinned on its fixed point, no drift.
         var s = Inp3Sntt.Seed(200);
         s.Ms.Should().Be(200);
@@ -114,7 +114,7 @@ public sealed class Inp3SnttTests
         s.Ms.Should().BeInRange(497, 500, "a 1/8 IIR settles onto the integer fixed-point band of its input");
     }
 
-    // ── worked convergence example C — outlier rejection (§0.5) ───────────
+    // ── worked convergence example C - outlier rejection (§0.5) ───────────
 
     [Fact]
     public void Example_C_single_outlier_is_damped_then_walked_back()
@@ -188,10 +188,10 @@ public sealed class Inp3SnttTests
             uint before = s.Ms;
             s = s.Update(0);
             s.Ms.Should().BeLessThan(before, "SNTT falls monotonically toward a smaller sample");
-            // floors at the sample band — never negative (it is unsigned).
+            // floors at the sample band - never negative (it is unsigned).
         }
         // Run to the fixed point: a steady 0 sample settles in the integer rounding
-        // band [0, denom/2] (~4 at the default 1/8 gain), not exactly 0 — the same
+        // band [0, denom/2] (~4 at the default 1/8 gain), not exactly 0 - the same
         // round-to-nearest +denom/2 DC bias as Example C. The invariant is convergence
         // into that band, not exact 0.
         for (int i = 0; i < 100; i++)
@@ -233,7 +233,7 @@ public sealed class Inp3SnttTests
         // drive SNTT past the horizon.
         var s = Inp3Sntt.Seed(0);
         s = s.Update(uint.MaxValue);
-        // (7·0 + 600000 + 4)/8 = 600004/8 = 75000 — the clamped sample, smoothed.
+        // (7·0 + 600000 + 4)/8 = 600004/8 = 75000 - the clamped sample, smoothed.
         s.Ms.Should().Be(75_000);
     }
 

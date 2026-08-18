@@ -10,13 +10,13 @@ namespace Packet.Node.Core.Configuration;
 /// <remarks>
 /// <para>
 /// The management API serialises <see cref="NodeConfig"/> over the web JSON layer
-/// (<c>ConfigureHttpJsonOptions</c> — <see cref="JsonSerializerDefaults.Web"/>:
+/// (<c>ConfigureHttpJsonOptions</c> - <see cref="JsonSerializerDefaults.Web"/>:
 /// camelCase, case-insensitive read) with <em>this type's</em> converter set applied
 /// by <see cref="ApplyTo"/> (see <c>Program.cs</c>): the polymorphic <c>transport</c>
 /// union, enums as their member names, and durations as integer seconds. The
 /// <see cref="SqliteConfigProvider"/> persists the config as a JSON blob using
 /// <em>these exact options</em>, so the structured <c>PUT /config</c> body and the
-/// persisted blob are byte-identical — there is a single canonical serialisation and
+/// persisted blob are byte-identical - there is a single canonical serialisation and
 /// no second JSON dialect to drift.
 /// </para>
 /// <para>
@@ -81,7 +81,7 @@ public static class NodeConfigJson
 
     /// <summary>Deserialise a canonical JSON blob back into a <see cref="NodeConfig"/>.
     /// Throws (<see cref="JsonException"/>) on malformed JSON or an unknown transport
-    /// <c>kind</c> — the caller treats any throw as "this blob is unusable".</summary>
+    /// <c>kind</c> - the caller treats any throw as "this blob is unusable".</summary>
     public static NodeConfig Deserialize(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
@@ -89,7 +89,7 @@ public static class NodeConfigJson
                ?? throw new JsonException("the persisted config blob deserialised to null.");
     }
 
-    /// <summary>Parse a canonical JSON blob into a mutable <see cref="JsonObject"/> — the form
+    /// <summary>Parse a canonical JSON blob into a mutable <see cref="JsonObject"/> - the form
     /// the schema-migration chain (<see cref="NodeConfigSchemaMigrations"/>) transforms before
     /// the blob is deserialised through the current typed model. Throws
     /// (<see cref="JsonException"/>) on malformed JSON or a non-object root.</summary>

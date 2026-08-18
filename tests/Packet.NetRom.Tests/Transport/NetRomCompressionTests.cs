@@ -45,7 +45,7 @@ public sealed class NetRomCompressionTests
     [Fact]
     public void Originator_off_means_compression_declined_both_ends()
     {
-        // A does not offer; B would accept. Result: OFF — A never sends the extended
+        // A does not offer; B would accept. Result: OFF - A never sends the extended
         // Connect Request, so B has nothing to mirror, and A never compresses.
         var h = new CircuitPairHarness(options: Off, optionsB: On);
         var accepted = h.AutoAcceptOnB();
@@ -185,7 +185,7 @@ public sealed class NetRomCompressionTests
     {
         // LinBPQ's doinflate is a plain inflateInit/inflate, i.e. it expects a standard
         // zlib-wrapped stream (RFC 1950): 0x78 header byte (CMF, deflate/32K window) and
-        // an Adler-32 trailer. Assert our compressor emits exactly that framing — the
+        // an Adler-32 trailer. Assert our compressor emits exactly that framing - the
         // format contract that makes the stream decodable by BPQ.
         var data = Encoding.ASCII.GetBytes("interop probe payload, compressed by pdn");
         var z = NetRomCompression.Compress(data);
@@ -286,7 +286,7 @@ public sealed class NetRomCompressionTests
     public void Incompressible_payload_falls_back_to_raw_and_still_delivers()
     {
         // Random-ish data won't shrink; the circuit sends it raw (no Compressed flag),
-        // which the receiver delivers without inflating — the BPQ "complen >= dataLen ⇒
+        // which the receiver delivers without inflating - the BPQ "complen >= dataLen ⇒
         // just send" fallback. Correctness must hold either way.
         var h = new CircuitPairHarness(options: On, optionsB: On);
         var accepted = h.AutoAcceptOnB();

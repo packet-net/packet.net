@@ -2,7 +2,7 @@
 
 > AX.25 v2.2 frame codec + connected-mode session runtime + inbound-connection listener.
 
-The core AX.25 protocol library: a U/S/I frame codec, an SDL-driven connected-mode link-layer state machine, and `Ax25Listener` — a node-style coordinator that accepts inbound connections, originates outbound ones, and caches a session per peer. It deals in raw AX.25 frame bytes over an `IAx25Transport`, so it is transport-neutral (KISS, AXUDP, KISS-over-TCP — your choice). Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack.
+The core AX.25 protocol library: a U/S/I frame codec, an SDL-driven connected-mode link-layer state machine, and `Ax25Listener` - a node-style coordinator that accepts inbound connections, originates outbound ones, and caches a session per peer. It deals in raw AX.25 frame bytes over an `IAx25Transport`, so it is transport-neutral (KISS, AXUDP, KISS-over-TCP - your choice). Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack.
 
 ## Install
 ```sh
@@ -71,20 +71,20 @@ if (Ax25Frame.TryParse(kissBytes, out var frame) && frame.IsUi)
 ```
 
 ## Key types
-- `Ax25Frame` — one AX.25 frame; codec for U/S/I/UI frames (mod-8 and extended mod-128), `TryParse` / `ToBytes` / `ToBytesWithFcs`, plus static factories (`Ui`, `Sabm`, `Sabme`, `Disc`, `Ua`, `Dm`, `Rr`, `Rej`, `Srej`, `I`, `Xid`, `Test`, …).
-- `Ax25Listener` — owns one `IAx25Transport`; accepts inbound SABM, originates `ConnectAsync`, caches a session per peer (LRU), and exposes `SessionAccepted` / `FrameTraced` events. The node-style entry point.
-- `Ax25ListenerOptions` — listener config: `MyCall`, timer overrides (`T1V`/`T2`/`T3`/`N2`/`K`), `MaxCachedPeers`, `ParseOptions`, `Quirks`, extended-mode preference.
-- `Ax25Session` — one connected-mode link's state machine; exposes `CurrentState`, `Context`, and the `DataLinkSignalEmitted` upward-signal stream.
-- `DataLinkSignal` — the upward signal record hierarchy (`DataLinkConnectIndication`, `DataLinkDataIndication`, `DataLinkDisconnectIndication`, `DataLinkErrorIndication`, …).
-- `Ax25ParseOptions` — strict-vs-lenient parser knobs (named flags for real-world-peer leniencies); `Ax25SessionQuirks` — named per-session deviations matching buggy reference implementations.
-- `Ax25Adapter` — lower-level glue wiring an `Ax25Session` + dispatcher to a byte sink, for callers who don't want the full listener.
+- `Ax25Frame` - one AX.25 frame; codec for U/S/I/UI frames (mod-8 and extended mod-128), `TryParse` / `ToBytes` / `ToBytesWithFcs`, plus static factories (`Ui`, `Sabm`, `Sabme`, `Disc`, `Ua`, `Dm`, `Rr`, `Rej`, `Srej`, `I`, `Xid`, `Test`, …).
+- `Ax25Listener` - owns one `IAx25Transport`; accepts inbound SABM, originates `ConnectAsync`, caches a session per peer (LRU), and exposes `SessionAccepted` / `FrameTraced` events. The node-style entry point.
+- `Ax25ListenerOptions` - listener config: `MyCall`, timer overrides (`T1V`/`T2`/`T3`/`N2`/`K`), `MaxCachedPeers`, `ParseOptions`, `Quirks`, extended-mode preference.
+- `Ax25Session` - one connected-mode link's state machine; exposes `CurrentState`, `Context`, and the `DataLinkSignalEmitted` upward-signal stream.
+- `DataLinkSignal` - the upward signal record hierarchy (`DataLinkConnectIndication`, `DataLinkDataIndication`, `DataLinkDisconnectIndication`, `DataLinkErrorIndication`, …).
+- `Ax25ParseOptions` - strict-vs-lenient parser knobs (named flags for real-world-peer leniencies); `Ax25SessionQuirks` - named per-session deviations matching buggy reference implementations.
+- `Ax25Adapter` - lower-level glue wiring an `Ax25Session` + dispatcher to a byte sink, for callers who don't want the full listener.
 
 ## See also
 - [Source & issues](https://github.com/packet-net/packet.net)
-- [Packet.Ax25.Transport.Abstractions](https://www.nuget.org/packages/Packet.Ax25.Transport.Abstractions) — the `IAx25Transport` seam the listener consumes
-- [Packet.Kiss](https://www.nuget.org/packages/Packet.Kiss) — a KISS-TNC `IAx25Transport`
-- [Packet.Axudp](https://www.nuget.org/packages/Packet.Axudp) — an AXUDP `IAx25Transport`
-- [Packet.NetRom](https://www.nuget.org/packages/Packet.NetRom) — NET/ROM Layer 3/4 on top of AX.25
+- [Packet.Ax25.Transport.Abstractions](https://www.nuget.org/packages/Packet.Ax25.Transport.Abstractions) - the `IAx25Transport` seam the listener consumes
+- [Packet.Kiss](https://www.nuget.org/packages/Packet.Kiss) - a KISS-TNC `IAx25Transport`
+- [Packet.Axudp](https://www.nuget.org/packages/Packet.Axudp) - an AXUDP `IAx25Transport`
+- [Packet.NetRom](https://www.nuget.org/packages/Packet.NetRom) - NET/ROM Layer 3/4 on top of AX.25
 
 ---
 *AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

@@ -11,7 +11,7 @@ using Packet.Node.Core.Transports;
 namespace Packet.Node.Tests.Transports;
 
 /// <summary>
-/// <see cref="ReconnectingKissModem"/> — the #50 fix. A kiss-tcp port must survive
+/// <see cref="ReconnectingKissModem"/> - the #50 fix. A kiss-tcp port must survive
 /// the far end bouncing: when the inbound stream ends (a drop), the wrapper
 /// re-dials a fresh inner transport and resumes, replaying the configured KISS
 /// parameters; sends while the link is down are dropped, not thrown.
@@ -76,7 +76,7 @@ public sealed class ReconnectingKissModemTests
     {
         // #465 composes with #483: once the supervisor always sets TXTAIL (implicit 0
         // default), the last-set value the wrapper replays onto a freshly re-dialed
-        // modem includes that explicit 0 — a new connection that starts at the modem's
+        // modem includes that explicit 0 - a new connection that starts at the modem's
         // defaults is brought back to the deterministic 0 the operator's config implies.
         var first = new FakeModem(endAfterFrames: true);                // no frames → drops immediately
         var second = new FakeModem(endAfterFrames: false, Data("X"));
@@ -148,7 +148,7 @@ public sealed class ReconnectingKissModemTests
         Func<CancellationToken, Task<IAx25Transport>> reconnect = _ => Task.FromResult<IAx25Transport>(new FakeModem(false));
         await using var modem = new ReconnectingKissModem(down, reconnect, "test", NullLogger.Instance);
 
-        // Must not throw — the link being down is a drop-and-retransmit, not a fault.
+        // Must not throw - the link being down is a drop-and-retransmit, not a fault.
         var act = async () => await modem.SendAsync(Encoding.ASCII.GetBytes("hi"));
         await act.Should().NotThrowAsync();
     }

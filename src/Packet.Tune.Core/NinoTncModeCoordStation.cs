@@ -9,8 +9,8 @@ namespace Packet.Tune.Core;
 /// <summary>
 /// The live <see cref="IModeCoordStation"/>: a NinoTNC (mode switching + probe
 /// traffic) paired with a Tait CCDI radio (channel switching). Mode changes are
-/// SETHW +16 (RAM-only — a negotiation must never burn the flash), verified through
-/// the driver's GETALL readback and retried until it takes (#633 — an ignored SETHW
+/// SETHW +16 (RAM-only - a negotiation must never burn the flash), verified through
+/// the driver's GETALL readback and retried until it takes (#633 - an ignored SETHW
 /// makes a negotiation measure the wrong mode), followed by a throwaway settle frame
 /// (the NinoTNC applies a changed setting from the SECOND frame); channel changes are
 /// GO_TO_CHANNEL with a FUNCTION 0/5/2 verify and one retry.
@@ -23,7 +23,7 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
     // takes that to 0/12. So wait out the disruption, THEN send the settle frame.
     private static readonly TimeSpan SethwSettleDelay = TimeSpan.FromSeconds(1);
     // With the settling delay above, the echo lands fast and reliably (~520 ms bench-measured), so
-    // the wait for it is short — a rare residual miss is logged + tolerated, never a whole-apply
+    // the wait for it is short - a rare residual miss is logged + tolerated, never a whole-apply
     // stall. (Was 8 s, which every miss paid in full before the settling delay was understood.)
     private static readonly TimeSpan SettleTxTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan InterProbeGap = TimeSpan.FromMilliseconds(400);
@@ -68,7 +68,7 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
         {
             // Verified SETHW (#633): the driver settles, reads the running mode back via GETALL and
             // retries. A negotiation that proceeds on an ignored SETHW measures the WRONG mode and
-            // scores zero both ways — indistinguishable from broken RF, which is what made this
+            // scores zero both ways - indistinguishable from broken RF, which is what made this
             // worth failing on rather than logging past.
             await tnc.SetModeAsync(mode, persistToFlash: false, cancellationToken: cancellationToken).ConfigureAwait(false);
             Log?.Invoke($"station: SETHW {mode}+16 → GETALL confirms mode {mode} running");
@@ -85,7 +85,7 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
 
         // Let the SETHW settle before the settle frame: sending it immediately races the TNC's
         // SETHW processing and the ACKMODE echo is dropped ~60% of the time (#591); this delay
-        // takes that to ~0. The mode is already applied — this only steadies the echo path.
+        // takes that to ~0. The mode is already applied - this only steadies the echo path.
         await Task.Delay(SethwSettleDelay, clock, cancellationToken).ConfigureAwait(false);
 
         // Settle frame: the changed mode applies from the SECOND frame. With the settling delay
@@ -155,7 +155,7 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
             }
             catch (TimeoutException)
             {
-                // No TX-completion echo — the frame may still have keyed
+                // No TX-completion echo - the frame may still have keyed
                 // (bench-observed sporadic echo absence). The receiver's decode
                 // count is the verdict that matters.
                 Log?.Invoke($"station: probe {i}/{count} TX-completion not echoed within {txTimeout.TotalSeconds:0} s");

@@ -19,7 +19,7 @@ namespace Packet.Node.Api;
 /// The Prometheus text-exposition exporter (<c>GET /metrics</c>, #457). A hand-rolled
 /// <see cref="PrometheusTextWriter"/> formats the node's live counters into the
 /// <see href="https://prometheus.io/docs/instrumenting/exposition_formats/">text exposition
-/// format</see> — no Prometheus client dependency is taken (the formatter is &lt;200 lines and
+/// format</see> - no Prometheus client dependency is taken (the formatter is &lt;200 lines and
 /// avoids a new package; see docs/observability.md for the rationale).
 /// </summary>
 /// <remarks>
@@ -46,11 +46,11 @@ namespace Packet.Node.Api;
 /// </para>
 /// <para>
 /// <b>Exposure posture.</b> <c>/metrics</c> is mapped on the same Kestrel listener as the REST API
-/// but is <b>always unauthenticated</b>, regardless of <c>management.auth.enabled</c> — the normal
+/// but is <b>always unauthenticated</b>, regardless of <c>management.auth.enabled</c> - the normal
 /// Prometheus contract, and a deliberate call (Tom, 2026-08-03) taken when auth started defaulting
 /// on: a scraper holds a static config, not a login, so gating it behind a 60-minute access JWT
 /// would have made a documented workflow impossible on a default install. The exposition carries
-/// operational state — heard callsigns, per-peer SNR, port/radio health, the running version — so
+/// operational state - heard callsigns, per-peer SNR, port/radio health, the running version - so
 /// treat it as public on whatever interface <c>management.http.bind</c> reaches, and put the node
 /// behind Tailscale or a reverse proxy if that is not acceptable at your site. Documented in
 /// docs/observability.md.
@@ -58,7 +58,7 @@ namespace Packet.Node.Api;
 /// </remarks>
 public static class PdnMetricsApi
 {
-    /// <summary>The metric-name namespace prefix — every series is <c>pdn_*</c>.</summary>
+    /// <summary>The metric-name namespace prefix - every series is <c>pdn_*</c>.</summary>
     private const string Ns = "pdn_";
 
     // Node start instant on the monotonic clock, captured once at module load so the
@@ -87,7 +87,7 @@ public static class PdnMetricsApi
     }
 
     /// <summary>
-    /// Render the full exposition document. Pure over the supplied state — exposed (internal) so a
+    /// Render the full exposition document. Pure over the supplied state - exposed (internal) so a
     /// test can format a known node and assert the output without standing up Kestrel.
     /// </summary>
     internal static string Render(
@@ -152,7 +152,7 @@ public static class PdnMetricsApi
         w.Type(Ns + "netrom_destinations", "gauge");
         w.Sample(Ns + "netrom_destinations", status.Netrom.Destinations);
 
-        // Process/runtime stats (no extra dependency — System.Diagnostics + GC).
+        // Process/runtime stats (no extra dependency - System.Diagnostics + GC).
         using var proc = Process.GetCurrentProcess();
 
         w.Help(Ns + "process_resident_memory_bytes", "Resident (working-set) memory of the node process, in bytes.");
@@ -179,20 +179,20 @@ public static class PdnMetricsApi
         w.Type(Ns + "dotnet_gc_heap_bytes", "gauge");
         w.Sample(Ns + "dotnet_gc_heap_bytes", GC.GetTotalMemory(forceFullCollection: false));
 
-        // Traffic log writer health — the loss counter (writer behind), never the radio path's.
+        // Traffic log writer health - the loss counter (writer behind), never the radio path's.
         w.Help(Ns + "traffic_log_dropped_frames_total", "Frames the persistent traffic-log writer dropped (writer behind).");
         w.Type(Ns + "traffic_log_dropped_frames_total", "counter");
         w.Sample(Ns + "traffic_log_dropped_frames_total", status.Traffic.Dropped);
     }
 
-    // ─── per-port / per-link bucket (aggregated to the port — bounded cardinality) ─────
+    // ─── per-port / per-link bucket (aggregated to the port - bounded cardinality) ─────
 
     private static void WritePortAndLinkStats(PrometheusTextWriter w, NodeHostedService host, IConfigProvider config)
     {
         var ports = PdnReadApi.BuildPorts(host, config);
 
         // Per-link counters keyed by (port, peer) rolled up to the port: peer is a remote
-        // callsign, so a per-peer label would be unbounded — we sum to the bounded port label.
+        // callsign, so a per-peer label would be unbounded - we sum to the bounded port label.
         var perPort = new Dictionary<string, LinkRollup>(StringComparer.Ordinal);
         foreach (var link in host.Telemetry.Links())
         {
@@ -207,7 +207,7 @@ public static class PdnMetricsApi
         }
 
         // Live session-state roll-up per port (retries = current RC, queue depth + outstanding
-        // I-frames) from the connected sessions on that port — the monitor-v2 source.
+        // I-frames) from the connected sessions on that port - the monitor-v2 source.
         var sessionRoll = new Dictionary<string, SessionRollup>(StringComparer.Ordinal);
         var supervisor = host.Supervisor;
         if (supervisor is not null)
@@ -279,7 +279,7 @@ public static class PdnMetricsApi
 
         // Port-level carrier sense: whichever source feeds the listener's gate (radio
         // hardware DCD or a channel-sensing transport such as the in-process soundmodem).
-        // Only emitted for ports that have a source — absence of the series means "no
+        // Only emitted for ports that have a source - absence of the series means "no
         // carrier sense here", mirroring the API's null.
         w.Help(Ns + "port_channel_busy", "Port carrier sense: channel busy (1) / clear (0). Absent when the port has no carrier-sense source.");
         w.Type(Ns + "port_channel_busy", "gauge");
@@ -362,7 +362,7 @@ public static class PdnMetricsApi
     // ─── per-port in-process-soundmodem receive-quality bucket (FEC corrections; #635) ─────
 
     // One (port, snapshot) row per running soundmodem port, read off the transport's rolling
-    // quality meter (the SAME state the /api/v1/ports/{id}/quality surface serves — no second
+    // quality meter (the SAME state the /api/v1/ports/{id}/quality surface serves - no second
     // store). ModemTransport, not Transport: an RSSI-tagging wrapper (radio-attached soundmodem
     // port) doesn't forward the concrete type. Ordered by port for stable output.
     private static List<(string PortId, SoundModemQualitySnapshot Snapshot)> CollectSoundModemQuality(
@@ -389,12 +389,12 @@ public static class PdnMetricsApi
     /// <summary>
     /// The per-port in-process-soundmodem receive-quality counters (#635): cumulative FEC-corrected
     /// bytes, frames that needed repair, and the last frame's corrected count. These are the
-    /// Reed-Solomon correction counts the deframers always computed — an honest <em>byte</em>-error
+    /// Reed-Solomon correction counts the deframers always computed - an honest <em>byte</em>-error
     /// floor, deliberately NOT a bit-error rate (BER is unobservable at a receiver). Only ports
     /// running the in-process soundmodem contribute, so the whole bucket is <em>absent</em> on a
     /// node with no soundmodem ports (identical output to before this bucket existed). The counters
     /// are emitted from zero so <c>rate()</c> works from the first scrape; the last-frame gauge omits
-    /// a port whose most recent frame carried no FEC count (HDLC) or that has decoded nothing yet —
+    /// a port whose most recent frame carried no FEC count (HDLC) or that has decoded nothing yet -
     /// an absent sample is "no count", never a misleading 0 (which specifically means a clean FEC
     /// frame). Exposed (internal) so a test can format synthetic snapshots without a live supervisor.
     /// </summary>
@@ -428,7 +428,7 @@ public static class PdnMetricsApi
         }
 
         // Gauge: the most recent frame's FEC count. Omitted when the last frame carried no count
-        // (HDLC) or none has decoded — an absent sample is "unknown", never a misleading 0.
+        // (HDLC) or none has decoded - an absent sample is "unknown", never a misleading 0.
         var withLast = rows.Where(r => r.Snapshot.LastFrameCorrectedBytes is not null).ToList();
         if (withLast.Count > 0)
         {
@@ -468,7 +468,7 @@ public static class PdnMetricsApi
     /// <summary>
     /// The per-port transport-reconnecting gauge (#583): 1 while the port's self-healing transport
     /// (the reconnect decorator on a kiss-tcp / nino-tnc-tcp port) has lost its link and is
-    /// re-dialling, else 0 — the honest counterpart to <c>pdn_port_up</c>, which stays 1 through a
+    /// re-dialling, else 0 - the honest counterpart to <c>pdn_port_up</c>, which stays 1 through a
     /// far-end bounce because the port (listener) itself never goes down. Ports with no reconnect
     /// supervision (local serial, AXUDP) emit nothing; the whole bucket is absent on a node with no
     /// networked ports. Exposed (internal) so a test can format synthetic rows directly.
@@ -517,11 +517,11 @@ public static class PdnMetricsApi
     /// <summary>
     /// Per-port radio-control metrics, read from the SAME <see cref="RadioReadModels"/> projection the
     /// <c>/api/v1/radios</c> API serves (no second source of truth). Only ports whose radio the node
-    /// currently has OPEN and is polling contribute — a configured-but-not-attached radio (port down,
+    /// currently has OPEN and is polling contribute - a configured-but-not-attached radio (port down,
     /// or a failed open that degraded the port) emits nothing, so the whole bucket is <em>absent</em>
     /// on a node with no radios (identical output to before this bucket existed). SNR / noise-floor are
     /// deliberately NOT here: they are per-frame concepts the radio's own health telemetry (averaged
-    /// RSSI, PA temperature, TX detector trends) does not carry — SNR is surfaced <em>per partner</em>
+    /// RSSI, PA temperature, TX detector trends) does not carry - SNR is surfaced <em>per partner</em>
     /// by <see cref="WriteLinkSnr"/> instead. See docs/observability.md. Exposed (internal) so a test
     /// can format synthetic <see cref="RadioStatus"/> records without standing up a live supervisor.
     /// </summary>
@@ -550,7 +550,7 @@ public static class PdnMetricsApi
             r => r.ChannelBusy is { } b ? (b ? 1 : 0) : (double?)null);
 
         // The health-sample projection (the same RadioHealth /api/v1/radios serves). Each series omits
-        // a port whose radio hasn't produced that reading — a null renders as an absent sample, never
+        // a port whose radio hasn't produced that reading - a null renders as an absent sample, never
         // a misleading 0 (0 dBm RSSI or 0 °C would both be wrong-but-plausible).
         RadioMetric(w, attached, "radio_rssi_dbm",
             "Radio's own most-recent sliding-average RSSI, in dBm (receive samples only).", "gauge",
@@ -601,13 +601,13 @@ public static class PdnMetricsApi
         _ => -1,   // "unknown", or any radio kind that doesn't track the control-link state
     };
 
-    // ─── MQTT frame-emission bucket (#582 — the kissproxy-compatible emitter's health) ─────────────
+    // ─── MQTT frame-emission bucket (#582 - the kissproxy-compatible emitter's health) ─────────────
 
     /// <summary>
     /// The MQTT frame emitter's publish counters + pending-queue gauge, read straight off the live
     /// <see cref="Packet.Node.Core.Mqtt.MqttFrameEmitter"/> (no second counter store). Counters are
-    /// emitted whenever the emitter service is registered — from zero, so <c>rate()</c> works from
-    /// the first scrape — even while the integration is disabled (everything just stays 0). Absent
+    /// emitted whenever the emitter service is registered - from zero, so <c>rate()</c> works from
+    /// the first scrape - even while the integration is disabled (everything just stays 0). Absent
     /// only in a stripped embedder that never registered the emitter. Exposed (internal) so a test
     /// can format an emitter it drove through a fake sink.
     /// </summary>
@@ -631,18 +631,18 @@ public static class PdnMetricsApi
         w.Sample(Ns + "mqtt_pending_messages", mqtt.PendingMessages);
     }
 
-    // ─── head-end fleet bucket (#583 — the background health poller's snapshot) ─────────────────────
+    // ─── head-end fleet bucket (#583 - the background health poller's snapshot) ─────────────────────
 
     /// <summary>
     /// The split-station head-end fleet's health (#583), read straight off the
     /// <see cref="Packet.Node.Core.HeadEnd.HeadEndHealthMonitor"/>'s rolling snapshot (the same data
-    /// the <c>GET /api/v1/radios/headends</c> enrichment serves — no probing on the scrape path). The
-    /// <c>instance</c> label is the head-end's stable instance id — a closed, operator-controlled set,
+    /// the <c>GET /api/v1/radios/headends</c> enrichment serves - no probing on the scrape path). The
+    /// <c>instance</c> label is the head-end's stable instance id - a closed, operator-controlled set,
     /// so cardinality is bounded. The whole bucket is absent on a node with no head-ends (or before
     /// the monitor's first cycle); the devices gauge is additionally omitted while an instance is
     /// unreachable or only answers the bare pre-<c>/statusz</c> <c>/healthz</c> (an absent sample,
     /// never a misleading stale count). The failures counter is always emitted for every monitored
-    /// instance — from zero, so <c>rate()</c> works from the first scrape. Exposed (internal) so a
+    /// instance - from zero, so <c>rate()</c> works from the first scrape. Exposed (internal) so a
     /// test can format synthetic snapshots directly.
     /// </summary>
     internal static void WriteHeadEndStats(
@@ -684,7 +684,7 @@ public static class PdnMetricsApi
     // ─── per-partner SNR (one of the two deliberate per-callsign labels; see class remarks + docs) ───
 
     /// <summary>
-    /// The per-partner SNR gauge <c>pdn_link_snr_db{port,peer}</c> — one sample per (port, remote
+    /// The per-partner SNR gauge <c>pdn_link_snr_db{port,peer}</c> - one sample per (port, remote
     /// callsign) the node has heard <em>with a measured SNR</em>, straight from the heard log's
     /// last-heard SNR (fed by the per-frame radio metadata). This is <b>one of the two</b> series that
     /// carry a <c>peer</c> (remote-callsign) label (the other is
@@ -724,14 +724,14 @@ public static class PdnMetricsApi
     }
 
     // ─── per-partner pre-data carrier (TXDELAY-as-heard; same accepted per-peer cardinality
-    //     policy as pdn_link_snr_db — see docs/research/txdelay-optimisation.md) ───────────────────
+    //     policy as pdn_link_snr_db - see docs/research/txdelay-optimisation.md) ───────────────────
 
     /// <summary>
-    /// The per-partner pre-data-carrier gauge <c>pdn_link_predata_carrier_ms{port,peer}</c> — one
+    /// The per-partner pre-data-carrier gauge <c>pdn_link_predata_carrier_ms{port,peer}</c> - one
     /// sample per (port, remote callsign) with a measured rolling median, straight from the heard
     /// log (fed by <c>RadioMetadata.PreDataCarrier</c> on burst-opening frames). The value is the
     /// peer's effective TXDELAY as heard on this port, plus a small constant rig overhead
-    /// (~40–75 ms at 1200 Bd) — trend it, alert on peers persistently above the excess-TXDELAY
+    /// (~40-75 ms at 1200 Bd) - trend it, alert on peers persistently above the excess-TXDELAY
     /// threshold. Carries the <c>peer</c> label under the same deliberate, Tom-accepted
     /// cardinality exception as <see cref="WriteLinkSnr"/>. Peers with no measurement contribute
     /// nothing, so the whole bucket is absent on a node with no radio telemetry. Exposed
@@ -799,7 +799,7 @@ public static class PdnMetricsApi
 /// A tiny hand-rolled Prometheus text-exposition writer (#457): emits <c># HELP</c> / <c># TYPE</c>
 /// header lines and value samples with optional bounded labels, escaping label values per the
 /// exposition spec (backslash, double-quote, newline). One <c>HELP</c>/<c>TYPE</c> pair precedes
-/// each metric's samples. Deliberately minimal — it avoids taking a Prometheus client dependency
+/// each metric's samples. Deliberately minimal - it avoids taking a Prometheus client dependency
 /// for a read-only scrape surface (see PdnMetricsApi remarks). Not thread-safe; build one per request.
 /// </summary>
 internal sealed class PrometheusTextWriter

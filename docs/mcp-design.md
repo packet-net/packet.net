@@ -1,16 +1,16 @@
-# pdn MCP endpoint — design
+# pdn MCP endpoint - design
 
 **Status:** design agreed 2026-06-13 (kickoff of Phase 8, [#173](https://github.com/packet-net/packet.net/issues/173)). Decisions taken with Tom at kickoff:
 
-1. **In-process.** The MCP server lives inside the node host and reads live node state — it is not a standalone process re-projecting the REST API.
-2. **Auth is the shipped `read`/`operate`/`admin` model**, not the `mcp:invoke`/granular scheme §6 once penciled in (that scheme was never built — see [§17](plan.md#17-amendment-log) and the §6 reconciliation in this doc).
-3. **Full §5.8 surface in the opening slice** — read tools + write tools + both transports — rather than a read-only first cut. (Internal build order below; "one slice" ≠ "one commit".)
+1. **In-process.** The MCP server lives inside the node host and reads live node state - it is not a standalone process re-projecting the REST API.
+2. **Auth is the shipped `read`/`operate`/`admin` model**, not the `mcp:invoke`/granular scheme §6 once penciled in (that scheme was never built - see [§17](plan.md#17-amendment-log) and the §6 reconciliation in this doc).
+3. **Full §5.8 surface in the opening slice** - read tools + write tools + both transports - rather than a read-only first cut. (Internal build order below; "one slice" ≠ "one commit".)
 
 This is Slice 4 of the node arc ([plan §5.4](plan.md)) and the home of the deferred link-tuner. Companion to the REST contract in [`node-api.md`](node-api.md): MCP and REST are two faces of the **same** live node state, never a second copy of it.
 
 ## The shape
 
-`Packet.Mcp` is the **transport-agnostic tool surface** — the tool names, schemas, descriptions, and handlers — written against one seam:
+`Packet.Mcp` is the **transport-agnostic tool surface** - the tool names, schemas, descriptions, and handlers - written against one seam:
 
 ```csharp
 // Packet.Mcp (the live signatures are in src/Packet.Mcp/INodeMcpBackend.cs)
@@ -37,8 +37,8 @@ public interface INodeMcpBackend
 
 Two backends implement the seam:
 
-- **`LiveNodeMcpBackend`** (in `Packet.Node` / `Packet.Node.Core`) — calls `NodeHostedService.{Supervisor,NetRom,Telemetry}` and the existing action paths directly. This is the true in-process binding the SSE transport serves. It reuses the *exact* projection helpers `PdnReadApi` already has (`ProjectSession`, `BuildLinks`, the NET/ROM snapshot shaping) — MCP must never drift from what `/api/v1` reports.
-- **`RestNodeMcpBackend`** (in the `pdn mcp` stdio entrypoint) — an HTTP client of the running node's loopback REST API. This resolves the process-boundary reality: a `pdn mcp` subcommand is a *separate process* and cannot share the running node's in-proc state, so the stdio server bridges to the live node over `127.0.0.1`. Tool definitions stay DRY; only the backend differs.
+- **`LiveNodeMcpBackend`** (in `Packet.Node` / `Packet.Node.Core`) - calls `NodeHostedService.{Supervisor,NetRom,Telemetry}` and the existing action paths directly. This is the true in-process binding the SSE transport serves. It reuses the *exact* projection helpers `PdnReadApi` already has (`ProjectSession`, `BuildLinks`, the NET/ROM snapshot shaping) - MCP must never drift from what `/api/v1` reports.
+- **`RestNodeMcpBackend`** (in the `pdn mcp` stdio entrypoint) - an HTTP client of the running node's loopback REST API. This resolves the process-boundary reality: a `pdn mcp` subcommand is a *separate process* and cannot share the running node's in-proc state, so the stdio server bridges to the live node over `127.0.0.1`. Tool definitions stay DRY; only the backend differs.
 
 A `FakeNodeMcpBackend` in tests exercises every tool handler with no node running.
 
@@ -57,9 +57,9 @@ A `FakeNodeMcpBackend` in tests exercises every tool handler with no node runnin
 
 ## SDK
 
-Use the official C# SDK — **`ModelContextProtocol`** (core, stdio) + **`ModelContextProtocol.AspNetCore`** (Streamable-HTTP) — not a hand-rolled JSON-RPC layer. `[McpServerToolType]` / `[McpServerTool]` with DI; `WithStdioServerTransport()` for the subcommand; `MapMcp()` to mount the HTTP transport.
+Use the official C# SDK - **`ModelContextProtocol`** (core, stdio) + **`ModelContextProtocol.AspNetCore`** (Streamable-HTTP) - not a hand-rolled JSON-RPC layer. `[McpServerToolType]` / `[McpServerTool]` with DI; `WithStdioServerTransport()` for the subcommand; `MapMcp()` to mount the HTTP transport.
 
-**Transport note:** the plan §5.8/§6 say "SSE". The 2025 MCP spec deprecated the standalone HTTP+SSE transport in favour of **Streamable HTTP** (SSE is its streaming leg). We use the SDK's Streamable-HTTP endpoint, which is SSE on the wire for streamed responses — so "SSE" in the plan is satisfied by the modern transport, and we don't implement the deprecated one. Both packages go in [`Directory.Packages.props`](../Directory.Packages.props) (CPM — no inline `Version=`) and are recorded in [plan §12](plan.md#12-locked-external-dependencies) when taken.
+**Transport note:** the plan §5.8/§6 say "SSE". The 2025 MCP spec deprecated the standalone HTTP+SSE transport in favour of **Streamable HTTP** (SSE is its streaming leg). We use the SDK's Streamable-HTTP endpoint, which is SSE on the wire for streamed responses - so "SSE" in the plan is satisfied by the modern transport, and we don't implement the deprecated one. Both packages go in [`Directory.Packages.props`](../Directory.Packages.props) (CPM - no inline `Version=`) and are recorded in [plan §12](plan.md#12-locked-external-dependencies) when taken.
 
 ## Tool catalog
 
@@ -73,7 +73,7 @@ The shipped surface is whatever the `[McpServerTool]`-attributed methods under [
 | `recent_frames` | `read` | `RecentFramesAsync` | `port?`, `peer?`, `kind?`, `sinceSeconds?`, `limit?` (1..250) | `McpMonitorFrame[]` from the telemetry ring, oldest→newest (seq, timestamp, portId, direction, source, destination, kind, length) |
 | `link_quality` | `read` | `LinkQualityAsync` | `remote`, `port?` | `McpLinkQuality` (portId, peer, smoothedRttMs, retries, rejCount, srejCount, framesIn/framesOut, unknown). No byte counters and no T1/T3; SRTT and retries read 0 unless a connected-mode session backs the link (the Monitor-v2 gap below), and `unknown` is true when no link to that peer is currently known |
 | `network_topology` | `read` | `NetworkTopologyAsync` | *(none)* | `McpNetworkTopology` (generatedAt, NET/ROM neighbours, destinations with their routes; the `/netrom/routes` shape). A neighbour is an **adjacency**, keyed `(portId, neighbour)` - one station audible on two ports is two rows with their own `pathQuality`, and a route carries its own `portId`, so a destination can hold two routes via the same callsign on different ports ([#725](https://github.com/packet-net/packet.net/issues/725)) |
-| `get_rig_status` | `read` | `RigStatusAsync` | `port?` | `McpRigStatus[]` — the `RigStatus` read model with the TX-side meters flattened (all rig-configured ports, or one port; empty = no such port) |
+| `get_rig_status` | `read` | `RigStatusAsync` | `port?` | `McpRigStatus[]` - the `RigStatus` read model with the TX-side meters flattened (all rig-configured ports, or one port; empty = no such port) |
 | `send_ui_frame` | `operate` | `SendUiFrameAsync` | `port`, `dest`, `payload`, `path?`, `pid?` (default `0xF0`) | `SendResult` (accepted + message; there is no queued state) |
 | `reset_port` | `operate` | `ResetPortAsync` | `port` | port-restart result (maps to the `restart` lifecycle) |
 | `disconnect_session` | `operate` | `DisconnectSessionAsync` | `id` (`port:peer`) | disconnect result |
@@ -81,17 +81,17 @@ The shipped surface is whatever the `[McpServerTool]`-attributed methods under [
 | `set_rig_frequency` | `operate` | `SetRigFrequencyAsync` | `port`, `frequencyHz` | QSY result with the read-back dial frequency (maps to `POST /ports/{id}/rig/frequency`; capability-gated, audited as `rig_set_frequency`) |
 | `set_rig_mode` | `operate` | `SetRigModeAsync` | `port`, `mode`, `passbandHz?` (null = rig default width) | mode result with the read-back mode/passband (maps to `POST /ports/{id}/rig/mode`; capability-gated, audited as `rig_set_mode`) |
 
-Outbound stays **strict** (the §2 construction-path rule): `send_ui_frame` builds frames through the spec-strict factories — MCP never produces a frame the encoder would reject, even though decode/inbound accepts lenient input.
+Outbound stays **strict** (the §2 construction-path rule): `send_ui_frame` builds frames through the spec-strict factories - MCP never produces a frame the encoder would reject, even though decode/inbound accepts lenient input.
 
-`set_kiss_param` distinguishes **live** params (TXDELAY/persist/slottime/TXtail via a KISS SetHardware/param write) from **construction-time** ones (e.g. `kiss.ackMode`, which restarts the port — see the 2026-06-11 ACKMODE amendment); the result says which happened so the caller isn't surprised.
+`set_kiss_param` distinguishes **live** params (TXDELAY/persist/slottime/TXtail via a KISS SetHardware/param write) from **construction-time** ones (e.g. `kiss.ackMode`, which restarts the port - see the 2026-06-11 ACKMODE amendment); the result says which happened so the caller isn't surprised.
 
 `value` is applied as the raw KISS byte, and the tool schema says so: TXDELAY/slottime/TXtail are in units of 10 ms (30 = 300 ms, 255 = 2.55 s, the longest KISS can express), persist is the p-persistence byte (255 = always transmit when the channel is clear). The unit belongs in the LLM-facing `[Description]`s because thinking in milliseconds is the standing trap on this parameter; the web panel itself once posted `txDelay: 300`, which is why `KissParamsValidator` spells the unit out in its rejection messages too.
 
 ## Auth & audit (reconciling §6)
 
-- **Read tools** require `read`; **write tools** require `operate`. The gate is the same `ScopeRequirementHandler` the REST API uses, so it **passes through when `management.auth.enabled` is off** — the default-unauthenticated loopback behaviour is unchanged, exactly like `/api/v1`.
+- **Read tools** require `read`; **write tools** require `operate`. The gate is the same `ScopeRequirementHandler` the REST API uses, so it **passes through when `management.auth.enabled` is off** - the default-unauthenticated loopback behaviour is unchanged, exactly like `/api/v1`.
 - **stdio = local user, but it still needs a token when auth is on** (correcting the §6 table row): a process that can exec `pdn mcp` and reach loopback is trusted at the OS level, but the node grants it nothing on that basis: `/api/v1` is gated by `ScopeRequirementHandler`, `management.auth.enabled` defaults to **true**, and there is no loopback exemption. So the bridge attaches an `Authorization: Bearer` header, resolved once at start from, in order: `--token <jwt>`, `PDN_NODE_TOKEN`, or the contents of the file named by `PDN_NODE_TOKEN_FILE`. **Mint it with `POST /api/v1/auth/service-token`** (admin; body `{"name":"mcp-bridge","scope":"operate","days":90}`), which issues a bounded-lifetime bearer in the **control-API** audience with `sub` = `service:mcp-bridge`. Not `POST /api/v1/mcp/token`: that mints the `packet.net-mcp` audience, which is right for a client speaking MCP to `/mcp` and wrong for this bridge, because the bridge calls `/api/v1/...` and `ScopeRequirementHandler` refuses a foreign audience with a 403 that reads as a scope problem (packet.net#727 item 2 - node-v0.41.0 shipped the message pointing at the wrong mint, so following it produced a permanent, misdiagnosed 403). With no token it still starts (an auth-off node needs none) and any 401/403 is reported as `node requires auth: set PDN_NODE_TOKEN ...` rather than a raw `HttpRequestException`. Until #694 (review item C061) it sent no header at all, so every tool call threw on an out-of-the-box node while this doc claimed otherwise.
-- **Every write tool is audit-logged** — actor, transport, scope, payload hash — through the same `AuthLog`/`SystemLog` sink §6 mandates for write endpoints. `McpCaller` carries the actor identity (token subject over SSE; `local-stdio` over stdio).
+- **Every write tool is audit-logged** - actor, transport, scope, payload hash - through the same `AuthLog`/`SystemLog` sink §6 mandates for write endpoints. `McpCaller` carries the actor identity (token subject over SSE; `local-stdio` over stdio).
 
 **§6 correction (recorded in the plan):** the granular `frames:read`/`ports:write`/`sessions:write`/`mcp:invoke` scope list in §6 was aspirational and never shipped; the node runs the hierarchical `read`/`operate`/`admin` model (`AuthScopes.cs`). MCP uses the shipped model. The §6 table's `mcp:invoke` cell and scope list are updated to match.
 
@@ -109,7 +109,7 @@ mcp:
   # stdio needs no config — it's the `pdn mcp` subcommand
 ```
 
-The SSE transport is **not** a separate socket/port — it mounts on the node's existing web
+The SSE transport is **not** a separate socket/port - it mounts on the node's existing web
 listener (`management.http` / `management.https`), so it inherits that listener's bind, TLS,
 and auth. (The §6 "8051" note is superseded by this piggyback.) The `pdn mcp` subcommand reads
 the node base URL from `--node-url` / `PDN_NODE_URL` (default loopback) and its bearer token from
@@ -130,24 +130,24 @@ the node base URL from `--node-url` / `PDN_NODE_URL` (default loopback) and its 
 
 ## Deployment & reachability
 
-**The model (decided 2026-06-13): the SSE/Streamable-HTTP `/mcp` endpoint is the network transport, and MCP reachability == web-panel reachability.** Because `/mcp` rides the same web listener as the control panel, whatever path already reaches the pdn web UI from a phone/laptop reaches MCP — same host, same port, same TLS, same JWT auth. There is **no hard Tailscale dependency**; Tailscale is one supported reachability option, not a requirement. stdio (`pdn mcp`) is a **co-located convenience** (on the node box, or a laptop with the binary + LAN line-of-sight via `--node-url`), *not* the mainstream remote path.
+**The model (decided 2026-06-13): the SSE/Streamable-HTTP `/mcp` endpoint is the network transport, and MCP reachability == web-panel reachability.** Because `/mcp` rides the same web listener as the control panel, whatever path already reaches the pdn web UI from a phone/laptop reaches MCP - same host, same port, same TLS, same JWT auth. There is **no hard Tailscale dependency**; Tailscale is one supported reachability option, not a requirement. stdio (`pdn mcp`) is a **co-located convenience** (on the node box, or a laptop with the binary + LAN line-of-sight via `--node-url`), *not* the mainstream remote path.
 
-All four reachability paths are in scope (operator's choice — they're the same endpoint, differing only in how the client reaches the listener and authenticates):
+All four reachability paths are in scope (operator's choice - they're the same endpoint, differing only in how the client reaches the listener and authenticates):
 
 | Path | How the client reaches it | Auth | Status |
 |---|---|---|---|
 | **LAN-direct** | `https://node.lan:8443/mcp` (web listener bound to a LAN addr, TLS on) | node JWT bearer header | works once `mcp.sse` on + listener LAN-bound |
 | **Tailscale/WireGuard** | `https://<node-ts-name>/mcp` over the overlay; no public exposure | node JWT bearer | works (recipe to document) |
-| **Public HTTPS domain** | the lab `pdn.m0lte.uk` model — DDNS/port-forward + real cert | node JWT bearer | works (harden: rate-limit, token lifetime) |
-| **Hosted claude.ai connector** | claude.ai "custom connector" → public HTTPS URL | **OAuth 2.1** (MCP auth spec) | **needs building** — see below |
+| **Public HTTPS domain** | the lab `pdn.m0lte.uk` model - DDNS/port-forward + real cert | node JWT bearer | works (harden: rate-limit, token lifetime) |
+| **Hosted claude.ai connector** | claude.ai "custom connector" → public HTTPS URL | **OAuth 2.1** (MCP auth spec) | **needs building** - see below |
 
 **Auth over the wire.** `/mcp` is gated `read` (read tools) / `operate` (write tools) via the node's existing JWT bearer when `management.auth.enabled` is on, with TLS from the web listener. **Claude Code (desktop/CLI)** supports remote HTTP MCP servers with an `Authorization: Bearer …` header, so it works against `/mcp` given reachability + a node-issued token.
 
 ### Blessed path (decided 2026-06-13): Claude Code over LAN-direct or Tailscale
 
-Tom narrowed the target to **Claude Code (bearer)** over **LAN-direct** or **Tailscale/WireGuard**. (Public-HTTPS still works but isn't the focus; the **hosted claude.ai connector / OAuth** is *parked* — the design is recorded in [`mcp-oauth-design.md`](mcp-oauth-design.md) for when it's wanted.)
+Tom narrowed the target to **Claude Code (bearer)** over **LAN-direct** or **Tailscale/WireGuard**. (Public-HTTPS still works but isn't the focus; the **hosted claude.ai connector / OAuth** is *parked* - the design is recorded in [`mcp-oauth-design.md`](mcp-oauth-design.md) for when it's wanted.)
 
-The durable credential is an **MCP bearer token**: `POST /api/v1/mcp/token` (admin-gated, audited) mints a long-lived (`mcp.tokenLifetimeDays`, default 90) JWT scoped `read` (default) or `operate`, via the existing `JwtTokenService` — so it validates through the existing JwtBearer middleware unchanged. Login JWTs are too short-lived for a static header; this isn't.
+The durable credential is an **MCP bearer token**: `POST /api/v1/mcp/token` (admin-gated, audited) mints a long-lived (`mcp.tokenLifetimeDays`, default 90) JWT scoped `read` (default) or `operate`, via the existing `JwtTokenService` - so it validates through the existing JwtBearer middleware unchanged. Login JWTs are too short-lived for a static header; this isn't.
 
 **Two mints, two audiences: pick by which surface you are talking to.** A token carries an audience as well as a scope, and the two are checked independently:
 
@@ -183,31 +183,31 @@ curl -sk -X POST https://node.lan:8443/api/v1/auth/service-token \
 claude mcp add pdn -- env PDN_NODE_TOKEN=<token> pdn mcp
 ```
 
-For Tailscale, the only change is the host (`https://<node-ts-name>/mcp`); the node must be on the tailnet and its web listener bound so the overlay can reach it. For LAN-direct, the web listener must bind a LAN address (`management.http`/`https`), not just loopback — the same requirement as reaching the panel from another machine.
+For Tailscale, the only change is the host (`https://<node-ts-name>/mcp`); the node must be on the tailnet and its web listener bound so the overlay can reach it. For LAN-direct, the web listener must bind a LAN address (`management.http`/`https`), not just loopback - the same requirement as reaching the panel from another machine.
 
 **Revocation (2026-08-17):** the minted token is a stateless JWT, so it can't be individually revoked. Three things actually revoke one, in increasing blast radius: turn `mcp.enabled` (or `mcp.sse.enabled`) off, which unmaps `/mcp` entirely and leaves every MCP token inert; wait out `mcp.tokenLifetimeDays`; or run **`pdn auth rotate-signing-key`** (offline, then restart the node), which replaces the node's HS256 key and invalidates *every* JWT it ever issued - MCP tokens and panel access tokens alike. Refresh-token families are opaque rows and survive a rotation, so panel sessions re-mint at their next refresh instead of being logged out. The `read` default + the bounded lifetime keep the blast radius small on a LAN/Tailscale trust boundary; per-token (jti-denylist) revocation is still a hardening follow-up. Review item C056.
 
-**The OAuth gap (the claude.ai connector path).** Hosted claude.ai custom connectors follow the MCP authorization spec — OAuth 2.1 with the MCP server as an OAuth **resource server**, discovered via `/.well-known/oauth-protected-resource` + an authorization server. The full design is in **[`mcp-oauth-design.md`](mcp-oauth-design.md)**: the node is its own AS+RS (reusing `SqliteUserStore` + passkeys + `JwtTokenService` + `RefreshTokenService`), access tokens are audience-segregated from panel tokens, and it ships in slices (discovery → DCR → authorize/consent → token → revoke+review). This is the long pole of the four paths and is **security-sensitive — the authorize/token core wants Tom's review before merge** (like the WebAuthn work). The other three need only config + docs + minor hardening on top of what's shipped.
+**The OAuth gap (the claude.ai connector path).** Hosted claude.ai custom connectors follow the MCP authorization spec - OAuth 2.1 with the MCP server as an OAuth **resource server**, discovered via `/.well-known/oauth-protected-resource` + an authorization server. The full design is in **[`mcp-oauth-design.md`](mcp-oauth-design.md)**: the node is its own AS+RS (reusing `SqliteUserStore` + passkeys + `JwtTokenService` + `RefreshTokenService`), access tokens are audience-segregated from panel tokens, and it ships in slices (discovery → DCR → authorize/consent → token → revoke+review). This is the long pole of the four paths and is **security-sensitive - the authorize/token core wants Tom's review before merge** (like the WebAuthn work). The other three need only config + docs + minor hardening on top of what's shipped.
 
 
-## Monitor-v2 — the one piece that needs new instrumentation
+## Monitor-v2 - the one piece that needs new instrumentation
 
-`link_quality` is only as good as its inputs, and **SRTT + retries are not derivable from the frame tap** — `PdnReadApi.BuildLinks` honestly stubs them to `0` today because they live in each session's T1/SRTT timer state, which the telemetry tap doesn't observe. REJ/SREJ/frame/byte counts *are* real (from the tap).
+`link_quality` is only as good as its inputs, and **SRTT + retries are not derivable from the frame tap** - `PdnReadApi.BuildLinks` honestly stubs them to `0` today because they live in each session's T1/SRTT timer state, which the telemetry tap doesn't observe. REJ/SREJ/frame/byte counts *are* real (from the tap).
 
-So Phase 8's "monitor v2 / link troubleshooting" half is: **surface the per-session timer state** (T1 SRTT, retry count, T3) from the AX.25 session into telemetry, then feed it to **both** `link_quality` (MCP) **and** `LinkStats` (REST `/links`, retiring those two stubbed zeros) and the link-troubleshoot view (T1/T3 graphs). One instrumentation seam, three consumers. This is the larger, riskier part of the arc — it reaches into the session engine — so within the slice it lands **last**, after the tool surface is up on the data that already exists.
+So Phase 8's "monitor v2 / link troubleshooting" half is: **surface the per-session timer state** (T1 SRTT, retry count, T3) from the AX.25 session into telemetry, then feed it to **both** `link_quality` (MCP) **and** `LinkStats` (REST `/links`, retiring those two stubbed zeros) and the link-troubleshoot view (T1/T3 graphs). One instrumentation seam, three consumers. This is the larger, riskier part of the arc - it reaches into the session engine - so within the slice it lands **last**, after the tool surface is up on the data that already exists.
 
 ## ax25-ts parity
 
-**No TS leg required.** The CI parity check ([CLAUDE.md](../CLAUDE.md)) compares the *parser* named-flag inventories (`Ax25ParseOptions`, `Ax25SessionQuirks`, `XidParseOptions`), the presets, and the `Ax25Listener` surface. The MCP server is a node-host control surface — it adds no parser flag and does not widen the listener options — so it is outside the parity contract. `decode_frame` *consumes* the existing parser (default options) but defines no new flag. If a future tool needs a new parse flag, that flag — not the tool — is what would need its TS counterpart.
+**No TS leg required.** The CI parity check ([CLAUDE.md](../CLAUDE.md)) compares the *parser* named-flag inventories (`Ax25ParseOptions`, `Ax25SessionQuirks`, `XidParseOptions`), the presets, and the `Ax25Listener` surface. The MCP server is a node-host control surface - it adds no parser flag and does not widen the listener options - so it is outside the parity contract. `decode_frame` *consumes* the existing parser (default options) but defines no new flag. If a future tool needs a new parse flag, that flag - not the tool - is what would need its TS counterpart.
 
 ## Build order (within the one slice)
 
-1. **`decode_frame`** — pure, golden tests, no backend. Proves the SDK wiring + the tool-schema shape end to end.
-2. **Read tools on existing data** — `list_ports`/`list_sessions`/`recent_frames`/`network_topology` over `LiveNodeMcpBackend`, reusing `PdnReadApi`'s projections. `link_quality` ships here too, returning the real counters with SRTT/retries still zero (honest, consistent with `/links`).
-3. **SSE mount** — `MapMcp()` in the node pipeline behind the `read` gate + the `mcp.sse` config.
-4. **stdio bridge** — the `pdn mcp` subcommand + `RestNodeMcpBackend`. (Program.cs grows its first subcommand check.)
-5. **Write tools + audit** — `send_ui_frame`/`reset_port`/`disconnect_session`/`set_kiss_param`, each through the existing action path under the host's exclusive gate, `operate`-gated, audit-logged.
-6. **Monitor-v2 instrumentation** — surface session T1-SRTT/retries/T3; retire the `LinkStats` zeros; T1/T3 troubleshoot view.
+1. **`decode_frame`** - pure, golden tests, no backend. Proves the SDK wiring + the tool-schema shape end to end.
+2. **Read tools on existing data** - `list_ports`/`list_sessions`/`recent_frames`/`network_topology` over `LiveNodeMcpBackend`, reusing `PdnReadApi`'s projections. `link_quality` ships here too, returning the real counters with SRTT/retries still zero (honest, consistent with `/links`).
+3. **SSE mount** - `MapMcp()` in the node pipeline behind the `read` gate + the `mcp.sse` config.
+4. **stdio bridge** - the `pdn mcp` subcommand + `RestNodeMcpBackend`. (Program.cs grows its first subcommand check.)
+5. **Write tools + audit** - `send_ui_frame`/`reset_port`/`disconnect_session`/`set_kiss_param`, each through the existing action path under the host's exclusive gate, `operate`-gated, audit-logged.
+6. **Monitor-v2 instrumentation** - surface session T1-SRTT/retries/T3; retire the `LinkStats` zeros; T1/T3 troubleshoot view.
 
 ## Testing
 
@@ -218,5 +218,5 @@ So Phase 8's "monitor v2 / link troubleshooting" half is: **surface the per-sess
 
 ## Out of scope (named)
 
-- The **link-tuner `tune` flow** stays deferred (held for a net-sim tuneables design pass, per §5.4) — Phase 8 hosts it but this arc doesn't build it.
-- **Resources/prompts** (MCP's non-tool primitives) — tools only for v1; a `resources` surface (e.g. config as a readable resource) is a later follow-up if it earns its place.
+- The **link-tuner `tune` flow** stays deferred (held for a net-sim tuneables design pass, per §5.4) - Phase 8 hosts it but this arc doesn't build it.
+- **Resources/prompts** (MCP's non-tool primitives) - tools only for v1; a `resources` surface (e.g. config as a readable resource) is a later follow-up if it earns its place.

@@ -38,7 +38,7 @@ internal static class RfRssiLoop
 
         await txTnc.SetModeAsync(mode);
         await rxTnc.SetModeAsync(mode);
-        await txTnc.SetTxDelayAsync(30); // 300 ms — enough preamble for the link, short enough to time
+        await txTnc.SetTxDelayAsync(30); // 300 ms - enough preamble for the link, short enough to time
         await Task.Delay(500);
 
         var options = new RssiTaggingOptions { BitRateHzProvider = () => rxTnc.CurrentBitRateHz };
@@ -108,7 +108,7 @@ internal static class RfRssiLoop
         Console.WriteLine($"received {received.Count}/{frameCount} frames");
 
         // DCD lead: how long before each frame's arrival did the radio raise carrier-sense?
-        // That lead is the whole value of hardware DCD for CSMA — the modem only knows about a
+        // That lead is the whole value of hardware DCD for CSMA - the modem only knows about a
         // frame after the full preamble + payload has been demodulated.
         List<double> leads = [];
         lock (dcdEdges)

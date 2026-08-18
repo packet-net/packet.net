@@ -24,16 +24,16 @@ public sealed class FakeRigControl(List<string>? disposalLog = null, string name
     public bool Dcd { get; set; }
     public double SignalStrengthDbm { get; set; } = -120;
 
-    /// <summary>When set, every read throws it — models a bounced daemon mid-poll.</summary>
+    /// <summary>When set, every read throws it - models a bounced daemon mid-poll.</summary>
     public RigException? ReadFault { get; set; }
 
     private int frequencyReads;
     private int swrReads;
 
-    /// <summary>Number of frequency reads served — cadence assertions.</summary>
+    /// <summary>Number of frequency reads served - cadence assertions.</summary>
     public int FrequencyReads => Volatile.Read(ref frequencyReads);
 
-    /// <summary>Number of SWR reads served — meters-only-while-keyed assertions.</summary>
+    /// <summary>Number of SWR reads served - meters-only-while-keyed assertions.</summary>
     public int SwrReads => Volatile.Read(ref swrReads);
 
     /// <summary>True once <see cref="DisposeAsync"/> ran.</summary>

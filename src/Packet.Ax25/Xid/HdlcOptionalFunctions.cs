@@ -3,37 +3,37 @@ namespace Packet.Ax25.Xid;
 /// <summary>The reject scheme negotiated by the HDLC Optional Functions field.</summary>
 public enum RejectMode
 {
-    /// <summary>Implicit reject (REJ) — bit 1 set, bit 2 reset (§6.3.2 ¶1086).</summary>
+    /// <summary>Implicit reject (REJ) - bit 1 set, bit 2 reset (§6.3.2 ¶1086).</summary>
     ImplicitReject,
 
-    /// <summary>Selective reject (SREJ) — bit 1 reset, bit 2 set (§6.3.2 ¶1087).</summary>
+    /// <summary>Selective reject (SREJ) - bit 1 reset, bit 2 set (§6.3.2 ¶1087).</summary>
     SelectiveReject,
 }
 
 /// <summary>
-/// The XID "HDLC Optional Functions" parameter (PI=3, PL=3 — a 24-bit field),
+/// The XID "HDLC Optional Functions" parameter (PI=3, PL=3 - a 24-bit field),
 /// per AX.25 v2.2 §4.3.3.7 (Figure 4.5) and the negotiation rules in §6.3.2
-/// ¶1082–1090. For AX.25 this carries the two genuinely-negotiated selections
-/// — the reject scheme (REJ vs SREJ) and the modulo (8 vs 128) — plus the
+/// ¶1082-1090. For AX.25 this carries the two genuinely-negotiated selections
+/// - the reject scheme (REJ vs SREJ) and the modulo (8 vs 128) - plus the
 /// segmenter/reassembler bit; every other bit is fixed.
 /// </summary>
 /// <remarks>
-/// <para>Bit layout (logical bits 0–23; bit 0 = the low bit of the low-order octet.
-/// Wire order is most-significant octet first per §3.8 — see "Octet order" below):</para>
+/// <para>Bit layout (logical bits 0-23; bit 0 = the low bit of the low-order octet.
+/// Wire order is most-significant octet first per §3.8 - see "Octet order" below):</para>
 /// <list type="bullet">
-/// <item>bit 0 — Reserved: 0.</item>
-/// <item>bit 1 — REJ command/response (set ⇒ implicit reject selected).</item>
-/// <item>bit 2 — SREJ command/response (set ⇒ selective reject selected).</item>
-/// <item>bits 3–6, 8, 9, 12, 14, 16, 18–20 — fixed 0 (ISO-8885 functions AX.25 doesn't use).</item>
-/// <item>bit 7 — Extended address: always 1.</item>
-/// <item>bit 10 — Modulo 8 (set ⇒ modulo-8 selected).</item>
-/// <item>bit 11 — Modulo 128 (set ⇒ modulo-128 selected).</item>
-/// <item>bit 13 — TEST command/response: always 1.</item>
-/// <item>bit 15 — 16-bit FCS: always 1.</item>
-/// <item>bit 17 — Synchronous transmit: always 1.</item>
-/// <item>bit 21 — SREJ multiframe.</item>
-/// <item>bit 22 — Segmenter/reassembler.</item>
-/// <item>bit 23 — Reserved: 0.</item>
+/// <item>bit 0 - Reserved: 0.</item>
+/// <item>bit 1 - REJ command/response (set ⇒ implicit reject selected).</item>
+/// <item>bit 2 - SREJ command/response (set ⇒ selective reject selected).</item>
+/// <item>bits 3-6, 8, 9, 12, 14, 16, 18-20 - fixed 0 (ISO-8885 functions AX.25 doesn't use).</item>
+/// <item>bit 7 - Extended address: always 1.</item>
+/// <item>bit 10 - Modulo 8 (set ⇒ modulo-8 selected).</item>
+/// <item>bit 11 - Modulo 128 (set ⇒ modulo-128 selected).</item>
+/// <item>bit 13 - TEST command/response: always 1.</item>
+/// <item>bit 15 - 16-bit FCS: always 1.</item>
+/// <item>bit 17 - Synchronous transmit: always 1.</item>
+/// <item>bit 21 - SREJ multiframe.</item>
+/// <item>bit 22 - Segmenter/reassembler.</item>
+/// <item>bit 23 - Reserved: 0.</item>
 /// </list>
 /// <para>
 /// Exactly one of bit 1 / bit 2 must be set (clearing both is illegal per
@@ -45,7 +45,7 @@ public enum RejectMode
 /// PV goes on the wire <b>most-significant octet first</b> per AX.25 v2.2 §3.8
 /// ("high-order octet first"). See <see cref="ToOctets"/>. Figure 4.6 prints the
 /// PV least-significant-octet first (<c>82 A8 22</c>; §3.8-correct it is
-/// <c>22 A8 82</c>) — a figure-rendering error that contradicts §3.8; we follow
+/// <c>22 A8 82</c>) - a figure-rendering error that contradicts §3.8; we follow
 /// §3.8, matching direwolf and LinBPQ on the wire.
 /// </para>
 /// <para>
@@ -53,7 +53,7 @@ public enum RejectMode
 /// first), whose
 /// caption says "SREJ/REJ … Modulo 128 …". Decoded against this (prose-correct)
 /// bit map, those bytes are REJ (bit 1) + Modulo 128 (bit 11) + the always-1
-/// bits + SREJ-multiframe (bit 21) — i.e. the figure selects REJ, not SREJ,
+/// bits + SREJ-multiframe (bit 21) - i.e. the figure selects REJ, not SREJ,
 /// contradicting its own caption. We encode/decode per the normative §6.3.2
 /// prose, not the figure caption; see the codec's round-trip tests.
 /// </para>
@@ -71,7 +71,7 @@ public sealed record HdlcOptionalFunctions
     private const int BitSrejMultiframe = 21;
     private const int BitSegmenter = 22;
 
-    /// <summary>The reject scheme — implicit (REJ) or selective (SREJ).</summary>
+    /// <summary>The reject scheme - implicit (REJ) or selective (SREJ).</summary>
     public RejectMode Reject { get; init; } = RejectMode.SelectiveReject;
 
     /// <summary>True ⇒ modulo-128 selected; false ⇒ modulo-8.</summary>
@@ -111,11 +111,11 @@ public sealed record HdlcOptionalFunctions
     /// <c>xidval&gt;&gt;16</c> first and parses <c>value = (value&lt;&lt;8) + *p++</c>).
     /// NOTE: Figure 4.6's printed PV <c>82 A8 22</c> is the <i>least</i>-significant
     /// octet first (it only decodes to the captioned selection read LSB-first) and so
-    /// <b>contradicts §3.8</b> — a figure-rendering error (the same worked example also
+    /// <b>contradicts §3.8</b> - a figure-rendering error (the same worked example also
     /// carries the documented Classes-of-Procedures ABM off-by-one). The §3.8-correct
     /// serialisation of that selection is <c>22 A8 82</c>. When <c>true</c>, this
     /// reproduces the repo's historical (and §3.8-violating) least-significant-octet-first
-    /// layout — kept only for regression study and never put on the wire by the production
+    /// layout - kept only for regression study and never put on the wire by the production
     /// connect path. See <c>docs/strict-vs-pragmatic-audit.md</c> (HDLC-Optional-Functions
     /// octet order) and the <c>SrejXidViaNetsim</c> interop proof: BPQ accepts the
     /// MSB-first PV and negotiates SREJ, and silently drops the LSB-first one.
@@ -159,11 +159,11 @@ public sealed record HdlcOptionalFunctions
     /// Decode from the (up to) 3-octet PV. Reads the reject scheme from
     /// bits 1/2 and the modulo from bits 10/11; if a selection is ambiguous or
     /// absent we fall back to the spec defaults (SREJ, modulo 128). The fixed
-    /// always-1/always-0 bits are not validated on receive — only the
+    /// always-1/always-0 bits are not validated on receive - only the
     /// negotiable selections are meaningful.
     /// </summary>
     /// <param name="pv">
-    /// The (up to) 3-octet parameter-value field as read off the wire — the
+    /// The (up to) 3-octet parameter-value field as read off the wire - the
     /// HDLC Optional Functions selections to decode. Octets beyond the first
     /// three are ignored.
     /// </param>

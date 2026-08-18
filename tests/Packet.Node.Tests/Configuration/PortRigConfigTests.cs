@@ -216,7 +216,7 @@ public sealed class PortRigConfigTests
     [Fact]
     public void A_node_managed_rig_must_not_set_a_port()
     {
-        // The node allocates the daemon's loopback port itself — a configured one contradicts it.
+        // The node allocates the daemon's loopback port itself - a configured one contradicts it.
         Validator.Validate(WithRig(new PortRigConfig { Kind = "hamlib", Device = "/dev/ttyUSB0", Model = 3073, Port = 4532 }))
             .IsValid.Should().BeFalse();
     }
@@ -262,7 +262,7 @@ public sealed class PortRigConfigTests
     [Fact]
     public void Describe_endpoint_is_honest_for_both_shapes()
     {
-        // BYO: host:port with the kind default resolved — byte-for-byte today's string.
+        // BYO: host:port with the kind default resolved - byte-for-byte today's string.
         new PortRigConfig { Kind = "hamlib" }.DescribeEndpoint().Should().Be("127.0.0.1:4532");
         new PortRigConfig { Kind = "flrig", Host = "10.0.0.5" }.DescribeEndpoint().Should().Be("10.0.0.5:12345");
 
@@ -279,7 +279,7 @@ public sealed class PortRigConfigTests
     public void A_rig_is_valid_on_any_transport_kind()
     {
         // Unlike radio: (which needs a serial modem beside it), a rig is a TCP daemon that can
-        // sit beside any port — the HF kiss-tcp case is the motivating one.
+        // sit beside any port - the HF kiss-tcp case is the motivating one.
         var config = new NodeConfig
         {
             Identity = new Identity { Callsign = "M0LTE-1" },

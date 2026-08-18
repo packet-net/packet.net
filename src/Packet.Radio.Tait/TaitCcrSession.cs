@@ -4,11 +4,11 @@ using Packet.Radio.Tait.Ccdi;
 namespace Packet.Radio.Tait;
 
 /// <summary>
-/// An active CCR (Computer-Controlled Radio) session — the TM8100's run-time
+/// An active CCR (Computer-Controlled Radio) session - the TM8100's run-time
 /// channel-programming interpreter (manual §2), entered via
 /// <see cref="TaitCcdiRadio.EnterCcrModeAsync"/>. While a session is live the radio accepts
 /// only CCR commands; nothing configured here survives <see cref="ExitAsync"/> (a soft reset)
-/// or a power cycle — the manual's model is that the controller is the persistent store, using
+/// or a power cycle - the manual's model is that the controller is the persistent store, using
 /// <see cref="PulseAsync"/> (recommended every 10 s) to notice a rebooted radio and reprogram
 /// it.
 /// </summary>
@@ -29,7 +29,7 @@ public sealed class TaitCcrSession
         radio.MessageReceived += OnMessage;
     }
 
-    /// <summary>Unsolicited Selcall decode reports (§2.9.3) — tones heard on channel, per the
+    /// <summary>Unsolicited Selcall decode reports (§2.9.3) - tones heard on channel, per the
     /// notify filter set by <see cref="SetSelcallParametersAsync"/>.</summary>
     public event EventHandler<CcrSelcallDecodeMessage>? SelcallDecoded;
 
@@ -39,7 +39,7 @@ public sealed class TaitCcrSession
 
     /// <summary>Go to receive frequency (§2.8.2), in Hz. Immediate; the receiver retunes and
     /// needs ~20 ms to settle. The manual states the RX frequency can be changed at least every
-    /// 20 ms — this is the frequency-agility primitive.</summary>
+    /// 20 ms - this is the frequency-agility primitive.</summary>
     public Task SetReceiveFrequencyAsync(long hz, CancellationToken cancellationToken = default) =>
         AckAsync('R', hz.ToString(CultureInfo.InvariantCulture), cancellationToken);
 
@@ -52,7 +52,7 @@ public sealed class TaitCcrSession
     public Task SetBandwidthAsync(TaitBandwidth bandwidth, CancellationToken cancellationToken = default) =>
         AckAsync('H', ((int)bandwidth).ToString(CultureInfo.InvariantCulture), cancellationToken);
 
-    /// <summary>Set volume level 0–255 (§2.8.4). Immediate; a physical volume control can
+    /// <summary>Set volume level 0-255 (§2.8.4). Immediate; a physical volume control can
     /// override it afterwards (last control wins).</summary>
     public Task SetVolumeAsync(int level, CancellationToken cancellationToken = default)
     {
@@ -66,7 +66,7 @@ public sealed class TaitCcrSession
     public Task SetTransmitterPowerAsync(TaitTxPower power, CancellationToken cancellationToken = default) =>
         AckAsync('P', ((int)power).ToString(CultureInfo.InvariantCulture), cancellationToken);
 
-    /// <summary>Receive CTCSS (§2.8.5): tone in Hz (67.0–254.1), 0 disables. Immediate.</summary>
+    /// <summary>Receive CTCSS (§2.8.5): tone in Hz (67.0-254.1), 0 disables. Immediate.</summary>
     public Task SetReceiveCtcssAsync(float toneHz, CancellationToken cancellationToken = default) =>
         AckAsync('A', CtcssParam(toneHz), cancellationToken);
 
@@ -82,7 +82,7 @@ public sealed class TaitCcrSession
     public Task SetTransmitDcsAsync(string octalCode, CancellationToken cancellationToken = default) =>
         AckAsync('D', ValidDcs(octalCode), cancellationToken);
 
-    /// <summary>Encode (transmit) a Selcall sequence of 2–33 tones (§2.8.9). Keys the
+    /// <summary>Encode (transmit) a Selcall sequence of 2-33 tones (§2.8.9). Keys the
     /// transmitter after the lead-in delay; requires RX/TX frequencies to be initialised.</summary>
     public Task EncodeSelcallAsync(string tones, CancellationToken cancellationToken = default)
     {

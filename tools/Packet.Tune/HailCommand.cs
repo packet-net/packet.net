@@ -6,15 +6,15 @@ using Packet.Tune.Core;
 namespace Packet.Tune;
 
 /// <summary>
-/// <c>hail</c>: query — or answer queries for — a peer station's modulation/modem + capabilities
+/// <c>hail</c>: query - or answer queries for - a peer station's modulation/modem + capabilities
 /// over the radios' SDM side channel. Because the side channel rides the radio's own FFSK modem,
 /// a hail reaches (and reports the status of) a station you <b>cannot</b> talk to on the packet
-/// path <em>because</em> of a mode mismatch — the reply reveals the mismatch. A pure
+/// path <em>because</em> of a mode mismatch - the reply reveals the mismatch. A pure
 /// network-diagnostic that nothing else in the stack offers.
 /// <list type="bullet">
-///   <item><c>hail --tnc &lt;port&gt; --radio &lt;ccdi&gt; --peer &lt;8charId&gt;</c> — send a hail and
+///   <item><c>hail --tnc &lt;port&gt; --radio &lt;ccdi&gt; --peer &lt;8charId&gt;</c> - send a hail and
 ///     print the peer's returned status (mode/bitrate/channel/capabilities).</item>
-///   <item><c>hail --respond --tnc &lt;port&gt; --radio &lt;ccdi&gt; --peer &lt;8charId&gt;</c> — arm this
+///   <item><c>hail --respond --tnc &lt;port&gt; --radio &lt;ccdi&gt; --peer &lt;8charId&gt;</c> - arm this
 ///     station as a hail responder (opt-in): auto-reply to hails from the peer with this
 ///     station's live status until Ctrl-C.</item>
 /// </list>

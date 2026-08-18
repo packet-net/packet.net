@@ -3,7 +3,7 @@ using Packet.Ax25.Sdl;
 namespace Packet.Ax25.Session;
 
 /// <summary>
-/// Evaluates an SDL transition <c>guard:</c> — now a typed conjunction of
+/// Evaluates an SDL transition <c>guard:</c> - now a typed conjunction of
 /// optionally-negated guard atoms (<see cref="GuardTerm"/>) rather than a
 /// string expression. A guard holds when every term holds; an empty / null
 /// term list means the transition is unguarded (always fires).
@@ -14,8 +14,8 @@ namespace Packet.Ax25.Session;
 /// binding table keyed by the typed <see cref="Ax25Guard"/> closed-set member
 /// (e.g. <see cref="Ax25Guard.OwnReceiverBusy"/> → a lambda reading
 /// <c>ctx.OwnReceiverBusy</c>). The binding table is built exhaustively by
-/// <see cref="Ax25SessionBindings.CreateDefault"/> — every <see cref="Ax25Guard"/>
-/// member is bound — so a renamed or typo'd atom is a compile error in the
+/// <see cref="Ax25SessionBindings.CreateDefault"/> - every <see cref="Ax25Guard"/>
+/// member is bound - so a renamed or typo'd atom is a compile error in the
 /// codegen-emitted tables, not an unbound-identifier thrown at runtime.
 /// </para>
 /// <para>
@@ -68,7 +68,7 @@ public sealed class GuardEvaluator
     }
 
     /// <summary>
-    /// Evaluate a single <see cref="GuardTerm"/> — the shape
+    /// Evaluate a single <see cref="GuardTerm"/> - the shape
     /// <see cref="LoopRange.Predicate"/> carries (the loop's continue condition,
     /// already negated where the figure's continuing edge is the decision's No
     /// branch).

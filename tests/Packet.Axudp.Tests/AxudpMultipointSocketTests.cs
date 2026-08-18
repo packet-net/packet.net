@@ -7,7 +7,7 @@ using Packet.Core;
 namespace Packet.Axudp.Tests;
 
 /// <summary>
-/// The <see cref="AxudpMultipointSocket"/> — one UDP socket, many partners (the BPQ
+/// The <see cref="AxudpMultipointSocket"/> - one UDP socket, many partners (the BPQ
 /// <c>BPQAXIP</c> pump). It is the multi-partner counterpart to <see cref="AxudpSocket"/>:
 /// the caller picks the destination endpoint per datagram; inbound datagrams are accepted
 /// from any sender. The FCS handling is identical (append on send, strip + validate on
@@ -104,7 +104,7 @@ public sealed class AxudpMultipointSocketTests
 }
 
 // Small helper so the "receive then make the matching send fire" ordering reads inline
-// (the receive Task is awaited after the send, but the send must happen first — kick the
+// (the receive Task is awaited after the send, but the send must happen first - kick the
 // send, then return the still-pending receive Task's awaiter).
 internal static class MultipointTestExtensions
 {

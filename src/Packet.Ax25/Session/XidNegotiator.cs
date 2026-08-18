@@ -14,14 +14,14 @@ namespace Packet.Ax25.Session;
 /// Pulled out of the MDL driver into a pure static merge so the per-parameter
 /// rules are unit-testable in isolation and carry their spec citations inline.
 /// The MDL figc5.2 "Apply Negotiated Parameters" box is a single placeholder
-/// verb in the prose-bootstrap SDL (the figc5.3–figc5.8 per-parameter
+/// verb in the prose-bootstrap SDL (the figc5.3-figc5.8 per-parameter
 /// subroutines were not transcribed); this is its runtime body.
 /// </para>
 /// <para>
 /// "Offered" = the parameters we put in our XID <em>command</em> (our Rx
 /// capability / preference). "Response" = the parameters the peer returned in
 /// its XID <em>response</em>. Per §6.3.2 ¶7 "Both TNCs set up based on the
-/// values used in the XID response" — but the spec's per-parameter rules
+/// values used in the XID response" - but the spec's per-parameter rules
 /// (lesser / greater / min) are deterministic functions of the two offers, so
 /// we re-derive the agreed value here rather than trusting the peer to have
 /// applied the rule correctly. That keeps both stations convergent even if a
@@ -58,7 +58,7 @@ public static class XidNegotiator
         //   reject:  SREJ (higher) vs REJ (lower)      → REJ wins if either side offers REJ
         //   modulo:  128 (higher)  vs 8   (lower)      → mod-8 wins if either side offers mod-8
         // If PI=3 is absent from both, §6.3.2 ¶1426 selects the default
-        // (selective reject, modulo 128) — represented by HdlcOptionalFunctions.Default.
+        // (selective reject, modulo 128) - represented by HdlcOptionalFunctions.Default.
         var ourHdlc = offered.HdlcOptionalFunctions ?? HdlcOptionalFunctions.Default;
         var theirHdlc = response.HdlcOptionalFunctions ?? HdlcOptionalFunctions.Default;
 
@@ -71,7 +71,7 @@ public static class XidNegotiator
         bool agreedModulo128 = ourHdlc.Modulo128 && theirHdlc.Modulo128;
 
         // Segmenter/reassembler (the §1621 v2.2 capability) is a mutual
-        // capability bit — enabled only if both sides advertise it. Not part of
+        // capability bit - enabled only if both sides advertise it. Not part of
         // the explicit reverts-to prose, but the §6.3.2 ¶1419 "enables the use of
         // the segmenter/reassembler" framing is a mutual-capability AND.
         bool agreedSegmenter = ourHdlc.SegmenterReassembler && theirHdlc.SegmenterReassembler;
@@ -154,7 +154,7 @@ public static class XidNegotiator
 
     /// <summary>
     /// Install the complete AX.25 version-2.0 default parameter set per §6.3.2
-    /// ¶1 / §1436 — used when a pre-v2.2 peer FRMRs our XID command (figc5.2
+    /// ¶1 / §1436 - used when a pre-v2.2 peer FRMRs our XID command (figc5.2
     /// FRMR path) and "a version 2.0 connection is made." This is the FULL set,
     /// not merely <c>IsExtended = false</c>:
     /// <list type="bullet">
@@ -173,7 +173,7 @@ public static class XidNegotiator
     /// path runs its remaining v2.0 verbs separately). The MDL figc5.2 FRMR
     /// transition draws a single <c>Set Version 2.0</c> box, so the MDL owes the
     /// complete set here. §1436's k=7 is the version-2.0 default; note it is NOT
-    /// the mod-8 XID default (k=4, §4.3.3.7 ¶1094) — the v2.0 fallback explicitly
+    /// the mod-8 XID default (k=4, §4.3.3.7 ¶1094) - the v2.0 fallback explicitly
     /// uses 7. The segmenter/reassembler is a v2.2-only capability (§1621) so it
     /// is disabled on the v2.0 fallback.
     /// </remarks>

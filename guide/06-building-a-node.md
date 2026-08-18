@@ -9,7 +9,7 @@ is, almost exactly:
 > with each session.
 
 Everything you learned in [chapter 5](05-axcall.md) about driving an
-`Ax25Session` applies — only now the sessions arrive *inbound*.
+`Ax25Session` applies - only now the sessions arrive *inbound*.
 
 ## Accepting inbound connections
 
@@ -59,7 +59,7 @@ client: subscribe to its signals, send with `listener.SendData`, disconnect with
 
 Most nodes present a command prompt. Because the session delivers data as it
 arrives, the cleanest structure is an async channel: signals push lines in, a
-loop pulls them out and responds. Here's a minimal interpreter — greet, echo a
+loop pulls them out and responds. Here's a minimal interpreter - greet, echo a
 prompt, handle a couple of commands, and `BYE` to hang up:
 
 ```csharp
@@ -104,7 +104,7 @@ async Task HandleConnectionAsync(Ax25Session session)
 }
 ```
 
-Note the use of `\r` (carriage return) as the line terminator — that's the packet
+Note the use of `\r` (carriage return) as the line terminator - that's the packet
 convention, not `\n`. Real terminals on the far end expect CR.
 
 This is genuinely a working single-application node. From here, "node software"
@@ -125,7 +125,7 @@ listener.AddLocalAlias(Callsign.Parse("GB7XYZ-3"));   // e.g. the chat
 
 The session's `Context.Local` tells you which callsign a given connection came in
 on, so your `SessionAccepted` handler can route to the right application. Aliases
-are reference-counted — balance each `AddLocalAlias` with a `RemoveLocalAlias`.
+are reference-counted - balance each `AddLocalAlias` with a `RemoveLocalAlias`.
 
 ## Several ports at once
 
@@ -145,7 +145,7 @@ foreach (var l in listeners)
 }
 ```
 
-Routing *between* ports — accepting on VHF and dialing back out on UHF — is what
+Routing *between* ports - accepting on VHF and dialing back out on UHF - is what
 turns a node into a switch, and it's exactly what NET/ROM automates
 ([chapter 7](07-netrom.md)). At this layer you can already do it by hand: in your
 handler, `await otherListener.ConnectAsync(target)` and pump bytes between the two
@@ -175,7 +175,7 @@ await listener.SendUiAsync(
     pid: Ax25Frame.PidNoLayer3);
 ```
 
-There's also `SendTestAsync` — an AX.25 TEST command, the basis of "axping": a
+There's also `SendTestAsync` - an AX.25 TEST command, the basis of "axping": a
 spec-compliant peer echoes the info field back, and you time the round trip via
 `FrameTraced`.
 
@@ -186,7 +186,7 @@ What we've built is the spine of a node. The packet.net node host
 production concerns a deployable node needs, and **`Packet.Node.Core` exposes them
 as reusable building blocks** if you'd rather not reinvent them:
 
-- **`INodeConnection`** — a transport-agnostic byte-stream abstraction over a
+- **`INodeConnection`** - a transport-agnostic byte-stream abstraction over a
   session, so your application logic doesn't care whether the user arrived over
   AX.25, NET/ROM, or Telnet:
 
@@ -200,7 +200,7 @@ as reusable building blocks** if you'd rather not reinvent them:
     }
     ```
 
-- **`INodeApplication`** — the seam every node application implements; the host
+- **`INodeApplication`** - the seam every node application implements; the host
   resolves a command verb to one and runs it against a connection:
 
     ```csharp
@@ -212,13 +212,13 @@ as reusable building blocks** if you'd rather not reinvent them:
     ```
 
 - a configuration/reconcile loop, persistence, a Telnet console, beaconing, and
-  the NET/ROM service — all driven from config and reconciled live.
+  the NET/ROM service - all driven from config and reconciled live.
 
 You can adopt those wholesale, or keep your own `SessionAccepted` handler and
 borrow only the pieces you want. We come back to this menu in
-[chapter 8](08-beyond.md). But there's one more protocol layer to climb first —
+[chapter 8](08-beyond.md). But there's one more protocol layer to climb first -
 the one that turns a network of nodes into a *network*.
 
 ---
 
-Next: [NET/ROM — routing and circuits →](07-netrom.md)
+Next: [NET/ROM - routing and circuits →](07-netrom.md)

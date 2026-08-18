@@ -7,7 +7,7 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 /// can supply a fake.
 /// </summary>
 /// <remarks>
-/// Models only <em>current</em> releases — i.e. whatever is sitting at
+/// Models only <em>current</em> releases - i.e. whatever is sitting at
 /// tip of master right now. Old firmware versions live in git history;
 /// we don't surface them. The use case for "I want to install firmware
 /// 3.41 from two years ago" is rare enough that it's not worth the

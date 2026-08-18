@@ -7,7 +7,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Regression coverage for packet-net/packet.net#385 — the §6.7.1.2 T2 acknowledge
+/// Regression coverage for packet-net/packet.net#385 - the §6.7.1.2 T2 acknowledge
 /// delay in the production listener wiring.
 ///
 /// Off-air capture of the lab node receiving a sustained I-frame stream from
@@ -22,8 +22,8 @@ namespace Packet.Ax25.Tests.Session;
 /// in-sequence I-frame of a burst arms T2 (figc4.4 t26 requests the seize
 /// only while no ack is pending), follow-on frames just advance V(R), and the
 /// confirm at expiry emits ONE cumulative RR (Enquiry_Response reads
-/// N(R):=V(R) at dispatch time). Any other N(R)-bearing transmission — a
-/// poll/enquiry response, a piggybacking I-frame, an REJ — runs the SDL's
+/// N(R):=V(R) at dispatch time). Any other N(R)-bearing transmission - a
+/// poll/enquiry response, a piggybacking I-frame, an REJ - runs the SDL's
 /// Clear Acknowledge Pending, which also cancels the armed T2, so a stale
 /// ack can never follow it onto the wire. T2 = 0 restores ack-per-frame.
 /// </summary>
@@ -37,7 +37,7 @@ public class Ax25ListenerT2CoalescedAckTests
     /// The marquee #385 repro: a five-frame burst followed by the peer's
     /// checkpoint poll (RR P=1), with no ack flushed in between. The poll
     /// must be answered F=1 with V(R) current as of ALL frames received
-    /// before it — covering the whole burst — and that F=1 must be the ONLY
+    /// before it - covering the whole burst - and that F=1 must be the ONLY
     /// ack on the wire: no per-frame RR dribble before it (the five keyups
     /// that deafened the port) and no stale-N(R) ack after it (the pending
     /// delayed ack is cancelled by the poll response). Red before the fix:
@@ -55,7 +55,7 @@ public class Ax25ListenerT2CoalescedAckTests
             modem.InjectInbound(Ax25Frame.I(LocalCall, PeerCall, nr: 0, ns: ns,
                 info: new[] { ns }, pollBit: false));
         }
-        // ... then polls: RR command, P=1 — the v2.2 checkpoint enquiry.
+        // ... then polls: RR command, P=1 - the v2.2 checkpoint enquiry.
         modem.InjectInbound(Ax25Frame.Rr(LocalCall, PeerCall, nr: 0, isCommand: true, pollFinal: true));
 
         // The poll answer must reach the wire; nothing else may precede it.
@@ -104,11 +104,11 @@ public class Ax25ListenerT2CoalescedAckTests
         // (SDL t26_i_received_yes_yes_yes_no_yes_no_no) runs its actions in the
         // order: V(R):=V(R)+1 … LM-SEIZE Request (this arms T2 via the listener's
         // sendLinkMux grant) … Set Acknowledge Pending (last). So V(R) is observable
-        // from the test thread *before* T2 is armed — advancing the FakeTimeProvider
+        // from the test thread *before* T2 is armed - advancing the FakeTimeProvider
         // in that window sets the timer's due-time against the already-advanced clock,
         // and it then never fires (no further advance) → the coalesced RR never lands.
         // AcknowledgePending is the final action, so observing it true guarantees the
-        // preceding LM-SEIZE/arm has run. (#385 flake — caught on a 2026-06-19 CI run.)
+        // preceding LM-SEIZE/arm has run. (#385 flake - caught on a 2026-06-19 CI run.)
         await ListenerTestSupport.WaitFor(
             () => session.Context.VR == 5 && session.Context.AcknowledgePending, Budget,
             "all five I-frames must be processed and the delayed ack (T2) armed");
@@ -130,7 +130,7 @@ public class Ax25ListenerT2CoalescedAckTests
             info: "again"u8.ToArray(), pollBit: false));
         // This is the window the CI flake actually hit: frame ns=5 is the FIRST frame
         // of the new burst, so the single transition that brings V(R) to 6 is also the
-        // one that arms T2 — and it sets V(R) before it arms. Gating on V(R)==6 alone
+        // one that arms T2 - and it sets V(R) before it arms. Gating on V(R)==6 alone
         // races the arm; gate on AcknowledgePending (set last) so the arm is guaranteed
         // done before we advance the clock.
         await ListenerTestSupport.WaitFor(
@@ -146,7 +146,7 @@ public class Ax25ListenerT2CoalescedAckTests
     /// <summary>
     /// Piggyback cancellation: if an outgoing I-frame (which carries
     /// N(R)=V(R)) goes out while a delayed ack is pending, the pending RR is
-    /// superseded — T2 expiry must not emit a redundant ack. The SDL's
+    /// superseded - T2 expiry must not emit a redundant ack. The SDL's
     /// I-command chain runs Clear Acknowledge Pending; the dispatcher hooks
     /// that verb to cancel the armed T2.
     /// </summary>
@@ -170,7 +170,7 @@ public class Ax25ListenerT2CoalescedAckTests
         reply.Nr.Should().Be(1, "the reply piggybacks the acknowledgement");
 
         // T2 expiry must now be a no-op: the ack already went out on the
-        // I-frame. (Synchronous under FakeTimeProvider — see above.)
+        // I-frame. (Synchronous under FakeTimeProvider - see above.)
         time.Advance(session.Context.T2 + TimeSpan.FromMilliseconds(1));
         modem.SentFrames.Count.Should().Be(2, "the piggybacked N(R) superseded the delayed ack — no RR follows");
         ParseAll(modem).Count(f => IsRr(f)).Should().Be(0, "no standalone RR was ever needed");
@@ -192,7 +192,7 @@ public class Ax25ListenerT2CoalescedAckTests
         modem.InjectInbound(Ax25Frame.I(LocalCall, PeerCall, nr: 0, ns: 1,
             info: "TWO"u8.ToArray(), pollBit: false));
 
-        // Two immediate RRs — no time advance needed.
+        // Two immediate RRs - no time advance needed.
         await modem.SentFrames.WaitForCountAsync(3, Budget);
         var transcript = ParseAll(modem);
         var rrs = transcript.Where(IsRr).ToList();

@@ -5,7 +5,7 @@ namespace Packet.Node.Tests.Rigs;
 
 /// <summary>
 /// <see cref="RigModelCatalogue"/>: the parsed, process-lifetime-cached <c>rigctl -l</c> table.
-/// The parser is exercised against a verbatim sample captured from rigctl (Hamlib 4.5.5) — the
+/// The parser is exercised against a verbatim sample captured from rigctl (Hamlib 4.5.5) - the
 /// columns are fixed-width and model names contain spaces, so whitespace-splitting would mangle
 /// them; header-derived offsets must not. A missing rigctl is a clean
 /// <see cref="RigModelCatalogue.Available"/> <c>false</c>, never a throw.
@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Rigs;
 [Trait("Category", "Node")]
 public sealed class RigModelCatalogueTests
 {
-    // Verbatim `rigctl -l` lines captured from rigctl Hamlib 4.5.5 (Apr 2023) — spacing intact.
+    // Verbatim `rigctl -l` lines captured from rigctl Hamlib 4.5.5 (Apr 2023) - spacing intact.
     // Deliberately includes the models-with-spaces rows (NET rigctl / TRXManager 5.7.630+ /
     // Dummy No VFO / MARK-V FT-1000MP) and a non-Stable status (IC-R8600, Beta).
     private const string Sample =
@@ -37,7 +37,7 @@ public sealed class RigModelCatalogueTests
   3085  Icom                   IC-705                  20230109.8      Stable      RIG_MODEL_IC705
 """;
 
-    /// <summary>Canned-result runner recording every call — the local, non-hardcoded sibling of
+    /// <summary>Canned-result runner recording every call - the local, non-hardcoded sibling of
     /// the private fake in InstallChannelProviderTests.</summary>
     private sealed class FakeProcessRunner(ProcessRunResult result) : IProcessRunner
     {

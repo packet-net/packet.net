@@ -3,7 +3,7 @@ using Packet.Node.Core.Mqtt;
 namespace Packet.Node.Tests.Mqtt;
 
 /// <summary>
-/// The stable per-machine token behind the salted MQTT client id (#582) — a 1:1 port of the Go
+/// The stable per-machine token behind the salted MQTT client id (#582) - a 1:1 port of the Go
 /// head-end's <c>machineSuffix</c> (<c>headend/config.go</c>), so these tests mirror
 /// <c>headend/config_test.go</c> case for case and pin cross-language parity with literal hash
 /// vectors (the same machine must derive the same suffix whichever daemon computes it).
@@ -41,7 +41,7 @@ public sealed class MachineSuffixTests
     [Fact]
     public void Suffix_matches_the_go_head_end_hash_byte_for_byte()
     {
-        // SHA-256("machine-id:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")[..4] — the exact value the Go
+        // SHA-256("machine-id:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")[..4] - the exact value the Go
         // head-end's shortHash("machine-id:"+id) derives. Pinned so the two implementations can
         // never silently drift apart on the same host.
         var read = FileMap(new() { ["/etc/machine-id"] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n" });

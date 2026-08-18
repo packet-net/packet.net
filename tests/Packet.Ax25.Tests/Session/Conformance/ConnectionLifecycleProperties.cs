@@ -4,10 +4,10 @@ using Packet.Ax25.Session;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// Phase A1 — connection setup / teardown under loss. Independent of the SREJ
+/// Phase A1 - connection setup / teardown under loss. Independent of the SREJ
 /// data-recovery space (ax25spec#40), so it fuzzes a different part of the
 /// stack: the SABM/UA and DISC/UA handshakes must always reach a terminal
-/// state (Connected or Disconnected) under any finite handshake loss — never
+/// state (Connected or Disconnected) under any finite handshake loss - never
 /// hang forever in an Awaiting* / AwaitingRelease state.
 /// </summary>
 public class ConnectionLifecycleProperties

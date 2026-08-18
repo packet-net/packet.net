@@ -16,8 +16,8 @@ namespace Packet.NinoTnc.Spike;
 /// </summary>
 internal static class Soak
 {
-    private const byte DefaultModeForSweeps = 6;       // 1200 AFSK AX.25 — robust on audio
-    private const byte DefaultTxDelayUnits = 50;       // 500 ms — KISS spec default
+    private const byte DefaultModeForSweeps = 6;       // 1200 AFSK AX.25 - robust on audio
+    private const byte DefaultTxDelayUnits = 50;       // 500 ms - KISS spec default
 
     public static async Task<int> Run(string command, string portA, string portB)
     {
@@ -239,7 +239,7 @@ internal static class Soak
             await using var b = NinoTncSerialPort.Open(portB);
             await a.SetModeAsync(mode);
             await b.SetModeAsync(mode);
-            await a.SetTxDelayAsync(5);    // Use the measured floor — every mode supports it
+            await a.SetTxDelayAsync(5);    // Use the measured floor - every mode supports it
             await Task.Delay(700);
 
             const int N = 20;

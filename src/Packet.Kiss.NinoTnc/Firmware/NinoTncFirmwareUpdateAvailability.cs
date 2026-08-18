@@ -10,7 +10,7 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 ///   Derived from the firmware version's major component.</param>
 /// <param name="LatestAvailable">The most recent firmware release the
 ///   catalogue knows about for this chip variant. <c>null</c> if the
-///   catalogue could not find any release for the variant — usually
+///   catalogue could not find any release for the variant - usually
 ///   because the variant is <see cref="NinoTncChipVariant.Unknown"/>
 ///   or because the upstream filename convention changed.</param>
 public sealed record NinoTncFirmwareUpdateAvailability(

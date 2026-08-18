@@ -12,7 +12,7 @@ public class CcdiCodecTests
     [InlineData("f03041", "A2")]   // §1.9.3 example: enable progress messages
     [InlineData("q045063", "5D")]  // §1.10.1 example: query averaged RSSI
     // (§1.9.8's "a0FFF20012345678Hi4A" example is a manual erratum: 4A is the raw modulo-256
-    // sum's low byte, not its two's complement — the correct checksum is B6.)
+    // sum's low byte, not its two's complement - the correct checksum is B6.)
     [InlineData("a130520312345678M01D0E", "36")] // §1.9.8 example: CCR-over-SDM
     [InlineData("a120520612345678GPRMC", "22")]  // §1.9.8 example: NMEA-request SDM
     [InlineData("a1B0520612345678GPGGA,87654321", "55")] // §1.9.8 example: NMEA + return address

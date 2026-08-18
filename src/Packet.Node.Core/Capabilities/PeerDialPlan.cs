@@ -5,12 +5,12 @@ namespace Packet.Node.Core.Capabilities;
 /// </summary>
 public enum PeerDialPolicy
 {
-    /// <summary>Node-to-node interlink (the NET/ROM backbone). Conservative default —
+    /// <summary>Node-to-node interlink (the NET/ROM backbone). Conservative default -
     /// start mod-8 unless we have learned the neighbour does extended, because a stalled
     /// SABME probe to a v2.0-only backbone neighbour costs the whole link a retry cycle.</summary>
     Interlink,
 
-    /// <summary>A user-initiated connect. Optimistic default — offer SABME unless we have
+    /// <summary>A user-initiated connect. Optimistic default - offer SABME unless we have
     /// learned the peer refuses it, since a user connect to an unknown peer is worth the
     /// one-time extended probe.</summary>
     UserConnect,

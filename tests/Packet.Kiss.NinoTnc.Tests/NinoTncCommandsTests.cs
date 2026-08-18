@@ -40,7 +40,7 @@ public class NinoTncCommandsTests
     public void Bootloader_Entry_Wire_Frame_Is_Cmd_0x0D_Payload_0x37()
     {
         // The exact bytes flashtnc.py sends to reboot the TNC into the
-        // dsPIC bootloader — hardware-validated wire form.
+        // dsPIC bootloader - hardware-validated wire form.
         NinoTncCommands.BuildBootloaderEntryKissFrame().Should().Equal(Fend, 0x0D, 0x37, Fend);
     }
 

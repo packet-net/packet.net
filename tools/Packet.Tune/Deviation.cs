@@ -5,7 +5,7 @@ using Packet.Kiss.NinoTnc;
 namespace Packet.Tune;
 
 /// <summary>
-/// <c>deviation</c>: interactive TX-deviation tuning loop — LOCAL bench
+/// <c>deviation</c>: interactive TX-deviation tuning loop - LOCAL bench
 /// flavour, both TNCs on this host.
 /// </summary>
 /// <remarks>
@@ -13,7 +13,7 @@ namespace Packet.Tune;
 /// The tone comes FROM the end under tune: the REMOTE TNC is armed (a
 /// <c>[TARPNstat</c> frame through its own serial), then each run the LOCAL
 /// TNC transmits a CQBEEP-8 request; the armed remote answers with ~8 s of
-/// 440 Hz tone, which the local TNC meters via GETRSSI (RX-audio RMS dB —
+/// 440 Hz tone, which the local TNC meters via GETRSSI (RX-audio RMS dB -
 /// the received tone level tracks the remote's TX deviation). Between runs
 /// the operator adjusts the remote's TX-DEV pot and presses Enter; a trend
 /// table shows the level moving.
@@ -21,7 +21,7 @@ namespace Packet.Tune;
 /// <para>
 /// GETRSSI was removed in firmware 3.44, so this loop only runs against
 /// 3.41 TNCs; on newer firmware it reports n/a and points at the remote
-/// flavours — <c>deviation-sdm</c> / <c>deviation-remote</c> — which meter
+/// flavours - <c>deviation-sdm</c> / <c>deviation-remote</c> - which meter
 /// by decode-rate + FEC/clip deltas + CCDI RSSI instead (see
 /// <c>Packet.Tune.Core</c>'s <c>TuningSession</c>).
 /// </para>
@@ -66,7 +66,7 @@ internal static class Deviation
         }
         catch (TimeoutException)
         {
-            // GETRSSI was an undocumented 3.41 feature, removed in 3.44 —
+            // GETRSSI was an undocumented 3.41 feature, removed in 3.44 -
             // this GETRSSI-metered local loop cannot run on 3.44 firmware.
             Console.WriteLine("  GETRSSI: n/a on this firmware (removed in 3.44; 3.41 only)");
             Console.WriteLine("  this local tone-metering loop needs GETRSSI — use deviation-sdm or");
@@ -96,8 +96,8 @@ internal static class Deviation
             }
 
             // Best-effort safety: ask the remote to stop transmitting. (On
-            // firmware 3.41 STOPTX does not cut a CQBEEP tone short — bench
-            // verified — but the sample window outlasts the tone anyway.)
+            // firmware 3.41 STOPTX does not cut a CQBEEP tone short - bench
+            // verified - but the sample window outlasts the tone anyway.)
             await remote.StopTxAsync();
 
             var tone = samples.Where(s => Math.Abs(s.Level - idle) > ToneThresholdDb).ToList();

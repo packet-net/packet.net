@@ -4,11 +4,11 @@ namespace Packet.Radio.Tait;
 
 /// <summary>
 /// <see cref="IRadioSideChannel"/> over Tait CCDI Short Data Messages: datagrams ride the
-/// radio's own internal FFSK modem at factory deviation — no TNC involved, and fully
+/// radio's own internal FFSK modem at factory deviation - no TNC involved, and fully
 /// independent of whatever mode/deviation the audio-path modem is in. Requires SDMs (and,
 /// for <see cref="IRadioSideChannel.DeliveryReceipt"/>, SDM auto-acknowledgements) enabled
 /// in both radios' programming, and PROGRESS messages enabled on this radio
-/// (<see cref="TaitCcdiRadio.SetProgressMessagesAsync"/>) — PROGRESS carries carrier sense,
+/// (<see cref="TaitCcdiRadio.SetProgressMessagesAsync"/>) - PROGRESS carries carrier sense,
 /// arrivals and delivery receipts.
 /// </summary>
 /// <remarks>
@@ -17,10 +17,10 @@ namespace Packet.Radio.Tait;
 /// character), per CCDI §1.9.8. With <see cref="TaitSdmSideChannelOptions.EnableExtendedSdm"/>
 /// the budget rises to <see cref="ExtendedPayloadBudget"/> characters: payloads over 32
 /// characters ride the extended SDM format (SFI 04), which the radios split and reassemble
-/// natively — hardware-verified TM8110↔TM8110 (see
+/// natively - hardware-verified TM8110↔TM8110 (see
 /// <see cref="TaitCcdiRadio.SendExtendedSdmAsync"/>). The radio's receive buffer is one-deep
 /// with overwrite-on-arrival, and these radios emit an FFSK-data PROGRESS on mere carrier
-/// rise — both quirks are exactly the behaviour the <see cref="IRadioSideChannel"/> contract
+/// rise - both quirks are exactly the behaviour the <see cref="IRadioSideChannel"/> contract
 /// warns consumers about. (An extended arrival raises one FFSK-data PROGRESS per over-air
 /// part before the completing RING; the mid-reassembly reads those spurious arrivals provoke
 /// harmlessly return an empty buffer.)
@@ -39,7 +39,7 @@ public sealed class TaitSdmSideChannel : IRadioSideChannel, IDisposable
     private readonly TaitCcdiRadio radio;
     private readonly TaitSdmSideChannelOptions options;
 
-    /// <summary>Wrap the radio. The radio's lifetime stays the caller's —
+    /// <summary>Wrap the radio. The radio's lifetime stays the caller's -
     /// disposing this adapter only unhooks the event subscriptions.</summary>
     public TaitSdmSideChannel(TaitCcdiRadio radio, TaitSdmSideChannelOptions? options = null)
     {
@@ -117,7 +117,7 @@ public sealed record TaitSdmSideChannelOptions
     /// 128-character messages delivered, natively reassembled, receipts acknowledged), but
     /// default <c>false</c>: an extended message costs multiple over-air FFSK bursts per
     /// datagram (longer airtime per send, more to lose to one collision), and whether a
-    /// given peer's programming accepts SFI 04 is a per-fleet question — opt in per
+    /// given peer's programming accepts SFI 04 is a per-fleet question - opt in per
     /// deployment.
     /// </summary>
     public bool EnableExtendedSdm { get; init; }

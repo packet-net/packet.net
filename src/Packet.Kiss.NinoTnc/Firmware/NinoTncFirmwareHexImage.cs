@@ -10,7 +10,7 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 /// <remarks>
 /// <para>
 /// The chip classification follows upstream <c>flashtnc.py</c>: the image is
-/// scanned for one of the known <em>first bootloader lines</em> — the flash
+/// scanned for one of the known <em>first bootloader lines</em> - the flash
 /// page where each chip variant's bootloader lives is at a variant-specific
 /// address, so the line is a reliable fingerprint. An image matching none of
 /// the known lines is refused (<see cref="NinoTncFlashFailure.HexTargetUnknown"/>)
@@ -21,7 +21,7 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 /// Validation is deliberately strict on the construction side (see the
 /// repo-wide "spec-compliant by default" discipline): every line must start
 /// with the <c>':'</c> record mark, contain only hex digits after it, and the
-/// image must end with the Intel-HEX end-of-file record — the bootloader only
+/// image must end with the Intel-HEX end-of-file record - the bootloader only
 /// signals success (<c>'Z'</c>) when it sees that record, so an image without
 /// it could never complete and would strand the modem mid-flash.
 /// </para>
@@ -32,7 +32,7 @@ public sealed class NinoTncFirmwareHexImage
     public const string EndOfFileRecord = ":00000001FF";
 
     // The known first-bootloader lines, per upstream flashtnc.py (version f,
-    // 2022-05-01). Comparison is exact — the checksum suffix pins each line
+    // 2022-05-01). Comparison is exact - the checksum suffix pins each line
     // to its variant. Stored lowercase; matched case-insensitively because
     // hex tools differ in digit case.
     private static readonly (string Line, NinoTncChipVariant Variant)[] KnownBootloaderLines =

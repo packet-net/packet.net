@@ -9,13 +9,13 @@ namespace Packet.Rhp2.Server;
 
 /// <summary>
 /// Runs the RHPv2 listener per the node's <c>rhp:</c> config block (default-off), restarting
-/// it when a hot-reload changes <c>enabled</c>/<c>bind</c>/<c>port</c>/<c>requireAuth</c> —
+/// it when a hot-reload changes <c>enabled</c>/<c>bind</c>/<c>port</c>/<c>requireAuth</c> -
 /// the same restart-scoped reconcile the telnet console uses. A bind failure is logged and
 /// the node carries on (an RHP port clash must never crash the node).
 /// </summary>
 /// <remarks>
 /// The wire's <c>auth</c> message is validated against the node's existing user store
-/// (Argon2id, the same accounts the web panel uses) — RHP introduces no second credential
+/// (Argon2id, the same accounts the web panel uses) - RHP introduces no second credential
 /// system. With <c>requireAuth</c> on and no users provisioned, every auth fails (no users ⇒
 /// no access), matching the web panel's first-run posture.
 /// </remarks>
@@ -63,7 +63,7 @@ public sealed partial class RhpServerHostedService : IHostedService, IAsyncDispo
         {
             if (running is not null && running == next)
             {
-                return;   // record equality — nothing relevant changed
+                return;   // record equality - nothing relevant changed
             }
 
             if (server is not null)
@@ -97,7 +97,7 @@ public sealed partial class RhpServerHostedService : IHostedService, IAsyncDispo
                     InFrameTimeout = next.InFrameTimeoutSeconds <= 0
                         ? System.Threading.Timeout.InfiniteTimeSpan
                         : TimeSpan.FromSeconds(next.InFrameTimeoutSeconds),
-                    // Per-IP brute-force throttle on the cleartext auth message — only
+                    // Per-IP brute-force throttle on the cleartext auth message - only
                     // meaningful when auth is enforced (and the port may be exposed).
                     AuthThrottle = next.RequireAuth ? new LoginThrottle(TimeProvider.System) : null,
                 },
@@ -110,7 +110,7 @@ public sealed partial class RhpServerHostedService : IHostedService, IAsyncDispo
             }
             catch (Exception ex)
             {
-                // A bind clash must not crash the node — log and run without RHP.
+                // A bind clash must not crash the node - log and run without RHP.
                 LogStartFailed(ex, next.Bind, next.Port);
                 await candidate.DisposeAsync().ConfigureAwait(false);
             }

@@ -35,7 +35,7 @@ public sealed class MqttFrameEmitterTests
         public List<(string Topic, byte[] Payload, int Qos, bool Retain)> Published { get; } = new();
         public int DisposeCount;
 
-        /// <summary>When set, every publish throws — the failure-counter path.</summary>
+        /// <summary>When set, every publish throws - the failure-counter path.</summary>
         public Exception? FailWith { get; set; }
 
         public long PendingMessageCount { get; set; }
@@ -250,7 +250,7 @@ public sealed class MqttFrameEmitterTests
     [Fact]
     public void Client_id_appends_the_machine_suffix_to_an_explicit_node_name()
     {
-        // The salt guards duplicate configured NodeNames just as it guards duplicate hostnames —
+        // The salt guards duplicate configured NodeNames just as it guards duplicate hostnames -
         // the client id is broker identity only, so salting it never touches the topics.
         var (emitter, _, provider, _) = Build(Enabled(), machineSuffix: "1a2b3c4d");
 
@@ -268,7 +268,7 @@ public sealed class MqttFrameEmitterTests
     [Fact]
     public void Client_ids_differ_across_machines_even_with_identical_config()
     {
-        // The #582 failure mode: two image-cloned Pis, same hostname, same (default) config — their
+        // The #582 failure mode: two image-cloned Pis, same hostname, same (default) config - their
         // client ids must differ so the broker never disconnects one session for the other.
         var (a, _, provider, _) = Build(Enabled(), machineSuffix: "1a2b3c4d");
         var (b, _, _, _) = Build(Enabled(), machineSuffix: "9f8e7d6c");
@@ -383,7 +383,7 @@ public sealed class MqttFrameEmitterTests
 
         await emitter.StartAsync(default);
         // Wait for the loop's telemetry subscription so the Observed frame actually reaches the gate
-        // (not dropped for lack of a subscriber) — then confirm the disabled gate suppresses it.
+        // (not dropped for lack of a subscriber) - then confirm the disabled gate suppresses it.
         await Wait.ForAsync(() => telemetry.SubscriberCount >= 1, "the emitter subscribed to telemetry");
         telemetry.Observe("vhf", new Ax25FrameEventArgs { Frame = Ui(), Direction = FrameDirection.Received, Timestamp = T0 });
         await Task.Delay(150);   // let the loop drain the frame through the disabled gate.
@@ -412,7 +412,7 @@ public sealed class MqttFrameEmitterTests
 
         await emitter.StartAsync(default);
         // The emitter subscribes to telemetry inside ExecuteAsync (after StartAsync returns), so wait
-        // for the subscription to register before Observing — else the broadcast has no subscriber yet.
+        // for the subscription to register before Observing - else the broadcast has no subscriber yet.
         await Wait.ForAsync(() => telemetry.SubscriberCount >= 1, "the emitter subscribed to telemetry");
         telemetry.Observe("vhf", new Ax25FrameEventArgs { Frame = Ui(), Direction = FrameDirection.Received, Timestamp = T0 });
         await Wait.ForAsync(() => captured.Published.Count >= 2, "the traced frame's two topics were published");

@@ -12,7 +12,7 @@ namespace Packet.Node.Core.Rigs;
 /// marks devices the current config already claims (<see cref="ClaimedSerialDevices"/>), and
 /// suggests a hamlib model where the descriptor is model-distinctive
 /// (<see cref="RigDescriptorSuggestions"/> + <see cref="RigModelCatalogue.ResolveNumber"/>).
-/// Passive — no serial port is ever opened — but kept bounded and single-flight like
+/// Passive - no serial port is ever opened - but kept bounded and single-flight like
 /// <see cref="TaitRadioScanner"/> anyway: the work is filesystem reads plus (first scan only) the
 /// catalogue's one <c>rigctl -l</c> run, all of which should be instant, and the cap just bounds
 /// a pathological hang.
@@ -20,11 +20,11 @@ namespace Packet.Node.Core.Rigs;
 public sealed class RigScanner : IRigScanner, IDisposable
 {
     /// <summary>Colon/semicolon/comma-separated list of devices to consider INSTEAD of
-    /// enumerating <c>/dev</c> (e.g. <c>"/dev/ttyUSB0,/dev/ttyACM0"</c>) — mirrors
+    /// enumerating <c>/dev</c> (e.g. <c>"/dev/ttyUSB0,/dev/ttyACM0"</c>) - mirrors
     /// <c>PACKETNET_TAIT_PORTS</c>.</summary>
     public const string PortsOverrideEnvVar = "PACKETNET_RIG_PORTS";
 
-    /// <summary>Default hard ceiling on a scan — passive filesystem work, so mostly instant; the
+    /// <summary>Default hard ceiling on a scan - passive filesystem work, so mostly instant; the
     /// cap bounds a pathological hang (a wedged rigctl is already bounded by the runner).</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
 
@@ -68,7 +68,7 @@ public sealed class RigScanner : IRigScanner, IDisposable
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // Our own timeout tripped — return whatever we found rather than hanging or throwing.
+                // Our own timeout tripped - return whatever we found rather than hanging or throwing.
             }
             return new RigScan(devices, catalogue.Available);
         }
@@ -80,7 +80,7 @@ public sealed class RigScanner : IRigScanner, IDisposable
 
     /// <summary>
     /// Candidate CAT devices, best-first: the env-var override verbatim if set; otherwise on
-    /// Linux <c>/dev/ttyUSB*</c> (CAT bridge chips) plus <c>/dev/ttyACM*</c> (native-USB rigs —
+    /// Linux <c>/dev/ttyUSB*</c> (CAT bridge chips) plus <c>/dev/ttyACM*</c> (native-USB rigs -
     /// newer Icoms/Kenwoods enumerate as CDC-ACM); otherwise every port the OS reports.
     /// </summary>
     public static IReadOnlyList<string> EnumerateCandidateDevices()
@@ -116,7 +116,7 @@ public sealed class RigScanner : IRigScanner, IDisposable
         RigSuggestion? suggestion = null;
         if (descriptor is not null && RigDescriptorSuggestions.Suggest(descriptor) is { } match)
         {
-            // Resolve the number against the installed hamlib by name — never hardcoded, so the
+            // Resolve the number against the installed hamlib by name - never hardcoded, so the
             // suggestion survives hamlib version skew. Null when rigctl is absent (the response's
             // catalogueAvailable says so) or the installed catalogue doesn't know the model.
             suggestion = new RigSuggestion(

@@ -4,7 +4,7 @@ namespace Packet.NetRom.Wire;
 /// Per-call configuration for the NET/ROM wire-parse paths
 /// (<see cref="NodesBroadcast.TryParse(System.ReadOnlySpan{byte}, NetRomParseOptions, out NodesBroadcast?)"/>). Each pragmatic accommodation for a
 /// real-world node's divergence from the canonical NET/ROM wire format is a
-/// named, individually-toggleable flag — exactly the
+/// named, individually-toggleable flag - exactly the
 /// <see cref="Packet.Core.Ax25ParseOptions"/> pattern this project uses for
 /// AX.25.
 /// </summary>
@@ -15,7 +15,7 @@ namespace Packet.NetRom.Wire;
 /// (<c>wiki.oarc.uk/_media/packet:thenetromprotocol.pdf</c>); in practice
 /// <b>G8BPQ / LinBPQ is the de-facto reference</b>, with XRouter and the Linux
 /// kernel <c>netrom</c> family diverging. We treat them all as interop targets,
-/// <em>not</em> reference truth — the same discipline CLAUDE.md mandates for
+/// <em>not</em> reference truth - the same discipline CLAUDE.md mandates for
 /// AX.25. So the parser is faithful to the canonical appendix by default, and
 /// every divergence we accommodate is a flag here (defaulted to preserve the
 /// canonical reading), surfaced in the relevant peer preset, and documented in
@@ -27,7 +27,7 @@ namespace Packet.NetRom.Wire;
 /// the field layout (the 0xFF signature, the 6-byte alias, and the 21-byte
 /// destination entries are universal). A node that pads its final UI frame, or
 /// that runs an entry count not landing exactly on a 21-byte boundary, should
-/// not make us drop the whole frame — but accepting that is opt-in, so a strict
+/// not make us drop the whole frame - but accepting that is opt-in, so a strict
 /// caller can still reject a malformed dump.
 /// </para>
 /// </remarks>
@@ -44,7 +44,7 @@ public sealed record NetRomParseOptions
     /// UI frame of a multi-frame NODES dump, and a noisy RF link can clip the
     /// tail of a frame. Dropping every learned route because the <em>last</em>
     /// entry is short would be hostile; we keep the whole entries we did parse.
-    /// Default <c>true</c> (lenient) — this is read-only ingest of third-party
+    /// Default <c>true</c> (lenient) - this is read-only ingest of third-party
     /// broadcasts, where resilience matters more than rejecting a stray byte.
     /// </remarks>
     public bool AllowTrailingPartialEntry { get; init; } = true;
@@ -56,14 +56,14 @@ public sealed record NetRomParseOptions
     /// <remarks>
     /// A node with an empty routing table, or one announcing only its own
     /// presence, can emit a header-only broadcast. The canonical appendix frames
-    /// the entry list as "repeated up to 11 times" — i.e. zero is in range. Still
+    /// the entry list as "repeated up to 11 times" - i.e. zero is in range. Still
     /// a flag (default <c>true</c>) so a caller that wants to treat a contentless
     /// broadcast as malformed can opt out.
     /// </remarks>
     public bool AllowEmptyDestinationList { get; init; } = true;
 
     /// <summary>
-    /// Strict canonical NET/ROM — every accommodation disabled. A broadcast is
+    /// Strict canonical NET/ROM - every accommodation disabled. A broadcast is
     /// accepted only if its routing-info region is an exact multiple of 21 bytes
     /// and contains at least one destination entry.
     /// </summary>
@@ -77,7 +77,7 @@ public sealed record NetRomParseOptions
     /// Accept-everything mode (the kitchen sink). All currently-known
     /// accommodations enabled. The options-less
     /// <see cref="NodesBroadcast.TryParse(System.ReadOnlySpan{byte}, out NodesBroadcast?)"/>
-    /// overload uses this — read-only promiscuous ingest wants to be forgiving.
+    /// overload uses this - read-only promiscuous ingest wants to be forgiving.
     /// </summary>
     public static NetRomParseOptions Lenient { get; } = new();
 
@@ -91,9 +91,9 @@ public sealed record NetRomParseOptions
     /// <summary>
     /// XRouter-flavoured leniency (Paula G8PZT). Today identical to
     /// <see cref="Lenient"/>. XRouter's notable divergence is the <em>quality</em>
-    /// it advertises (its RTT→quality conversion is deliberately lower — the
+    /// it advertises (its RTT→quality conversion is deliberately lower - the
     /// "British notion of quality"), which is a routing-table concern handled in
-    /// <see cref="Packet.NetRom.Routing"/>, not a wire-parse concern — the bytes
+    /// <see cref="Packet.NetRom.Routing"/>, not a wire-parse concern - the bytes
     /// still parse identically.
     /// </summary>
     public static NetRomParseOptions Xrouter { get; } = Lenient;

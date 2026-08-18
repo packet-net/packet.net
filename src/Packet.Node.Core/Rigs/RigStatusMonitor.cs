@@ -7,16 +7,16 @@ namespace Packet.Node.Core.Rigs;
 /// <summary>
 /// A node-layer view of one port's attached rig: it owns the poll loop (frequency/mode/PTT at the
 /// idle cadence; SWR/power meters at the fast cadence while the transmitter is keyed) and
-/// projects the current state as a serialisable <see cref="RigStatus"/> on demand — the rig-side
+/// projects the current state as a serialisable <see cref="RigStatus"/> on demand - the rig-side
 /// sibling of <see cref="Radios.IRadioStatusMonitor"/>. The port supervisor creates one when a
 /// rig attaches and disposes it on teardown (before the rig, so polling stops first).
 /// </summary>
 public interface IRigStatusMonitor : IAsyncDisposable
 {
-    /// <summary>Project the rig's current status. Non-blocking — reads captured state only.</summary>
+    /// <summary>Project the rig's current status. Non-blocking - reads captured state only.</summary>
     RigStatus Snapshot();
 
-    /// <summary>Wake the poll loop for an immediate tick — called after a mutation (set
+    /// <summary>Wake the poll loop for an immediate tick - called after a mutation (set
     /// frequency/mode) so the projection and the SSE feed reflect the change now rather than at
     /// the next cadence boundary. Non-blocking; a no-op on a disposed monitor.</summary>
     void RequestRefresh();
@@ -27,7 +27,7 @@ public static class RigStatusMonitors
 {
     /// <summary>Create a status monitor for a just-connected <paramref name="rig"/> on
     /// <paramref name="portId"/>, publishing each tick's status to <paramref name="telemetry"/>
-    /// when present. Never returns null — an attached rig always has a status.</summary>
+    /// when present. Never returns null - an attached rig always has a status.</summary>
     public static IRigStatusMonitor Create(
         string portId,
         PortRigConfig config,
@@ -45,7 +45,7 @@ public static class RigStatusMonitors
 /// <summary>
 /// The poll loop behind <see cref="IRigStatusMonitor"/>. Every read is gated by the rig's
 /// advertised <see cref="RigCapabilities"/> (an unadvertised member is never called), and every
-/// read is individually fault-isolated: a failed read nulls its field and the loop carries on —
+/// read is individually fault-isolated: a failed read nulls its field and the loop carries on -
 /// a rig daemon bounce degrades the projection to <c>faulted</c> for a tick and self-heals when
 /// the backend re-dials on the next one. Snapshots read captured state only; no rig I/O ever
 /// happens on a request path.
@@ -115,7 +115,7 @@ public sealed class RigStatusMonitor : IRigStatusMonitor
                 return;
             }
 
-            // Fast while transmitting so the SWR/power meters are live during a transmission —
+            // Fast while transmitting so the SWR/power meters are live during a transmission -
             // the moment that matters for TX health; slow while idle so a quiet rig costs a
             // couple of CAT round-trips per poll interval and no more. The delay carries a
             // wake token so RequestRefresh() (post-mutation) ticks immediately.
@@ -131,7 +131,7 @@ public sealed class RigStatusMonitor : IRigStatusMonitor
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                // Woken early by RequestRefresh — fall through to the next tick now.
+                // Woken early by RequestRefresh - fall through to the next tick now.
             }
             catch (OperationCanceledException)
             {
@@ -162,7 +162,7 @@ public sealed class RigStatusMonitor : IRigStatusMonitor
             }
             catch (ObjectDisposedException)
             {
-                // The loop just moved past this delay — the next tick is imminent anyway.
+                // The loop just moved past this delay - the next tick is imminent anyway.
             }
         }
     }
@@ -189,7 +189,7 @@ public sealed class RigStatusMonitor : IRigStatusMonitor
             caps.HasFlag(RigCapabilities.PttGet), () => rig.GetPttAsync(ct), ct).ConfigureAwait(false);
         healthy |= ptt.Ok;
 
-        // Meters only while the transmitter is keyed — idle they read ~0 and each read is a CAT
+        // Meters only while the transmitter is keyed - idle they read ~0 and each read is a CAT
         // round-trip we'd rather not spend.
         RigMeters? meterSample = null;
         if (ptt.Ok && ptt.Value)
@@ -299,7 +299,7 @@ public sealed class RigStatusMonitor : IRigStatusMonitor
         }
         catch (OperationCanceledException)
         {
-            // The loop observed the cancel mid-await — done either way.
+            // The loop observed the cancel mid-await - done either way.
         }
         cts.Dispose();
     }

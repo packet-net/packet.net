@@ -17,7 +17,7 @@ public sealed record TaitRadioHealthSample
     public required bool Transmitting { get; init; }
 
     /// <summary>The radio's own sliding-average RSSI in dBm (CCTM 063, 0.1 dB resolution).
-    /// <c>null</c> while transmitting — own-RSSI then reads the muted receiver — or when the
+    /// <c>null</c> while transmitting - own-RSSI then reads the muted receiver - or when the
     /// read failed.</summary>
     public float? RssiDbm { get; init; }
 
@@ -28,11 +28,11 @@ public sealed record TaitRadioHealthSample
     /// <summary>The PA temperature sensor's raw ADC reading in millivolts (CCTM 047).</summary>
     public int? PaDetectorMillivolts { get; init; }
 
-    /// <summary>Raw forward-power detector reading in millivolts (CCTM 318) — uncalibrated
+    /// <summary>Raw forward-power detector reading in millivolts (CCTM 318) - uncalibrated
     /// detector-diode DC voltage, ∝ √P. While idle this is the detector's zero-power offset.</summary>
     public int? ForwardPowerMillivolts { get; init; }
 
-    /// <summary>Raw reverse-power detector reading in millivolts (CCTM 319) — uncalibrated
+    /// <summary>Raw reverse-power detector reading in millivolts (CCTM 319) - uncalibrated
     /// detector-diode DC voltage. While idle this is the detector's zero-power offset.</summary>
     public int? ReversePowerMillivolts { get; init; }
 
@@ -46,20 +46,20 @@ public sealed record TaitRadioHealthSample
     /// idle sample.</summary>
     public int? ReverseIdleOffsetMillivolts { get; init; }
 
-    /// <summary>Forward detector reading minus the idle offset, clamped at 0 — populated only on
+    /// <summary>Forward detector reading minus the idle offset, clamped at 0 - populated only on
     /// transmit samples. A per-station trend figure, not a power measurement.</summary>
     public int? TxForwardOverIdleMillivolts { get; init; }
 
-    /// <summary>Reverse detector reading minus the idle offset, clamped at 0 — populated only on
+    /// <summary>Reverse detector reading minus the idle offset, clamped at 0 - populated only on
     /// transmit samples. A per-station trend figure, not a power measurement.</summary>
     public int? TxReverseOverIdleMillivolts { get; init; }
 
     /// <summary>
-    /// Offset-corrected reverse/forward detector ratio — populated only on transmit samples
+    /// Offset-corrected reverse/forward detector ratio - populated only on transmit samples
     /// whose corrected forward reading clears
     /// <see cref="TaitRadioHealthMonitorOptions.MinimumForwardForRatioMillivolts"/>.
     /// <b>This is a trend, not VSWR</b>: the detectors are uncalibrated, √P-scaled, and only
-    /// service-specified at High power — alert when this figure <i>changes</i> for a station,
+    /// service-specified at High power - alert when this figure <i>changes</i> for a station,
     /// never on its absolute value. See <see cref="TaitRadioHealthMonitor"/> remarks.
     /// </summary>
     public double? TxReverseForwardRatio { get; init; }
@@ -87,7 +87,7 @@ public readonly record struct TaitRadioHealthStat(double Min, double Median, dou
 
 /// <summary>
 /// Rolling summary over <see cref="TaitRadioHealthMonitor"/>'s sample window. Consumers should
-/// trend these figures and alert on <i>change</i> — none of the transmit-side detector stats are
+/// trend these figures and alert on <i>change</i> - none of the transmit-side detector stats are
 /// calibrated measurements.
 /// </summary>
 /// <param name="SampleCount">Samples currently in the window.</param>
@@ -101,7 +101,7 @@ public readonly record struct TaitRadioHealthStat(double Min, double Median, dou
 /// <param name="TxReverseOverIdleMillivolts">Offset-corrected reverse detector stats over the
 /// transmit samples (CCTM 319).</param>
 /// <param name="TxReverseForwardRatio">Offset-corrected reverse/forward ratio stats over the
-/// transmit samples — a trend, never VSWR.</param>
+/// transmit samples - a trend, never VSWR.</param>
 public sealed record TaitRadioHealthSummary(
     int SampleCount,
     int TransmitSampleCount,
@@ -122,7 +122,7 @@ public sealed record TaitRadioHealthMonitorOptions
     public TimeSpan SampleInterval { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>How many samples the rolling summary window holds (oldest evicted first).
-    /// Default 90 — 15 minutes at the default interval.</summary>
+    /// Default 90 - 15 minutes at the default interval.</summary>
     public int SummaryWindowSize { get; init; } = 90;
 
     /// <summary>How many recent idle (not-transmitting) detector readings feed the
@@ -138,6 +138,6 @@ public sealed record TaitRadioHealthMonitorOptions
     public TimeSpan KeyedSampleDelay { get; init; } = TimeSpan.FromMilliseconds(150);
 
     /// <summary>Minimum offset-corrected forward reading (mV) before a reverse/forward ratio is
-    /// computed — below this the ratio is all detector-offset noise. Default 50 mV.</summary>
+    /// computed - below this the ratio is all detector-offset noise. Default 50 mV.</summary>
     public int MinimumForwardForRatioMillivolts { get; init; } = 50;
 }

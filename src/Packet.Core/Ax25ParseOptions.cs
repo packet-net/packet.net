@@ -5,7 +5,7 @@ namespace Packet.Core;
 /// (<see cref="Ax25Address.Read(System.ReadOnlySpan{byte})"/>,
 /// <c>Ax25Frame.TryParse</c>). Each pragmatic accommodation beyond
 /// strict AX.25 v2.2 compliance is a named, individually-toggleable
-/// flag — see <c>docs/strict-vs-pragmatic-audit.md</c> for the
+/// flag - see <c>docs/strict-vs-pragmatic-audit.md</c> for the
 /// inventory.
 /// </summary>
 /// <remarks>
@@ -33,7 +33,7 @@ public sealed record Ax25ParseOptions
     /// </summary>
     /// <remarks>
     /// Strict §3.12: "The call sign is made up of upper-case alpha and
-    /// numeric ASCII characters only" — singular *characters*, plural,
+    /// numeric ASCII characters only" - singular *characters*, plural,
     /// implying ≥ 1. §6.1.1 acknowledges non-callsign destinations
     /// exist but classes them as "a subject for further study".
     /// Driver: BPQ's <c>&gt;IS</c> ID beacons + PD4R-12 QRV broadcasts.
@@ -69,7 +69,7 @@ public sealed record Ax25ParseOptions
     public bool AllowCommandFrameAsResponse { get; init; } = true;
 
     /// <summary>
-    /// Strict AX.25 v2.2 — all pragmatic accommodations disabled.
+    /// Strict AX.25 v2.2 - all pragmatic accommodations disabled.
     /// </summary>
     public static Ax25ParseOptions Strict { get; } = new()
     {
@@ -95,7 +95,7 @@ public sealed record Ax25ParseOptions
 
     /// <summary>
     /// Xrouter-flavoured leniency. Today identical to <see cref="Strict"/>
-    /// — no Xrouter-specific quirks observed yet. Will be populated as
+    /// - no Xrouter-specific quirks observed yet. Will be populated as
     /// the interop test stack surfaces specific accommodations.
     /// </summary>
     public static Ax25ParseOptions Xrouter { get; } = Strict;

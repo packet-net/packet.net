@@ -17,7 +17,7 @@ public enum NinoTncFlashFailure
 
     /// <summary>The hex image contains none of the known first-bootloader
     /// lines, so the target chip variant cannot be determined. Flashing an
-    /// unclassifiable image is refused — the wrong variant bricks the modem.</summary>
+    /// unclassifiable image is refused - the wrong variant bricks the modem.</summary>
     HexTargetUnknown,
 
     /// <summary>The serial receive path never went quiet: the TNC kept
@@ -57,7 +57,7 @@ public enum NinoTncFlashFailure
     InvalidCharacterRejected,
 
     /// <summary>The bootloader stopped answering mid-transfer. The modem is
-    /// most likely stranded in the bootloader — re-running the flash is safe
+    /// most likely stranded in the bootloader - re-running the flash is safe
     /// (the stranded-bootloader probe picks it up); if it keeps happening the
     /// dsPIC may need an ICSP reflash.</summary>
     NoResponse,
@@ -68,7 +68,7 @@ public enum NinoTncFlashFailure
 
     /// <summary>Every image line was accepted (<c>'K'</c>) but the bootloader
     /// never signalled completion (<c>'Z'</c>). Should be unreachable for a
-    /// well-formed image — the end-of-file record triggers <c>'Z'</c>.</summary>
+    /// well-formed image - the end-of-file record triggers <c>'Z'</c>.</summary>
     ImageEndedWithoutCompletion,
 }
 
@@ -79,7 +79,7 @@ public enum NinoTncFlashFailure
 /// <remarks>
 /// The most important recovery fact: failures at or after bootloader entry
 /// leave the modem <b>stranded in the bootloader</b> (dark LEDs, KISS
-/// silent). That state is recoverable without hardware tools — re-run
+/// silent). That state is recoverable without hardware tools - re-run
 /// <see cref="BootloaderNinoTncFirmwareFlasher.FlashAsync"/>, whose
 /// stranded-bootloader probe (<c>'R'</c> → <c>'K'</c>) skips straight to the
 /// transfer. Only <see cref="NinoTncFlashFailure.FlashRejected"/> and repeated

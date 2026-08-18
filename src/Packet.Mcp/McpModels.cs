@@ -78,7 +78,7 @@ public sealed record McpDestination(
 public sealed record McpRoute(string Neighbour, string PortId, int Quality, int Obsolescence);
 
 /// <summary>
-/// One port's rig-control (CAT) attachment (the <c>get_rig_status</c> projection) — mirrors the
+/// One port's rig-control (CAT) attachment (the <c>get_rig_status</c> projection) - mirrors the
 /// node's <c>RigStatus</c> read model with the TX-side meter sample flattened. Meters are polled
 /// fast only while <see cref="Transmitting"/>; an idle rig reads ~0 on all of them, so they are
 /// meaningful only during a transmission.
@@ -196,7 +196,7 @@ public sealed record McpCaller(string Actor, string Transport, IReadOnlySet<stri
     /// <summary>
     /// The local-user identity for the stdio transport (no token). A process that
     /// can exec <c>pdn mcp</c> and reach loopback is OS-trusted, so it holds every
-    /// scope. No client IP — it's a local process.
+    /// scope. No client IP - it's a local process.
     /// </summary>
     public static McpCaller LocalStdio { get; } =
         new("local-stdio", "stdio", new HashSet<string>(StringComparer.Ordinal)

@@ -5,8 +5,8 @@ namespace Packet.Node.Tests.HeadEnd;
 
 /// <summary>
 /// The pure config transform behind the adopt endpoint (<see cref="HeadEndAdoption.BuildCandidate"/>):
-/// it declares the head-end (if new) and creates ONE matched port — a <c>nino-tnc-tcp</c> transport +
-/// a head-end-bound <c>tait-ccdi</c> radio on the same instance — and the result passes the real
+/// it declares the head-end (if new) and creates ONE matched port - a <c>nino-tnc-tcp</c> transport +
+/// a head-end-bound <c>tait-ccdi</c> radio on the same instance - and the result passes the real
 /// <see cref="NodeConfigValidator"/> (the co-location pairing rule + declared-reference rule).
 /// </summary>
 [Trait("Category", "Node")]

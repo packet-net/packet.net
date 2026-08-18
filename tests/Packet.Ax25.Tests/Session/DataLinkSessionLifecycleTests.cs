@@ -10,8 +10,8 @@ namespace Packet.Ax25.Tests.Session;
 /// Multi-state lifecycle integration tests against the real
 /// Disconnected / AwaitingConnection / Connected / AwaitingRelease
 /// transition tables, exercised together. Unlike the per-state
-/// end-to-end suites these drive the session across boundaries —
-/// connect → data round-trip → disconnect — and verify the byte-level
+/// end-to-end suites these drive the session across boundaries -
+/// connect → data round-trip → disconnect - and verify the byte-level
 /// frame sequence and DL-* signal sequence match the figc4.1 / 4.2 /
 /// 4.4 transcriptions.
 /// </summary>
@@ -56,7 +56,7 @@ public class DataLinkSessionLifecycleTests
         var iFrames = new List<IFrameSpec>();
         var upward = new List<DataLinkSignal>();
 
-        // Real ActionDispatcher with the default subroutine registry —
+        // Real ActionDispatcher with the default subroutine registry -
         // the Ax25Session constructor will Wire() the registry against
         // this dispatcher + guards, so figc4.7's subroutine bodies
         // execute for real (not via recorder stubs).
@@ -72,7 +72,7 @@ public class DataLinkSessionLifecycleTests
             sendInternal: _ => { },
             subroutines: registry);
 
-        // Frame-aware bindings — pass the session's CurrentTrigger so
+        // Frame-aware bindings - pass the session's CurrentTrigger so
         // P_eq_1 / F_eq_1 / command / N_s_eq_V_r etc. resolve against
         // the actual triggering frame at guard-evaluation time.
         Ax25Session? sessionRef = null;
@@ -166,7 +166,7 @@ public class DataLinkSessionLifecycleTests
         // DL-* signals upward at each step.
         var r = NewRig();
 
-        // Step 1 — Layer 3 requests a connect.
+        // Step 1 - Layer 3 requests a connect.
         r.Session.PostEvent(new DlConnectRequest());
 
         r.Session.CurrentState.Should().Be("AwaitingConnection");
@@ -179,7 +179,7 @@ public class DataLinkSessionLifecycleTests
         r.Ctx.RC.Should().Be(1);
         r.Upward.Should().BeEmpty("no DL-* indication until peer accepts");
 
-        // Step 2 — peer ACKs the SABM with UA(F=1).
+        // Step 2 - peer ACKs the SABM with UA(F=1).
         r.UFrames.Clear();
         r.Session.PostEvent(new UaReceived(UFrameReceived(UaFFinal1)));
 
@@ -191,7 +191,7 @@ public class DataLinkSessionLifecycleTests
         r.Ctx.VR.Should().Be((byte)0);
         r.Ctx.VA.Should().Be((byte)0);
 
-        // Step 3 — Layer 3 requests disconnect.
+        // Step 3 - Layer 3 requests disconnect.
         r.Upward.Clear();
         r.Session.PostEvent(new DlDisconnectRequest());
 
@@ -202,7 +202,7 @@ public class DataLinkSessionLifecycleTests
         r.Scheduler.IsRunning("T1").Should().BeTrue("T1 armed waiting for UA");
         r.Scheduler.IsRunning("T3").Should().BeFalse("T3 stopped on outbound disconnect");
 
-        // Step 4 — peer ACKs the DISC.
+        // Step 4 - peer ACKs the DISC.
         r.UFrames.Clear();
         r.Session.PostEvent(new UaReceived(UFrameReceived(UaFFinal1)));
 
@@ -236,7 +236,7 @@ public class DataLinkSessionLifecycleTests
         r.IFrames[0].Info.ToArray().Should().Equal(payload);
         r.Ctx.VS.Should().Be((byte)1, "V(s) advanced past the sent I-frame");
 
-        // Peer ACKs with RR(N(r)=1, F=0) — N(r)=1 acknowledges our seq 0.
+        // Peer ACKs with RR(N(r)=1, F=0) - N(r)=1 acknowledges our seq 0.
         r.Session.PostEvent(new RrReceived(SFrameReceived(RrNr1F0)));
 
         r.Ctx.VA.Should().Be((byte)1, "V(a) advanced past the acked I-frame");
@@ -275,13 +275,13 @@ public class DataLinkSessionLifecycleTests
         // With IsExtended = true at connect time, Establish_Data_Link's mod_128
         // path runs (rather than the mod_8 SABM path), emitting SABME. The figc4.2
         // figure routes the Disconnected DL-CONNECT column UNCONDITIONALLY to
-        // AwaitingConnection (no version branch — a confirmed figure defect; see
+        // AwaitingConnection (no version branch - a confirmed figure defect; see
         // Ax25SessionQuirks.Ax25Spec44Mod128ConnectRoutesToV22). The Ax25Spec44
         // quirk (default on) corrects that: a v2.2-preferred connect (IsExtended)
         // is redirected to AwaitingV22Connection (figc4.6), which resends SABME on
         // retry and handles the §975 FRMR/DM fallbacks instead of figc4.2's mod-8
         // retry (which would downgrade to SABM). The SABME is still the emitted
-        // frame either way — only the target state changes.
+        // frame either way - only the target state changes.
         var r = NewRig(isExtended: true);
 
         r.Session.PostEvent(new DlConnectRequest());
@@ -298,7 +298,7 @@ public class DataLinkSessionLifecycleTests
     {
         // Pins the faithful (uncorrected) figc4.2 behaviour: with the Ax25Spec44
         // quirk off, a mod-128 connect emits SABME but parks in the mod-8
-        // AwaitingConnection state exactly as the figure draws it — the defect the
+        // AwaitingConnection state exactly as the figure draws it - the defect the
         // default quirk corrects.
         var r = NewRig(isExtended: true, quirks: Ax25SessionQuirks.StrictlyFaithful);
 

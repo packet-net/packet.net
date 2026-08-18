@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Radios;
 /// <summary>
 /// The local bus scan's row mapping (<see cref="TaitRadioScanner.ToResult"/>): it must carry the
 /// radio's band split (<see cref="TaitRadioIdentity.Band"/>) into <c>BandCode</c>/<c>AmateurBand</c>
-/// exactly like the REMOTE head-end scan's device rows (#586 — previously dropped, so a local-attach
+/// exactly like the REMOTE head-end scan's device rows (#586 - previously dropped, so a local-attach
 /// port could never be band-named). The discovery itself needs real serial hardware; the mapping is
 /// pure over a synthetic identity.
 /// </summary>
@@ -51,7 +51,7 @@ public sealed class TaitRadioScannerTests
     [Fact]
     public void Scan_row_leaves_amateur_band_null_for_a_split_with_no_uk_allocation()
     {
-        // C0 (174–225 MHz) is a known split with no amateur band — the code surfaces, the band doesn't.
+        // C0 (174-225 MHz) is a known split with no amateur band - the code surfaces, the band doesn't.
         var found = new TaitDiscoveredRadio("/dev/ttyUSB2", 28800, Identity("TMAB12-C000_0201"));
 
         var row = TaitRadioScanner.ToResult(found, byIdPath: null);

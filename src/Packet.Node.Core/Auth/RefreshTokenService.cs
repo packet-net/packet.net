@@ -15,7 +15,7 @@ namespace Packet.Node.Core.Auth;
 /// <para>
 /// <b>Opaque token, hash at rest.</b> The token handed to the client is a 256-bit
 /// CSPRNG value (<see cref="RandomNumberGenerator.GetBytes(int)"/>, 32 bytes,
-/// base64url) — unguessable and never derived from anything. Only its SHA-256 hash
+/// base64url) - unguessable and never derived from anything. Only its SHA-256 hash
 /// is stored, so a database read never yields a usable token, exactly like a
 /// password is never stored in clear.
 /// </para>
@@ -27,16 +27,16 @@ namespace Packet.Node.Core.Auth;
 /// </para>
 /// <para>
 /// <b>Reuse detection (theft response) + leeway.</b> A token that is found but
-/// <em>already revoked</em> means someone replayed a consumed token — either the
+/// <em>already revoked</em> means someone replayed a consumed token - either the
 /// legitimate client racing itself (two browser tabs, a retried silent refresh, a
-/// backgrounded tab waking — all present the same just-rotated token within a
+/// backgrounded tab waking - all present the same just-rotated token within a
 /// moment), or an attacker who stole a token the client has since rotated past.
 /// Burning the family unconditionally turns the routine self-race into a logout on
 /// every access-token expiry. So a replay <em>within the reuse-leeway window</em> of
 /// the token's rotation, <em>while its family is still alive</em>, is taken as the
-/// benign self-race: a fresh successor is minted, no burn. Outside that window — or
+/// benign self-race: a fresh successor is minted, no burn. Outside that window - or
 /// against a logged-out / already-burned family (<see cref="IRefreshTokenStore.HasLiveToken"/>
-/// is false) — a replay is the theft response: <see cref="RevokeFamily"/> the entire
+/// is false) - a replay is the theft response: <see cref="RevokeFamily"/> the entire
 /// family and reject. This keeps the stolen-token window bounded (leeway + a single
 /// rotation) without logging the real user out for racing themselves.
 /// </para>
@@ -67,7 +67,7 @@ public sealed class RefreshTokenService
     /// <param name="lifetime">How long a fresh refresh token lives (login instant +
     /// this). Must be positive.</param>
     /// <param name="clock">The injected clock (issue/expiry + the expiry check ride
-    /// this — no wall-clock).</param>
+    /// this - no wall-clock).</param>
     /// <param name="reuseLeeway">The window after a token is rotation-consumed within
     /// which replaying it is treated as the legitimate client racing itself (two tabs,
     /// a retried refresh) rather than theft: the family is NOT burned and a fresh
@@ -95,7 +95,7 @@ public sealed class RefreshTokenService
 
     /// <summary>
     /// Issue a brand-new refresh token for <paramref name="username"/> in a fresh
-    /// random family (the start of a rotation chain — call this on every login).
+    /// random family (the start of a rotation chain - call this on every login).
     /// Returns the opaque token the client must keep, or null if the store could not
     /// persist it (the caller then declines to hand out a refresh token, but the
     /// login itself can still succeed with just the access token).
@@ -228,7 +228,7 @@ public sealed class RefreshTokenService
 
     /// <summary>
     /// Revoke the family of a presented token (logout). Best-effort: an unknown
-    /// token is a no-op success (logout is idempotent — there is nothing to leak by
+    /// token is a no-op success (logout is idempotent - there is nothing to leak by
     /// confirming it). Returns the username + family acted on when known, for the
     /// audit log.
     /// </summary>
@@ -248,7 +248,7 @@ public sealed class RefreshTokenService
     }
 
     /// <summary>Revoke a family directly (used when a refresh finds the family's user
-    /// has been deleted — we burn the family rather than mint for a non-existent
+    /// has been deleted - we burn the family rather than mint for a non-existent
     /// user). Best-effort.</summary>
     public void LogoutFamily(string family)
     {
@@ -286,7 +286,7 @@ public sealed class RefreshTokenService
         Base64Url(RandomNumberGenerator.GetBytes(TokenBytes));
 
     /// <summary>
-    /// SHA-256 of the opaque token, base64url-encoded — the value stored + looked up.
+    /// SHA-256 of the opaque token, base64url-encoded - the value stored + looked up.
     /// A plain hash (no salt) is correct here: the input is already 256 bits of
     /// CSPRNG entropy, so there is nothing to brute-force and a per-token salt would
     /// only break the by-hash lookup. (Contrast passwords, which are low-entropy and
@@ -317,7 +317,7 @@ public enum RefreshOutcome
     /// <summary>The token had expired. 401.</summary>
     Expired,
 
-    /// <summary>The token was found already-revoked — a replay of a consumed token.
+    /// <summary>The token was found already-revoked - a replay of a consumed token.
     /// The whole family was revoked as the theft response. 401.</summary>
     ReuseDetected,
 }

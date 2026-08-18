@@ -19,8 +19,8 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <summary>
 /// <b>Tier 2 (frame-perfect, modem-less) NET/ROM NODES interop vs real LinBPQ
 /// over AXUDP.</b> The AXUDP analog of <see cref="NetRomNodesIngestViaNetsim"/>:
-/// it asserts the same protocol behaviour — pdn ingests LinBPQ's on-the-wire
-/// NODES broadcast and learns it as a neighbour — but over a BPQAXIP/UDP tunnel
+/// it asserts the same protocol behaviour - pdn ingests LinBPQ's on-the-wire
+/// NODES broadcast and learns it as a neighbour - but over a BPQAXIP/UDP tunnel
 /// (<see cref="AxudpFrameTransport"/>) instead of net-sim's software-AFSK channel, so
 /// it is deterministic and load-insensitive (no audio decode to glitch under CPU
 /// contention). See <c>docs/plan.md</c> §7 for the three-tier layering.
@@ -29,17 +29,17 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <para>
 /// <b>Transport.</b> pdn runs a real <see cref="Ax25Listener"/> over an
 /// <see cref="AxudpFrameTransport"/> bound to a fixed host UDP port, pointed at BPQ's
-/// BPQAXIP/UDP listener (127.0.0.1:8093) — the exact <c>IAx25Transport</c> seam a
+/// BPQAXIP/UDP listener (127.0.0.1:8093) - the exact <c>IAx25Transport</c> seam a
 /// deployed pdn AXUDP port uses. A <see cref="NetRomService"/> taps the listener's
 /// <c>FrameTraced</c> stream (read-only; no engine change), parses the NODES UI
 /// frame, and builds the routing table.
 /// </para>
 /// <para>
-/// <b>How BPQ broadcasts NODES over a BPQAXIP/UDP port (the headline finding —
+/// <b>How BPQ broadcasts NODES over a BPQAXIP/UDP port (the headline finding -
 /// source-verified in <c>bpqaxip.c</c>, then proven on the wire).</b> Unlike a
 /// broadcast RF/KISS port, BPQAXIP is point-to-point: its TX path
 /// (<c>bpqaxip.c</c> <c>AXIP_TX</c> → <c>SendFrame</c>) sends a frame only to ARP/MAP
-/// entries whose callsign matches the frame's <em>destination</em> — and a NET/ROM
+/// entries whose callsign matches the frame's <em>destination</em> - and a NET/ROM
 /// NODES UI frame is addressed to the pseudo-destination <c>NODES</c>, which matches
 /// no per-station MAP. So a stock AXIP port silently drops its own NODES broadcast
 /// (we verified BPQ sends pdn <em>zero</em> NODES datagrams with a stock MAP). BPQAXIP
@@ -49,7 +49,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// The fixture therefore carries <c>BROADCAST NODES</c> + <c>MAP PNL4AX-1 … B</c>
 /// on the AXIP port (see <c>docker/linbpq/bpq32.cfg</c>); with those, BPQ emits its
 /// <c>PN0TST &gt; NODES</c> UI frame to pdn over UDP exactly as it does over RF.
-/// (This is the AXUDP counterpart of the <c>QUALITY=192</c> the net-sim port needs —
+/// (This is the AXUDP counterpart of the <c>QUALITY=192</c> the net-sim port needs -
 /// a per-port NODES-advertising enablement, not a protocol change.)
 /// </para>
 /// <para>
@@ -93,7 +93,7 @@ public class NetRomNodesIngestViaAxudp
 
     private const string BpqPasswordText = "WONTLISTEN";   // docker/linbpq/bpq32.cfg PASSWORD=
 
-    // A reliable UDP tunnel — no channel loss/half-duplex — so the budget is tight.
+    // A reliable UDP tunnel - no channel loss/half-duplex - so the budget is tight.
     private static readonly TimeSpan HearBpqBudget = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan ResendEvery = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan BroadcastEvery = TimeSpan.FromSeconds(2);
@@ -111,7 +111,7 @@ public class NetRomNodesIngestViaAxudp
         using var cts = new CancellationTokenSource(HearBpqBudget + TimeSpan.FromSeconds(45));
 
         await using var modem = new AxudpFrameTransport(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
-        // A real listener over the AXUDP tunnel + the read-only NET/ROM service tap —
+        // A real listener over the AXUDP tunnel + the read-only NET/ROM service tap -
         // the exact production pipeline, point-to-point over UDP rather than the RF sim.
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
         await using var netRom = new NetRomService(new NetRomConfig

@@ -4,13 +4,13 @@ namespace Packet.Node.Core.Auth;
 /// One enrolled WebAuthn / passkey credential as persisted in <c>pdn.db</c>. This is
 /// the public-key side of a passkey: the authenticator keeps the private key (in
 /// secure hardware / the platform keystore), and the node stores only what it needs
-/// to <em>verify</em> a future assertion — the credential id, the COSE public key,
+/// to <em>verify</em> a future assertion - the credential id, the COSE public key,
 /// the running signature counter, and a little metadata.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>No secret here.</b> Unlike a password hash or a refresh-token hash, a stored
-/// public key is not sensitive on its own — it can only verify, never produce, a
+/// public key is not sensitive on its own - it can only verify, never produce, a
 /// signature. It is still scoped to a single <see cref="Username"/> so an assertion
 /// can only authenticate the user who enrolled it.
 /// </para>
@@ -20,16 +20,16 @@ namespace Packet.Node.Core.Auth;
 /// that fails to advance (a new value ≤ the stored one, when the authenticator uses
 /// counters at all) is the signature of a cloned credential, and the assert path
 /// rejects it. Some authenticators (notably platform/passkey ones) always report
-/// <c>0</c> — in that case the check is skipped (0 → 0 is not a regression).
+/// <c>0</c> - in that case the check is skipped (0 → 0 is not a regression).
 /// </para>
 /// </remarks>
 /// <param name="CredentialId">The raw credential id bytes (the authenticator's
-/// handle for this key) — the primary key, and the value <c>excludeCredentials</c> /
+/// handle for this key) - the primary key, and the value <c>excludeCredentials</c> /
 /// <c>allowCredentials</c> carry.</param>
 /// <param name="Username">The user who enrolled this passkey; an assertion against it
 /// authenticates exactly this user.</param>
 /// <param name="PublicKey">The COSE-encoded public key used to verify assertions.</param>
-/// <param name="SignCount">The last-seen signature counter (clone detection — see remarks).</param>
+/// <param name="SignCount">The last-seen signature counter (clone detection - see remarks).</param>
 /// <param name="CredType">The credential type string (always <c>public-key</c> today;
 /// stored verbatim for forward-compatibility).</param>
 /// <param name="Transports">A comma-joined list of the authenticator transports the
@@ -52,7 +52,7 @@ public sealed record WebAuthnCredentialRecord(
     DateTimeOffset? LastUsedUtc);
 
 /// <summary>
-/// A passkey credential projected for the API — the public key is deliberately
+/// A passkey credential projected for the API - the public key is deliberately
 /// absent (the client never needs it, and it keeps the surface minimal). This is the
 /// only shape <c>GET /auth/webauthn/credentials</c> returns.
 /// </summary>

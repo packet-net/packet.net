@@ -5,11 +5,11 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Core.Discovery;
 
 /// <summary>
-/// The mDNS / DNS-SD advertisement <em>plan</em> for the node — what would be published
+/// The mDNS / DNS-SD advertisement <em>plan</em> for the node - what would be published
 /// for <c>_pdn._tcp</c>. Pure (no sockets, no process): <see cref="MdnsAdvert.Plan"/>
 /// maps a <see cref="NodeConfig"/> to either an <see cref="AdvertPlan"/> or null (with a
-/// reason) so the decision logic — enabled, the loopback-bind guard, the callsign-as-
-/// identity TXT, the instance-name fallback — is unit-testable on its own. The hosted
+/// reason) so the decision logic - enabled, the loopback-bind guard, the callsign-as-
+/// identity TXT, the instance-name fallback - is unit-testable on its own. The hosted
 /// service consumes the plan and supervises the actual <c>avahi-publish</c> child.
 /// </summary>
 public sealed record AdvertPlan(string Instance, int Port, IReadOnlyList<string> Txt)
@@ -22,7 +22,7 @@ public sealed record AdvertPlan(string Instance, int Port, IReadOnlyList<string>
     public IReadOnlyList<string> ToAvahiArgs()
     {
         // -f (--no-fail): block + auto-attach if avahi-daemon isn't up yet (it commonly starts
-        //   concurrently with the node) or restarts, instead of exiting — the behaviour a long-
+        //   concurrently with the node) or restarts, instead of exiting - the behaviour a long-
         //   lived supervised publisher wants.
         // -- : end option parsing, so a configured instance name beginning with '-' can never be
         //   misread as a flag (belt to the validator's braces).
@@ -87,7 +87,7 @@ public static class MdnsAdvert
         return new AdvertPlan(instance, port, txt);
     }
 
-    /// <summary>A loopback bind means the advertised host address won't accept the connection —
+    /// <summary>A loopback bind means the advertised host address won't accept the connection -
     /// treat it as "don't advertise". <c>0.0.0.0</c> / <c>::</c> (all interfaces) and any specific
     /// LAN address are fine. An unparseable host mirrors Kestrel's bind fallback (loopback), so it
     /// reads as dormant too.</summary>

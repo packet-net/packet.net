@@ -8,7 +8,7 @@ namespace Packet.Mcp.Decoding;
 
 /// <summary>
 /// The pure engine behind the <c>decode_frame</c> tool: hex string → a
-/// <see cref="DecodedFrame"/>. Stateless, node-independent — it only consumes
+/// <see cref="DecodedFrame"/>. Stateless, node-independent - it only consumes
 /// the parser libraries. KISS-unwraps when the input is KISS-framed, then
 /// decodes the AX.25 body. See docs/mcp-design.md.
 /// </summary>
@@ -104,13 +104,13 @@ public static class FrameDecoder
 
         if ((c & 0x01) == 0)
         {
-            // I frame — carries both N(S) and N(R).
+            // I frame - carries both N(S) and N(R).
             return ("I", "I", true, true);
         }
 
         if ((c & 0x03) == 0x01)
         {
-            // S frame — carries N(R) only. Subtype in bits 3-2 (low nibble).
+            // S frame - carries N(R) only. Subtype in bits 3-2 (low nibble).
             string s = (c & 0x0F) switch
             {
                 0x01 => "RR",
@@ -122,7 +122,7 @@ public static class FrameDecoder
             return ("S", s, true, false);
         }
 
-        // U frame — 1 octet in both moduli; type in the control byte with the
+        // U frame - 1 octet in both moduli; type in the control byte with the
         // P/F bit (0x10) masked out.
         string u = (c & 0xEF) switch
         {

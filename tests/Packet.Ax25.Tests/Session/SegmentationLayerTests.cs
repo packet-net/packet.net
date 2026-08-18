@@ -6,7 +6,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Unit tests for the <see cref="SegmentationLayer"/> shim — the AX.25 v2.2
+/// Unit tests for the <see cref="SegmentationLayer"/> shim - the AX.25 v2.2
 /// §2.4 / §6.6 segmentation-reassembly boundary process. Cover the send-side
 /// decision (segment / pass-through / reject), the receive-side reassembly,
 /// the PID handling, and the gating on the negotiated segmenter flag.
@@ -39,7 +39,7 @@ public class SegmentationLayerTests
     public void Send_passes_an_exactly_N1_payload_through_unchanged()
     {
         var seg = new SegmentationLayer(Ctx(n1: 256, segmenterEnabled: true));
-        var payload = new byte[256];   // exactly N1 — fits one info field, no segment byte
+        var payload = new byte[256];   // exactly N1 - fits one info field, no segment byte
 
         var requests = seg.BuildSendRequests(payload);
 
@@ -142,7 +142,7 @@ public class SegmentationLayerTests
         // Default (SegmentFirstCarriesL3Pid on): the first segment carries the
         // original L3 PID after the F/X byte (Dire Wolf's format), so the
         // reassembler recovers it and delivers the reassembled payload with that
-        // ORIGINAL PID — not PidNoLayer3. This both interoperates with Dire Wolf
+        // ORIGINAL PID - not PidNoLayer3. This both interoperates with Dire Wolf
         // and fixes the figure-literal PID-loss limitation. Pin that contract.
         var n1 = 16;
         var send = new SegmentationLayer(Ctx(n1, segmenterEnabled: true));   // default quirks
@@ -165,7 +165,7 @@ public class SegmentationLayerTests
     [Fact]
     public void StrictlyFaithful_uses_the_figure_literal_format_and_delivers_PidNoLayer3()
     {
-        // StrictlyFaithful (SegmentFirstCarriesL3Pid off): Figure 6.2 literally —
+        // StrictlyFaithful (SegmentFirstCarriesL3Pid off): Figure 6.2 literally -
         // no inner-PID octet, so the original L3 PID cannot be recovered and the
         // reassembled payload is delivered as PidNoLayer3. The first segment's
         // info field is [F/X][data] (no inner-PID octet between them). Pin the

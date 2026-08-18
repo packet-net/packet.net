@@ -11,8 +11,8 @@ namespace Packet.Node.Core.Transports;
 /// emits into a <b>serialised, one-at-a-time</b> stream: each frame is sent awaiting
 /// TX-completion (<see cref="ITxCompletionTransport.SendAwaitingCompletionAsync"/>) and the
 /// next frame is not released until the prior frame's TX-completion arrives (or
-/// a short timeout elapses). On the software-RF lab channel (net-sim) — and on a
-/// real TNC that honours the G8BPQ ACKMODE extension — that completion means "the frame
+/// a short timeout elapses). On the software-RF lab channel (net-sim) - and on a
+/// real TNC that honours the G8BPQ ACKMODE extension - that completion means "the frame
 /// has cleared the air", so awaiting it before pulling the next frame keeps the
 /// node from piling multiple frames onto the shared medium at once.
 /// </summary>
@@ -26,13 +26,13 @@ namespace Packet.Node.Core.Transports;
 /// <para>
 /// <b>The send contract is preserved.</b> <see cref="SendFrameAsync"/> snapshots the
 /// caller's buffer (the listener sink reuses its frame buffer) and returns
-/// immediately — it never blocks the caller, exactly like the plain send the SDL
+/// immediately - it never blocks the caller, exactly like the plain send the SDL
 /// frame sinks rely on. The pacing happens entirely on a single background pump
 /// that drains the queue and awaits each ACKMODE send in turn.
 /// </para>
 /// <para>
 /// <b>One frame can never wedge the pump.</b> A timeout (or any other send fault)
-/// on one frame is logged and the pump moves on to the next — a stuck or
+/// on one frame is logged and the pump moves on to the next - a stuck or
 /// unacknowledged frame degrades to fire-and-forget for that one frame rather than
 /// stalling the whole port. AX.25 T1 still retransmits anything genuinely lost.
 /// </para>
@@ -47,7 +47,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
     /// <summary>One queued transmission. <see cref="Receipt"/> is null for the
     /// fire-and-forget path; for an explicit <see cref="SendAwaitingCompletionAsync"/>
     /// the pump resolves it with the frame's TX-completion (or faults it)
-    /// once this frame's turn comes — so explicit completion-sends share the same
+    /// once this frame's turn comes - so explicit completion-sends share the same
     /// serialised order as everything else on the port.</summary>
     private readonly record struct TxJob(
         byte[] Frame,
@@ -64,7 +64,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
     /// not stall the port for long. Tunable via the constructor.</summary>
     public static readonly TimeSpan DefaultPacingTimeout = TimeSpan.FromSeconds(5);
 
-    /// <param name="inner">The modem this decorator paces and owns — disposed when this
+    /// <param name="inner">The modem this decorator paces and owns - disposed when this
     /// decorator is disposed (the standard inner-ownership chain, matching
     /// <see cref="ReconnectingKissModem"/>).</param>
     /// <param name="pacingTimeout">How long to wait for one frame's TX-completion echo
@@ -105,13 +105,13 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
     /// </remarks>
     public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
     {
-        // Copy out of the caller's (reusable) buffer before returning — the pump reads
+        // Copy out of the caller's (reusable) buffer before returning - the pump reads
         // it later, off this call's stack.
         var frame = ax25.ToArray();
 
         // TryWrite always succeeds on an unbounded channel until it is completed; once
         // disposal completes the writer, a late send is silently dropped (the port is
-        // going away — AX.25 retransmit covers a genuinely-needed frame).
+        // going away - AX.25 retransmit covers a genuinely-needed frame).
         queue.Writer.TryWrite(new TxJob(frame, Timeout: null, Receipt: null));
         return Task.CompletedTask;
     }
@@ -131,7 +131,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    // Shutting down — stop pumping.
+                    // Shutting down - stop pumping.
                     job.Receipt?.TrySetCanceled(ct);
                     break;
                 }
@@ -155,11 +155,11 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
         }
         catch (OperationCanceledException)
         {
-            // Disposal cancelled the pump while it waited on the reader — normal shutdown.
+            // Disposal cancelled the pump while it waited on the reader - normal shutdown.
         }
         finally
         {
-            // Disposal can complete the writer with jobs still queued — fail their
+            // Disposal can complete the writer with jobs still queued - fail their
             // waiters rather than leaving them hanging forever.
             while (queue.Reader.TryRead(out var leftover))
             {
@@ -171,7 +171,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
     // Sends a frame awaiting TX-completion, retrying once if the inner transport was
     // swapped mid-flight by a reconnect (ObjectDisposedException from the dead client).
     // Without this, a KISS-TCP bounce drops the in-flight frame and relies entirely on
-    // AX.25 T1 retransmit — which cannot recover during sustained flapping (#664).
+    // AX.25 T1 retransmit - which cannot recover during sustained flapping (#664).
     private async Task<TxCompletion> SendWithReconnectRetryAsync(TxJob job, CancellationToken ct)
     {
         var timeout = job.Timeout ?? pacingTimeout;
@@ -213,7 +213,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            // Bounded wait elapsed — proceed with the retry attempt regardless.
+            // Bounded wait elapsed - proceed with the retry attempt regardless.
         }
     }
 
@@ -222,7 +222,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
     /// Routed THROUGH the pacing queue (not past it): the frame transmits in
     /// strict arrival order with every fire-and-forget send on this port, and
     /// the returned task resolves with this frame's TX-completion receipt when
-    /// its turn completes. This is what the TX-complete→T1 seam rides on — the
+    /// its turn completes. This is what the TX-complete→T1 seam rides on - the
     /// listener sends a T1-arming frame here and re-arms T1 when the receipt
     /// lands, knowing the frame has actually cleared the air. The timeout
     /// (default: the pacing timeout) covers the inner ACKMODE send, not the
@@ -285,7 +285,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
         }
         lifecycle.Dispose();
 
-        // We own the inner transport (the standard decorator chain — see ReconnectingKissModem):
+        // We own the inner transport (the standard decorator chain - see ReconnectingKissModem):
         // dispose it exactly once, here.
         await inner.DisposeAsync().ConfigureAwait(false);
     }

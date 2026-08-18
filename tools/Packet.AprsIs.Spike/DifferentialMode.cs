@@ -15,16 +15,16 @@ namespace Packet.AprsIs.Spike;
 /// <para>
 /// Walks corpus → builds a histogram of outcomes:
 /// <list type="bullet">
-///   <item><c>both_ok_match</c> — both decoders produced lat/lon and they
+///   <item><c>both_ok_match</c> - both decoders produced lat/lon and they
 ///   agree within 1e-4° (about 11 m at equator).</item>
-///   <item><c>both_ok_mismatch</c> — both decoded but lat/lon differ
+///   <item><c>both_ok_mismatch</c> - both decoded but lat/lon differ
 ///   beyond tolerance. Surfaces real bugs.</item>
-///   <item><c>only_us</c> — we decoded, direwolf reported an error.
+///   <item><c>only_us</c> - we decoded, direwolf reported an error.
 ///   Either we're over-permissive or direwolf flagged a spec-divergent
 ///   frame we silently accepted.</item>
-///   <item><c>only_direwolf</c> — direwolf decoded, we rejected.
+///   <item><c>only_direwolf</c> - direwolf decoded, we rejected.
 ///   Surfaces under-strict cases we should accept.</item>
-///   <item><c>both_failed</c> — both gave up. Expected for the
+///   <item><c>both_failed</c> - both gave up. Expected for the
 ///   long-tail of malformed firmware-bug frames.</item>
 /// </list>
 /// </para>

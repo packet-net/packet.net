@@ -5,9 +5,9 @@ namespace Packet.Node.Tests.Configuration;
 /// <summary>
 /// The duplicate-MqttInstance quirk warning (#586): two ports resolving to the same MQTT
 /// <c>{instance}</c> label silently merge their kissproxy topic streams. That can be intentional
-/// (multi-port same-band feeding one collector key), so it is a validation-PASSING logged warning —
+/// (multi-port same-band feeding one collector key), so it is a validation-PASSING logged warning -
 /// surfaced through the providers' <c>WarnOnConfigQuirks</c> at config load/apply, the same channel
-/// the NET/ROM routing resolver warns through — never a hard error.
+/// the NET/ROM routing resolver warns through - never a hard error.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class NodeConfigWarningsTests
@@ -40,7 +40,7 @@ public sealed class NodeConfigWarningsTests
     [Fact]
     public void An_explicit_label_colliding_with_another_ports_default_warns_too()
     {
-        // Port "vhf" explicitly labels itself "2m"; port "2m" has no label so its id IS its label —
+        // Port "vhf" explicitly labels itself "2m"; port "2m" has no label so its id IS its label -
         // the emitter resolves both to {instance}=2m, so they merge just the same.
         var config = Config(Port("2m", tcpPort: 8001), Port("vhf", "2m", 8002));
 

@@ -7,8 +7,8 @@ namespace Packet.Node.Core.Configuration;
 /// Validates one <see cref="ApplicationConfig"/>: a stable id, a launch verb that does not
 /// collide with a built-in console verb, and the fields its <see cref="ApplicationKind"/>
 /// requires (a process app needs a command). The built-in-verb collision is checked by
-/// running the verb through <see cref="NodeCommandParser"/> — the single source of truth for
-/// what the console already understands — and rejecting anything it classifies as a real
+/// running the verb through <see cref="NodeCommandParser"/> - the single source of truth for
+/// what the console already understands - and rejecting anything it classifies as a real
 /// command (so a registered app can never be dead config, shadowed by a built-in).
 /// </summary>
 public sealed class ApplicationConfigValidator : AbstractValidator<ApplicationConfig>
@@ -32,7 +32,7 @@ public sealed class ApplicationConfigValidator : AbstractValidator<ApplicationCo
             .NotEmpty().WithMessage("application.socketPath is required for a socket application.")
             .When(a => a.Kind == ApplicationKind.Socket);
 
-        // When a ui block is present, its upstream must be an absolute http(s) URL — pdn
+        // When a ui block is present, its upstream must be an absolute http(s) URL - pdn
         // reverse-proxies to it, so anything else is unusable config.
         When(a => a.Ui is not null, () =>
             RuleFor(a => a.Ui!.Upstream)
@@ -45,7 +45,7 @@ public sealed class ApplicationConfigValidator : AbstractValidator<ApplicationCo
         && Uri.TryCreate(url, UriKind.Absolute, out var u)
         && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
 
-    // The verb is safe iff the parser does NOT recognise it as a command — i.e. it falls
+    // The verb is safe iff the parser does NOT recognise it as a command - i.e. it falls
     // through to Unknown (or is empty). Anything that parses to a real verb (or a malformed
     // form of one, e.g. a bare "C") would be intercepted by the console before the app could
     // ever launch, so reject it at config time rather than ship dead config.
@@ -62,7 +62,7 @@ public sealed class ApplicationConfigValidator : AbstractValidator<ApplicationCo
 
 /// <summary>
 /// Validates one <see cref="AppOverrideConfig"/> (an <c>apps:</c> package-override entry).
-/// Only the id is constrained here — Enabled/Match/Environment are free-form overrides whose
+/// Only the id is constrained here - Enabled/Match/Environment are free-form overrides whose
 /// meaning the catalog resolves against the discovered manifest.
 /// </summary>
 public sealed class AppOverrideConfigValidator : AbstractValidator<AppOverrideConfig>

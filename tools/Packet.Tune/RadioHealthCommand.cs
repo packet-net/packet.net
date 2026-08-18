@@ -5,12 +5,12 @@ namespace Packet.Tune;
 
 /// <summary>
 /// <c>radio-health</c>: run a <see cref="TaitRadioHealthMonitor"/> against one Tait radio's
-/// CCDI port for a while and print the samples as a live table — averaged RSSI (CCTM 063),
+/// CCDI port for a while and print the samples as a live table - averaged RSSI (CCTM 063),
 /// PA temperature (CCTM 047), and the raw + idle-offset-corrected forward/reverse power
-/// detectors (CCTM 318/319, transmit samples only) — followed by the rolling min/median/max
+/// detectors (CCTM 318/319, transmit samples only) - followed by the rolling min/median/max
 /// summary. The fwd/rev figures are trends, never VSWR (see the monitor's docs).
 /// <c>--key-once [s]</c> keys the transmitter ONCE via CCDI FUNCTION 9 (at the channel's
-/// programmed power) for at most 3 s to capture a TX sample — mind your dummy load/attenuator
+/// programmed power) for at most 3 s to capture a TX sample - mind your dummy load/attenuator
 /// ratings before using it.
 /// </summary>
 internal static class RadioHealthCommand

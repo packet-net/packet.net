@@ -14,7 +14,7 @@ namespace Packet.Kiss.NinoTnc;
 /// <para>
 /// Bench-observed on firmware 3.41 (2026-07-02): the report is emitted
 /// spontaneously once per minute (uptime deltas between consecutive frames
-/// are exactly 60 000 ms — the interval SETBCNINT adjusts, see
+/// are exactly 60 000 ms - the interval SETBCNINT adjusts, see
 /// <see cref="NinoTncCommands.BuildSetBeaconIntervalPayload"/>) as a KISS
 /// Data frame carrying a fake AX.25 UI header <c>TNC&gt;USB</c>. Newer
 /// firmware documents it addressed to <c>IDENT</c> and as the direct GETALL
@@ -25,7 +25,7 @@ namespace Packet.Kiss.NinoTnc;
 /// <para>
 /// Field encodings differ per register: register 00 is the plain-ASCII
 /// firmware version (e.g. <c>3.41</c>), register 01 is eight <em>raw</em>
-/// bytes (the KAUP8R identity register — all-zero when unset), and every
+/// bytes (the KAUP8R identity register - all-zero when unset), and every
 /// other register is eight uppercase hex digits. Verbatim capture from
 /// firmware 3.41:
 /// </para>
@@ -65,17 +65,17 @@ public sealed record NinoTncStatusFrame
     /// </summary>
     public string? SerialNumber { get; init; }
 
-    /// <summary>Register 02 — uptime in milliseconds.</summary>
+    /// <summary>Register 02 - uptime in milliseconds.</summary>
     public long? UptimeMs { get; init; }
 
     /// <summary>Uptime as a <see cref="TimeSpan"/>, when <see cref="UptimeMs"/> is set.</summary>
     public TimeSpan? Uptime => UptimeMs.HasValue ? TimeSpan.FromMilliseconds(UptimeMs.Value) : null;
 
-    /// <summary>Register 03 — the board id / revision number.</summary>
+    /// <summary>Register 03 - the board id / revision number.</summary>
     public long? BoardId { get; init; }
 
     /// <summary>
-    /// Register 04 — the DIP switch positions, low four bits. <c>0b1111</c>
+    /// Register 04 - the DIP switch positions, low four bits. <c>0b1111</c>
     /// (15) means all four switches up = "Set from KISS" = software control.
     /// </summary>
     public byte? DipSwitches { get; init; }
@@ -88,14 +88,14 @@ public sealed record NinoTncStatusFrame
         DipSwitches is { } d ? Convert.ToString(d, 2).PadLeft(4, '0') : null;
 
     /// <summary>
-    /// True when the DIP switches read <c>1111</c> — the TNC's mode is
+    /// True when the DIP switches read <c>1111</c> - the TNC's mode is
     /// under software (KISS SETHW) control rather than pinned by the DIPs.
     /// <c>null</c> when register 04 was missing.
     /// </summary>
     public bool? IsSoftwareControlMode => DipSwitches is { } d ? d == 0x0F : null;
 
     /// <summary>
-    /// Register 06 — the configured-mode identifier byte, the same value the
+    /// Register 06 - the configured-mode identifier byte, the same value the
     /// labelled diagnostic packs into <c>BrdSwchMod</c>'s low byte. Resolve
     /// through <see cref="NinoTncCatalog.TryGetByFirmwareByte"/> (or read
     /// <see cref="RunningMode"/>).
@@ -109,51 +109,51 @@ public sealed record NinoTncStatusFrame
     /// </summary>
     public NinoTncMode? RunningMode { get; init; }
 
-    /// <summary>Register 07 — AX.25 packets received since boot.</summary>
+    /// <summary>Register 07 - AX.25 packets received since boot.</summary>
     public long? Ax25RxPackets { get; init; }
 
-    /// <summary>Register 08 — IL2P packets received and corrected (correctable RX) since boot.</summary>
+    /// <summary>Register 08 - IL2P packets received and corrected (correctable RX) since boot.</summary>
     public long? Il2pRxCorrectable { get; init; }
 
-    /// <summary>Register 09 — IL2P packets received with uncorrectable errors since boot.</summary>
+    /// <summary>Register 09 - IL2P packets received with uncorrectable errors since boot.</summary>
     public long? Il2pRxUncorrectable { get; init; }
 
-    /// <summary>Register 0A — packets transmitted since boot.</summary>
+    /// <summary>Register 0A - packets transmitted since boot.</summary>
     public long? TxPackets { get; init; }
 
     /// <summary>
-    /// Register 0B — preamble word count. Preamble seconds = count × 16 ÷
+    /// Register 0B - preamble word count. Preamble seconds = count × 16 ÷
     /// bit rate (each word is 16 bits), so a delta across a known number of
-    /// transmissions measures the effective TXDELAY — see
+    /// transmissions measures the effective TXDELAY - see
     /// <see cref="NinoTncStatusDelta.PreambleSeconds"/>.
     /// </summary>
     public long? PreambleWordCount { get; init; }
 
-    /// <summary>Register 0C — firmware main-loop cycles since boot.</summary>
+    /// <summary>Register 0C - firmware main-loop cycles since boot.</summary>
     public long? LoopCycles { get; init; }
 
-    /// <summary>Register 0D — cumulative PTT-asserted time in milliseconds.</summary>
+    /// <summary>Register 0D - cumulative PTT-asserted time in milliseconds.</summary>
     public long? PttOnMs { get; init; }
 
-    /// <summary>Register 0E — cumulative DCD-asserted time in milliseconds.</summary>
+    /// <summary>Register 0E - cumulative DCD-asserted time in milliseconds.</summary>
     public long? DcdOnMs { get; init; }
 
-    /// <summary>Register 0F — bytes received since boot.</summary>
+    /// <summary>Register 0F - bytes received since boot.</summary>
     public long? RxBytes { get; init; }
 
-    /// <summary>Register 10 — bytes transmitted since boot.</summary>
+    /// <summary>Register 10 - bytes transmitted since boot.</summary>
     public long? TxBytes { get; init; }
 
-    /// <summary>Register 11 — IL2P bytes repaired by FEC since boot.</summary>
+    /// <summary>Register 11 - IL2P bytes repaired by FEC since boot.</summary>
     public long? Il2pFecCorrectedBytes { get; init; }
 
     /// <summary>
     /// Dropped ADC samples since boot. No numeric register is known to
-    /// carry this (registers 00–11 observed), so it is populated only when
+    /// carry this (registers 00-11 observed), so it is populated only when
     /// the snapshot was mapped from the labelled diagnostic's
-    /// <c>LostADCSmp</c> field via <see cref="FromDiagnostic"/> — which is
+    /// <c>LostADCSmp</c> field via <see cref="FromDiagnostic"/> - which is
     /// what GETALL answers with on firmware 3.41 and 3.44. A rising delta
-    /// while receiving means the RX audio is clipping the TNC's ADC —
+    /// while receiving means the RX audio is clipping the TNC's ADC -
     /// gross over-deviation at the transmitting end.
     /// </summary>
     public long? LostAdcSamples { get; init; }
@@ -204,7 +204,7 @@ public sealed record NinoTncStatusFrame
             if (register == SerialNumberRegister)
             {
                 // Register 01 is eight RAW bytes (which may include '=', ':',
-                // or anything else) — take them positionally.
+                // or anything else) - take them positionally.
                 int take = Math.Min(8, payload.Length - i);
                 value = payload.Slice(i, take).ToArray();
                 i += take;
@@ -259,7 +259,7 @@ public sealed record NinoTncStatusFrame
     /// Map a labelled <c>=FirmwareVr:</c> diagnostic
     /// (<see cref="NinoTncTxTestFrame"/>) into this numeric-report shape.
     /// Firmware 3.41 <em>and</em> 3.44 answer GETALL with the labelled text
-    /// (bench-verified 2026-07-02), which carries a subset of the registers —
+    /// (bench-verified 2026-07-02), which carries a subset of the registers -
     /// the fields with no labelled counterpart (PTT-on, DCD-on, RX/TX bytes,
     /// FEC-corrected bytes) stay <c>null</c>; <see cref="LostAdcSamples"/>
     /// conversely exists <em>only</em> via this labelled path.

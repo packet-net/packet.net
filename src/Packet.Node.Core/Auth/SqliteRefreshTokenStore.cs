@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Auth;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> — the same
+/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> - the same
 /// meta-row approach the user store uses, so it doesn't fight the routing store
 /// over <c>PRAGMA user_version</c>. One table, <c>refresh_token</c>, keyed by the
 /// token hash, with an index on <c>family</c> for the whole-family revoke.
@@ -27,8 +27,8 @@ namespace Packet.Node.Core.Auth;
 /// <b>Resilient.</b> Every operation is wrapped: a schema/open failure logs and
 /// leaves the node running (refresh simply can't be used); a lookup returns null
 /// on fault, a write returns false / 0. Persistence can never take the node down.
-/// WAL mode, a fresh pooled connection per call — the same discipline as the user
-/// store — so the store is safe to share across the request threads.
+/// WAL mode, a fresh pooled connection per call - the same discipline as the user
+/// store - so the store is safe to share across the request threads.
 /// </para>
 /// </remarks>
 public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
@@ -50,7 +50,7 @@ public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
 
     /// <summary>Open (creating if absent) the refresh-token store at
     /// <paramref name="dbPath"/> and ensure its schema. A schema/open failure is
-    /// logged, not thrown — the node still boots, just without refresh tokens.</summary>
+    /// logged, not thrown - the node still boots, just without refresh tokens.</summary>
     public SqliteRefreshTokenStore(string dbPath, ILogger<SqliteRefreshTokenStore>? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dbPath);
@@ -181,7 +181,7 @@ public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
         catch (SqliteException ex)
         {
             LogReadFailed(ex, connectionString);
-            return false;   // fail safe — deny the leeway grace on a store fault
+            return false;   // fail safe - deny the leeway grace on a store fault
         }
     }
 

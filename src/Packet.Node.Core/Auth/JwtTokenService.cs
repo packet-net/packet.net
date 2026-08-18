@@ -20,7 +20,7 @@ namespace Packet.Node.Core.Auth;
 /// </para>
 /// <para>
 /// <b>Claims:</b> <c>sub</c> = username and a single <c>scope</c> claim
-/// (<see cref="AuthScopes"/> — the highest scope the user holds; the implication
+/// (<see cref="AuthScopes"/> - the highest scope the user holds; the implication
 /// admin ⊃ operate ⊃ read is applied at the authorization check, not by carrying
 /// every scope). Standard <c>iat</c>/<c>nbf</c>/<c>exp</c> plus a fixed issuer +
 /// audience the validator pins.
@@ -46,12 +46,12 @@ public sealed class JwtTokenService
     /// <summary>The fixed JWT issuer the node stamps + the validator pins.</summary>
     public const string Issuer = "packet.net-node";
 
-    /// <summary>The audience for the <b>web control-API</b> credentials — the panel
+    /// <summary>The audience for the <b>web control-API</b> credentials - the panel
     /// login / refresh tokens. The default audience <see cref="Issue(string,string)"/>
     /// stamps.</summary>
     public const string Audience = "packet.net-control-api";
 
-    /// <summary>The audience for <b>MCP</b> credentials — the static MCP bearer
+    /// <summary>The audience for <b>MCP</b> credentials - the static MCP bearer
     /// (<c>/api/v1/mcp/token</c>) and the OAuth-issued connector tokens. Distinct from
     /// <see cref="Audience"/> so an MCP token cannot drive the wider control API:
     /// the JwtBearer middleware authenticates both audiences, but each endpoint's
@@ -73,7 +73,7 @@ public sealed class JwtTokenService
     /// <see cref="IUserStore.GetOrCreateSigningKey"/>). Must be ≥ 32 bytes.</param>
     /// <param name="lifetime">Access-token lifetime (≈ 1h by default).</param>
     /// <param name="clock">The injected clock (token <c>iat</c>/<c>exp</c> + the
-    /// validator's expiry check ride this — no wall-clock).</param>
+    /// validator's expiry check ride this - no wall-clock).</param>
     public JwtTokenService(byte[] signingKey, TimeSpan lifetime, TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(signingKey);
@@ -113,10 +113,10 @@ public sealed class JwtTokenService
     /// <paramref name="audience"/> (one of <see cref="Audience"/> / <see cref="McpAudience"/>).
     /// Used for the long-lived MCP bearer token (Phase 8): a Claude Code config holds a
     /// static header, so it needs a token that outlives the 60-min access-token default.
-    /// Same issuer/scope claim + signing key — so it validates through the existing
+    /// Same issuer/scope claim + signing key - so it validates through the existing
     /// JwtBearer middleware unchanged; the <c>aud</c> is what segregates an MCP token
     /// from a control-API token at the authorization gate. The longer the lifetime, the
-    /// more a leaked token matters — callers default the MCP token to the <c>read</c> scope.
+    /// more a leaked token matters - callers default the MCP token to the <c>read</c> scope.
     /// </summary>
     public (string Token, DateTimeOffset ExpiresAt) Issue(string username, string scope, TimeSpan lifetime, string audience)
     {
@@ -148,10 +148,10 @@ public sealed class JwtTokenService
 
     /// <summary>
     /// The <see cref="TokenValidationParameters"/> the host's JwtBearer middleware
-    /// validates with — pinned to this node's signing key, issuer and audience,
+    /// validates with - pinned to this node's signing key, issuer and audience,
     /// HS256 only, and a <see cref="TokenValidationParameters.LifetimeValidator"/>
     /// driven by the injected clock so expiry is deterministic + testable (repo
-    /// rule §2.7: no wall-clock — the validator reads <see cref="TimeProvider"/>,
+    /// rule §2.7: no wall-clock - the validator reads <see cref="TimeProvider"/>,
     /// not <see cref="DateTime.UtcNow"/>). No clock skew (the node is both issuer
     /// and validator on one clock).
     /// </summary>
@@ -161,7 +161,7 @@ public sealed class JwtTokenService
         ValidIssuer = Issuer,
         ValidateAudience = true,
         // Authenticate BOTH audiences here; the per-endpoint policy pins which one is
-        // allowed where (control-API gates vs the MCP gate) — that's what keeps an MCP
+        // allowed where (control-API gates vs the MCP gate) - that's what keeps an MCP
         // token off the wider control API.
         ValidAudiences = [Audience, McpAudience],
         ValidateIssuerSigningKey = true,
@@ -175,7 +175,7 @@ public sealed class JwtTokenService
 
     // Lifetime check against the injected clock (not DateTime.UtcNow): the token is
     // valid iff now ∈ [nbf, exp). A missing exp is treated as invalid (every token
-    // we issue carries one). No skew — the node issues + validates on one clock.
+    // we issue carries one). No skew - the node issues + validates on one clock.
     private bool LifetimeIsValid(DateTime? notBefore, DateTime? expires, SecurityToken securityToken, TokenValidationParameters validationParameters)
     {
         if (expires is null)

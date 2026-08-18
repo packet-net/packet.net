@@ -123,7 +123,7 @@ public sealed class HeadEndAdoptApiTests : IDisposable
         await using var factory = new NodeAppFactory();
         using var client = factory.CreateClient();
 
-        // enabled:false so the WAF host never dials the (non-existent) head-end — we assert the
+        // enabled:false so the WAF host never dials the (non-existent) head-end - we assert the
         // config was created, not that the port came up.
         var body = new { tncDeviceId = "nino0", radioDeviceId = "tait0", mode = 6, enabled = false };
         var resp = await client.PostAsJsonAsync("/api/v1/radios/headends/pi-shack/adopt", body);
@@ -146,7 +146,7 @@ public sealed class HeadEndAdoptApiTests : IDisposable
         radio.GetProperty("headEndId").GetString().Should().Be("pi-shack");
         radio.GetProperty("deviceId").GetString().Should().Be("tait0");
 
-        // And the head-end was declared so the reference resolves (discover mode — blank address).
+        // And the head-end was declared so the reference resolves (discover mode - blank address).
         cfg.RootElement.GetProperty("headEnds").EnumerateArray()
             .Should().ContainSingle(h => h.GetProperty("id").GetString() == "pi-shack");
     }

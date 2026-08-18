@@ -1,4 +1,4 @@
-// Packet.Tune — bench CLI for tuning a NinoTNC + radio pair using the firmware's
+// Packet.Tune - bench CLI for tuning a NinoTNC + radio pair using the firmware's
 // remote-diagnostics primitives (GETALL/GETVER/STOPTX, [TARPNstat arming,
 // CQBEEP-N tone requests) and the Packet.Tune.Core remote-tuning assistant
 // (SDM- or WebSocket-coordinated deviation sessions, capability doctor).
@@ -12,14 +12,14 @@
 //                                              DIP positions + config mode from GETALL, then a
 //                                              commanded-vs-measured TXDELAY check. Pins a
 //                                              known-good mode first (--mode N, default 6;
-//                                              --keep-mode skips) — a stale post-flash mode 0
+//                                              --keep-mode skips) - a stale post-flash mode 0
 //                                              yields a false "pot override" verdict.
 //   measure <tncPort> [ccdiPort]               GETVER (+ GETRSSI baseline where the firmware
-//                                              still has it — removed in 3.44); with a CCDI
+//                                              still has it - removed in 3.44); with a CCDI
 //                                              port also the radio's RSSI / noise floor
 //   deviation <localTnc> <remoteTnc> [callsign]
 //                                              TX-deviation tuning loop (local bench flavour,
-//                                              GETRSSI-based — firmware 3.41 only)
+//                                              GETRSSI-based - firmware 3.41 only)
 //   doctor <tncPort> [ccdiPort] [--json]       capability probes for the whole stack, each
 //                                              with a one-line remedy
 //   transparent-doctor <ccdiPort> [peerCcdiPort] [--interrupt] [--json]
@@ -53,7 +53,7 @@
 //                                              every exit path restores the original
 //   set-mode <tncPort> <mode>                  SETHW one TNC's mode (+16 RAM-only default)
 //                                              with settle frame + GETALL verify
-//   radio-channel <ccdiPort> [channel]         report — or switch and verify — a Tait
+//   radio-channel <ccdiPort> [channel]         report - or switch and verify - a Tait
 //                                              radio's conventional channel
 //   radio-health <ccdiPort> [--interval 10] [--duration 60] [--key-once [s]]
 //                                              periodic radio-health sampling (averaged RSSI,

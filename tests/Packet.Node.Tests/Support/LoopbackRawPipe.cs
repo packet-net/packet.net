@@ -34,18 +34,18 @@ public sealed class LoopbackRawPipe : IDisposable
     public Task<Socket> Accepted { get; }
 
     /// <summary>
-    /// Answer every inbound CCDI command with a <c>.</c> prompt (0x2E) — the transaction-complete
+    /// Answer every inbound CCDI command with a <c>.</c> prompt (0x2E) - the transaction-complete
     /// marker <c>TaitCcdiRadio</c> waits for on a prompt-completed command like the progress-enable
     /// the radio factory issues. Runs until the socket closes. Await the returned task after tearing
     /// the radio down. When <paramref name="received"/> is supplied, every inbound byte is captured
-    /// into it (as ASCII, lock-guarded on the builder) so a test can assert WHAT the driver sent —
+    /// into it (as ASCII, lock-guarded on the builder) so a test can assert WHAT the driver sent -
     /// e.g. that a reconnect re-issued the progress-enable (<c>f03041…</c> on the wire).
     /// </summary>
     /// <summary>
     /// Stand in for a NinoTNC on the far end of the pipe: answer every GETALL with a labelled
     /// diagnostic reporting <paramref name="runningMode"/> as the running mode. A real TNC always
     /// answers GETALL, and since #633 the driver's verified <c>SetModeAsync</c> requires the answer
-    /// to prove the SETHW took — an unanswering fake would model a TNC that doesn't exist. Runs
+    /// to prove the SETHW took - an unanswering fake would model a TNC that doesn't exist. Runs
     /// until the socket closes; await the returned task after tearing the transport down.
     /// </summary>
     /// <param name="runningMode">The DIP-position mode the fake TNC reports itself running.</param>
@@ -67,7 +67,7 @@ public sealed class LoopbackRawPipe : IDisposable
             }
             catch
             {
-                break; // socket torn down — done
+                break; // socket torn down - done
             }
             if (read == 0)
             {
@@ -75,7 +75,7 @@ public sealed class LoopbackRawPipe : IDisposable
             }
             if (buffer.AsSpan(0, read).IndexOf(getAll) < 0)
             {
-                continue; // not a GETALL (SETHW, GETVER keep-alive, …) — a TNC answers only what it must
+                continue; // not a GETALL (SETHW, GETVER keep-alive, …) - a TNC answers only what it must
             }
             try
             {
@@ -101,7 +101,7 @@ public sealed class LoopbackRawPipe : IDisposable
             }
             catch
             {
-                break; // socket torn down — done
+                break; // socket torn down - done
             }
             if (read == 0)
             {
@@ -137,7 +137,7 @@ public sealed class LoopbackRawPipe : IDisposable
 
     /// <summary>
     /// Kill the pipe from the head-end side: close the accepted socket (and stop listening) so the
-    /// dialled client sees the connection die — the head-end-bounce trigger for reconnect tests.
+    /// dialled client sees the connection die - the head-end-bounce trigger for reconnect tests.
     /// </summary>
     public void Kill()
     {
@@ -151,7 +151,7 @@ public sealed class LoopbackRawPipe : IDisposable
     /// <summary>
     /// Answer a NinoTNC GETVER reach-through probe: wait for the GETVER command frame, then reply
     /// with the bare ASCII <paramref name="version"/> on raw KISS command byte 0xE0 (port 14 +
-    /// command 0), exactly as the firmware does — so <c>NinoTncSerialPort.GetVersionAsync</c>
+    /// command 0), exactly as the firmware does - so <c>NinoTncSerialPort.GetVersionAsync</c>
     /// completes over the socket. Runs until the socket closes.
     /// </summary>
     public Task RespondGetVerAsync(string version) => Task.Run(async () =>
@@ -160,7 +160,7 @@ public sealed class LoopbackRawPipe : IDisposable
         var buffer = new byte[256];
         try
         {
-            // The first bytes the head-end sees are the GETVER command frame — reply once with the
+            // The first bytes the head-end sees are the GETVER command frame - reply once with the
             // version frame (the probe issues no other command).
             int read = await socket.ReceiveAsync(buffer.AsMemory()).ConfigureAwait(false);
             if (read <= 0)
@@ -172,13 +172,13 @@ public sealed class LoopbackRawPipe : IDisposable
         }
         catch
         {
-            // socket torn down — done
+            // socket torn down - done
         }
     });
 
     /// <summary>
     /// Answer a Tait CCDI reach-through identify (<c>QueryIdentityAsync</c>): reply to the MODEL,
-    /// RADIO_SERIAL and RADIO_VERSIONS queries with valid checksummed CCDI frames — but only while
+    /// RADIO_SERIAL and RADIO_VERSIONS queries with valid checksummed CCDI frames - but only while
     /// <paramref name="shouldAnswer"/> returns true, so a baud-sweep test can gate the answer on the
     /// "right" line rate having been set (a wrong clock ⇒ silence ⇒ the MODEL query times out and the
     /// sweep tries the next rate). A null gate answers unconditionally. Runs until the socket closes.

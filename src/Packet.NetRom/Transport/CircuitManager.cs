@@ -17,7 +17,7 @@ namespace Packet.NetRom.Transport;
 /// <remarks>
 /// <para>
 /// <b>Host-free.</b> Like <see cref="NetRomCircuit"/>, the manager has no AX.25 /
-/// node-host dependency — it speaks only <see cref="NetRomPacket"/> in and out, so
+/// node-host dependency - it speaks only <see cref="NetRomPacket"/> in and out, so
 /// it is fully unit-testable and the same instance can sit behind any transport.
 /// </para>
 /// <para>
@@ -40,12 +40,12 @@ public sealed class CircuitManager : IDisposable
     private readonly TimeProvider time;
     private readonly object gate = new();
 
-    // Our circuits keyed by the (index,id) we allocated — the key the peer stamps
+    // Our circuits keyed by the (index,id) we allocated - the key the peer stamps
     // into datagrams addressed to us.
     private readonly Dictionary<(byte Index, byte Id), NetRomCircuit> byLocalKey = new();
     // Inbound circuits also keyed by the PEER's identity (origin node + the peer's
-    // own index/id from its Connect Request) so a RETRANSMITTED Connect Request — its
-    // header names the peer's circuit, not ours, so it can't match byLocalKey —
+    // own index/id from its Connect Request) so a RETRANSMITTED Connect Request - its
+    // header names the peer's circuit, not ours, so it can't match byLocalKey -
     // re-acks the existing circuit instead of minting a duplicate.
     private readonly Dictionary<(Callsign Node, byte Index, byte Id), NetRomCircuit> byPeerKey = new();
     // Reverse map so deregistration can drop a circuit's peer-key entry without a
@@ -103,7 +103,7 @@ public sealed class CircuitManager : IDisposable
     /// <summary>
     /// Set the local node callsign stamped into the L3 origin of circuits this
     /// manager mints. The node host calls this once the node identity is known (at
-    /// first port attach) — circuits are minted after, so they carry it. Affects
+    /// first port attach) - circuits are minted after, so they carry it. Affects
     /// circuits opened <em>after</em> the call (existing circuits keep their origin).
     /// </summary>
     public void SetLocalNode(Callsign node)
@@ -139,7 +139,7 @@ public sealed class CircuitManager : IDisposable
     /// Feed an inbound datagram (parsed from an interlink I-frame's info field).
     /// Routes it to the addressed circuit, or, for a Connect Request with no
     /// matching circuit, mints an inbound circuit and raises
-    /// <see cref="IncomingCircuit"/>. Tolerant of stray datagrams — an
+    /// <see cref="IncomingCircuit"/>. Tolerant of stray datagrams - an
     /// unroutable non-connect datagram is dropped.
     /// </summary>
     public void OnPacket(NetRomPacket packet)
@@ -261,7 +261,7 @@ public sealed class CircuitManager : IDisposable
         Callsign remoteNode = request.Network.Origin;
 
         // Decode the Connect Request info field: [proposed-window][orig-user][orig-node]
-        // (the de-facto NET/ROM layout — see ConnectRequestInfo). The proposed window
+        // (the de-facto NET/ROM layout - see ConnectRequestInfo). The proposed window
         // lives in the info field, NOT the transport header (TX/RX are 0 on a connect).
         // Fall back to the origin node for the user, and to "let the circuit default"
         // for the window, if the field is absent/short (a terse peer).
@@ -275,7 +275,7 @@ public sealed class CircuitManager : IDisposable
 
         // LinBPQ extended connect: the peer advertises compression via a bit in the
         // Connect Request trailer (see ConnectRequestInfo.OffersCompression). We only
-        // ACT on it if our own options enable compression — the negotiated result
+        // ACT on it if our own options enable compression - the negotiated result
         // (both ends agreed) is settled by AcceptInbound; this is just the peer's offer.
         bool peerOffersCompression = ConnectRequestInfo.OffersCompression(request.Payload.Span);
 
@@ -299,7 +299,7 @@ public sealed class CircuitManager : IDisposable
         var handler = IncomingCircuit;
         if (handler is null)
         {
-            // No one is listening — refuse rather than leave a dangling half-open
+            // No one is listening - refuse rather than leave a dangling half-open
             // circuit.
             RefuseIncoming(args);
             return;
@@ -317,7 +317,7 @@ public sealed class CircuitManager : IDisposable
             nextIndex++;
             if (nextIndex == 0)
             {
-                nextId++;   // wrapped the index — bump the id serial
+                nextId++;   // wrapped the index - bump the id serial
             }
             if (!byLocalKey.ContainsKey(key))
             {
@@ -407,6 +407,6 @@ public sealed class IncomingCircuitEventArgs : EventArgs
     /// <summary>True if the peer advertised LinBPQ-style L4 compression in its Connect
     /// Request (the extended-connect compress bit). The circuit enables compression only
     /// when this is true <em>and</em> this node's <see cref="NetRomCircuitOptions.CompressionEnabled"/>
-    /// is set — i.e. both ends agreed.</summary>
+    /// is set - i.e. both ends agreed.</summary>
     public bool PeerOffersCompression { get; }
 }

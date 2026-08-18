@@ -39,7 +39,7 @@ public sealed class NetRomCircuitTests
     public void Window_is_negotiated_down_to_the_responders_ceiling()
     {
         // A proposes a window of 8; B's ceiling is 2. The accepted (B-side) window
-        // must clamp to B's smaller ceiling — the canonical "accepted ≤ proposed"
+        // must clamp to B's smaller ceiling - the canonical "accepted ≤ proposed"
         // negotiation.
         var h = new CircuitPairHarness(
             options: new NetRomCircuitOptions { WindowSize = 8 },
@@ -148,7 +148,7 @@ public sealed class NetRomCircuitTests
         a.Circuit.Connect(User);
         h.Pump();
 
-        // Six one-byte logical sends — more than the window, so the queue drains as
+        // Six one-byte logical sends - more than the window, so the queue drains as
         // acks return.
         for (byte i = 1; i <= 6; i++)
         {

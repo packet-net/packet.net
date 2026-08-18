@@ -12,15 +12,15 @@ namespace Packet.Node.Core.Radios;
 /// </summary>
 /// <remarks>
 /// <c>tait-ccdi</c> → <see cref="TaitCcdiRadio.Open"/> +
-/// <see cref="TaitCcdiRadio.SetProgressMessagesAsync"/>(true) — unsolicited PROGRESS
+/// <see cref="TaitCcdiRadio.SetProgressMessagesAsync"/>(true) - unsolicited PROGRESS
 /// output is what makes the driver's carrier-sense (DCD) events fire, which the
 /// RSSI-tagging transport uses for per-burst frame attribution. <c>rig</c> → a
 /// SECOND, dedicated connection to the port's <c>rig:</c> CAT daemon (via the
 /// <see cref="IRigControlFactory"/> collaborator) wrapped in an owning
-/// <see cref="RigRadioControl"/> — dedicated so the carrier-sense poll never queues
+/// <see cref="RigRadioControl"/> - dedicated so the carrier-sense poll never queues
 /// behind the rig status poller's meter reads on the shared connection. A kind this
 /// build doesn't implement throws <see cref="NotSupportedException"/> (unreachable
-/// for validated config — the validator shares <see cref="RadioKinds"/>).
+/// for validated config - the validator shares <see cref="RadioKinds"/>).
 /// </remarks>
 public sealed class RadioControlFactory : IRadioControlFactory
 {
@@ -31,7 +31,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
 
     /// <summary>
     /// Create the factory. <paramref name="rigFactory"/> is how the kind-<c>rig</c> arm dials
-    /// its dedicated rig connection — pass the DI-registered seam so component tests that
+    /// its dedicated rig connection - pass the DI-registered seam so component tests that
     /// substitute a scripted rig factory script the radio arm too; null uses the production
     /// <see cref="RigControlFactory.Instance"/>.
     /// </summary>
@@ -58,7 +58,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
             try
             {
                 // DCD (carrier-sense) events only flow while unsolicited PROGRESS
-                // output is on — without it the tagging transport degrades to
+                // output is on - without it the tagging transport degrades to
                 // threshold-over-noise-floor attribution. Identical for the local and
                 // head-end paths: the CCDI/PROGRESS stream rides the socket unchanged.
                 await tait.SetProgressMessagesAsync(true, cancellationToken).ConfigureAwait(false);
@@ -83,7 +83,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
             var rigControl = await rigFactory.CreateAsync(rig, timeProvider, cancellationToken).ConfigureAwait(false);
             try
             {
-                // ownsRig: the adapter's disposal disposes this dedicated connection — the rig
+                // ownsRig: the adapter's disposal disposes this dedicated connection - the rig
                 // status poller's own connection (dialled separately by the supervisor's rig
                 // arm) is untouched, which is the whole point of dialling twice.
                 return new RigRadioControl(rigControl, options: null, timeProvider, ownsRig: true);
@@ -91,7 +91,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
             catch
             {
                 // The bridge rejected the rig (it advertises nothing the packet-medium seam can
-                // use) — don't leak the just-dialled connection.
+                // use) - don't leak the just-dialled connection.
                 await rigControl.DisposeAsync().ConfigureAwait(false);
                 throw;
             }
@@ -104,7 +104,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
 
     /// <summary>Open a locally-cabled Tait radio: resolve its <c>(device path, baud)</c> (an explicit
     /// <c>port</c>, or a scan for the <c>serial</c>-bound radio's CCDI serial) and open the serial
-    /// port — exactly today's behaviour.</summary>
+    /// port - exactly today's behaviour.</summary>
     private static async Task<TaitCcdiRadio> OpenLocalTaitAsync(
         PortRadioConfig radio, TimeProvider? timeProvider, CancellationToken cancellationToken)
     {
@@ -115,7 +115,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
     /// <summary>
     /// Open a head-end-hosted Tait radio (split-station topology): resolve <c>(headEndId, deviceId)</c>
     /// to the head-end's raw TCP pipe + baud via the inventory, then <c>TaitCcdiRadio.OpenTcp</c> with
-    /// <c>setBaud</c> wired to the head-end's line-control verb — so the whole CCDI control stack
+    /// <c>setBaud</c> wired to the head-end's line-control verb - so the whole CCDI control stack
     /// (RSSI/SNR, DCD, tuning, SDM) runs over the socket exactly as it does locally. A null resolver
     /// for a head-end-bound radio is a wiring bug, surfaced as a clear failure (the supervisor
     /// degrades the radio as it would any open failure).
@@ -133,7 +133,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
         // The CONFIGURED CCDI rate, not the head-end's current line rate (#576): the open-time
         // setBaud must genuinely re-clock a restarted head-end (whose bridge reopens at its
         // default) back to the rate the radio is programmed for. Passing binding.Baud here would
-        // "re-clock" the port to the rate it is already at — every head-end restart would then
+        // "re-clock" the port to the rate it is already at - every head-end restart would then
         // fail against the radio until an operator re-ran a scan or POSTed the line verb.
         return await TaitCcdiRadio.OpenTcp(
             binding.Host, binding.TcpPort, radio.Baud,
@@ -143,7 +143,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
     /// <summary>
     /// Resolve a Tait radio's config to the concrete <c>(device path, baud)</c> to open. A
     /// <c>port</c>-bound radio resolves to itself; a <c>serial</c>-bound radio is located by scanning
-    /// the machine's candidate ports (at the configured baud) for the CCDI serial number — so a
+    /// the machine's candidate ports (at the configured baud) for the CCDI serial number - so a
     /// re-enumerated <c>/dev/ttyUSBn</c>, or two dongles that swapped numbers, still resolves to the
     /// right physical radio. A serial with no plugged-in match throws
     /// <see cref="InvalidOperationException"/>; the caller (the port supervisor) treats that as the

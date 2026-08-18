@@ -14,7 +14,7 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// The <c>radio: kind rig</c> slice (plan OQ-011) on a live <see cref="PortSupervisor"/>: a port
-/// with a <c>rig:</c> block can ALSO re-present that rig as its radio — the node dials a SECOND,
+/// with a <c>rig:</c> block can ALSO re-present that rig as its radio - the node dials a SECOND,
 /// dedicated connection to the same daemon and wraps it in an owning
 /// <see cref="RigRadioControl"/>, so hardware DCD gates the listener's CSMA (and calibrated
 /// signal strength RSSI-tags inbound frames) with any transport, the headline case being a
@@ -73,7 +73,7 @@ public sealed class PortRigRadioIntegrationTests
         var config = new TestConfigProvider(ConfigWithRigBackedRadio());
         var transports = new FakeTransportFactory().Provide("kiss-tcp:mem:1", bus.Attach());
         // Two dedicated connections to the same daemon: the radio arm dials FIRST (bring-up
-        // order), the status poller second — so the radio arm's fake leads the queue. DCD is
+        // order), the status poller second - so the radio arm's fake leads the queue. DCD is
         // asserted before bring-up so the bridge's first poll sample reads busy.
         var radioRig = new FakeRigControl(name: "radio-rig")
         {
@@ -221,7 +221,7 @@ public sealed class PortRigRadioIntegrationTests
         port.Transport.Should().NotBeOfType<InboundRadioTap>("a DCD-only radio cannot feed the RSSI tagger");
         port.InnerTransport.Should().BeNull("without the wrap, Transport IS the modem chain");
 
-        // And the port still carries traffic (the gate is clear — the fake's DCD reads false).
+        // And the port still carries traffic (the gate is clear - the fake's DCD reads false).
         await using var remote = new RemoteStation(bus.Attach(), RemoteCall);
         await remote.StartAsync();
         await remote.ConnectAsync(NodeCall);

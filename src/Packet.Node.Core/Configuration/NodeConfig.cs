@@ -4,7 +4,7 @@ namespace Packet.Node.Core.Configuration;
 /// The node's complete configuration, as a format-agnostic immutable record
 /// tree. This is the <b>stable interface</b> every consumer
 /// (<see cref="Hosting.NodeHostedService"/>, the console, the port supervisor)
-/// depends on — it deliberately knows nothing about YAML, SQLite, or whatever
+/// depends on - it deliberately knows nothing about YAML, SQLite, or whatever
 /// future store the config lives in. The <see cref="IConfigProvider"/> seam
 /// produces <see cref="NodeConfig"/> instances; everything downstream reads
 /// only this shape.
@@ -16,7 +16,7 @@ namespace Packet.Node.Core.Configuration;
 /// </remarks>
 public sealed record NodeConfig
 {
-    /// <summary>The schema version the running code produces and understands — the single
+    /// <summary>The schema version the running code produces and understands - the single
     /// source of truth. <see cref="SchemaVersion"/> defaults to it, the store stamps it on
     /// every <c>Save</c>, and the load-time migration chain
     /// (<see cref="NodeConfigSchemaMigrations"/>) targets it. When a schema bump changes the
@@ -25,18 +25,18 @@ public sealed record NodeConfig
 
     /// <summary>Schema version of the persisted config. Bumped when the shape
     /// changes incompatibly; lets a future loader migrate older blobs. Defaults to
-    /// <see cref="CurrentSchemaVersion"/> — a config built in code is always at current.</summary>
+    /// <see cref="CurrentSchemaVersion"/> - a config built in code is always at current.</summary>
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
-    /// <summary>Station identity — the callsign every <see cref="Ports"/> entry
+    /// <summary>Station identity - the callsign every <see cref="Ports"/> entry
     /// listens as, plus optional human-facing metadata.</summary>
     public required Identity Identity { get; init; }
 
-    /// <summary>The configured AX.25 ports. May be empty — a node with no ports
+    /// <summary>The configured AX.25 ports. May be empty - a node with no ports
     /// is a legal idle node (it still answers telnet + <c>/healthz</c>).</summary>
     public IReadOnlyList<PortConfig> Ports { get; init; } = [];
 
-    /// <summary>Operator-facing service text (banner, prompt) — hot-reloadable
+    /// <summary>Operator-facing service text (banner, prompt) - hot-reloadable
     /// by reference swap.</summary>
     public ServicesConfig Services { get; init; } = new();
 
@@ -45,10 +45,10 @@ public sealed record NodeConfig
     public ManagementConfig Management { get; init; } = new();
 
     /// <summary>NET/ROM awareness (read-only): hear NODES broadcasts and build a
-    /// routing table. Pure consumer — never transmits. See <see cref="NetRomConfig"/>.</summary>
+    /// routing table. Pure consumer - never transmits. See <see cref="NetRomConfig"/>.</summary>
     public NetRomConfig NetRom { get; init; } = new();
 
-    /// <summary>The system-default ID beacon — a periodic connectionless AX.25 UI
+    /// <summary>The system-default ID beacon - a periodic connectionless AX.25 UI
     /// frame sent per port to announce the node's presence. Default-OFF
     /// (<see cref="BeaconConfig.Enabled"/> defaults <c>false</c>): a node that never
     /// beaconed keeps not beaconing. A port may override it with
@@ -62,7 +62,7 @@ public sealed record NodeConfig
     public RhpConfig Rhp { get; init; } = new();
 
     /// <summary>The MCP server (Phase 8): exposes the node's read / diagnostic /
-    /// network-exploration tools — and operate-gated write tools — to MCP clients
+    /// network-exploration tools - and operate-gated write tools - to MCP clients
     /// (Claude Code, etc.). Default-off. The stdio transport is the <c>pdn mcp</c>
     /// subcommand (a separate process, no config here); the in-process
     /// SSE/Streamable-HTTP transport piggybacks the web listener at
@@ -70,24 +70,24 @@ public sealed record NodeConfig
     /// <c>read</c> by the auth layer. See <c>docs/mcp-design.md</c>.</summary>
     public McpConfig Mcp { get; init; } = new();
 
-    /// <summary>Registered node applications — the app-extensibility platform. Each entry
+    /// <summary>Registered node applications - the app-extensibility platform. Each entry
     /// is launched (out-of-process) when a connected user types its <see cref="ApplicationConfig.Command"/>
     /// verb at the node prompt; the session is bridged to the app over the
     /// <c>pdn-app/1</c> stdio wire (<c>docs/app-local-session-wire.md</c>). Default-empty: a
     /// node with no entries has no apps and behaves exactly as before. Read live at launch
-    /// time — because each connect spawns a fresh process, a config edit is picked up by the
+    /// time - because each connect spawns a fresh process, a config edit is picked up by the
     /// next launch with no reconcile/restart machinery. See <c>docs/app-extensibility.md</c>.</summary>
     public IReadOnlyList<ApplicationConfig> Applications { get; init; } = [];
 
     /// <summary>The owner's app-package state: which <b>discovered</b> packages
-    /// (<c>pdn-app.yaml</c> under the package roots — see <c>docs/app-packages.md</c>) are
-    /// enabled, plus small overrides. Discovered packages default to DISABLED — an entry here
+    /// (<c>pdn-app.yaml</c> under the package roots - see <c>docs/app-packages.md</c>) are
+    /// enabled, plus small overrides. Discovered packages default to DISABLED - an entry here
     /// is the owner's explicit trust grant. Distinct from <see cref="Applications"/>, which
     /// remains the owner-authored inline registry.</summary>
     public IReadOnlyList<AppOverrideConfig> Apps { get; init; } = [];
 
     /// <summary>Override of the package discovery roots (dev/test). Null = the standard
-    /// roots (<c>/usr/share/packetnet/apps</c>, then <c>/var/lib/packetnet/apps</c> — later
+    /// roots (<c>/usr/share/packetnet/apps</c>, then <c>/var/lib/packetnet/apps</c> - later
     /// wins on id collision). When set, replaces the defaults entirely.</summary>
     public IReadOnlyList<string>? AppPackageRoots { get; init; }
 
@@ -96,42 +96,42 @@ public sealed record NodeConfig
     /// off-air troubleshooting. Default-ON. See <see cref="TrafficConfig"/>.</summary>
     public TrafficConfig Traffic { get; init; } = new();
 
-    /// <summary>The embedded Tailscale node (the <c>tsnet</c> Go sidecar) — the blessed
+    /// <summary>The embedded Tailscale node (the <c>tsnet</c> Go sidecar) - the blessed
     /// remote + passkey path. Default-OFF (<see cref="TailscaleConfig.Enabled"/> =
     /// <c>false</c>): pdn stays HTTP-only until the operator opts in. When enabled, a
     /// later slice (S2) launches the sidecar, which joins the operator's tailnet, gets a
     /// real Let's Encrypt cert for <c>pdn.&lt;tailnet&gt;.ts.net</c>, terminates TLS and
-    /// reverse-proxies to pdn's loopback HTTP — so passkeys work remotely with no public
+    /// reverse-proxies to pdn's loopback HTTP - so passkeys work remotely with no public
     /// DNS, port-forward, or cert management. <b>S1 only parses + validates this block;
     /// nothing reads it yet.</b> See <c>docs/network-access.md</c>.</summary>
     public TailscaleConfig Tailscale { get; init; } = new();
 
     /// <summary>Reporting to the OARC packet-network map (the community telemetry collector at
-    /// <c>node-api.packet.oarc.uk</c>) — outbound only, so this node appears on the map alongside
+    /// <c>node-api.packet.oarc.uk</c>) - outbound only, so this node appears on the map alongside
     /// the BPQ/XRouter estate. <b>Default-OFF</b> (<see cref="OarcConfig.Enabled"/> = <c>false</c>):
     /// nothing is sent until the operator opts in, and each telemetry category is an independent
     /// toggle. See <see cref="OarcConfig"/> and <c>docs/oarc-reporting-design.md</c>.</summary>
     public OarcConfig Oarc { get; init; } = new();
 
-    /// <summary>kissproxy-compatible MQTT frame emission — the node publishes every AX.25 frame it
+    /// <summary>kissproxy-compatible MQTT frame emission - the node publishes every AX.25 frame it
     /// sends/receives to an MQTT broker in kissproxy's native topic/payload format, so pdn can replace
     /// a kissproxy instance at a site without losing the downstream <c>kiss-collector</c> capture.
     /// <b>Default-OFF</b> (<see cref="MqttConfig.Enabled"/> = <c>false</c>): a stock node publishes
     /// nothing. See <see cref="MqttConfig"/> and <c>docs/research/pdn-mqtt-frame-emission.md</c>.</summary>
     public MqttConfig Mqtt { get; init; } = new();
 
-    /// <summary>The <b>POCSAG paging</b> service — a TCP line server transmitting/receiving pages
+    /// <summary>The <b>POCSAG paging</b> service - a TCP line server transmitting/receiving pages
     /// over a dedicated soundmodem audio device. <b>Default-OFF</b>
     /// (<see cref="PagingConfig.Enabled"/> = <c>false</c>). See <see cref="PagingConfig"/>.</summary>
     public PagingConfig Paging { get; init; } = new();
 
-    /// <summary>The <b>ARDOP virtual TNC</b> service — an ardopcf-compatible TCP host interface over
+    /// <summary>The <b>ARDOP virtual TNC</b> service - an ardopcf-compatible TCP host interface over
     /// a dedicated soundmodem audio device, letting external ARDOP hosts (BPQ, Pat, Winlink) drive
     /// this node as an ARDOP modem. <b>Default-OFF</b> (<see cref="ArdopConfig.Enabled"/> =
     /// <c>false</c>). See <see cref="ArdopConfig"/>.</summary>
     public ArdopConfig Ardop { get; init; } = new();
 
-    /// <summary>The split-station <b>RF head-ends</b> this node talks to — boxes running the Go
+    /// <summary>The split-station <b>RF head-ends</b> this node talks to - boxes running the Go
     /// head-end daemon that bridge their serial radios/modems as raw TCP pipes (see
     /// <c>docs/research/split-station-rf-headend.md</c>). A port's <c>radio:</c> control channel or its
     /// <c>nino-tnc-tcp</c> transport binds to a device on one of these by <c>(headEndId, deviceId)</c>.
@@ -153,7 +153,7 @@ public sealed record Identity
     /// validated by <see cref="NodeConfigValidator"/>; never bound as a struct.</summary>
     public required string Callsign { get; init; }
 
-    /// <summary>The node's alias / mnemonic — the single node-name concept (the BPQ NODEALIAS
+    /// <summary>The node's alias / mnemonic - the single node-name concept (the BPQ NODEALIAS
     /// model). Optional; when set it must be ≤6 uppercase alphanumerics (the NET/ROM wire field is
     /// 6 octets). Used both for display (the OARC map name, the <c>{node}</c> banner/prompt token,
     /// the console name, <c>PDN_NODE_ALIAS</c>) AND as the alias advertised in the node's NODES

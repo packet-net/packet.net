@@ -10,12 +10,12 @@ namespace Packet.Rhp2;
 /// <remarks>
 /// The discriminator is a constructor-set read-only property rather than
 /// an abstract override so the <c>[JsonPropertyName]</c> /
-/// <c>[JsonPropertyOrder]</c> attributes live on exactly one declaration —
+/// <c>[JsonPropertyOrder]</c> attributes live on exactly one declaration -
 /// System.Text.Json resolves attributes on the declaring member, and an
 /// attribute-less override in a subclass would silently shed them.
 /// <c>JsonPropertyOrder(-1)</c> puts <c>type</c> ahead of every
 /// default-ordered (0) property, so it is always the first key in emitted
-/// JSON — XRouter dispatches on it without buffering the whole object.
+/// JSON - XRouter dispatches on it without buffering the whole object.
 /// </remarks>
 public abstract class RhpMessage
 {

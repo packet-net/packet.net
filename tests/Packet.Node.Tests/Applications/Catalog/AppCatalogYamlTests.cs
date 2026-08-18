@@ -10,18 +10,18 @@ public partial class AppCatalogYamlTests
     // The three runtime ids every shipped app must publish an artifact for.
     private static readonly string[] AllRids = ["linux-x64", "linux-arm64", "linux-arm"];
 
-    // A "semver-ish" version pin: digits-and-dots, e.g. "0.34.2" or "1.0". Deliberately loose —
+    // A "semver-ish" version pin: digits-and-dots, e.g. "0.34.2" or "1.0". Deliberately loose -
     // we assert the SHAPE of a pin, not the value, so a routine bump never fails this test.
     [GeneratedRegex(@"^[0-9]+(\.[0-9]+)*$")]
     private static partial Regex SemverIshRegex();
 
-    // Exactly 64 lowercase hex chars — the catalog pin spelling.
+    // Exactly 64 lowercase hex chars - the catalog pin spelling.
     [GeneratedRegex("^[0-9a-f]{64}$")]
     private static partial Regex Sha256HexRegex();
 
     /// <summary>
     /// The real shipped catalog parses, carries all three artifact KINDs and the vetted set, and
-    /// every pin is VALID — but this test pins no version, sha, or url VALUE. A routine
+    /// every pin is VALID - but this test pins no version, sha, or url VALUE. A routine
     /// version/sha bump (the thing that broke this test twice on #475) keeps it green; only a
     /// structural regression (a missing app/kind/rid, a malformed pin) turns it red. Exact-value
     /// coverage lives in <see cref="The_real_catalog_validates_clean"/> against the live file.
@@ -33,10 +33,10 @@ public partial class AppCatalogYamlTests
 
         doc.Catalog.Should().Be(1);
 
-        // The vetted set (docs/app-catalog.md) — by id, version-agnostic.
+        // The vetted set (docs/app-catalog.md) - by id, version-agnostic.
         doc.Apps.Select(a => a.Id).Should().Contain(["dapps", "bpqchat", "convers", "bbs"]);
 
-        // dapps is the assets-kind flagship; bbs/bpqchat/convers are deb-kind — so the shipped
+        // dapps is the assets-kind flagship; bbs/bpqchat/convers are deb-kind - so the shipped
         // catalog exercises both real kinds. (pdnapp's parse is covered by a dedicated test.)
         var dapps = doc.Apps.Single(a => a.Id == "dapps");
         dapps.Artifact!.Kind.Should().Be(ArtifactKind.Assets);

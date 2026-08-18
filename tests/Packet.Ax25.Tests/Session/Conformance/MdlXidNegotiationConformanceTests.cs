@@ -7,7 +7,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// v2.2 arc V3 part 2 — the MDL (XID parameter-negotiation) runtime.
+/// v2.2 arc V3 part 2 - the MDL (XID parameter-negotiation) runtime.
 ///
 /// Drives the management data-link FSM (figc5.1 Ready / figc5.2 Negotiating,
 /// prose-bootstrap, verification_pending) through the two-station harness. The
@@ -26,7 +26,7 @@ public class MdlXidNegotiationConformanceTests
     private static bool IsXid(Ax25Frame f) => (f.Control & 0xEF) == XidBase;
 
     /// <summary>A full mod-128 + SREJ XID offer (half-duplex, k=32, N1=256,
-    /// T1=3000ms, N2=10) — the v2.2 baseline a station advertises. Tests vary one
+    /// T1=3000ms, N2=10) - the v2.2 baseline a station advertises. Tests vary one
     /// field via <c>with</c> to pin a specific reverts-to outcome.</summary>
     private static readonly XidParameters Mod128Offer = new()
     {
@@ -40,7 +40,7 @@ public class MdlXidNegotiationConformanceTests
 
     // ─── Happy-path negotiation (two v2.2 stations) ─────────────────────────
 
-    /// <summary>1 — two v2.2 stations connect; the initiator's figc4.6 UA path
+    /// <summary>1 - two v2.2 stations connect; the initiator's figc4.6 UA path
     /// fires MDL-NEGOTIATE Request, the MDL exchanges XID command/response, and
     /// both stations end in MDL Ready having confirmed the negotiation. An XID
     /// command and response actually crossed the wire.</summary>
@@ -65,7 +65,7 @@ public class MdlXidNegotiationConformanceTests
             "the responder replied with an XID response");
     }
 
-    /// <summary>2 — the negotiated reject scheme reverts to the LESSER of the two
+    /// <summary>2 - the negotiated reject scheme reverts to the LESSER of the two
     /// offers (§6.3.2 ¶1426): SREJ only survives if both sides offer it. Here the
     /// responder offers only implicit reject, so both converge on REJ even though
     /// the initiator offered SREJ.</summary>
@@ -91,7 +91,7 @@ public class MdlXidNegotiationConformanceTests
         h.B.Context.IsExtended.Should().BeTrue();
     }
 
-    /// <summary>3 — window k reverts to notification/min (§6.3.2 ¶1430): each side
+    /// <summary>3 - window k reverts to notification/min (§6.3.2 ¶1430): each side
     /// adopts the smaller of the two advertised Rx windows. The peer advertising a
     /// smaller k pulls both down to it.</summary>
     [Fact]
@@ -107,7 +107,7 @@ public class MdlXidNegotiationConformanceTests
         h.B.Context.K.Should().Be(10);
     }
 
-    /// <summary>4 — T1 reverts to the greater and N2 reverts to the greater
+    /// <summary>4 - T1 reverts to the greater and N2 reverts to the greater
     /// (§6.3.2 ¶1432/¶1434). The slower / more-patient values win on both sides.
     /// Uses explicit XID offers (a connect would reset T1V/N2 via the figc4.x
     /// establishment path before negotiation, masking the negotiated values).</summary>
@@ -128,10 +128,10 @@ public class MdlXidNegotiationConformanceTests
         h.B.Context.N2.Should().Be(15);
     }
 
-    /// <summary>5 — modulo reverts to the lesser (§6.3.2 ¶1426): if one side offers
+    /// <summary>5 - modulo reverts to the lesser (§6.3.2 ¶1426): if one side offers
     /// only mod-8 in the XID, both converge on mod-8. Uses explicit offers (the
     /// SABME establishment resets B to mod-128 before negotiation, so a context
-    /// mutation wouldn't survive — the XID offer is the controllable input).</summary>
+    /// mutation wouldn't survive - the XID offer is the controllable input).</summary>
     [Fact]
     public void Modulo_reverts_to_mod8_when_one_side_offers_only_mod8()
     {
@@ -149,7 +149,7 @@ public class MdlXidNegotiationConformanceTests
 
     // ─── v2.0 fallback (pre-v2.2 peer FRMRs the XID command) ────────────────
 
-    /// <summary>6 — a pre-v2.2 peer answers the XID command with FRMR (§6.3.2 ¶1):
+    /// <summary>6 - a pre-v2.2 peer answers the XID command with FRMR (§6.3.2 ¶1):
     /// the MDL applies the FULL §1436 version-2.0 default set (half-duplex,
     /// implicit reject, mod-8, N1=256, k=7, T1=3000ms, N2=10), confirms, and the
     /// link is usable at mod-8.</summary>
@@ -166,7 +166,7 @@ public class MdlXidNegotiationConformanceTests
 
         h.A.MdlState.Should().Be("Negotiating", "the XID command was swallowed, so A awaits a reply");
 
-        // The pre-v2.2 peer rejects the XID command with a FRMR-of-XID — routed
+        // The pre-v2.2 peer rejects the XID command with a FRMR-of-XID - routed
         // to the MDL machine (the listener routes a FRMR to the MDL while it
         // negotiates; see Ax25Listener.DispatchInbound).
         h.A.Mdl.OnFrmrReceived(
@@ -185,7 +185,7 @@ public class MdlXidNegotiationConformanceTests
 
         // MDL confirms completion (a v2.0 connection is made) and returns to Ready.
         // (The MDL applies parameters; it does not manage the data-link connection
-        // state — that stays under the figc4.x data-link machine.)
+        // state - that stays under the figc4.x data-link machine.)
         h.A.MdlState.Should().Be("Ready");
         h.A.MdlSignals.OfType<MdlNegotiateConfirmSignal>().Should().ContainSingle(
             "the figc5.2 FRMR path raises MDL-NEGOTIATE Confirm (a v2.0 connection is made)");
@@ -193,7 +193,7 @@ public class MdlXidNegotiationConformanceTests
 
     // ─── TM201 retry / NM201 exhaustion (error C) ───────────────────────────
 
-    /// <summary>7 — when no reply comes, TM201 retransmits the XID command up to
+    /// <summary>7 - when no reply comes, TM201 retransmits the XID command up to
     /// NM201 times, then gives up with MDL-ERROR Indicate (C) ("management retry
     /// limit exceeded", §C5.3).</summary>
     [Fact]
@@ -222,7 +222,7 @@ public class MdlXidNegotiationConformanceTests
 
     // ─── Error D (XID response without F=1) ─────────────────────────────────
 
-    /// <summary>8 — an XID response without F=1 is the error-D condition (§C5.3):
+    /// <summary>8 - an XID response without F=1 is the error-D condition (§C5.3):
     /// MDL-ERROR Indicate (D) is raised, and the MDL stays in Negotiating (TM201
     /// still running) rather than completing.</summary>
     [Fact]
@@ -253,7 +253,7 @@ public class MdlXidNegotiationConformanceTests
 
     // ─── Error B (unexpected XID response in Ready) ─────────────────────────
 
-    /// <summary>9 — an XID response arriving with no negotiation outstanding is the
+    /// <summary>9 - an XID response arriving with no negotiation outstanding is the
     /// error-B condition (§C5.3 "unexpected XID response"): MDL-ERROR Indicate (B),
     /// staying in Ready.</summary>
     [Fact]

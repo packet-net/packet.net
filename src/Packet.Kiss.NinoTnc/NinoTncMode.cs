@@ -1,12 +1,12 @@
 namespace Packet.Kiss.NinoTnc;
 
 /// <summary>
-/// One NinoTNC operating mode — the (mode number, human name, raw bit rate)
+/// One NinoTNC operating mode - the (mode number, human name, raw bit rate)
 /// triple. Mode numbers correspond to the DIP-switch position on the TNC's
 /// front panel (or the value set via <see cref="KissCommand.SetHardware"/>
 /// when DIP=15 "Set from KISS").
 /// </summary>
-/// <param name="Mode">DIP-switch position, 0–15.</param>
+/// <param name="Mode">DIP-switch position, 0-15.</param>
 /// <param name="Name">Human-readable description, e.g. "1200 AFSK AX.25".</param>
 /// <param name="BitRateHz">
 /// Raw data rate in bits per second (symbol rate × bits per symbol).

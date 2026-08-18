@@ -13,17 +13,17 @@ This page is a quick operator reference. The full observability write-up is
 GET /metrics
 ```
 
-- It's on the **same web port** as the control panel — no second port to bind or
+- It's on the **same web port** as the control panel - no second port to bind or
   firewall.
 - It is **always unauthenticated**, even when management auth is on (which it is by
-  default). That's the Prometheus contract — a scraper holds a static config, not a
-  login — and it means a stock node is scrapeable with no token wrangling. The flip
+  default). That's the Prometheus contract - a scraper holds a static config, not a
+  login - and it means a stock node is scrapeable with no token wrangling. The flip
   side: on the default `0.0.0.0` bind, anyone who can reach the node's web port can
   read it, and it carries **heard callsigns**, per-peer SNR, port and radio health,
   and your running version. If that matters at your site, bind the panel to
   `127.0.0.1` and scrape locally, keep the node on a Tailscale tailnet, or put a
   reverse proxy in front.
-- Numbers here and in the JSON API can never disagree — they're computed from one
+- Numbers here and in the JSON API can never disagree - they're computed from one
   set of counters (the same `RadioHealth` projection `GET /api/v1/radios` serves).
 
 Quick check:
@@ -35,7 +35,7 @@ curl -s http://127.0.0.1:8080/metrics | grep pdn_radio_
 ## The radio metrics
 
 All use the `pdn_` namespace and are labelled `{port}`. They are emitted **only for
-currently-attached radios** — the whole bucket is absent on a node with no radios.
+currently-attached radios** - the whole bucket is absent on a node with no radios.
 Null readings are **omitted** (never a misleading `0`).
 
 | Metric | Type | Meaning |
@@ -74,12 +74,12 @@ partner** instead, alongside that partner's TXDELAY as heard:
 
 ## A couple of alerts worth having
 
-- **Radio went faulted** — the control link died:
+- **Radio went faulted** - the control link died:
   `pdn_radio_connection_state == 0` for a few minutes.
-- **Antenna trend shifted** — the reverse/forward ratio moved off its baseline for a
-  station (compare `pdn_radio_reverse_forward_ratio` to its own recent average — a
+- **Antenna trend shifted** - the reverse/forward ratio moved off its baseline for a
+  station (compare `pdn_radio_reverse_forward_ratio` to its own recent average - a
   *change*, not a threshold).
-- **A partner degraded** — `pdn_link_snr_db{peer="..."}` dropped below where it
+- **A partner degraded** - `pdn_link_snr_db{peer="..."}` dropped below where it
   usually sits.
 
 The metric set also includes node-wide, per-port and NET/ROM series beyond radios;

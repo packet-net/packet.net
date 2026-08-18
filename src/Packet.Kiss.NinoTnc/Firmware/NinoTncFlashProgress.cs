@@ -3,7 +3,7 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 /// <summary>
 /// A firmware-flash progress snapshot: how many Intel-HEX lines the
 /// bootloader has accepted out of the image total. Reported once per
-/// accepted line — a full-size image is ~16–17 k lines over 2–4 minutes,
+/// accepted line - a full-size image is ~16-17 k lines over 2-4 minutes,
 /// so consumers wanting a lighter cadence should throttle on
 /// <see cref="Percent"/> changes.
 /// </summary>

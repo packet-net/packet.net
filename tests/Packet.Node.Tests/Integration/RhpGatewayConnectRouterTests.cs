@@ -15,7 +15,7 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// The RHPv2 gateway (<see cref="SupervisorRhpGateway.OpenAx25StreamAsync"/>) now shares the
 /// console's connect routing: an app's outbound <c>open</c> to a callsign the node is locally
-/// registered for — with no explicit port — bridges in-process (loopback crossconnect) instead
+/// registered for - with no explicit port - bridges in-process (loopback crossconnect) instead
 /// of dialling RF, so one local app can open another and the target sees the originating
 /// callsign. An explicit port stays a direct dial (and validates). NET/ROM out of scope.
 /// </summary>
@@ -90,7 +90,7 @@ public sealed class RhpGatewayConnectRouterTests
         // The regression this guards (the deterministic one-node repro): the REAL RHPv2 server's
         // accept handler pushes ACCEPT then pumps the connection in the BACKGROUND and RETURNS
         // immediately. LocalAppConnector used to dispose the app end of the loopback on that
-        // (immediate) return — tearing the bridge down before any data crossed (Connected ->
+        // (immediate) return - tearing the bridge down before any data crossed (Connected ->
         // immediately Disconnected, app got the accept but its banner never reached the caller).
         // The earlier crossconnect tests missed it because their handlers await a read loop
         // (return only when the link ends). This one mirrors the real server: own + return.
@@ -113,7 +113,7 @@ public sealed class RhpGatewayConnectRouterTests
                     fromCaller.Enqueue(Encoding.UTF8.GetString(chunk.Span));
                 }
             });
-            return Task.CompletedTask;   // ownership taken; pump runs on — return immediately
+            return Task.CompletedTask;   // ownership taken; pump runs on - return immediately
         });
 
         var gateway = new SupervisorRhpGateway(host, config);

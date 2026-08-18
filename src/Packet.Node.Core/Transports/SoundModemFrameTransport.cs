@@ -27,7 +27,7 @@ public interface ISoundModemCapture : IDisposable
 
 /// <summary>
 /// The <c>kind: soundmodem</c> transport: runs the pdn-soundmodem engine in-process over
-/// an audio device. Implements the full optional-facet set the seam anticipates —
+/// an audio device. Implements the full optional-facet set the seam anticipates -
 /// <see cref="ICarrierSense"/> (native DCD + energy busy into the listener's
 /// carrier-sense gate, the OQ-012 shape), <see cref="ITxCompletionTransport"/>
 /// (sample-accurate: the completion task resolves when the audio has fully left the
@@ -190,21 +190,21 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
     public bool? ChannelBusy => _running ? _channel.ChannelBusy : null;
 
     /// <summary>One waterfall line per FFT frame (~3/s): 2048 dB-scaled bytes covering
-    /// 0 Hz to half the DSP rate. The buffer is reused — copy if kept. Raised on the
+    /// 0 Hz to half the DSP rate. The buffer is reused - copy if kept. Raised on the
     /// receive-pump thread.</summary>
     public event Action<ReadOnlyMemory<byte>>? SpectrumLine;
 
     /// <summary>Width of one spectrum bin in hertz.</summary>
     public double SpectrumBinWidthHz { get; }
 
-    /// <summary>Raised once per decoded inbound frame with its receive-quality diagnostics — FEC
+    /// <summary>Raised once per decoded inbound frame with its receive-quality diagnostics - FEC
     /// corrections, CRC state, winning decoder branch (see <see cref="SoundModemFrameQuality"/>).
     /// Fired on the receive-pump thread, right as the matching <c>Ax25InboundFrame</c> is queued;
     /// keep the handler cheap. Used by the port supervisor for the corrections early-warning log
-    /// line — the cumulative counters live on <see cref="QualitySnapshot"/> instead.</summary>
+    /// line - the cumulative counters live on <see cref="QualitySnapshot"/> instead.</summary>
     public event Action<SoundModemFrameQuality>? FrameQualityDecoded;
 
-    /// <summary>A point-in-time rolling summary of inbound receive quality on this port —
+    /// <summary>A point-in-time rolling summary of inbound receive quality on this port -
     /// cumulative FEC counters plus the most recent per-frame samples. Pulled by the Prometheus
     /// exporter (<c>pdn_port_fec_*</c>) and the port quality API; safe to call from any thread.
     /// Returns zeroed counters and an empty ring before the first frame decodes.</summary>
@@ -303,7 +303,7 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
         _capture.Dispose();
         if (_deviceOwner is not null)
         {
-            // The device owns the audio endpoints (a FlexRuntime owns its Input/Output/Ptt) —
+            // The device owns the audio endpoints (a FlexRuntime owns its Input/Output/Ptt) -
             // dispose it, not them (the capture adapter's Dispose is a no-op for that reason).
             await _deviceOwner.DisposeAsync().ConfigureAwait(false);
         }
@@ -380,7 +380,7 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
             return BpskModem.Bpsk1200(dspRate, sink);
         }
 
-        // Every other mode is built by the shared catalogue — one source of truth for the mode
+        // Every other mode is built by the shared catalogue - one source of truth for the mode
         // set, DSP rate and detector defaults, kept in sync with the daemon.
         return ModemCatalog.Create(mode, dspRate, sink, new ModemOptions(
             CentreFrequencyHz: frequency,

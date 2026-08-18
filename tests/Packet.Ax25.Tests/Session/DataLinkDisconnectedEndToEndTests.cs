@@ -16,7 +16,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <para>
 /// The smoke tests (<see cref="DataLinkDisconnectedSmokeTests"/>) prove
 /// that <see cref="Ax25Session.PostEvent"/> picks the right transition
-/// and records the right verb sequence — they use a recording
+/// and records the right verb sequence - they use a recording
 /// dispatcher and never run the verbs. These tests run the same
 /// transitions through the real dispatcher and assert observable
 /// behaviour: emitted frames, raised signals, context mutations, state
@@ -26,7 +26,7 @@ namespace Packet.Ax25.Tests.Session;
 /// What this catches that the smoke tests can't:
 /// <list type="bullet">
 ///   <item>Action verbs whose name is in the YAML but isn't wired in
-///   the dispatcher — would throw <c>InvalidOperationException</c> on
+///   the dispatcher - would throw <c>InvalidOperationException</c> on
 ///   real execution.</item>
 ///   <item>Context fields that should mutate but don't (e.g. wiring
 ///   <c>set_layer_3_initiated</c> to the wrong field).</item>
@@ -183,7 +183,7 @@ public class DataLinkDisconnectedEndToEndTests
         // F bit echoes the incoming command's P bit.
         var r = NewRig();
 
-        // Build a UI command frame with P=1 — stands in for any unhandled
+        // Build a UI command frame with P=1 - stands in for any unhandled
         // command frame the link multiplexer routes to all_other_commands.
         var triggerFrame = Ax25Frame.Ui(
             destination: new Callsign("M0LTE", 0),

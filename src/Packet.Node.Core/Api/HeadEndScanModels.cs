@@ -9,7 +9,7 @@ namespace Packet.Node.Core.Api;
 /// </summary>
 /// <param name="Instances">Each head-end instance found (config ∪ discovery), keyed by instance id.</param>
 /// <param name="Conflicts">Instance ids advertised at more than one address with no config address
-/// to disambiguate — a loud backstop, never silently bound.</param>
+/// to disambiguate - a loud backstop, never silently bound.</param>
 public sealed record HeadEndScan(
     IReadOnlyList<HeadEndInstanceScan> Instances,
     IReadOnlyList<HeadEndConflict> Conflicts);
@@ -17,7 +17,7 @@ public sealed record HeadEndScan(
 /// <summary>
 /// One head-end instance in a <see cref="HeadEndScan"/>: its stable id + resolved address + how the
 /// address was found, whether its inventory could be fetched, the devices it bridges, and the
-/// proposed pairings within it (the co-location invariant — a TNC pairs only with a radio on the
+/// proposed pairings within it (the co-location invariant - a TNC pairs only with a radio on the
 /// <b>same</b> instance).
 /// </summary>
 /// <param name="InstanceId">The head-end's stable instance id (the binding key).</param>
@@ -30,11 +30,11 @@ public sealed record HeadEndScan(
 /// <param name="Devices">Every bridged device, free (identified) or already bound to a port.</param>
 /// <param name="ProposedPairs">Suggested TNC↔radio pairs among the FREE devices.</param>
 /// <param name="PairingAmbiguous">True when more than one free TNC or radio makes the pairing a
-/// manual choice — the <see cref="ProposedPairs"/> are then candidate combinations, not auto-suggestions.</param>
+/// manual choice - the <see cref="ProposedPairs"/> are then candidate combinations, not auto-suggestions.</param>
 /// <param name="ReachableNow">The background health poller's live view (#583): whether the
 /// instance answered its most recent ~30 s health poll. Null when the
 /// <see cref="HeadEnd.HeadEndHealthMonitor"/> has no data yet (not registered, first cycle pending,
-/// or the instance isn't configured/referenced) — distinct from <see cref="Reachable"/>, which says
+/// or the instance isn't configured/referenced) - distinct from <see cref="Reachable"/>, which says
 /// whether THIS scan fetched the inventory. Folded in from the in-memory snapshot, never probed on
 /// the request path.</param>
 /// <param name="LastSeen">When the instance last answered a background health poll, or null when
@@ -55,17 +55,17 @@ public sealed record HeadEndInstanceScan(
 /// <summary>
 /// One device on a head-end, as seen by the scan: its stable id, its reach-through classification,
 /// and whether it is free to adopt. A bound device (already referenced by a configured port) is NOT
-/// probed — the head-end is single-client-per-pipe, so identifying it would fight the running port;
+/// probed - the head-end is single-client-per-pipe, so identifying it would fight the running port;
 /// its <see cref="Kind"/> is inferred from the binding instead.
 /// </summary>
 /// <param name="DeviceId">The stable device id (the inventory <c>id</c>) a port binds to.</param>
 /// <param name="Kind">The classification: <see cref="HeadEndDeviceKind.NinoTnc"/>,
 /// <see cref="HeadEndDeviceKind.TaitCcdi"/>, or <see cref="HeadEndDeviceKind.Unknown"/>.</param>
 /// <param name="Model">Friendly product name (Tait), or null.</param>
-/// <param name="Version">The reported version — NinoTNC GETVER firmware, or the Tait CCDI version.</param>
+/// <param name="Version">The reported version - NinoTNC GETVER firmware, or the Tait CCDI version.</param>
 /// <param name="Serial">The Tait CCDI serial number, or null.</param>
 /// <param name="Baud">The rate the device answered at (the baud the sweep locked, for a Tait; the
-/// inventory baud for a NinoTNC — CDC-ACM baud is fictional).</param>
+/// inventory baud for a NinoTNC - CDC-ACM baud is fictional).</param>
 /// <param name="Free">True when the device is unbound and was identified; false when already bound
 /// to a configured port (then <see cref="Kind"/> comes from the binding, not a probe).</param>
 /// <param name="BandCode">The Tait band designator (e.g. <c>B1</c>) read from the radio's product
@@ -74,10 +74,10 @@ public sealed record HeadEndInstanceScan(
 /// <param name="AmateurBand">The UK amateur band the Tait's split covers (<c>2m</c> / <c>70cm</c> /
 /// <c>4m</c>), or null for a NinoTNC / a Tait whose split has no amateur allocation. Adopt defaults a
 /// port's MQTT <c>{instance}</c> label and id to this when known.</param>
-/// <param name="IdSource">Which link the head-end derived <see cref="DeviceId"/> from —
+/// <param name="IdSource">Which link the head-end derived <see cref="DeviceId"/> from -
 /// <c>by-path</c> (stable) or <c>dev</c> (unstable last resort). Null when the head-end predates the
 /// id-stability fields (&lt; headend-v0.1.3): unknown (see <see cref="HeadEnd.HeadEndPortInfo.IdSource"/>).</param>
-/// <param name="IdStable">Whether <see cref="DeviceId"/> survives reboot / same-socket replug —
+/// <param name="IdStable">Whether <see cref="DeviceId"/> survives reboot / same-socket replug -
 /// <c>false</c> means a binding to it may not survive a replug (the UI warns). Null = the head-end
 /// didn't report it (unknown, deliberately not assumed stable).</param>
 public sealed record HeadEndDeviceScan(
@@ -100,7 +100,7 @@ public sealed record HeadEndDeviceScan(
 public sealed record HeadEndPairProposal(string TncDeviceId, string RadioDeviceId, bool Auto);
 
 /// <summary>An instance id advertised at more than one address with no config address to
-/// disambiguate — mDNS does not police its TXT payloads, so PDN surfaces the clash loudly rather
+/// disambiguate - mDNS does not police its TXT payloads, so PDN surfaces the clash loudly rather
 /// than binding to whichever answered.</summary>
 public sealed record HeadEndConflict(string InstanceId, IReadOnlyList<string> Addresses);
 

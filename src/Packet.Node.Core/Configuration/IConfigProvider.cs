@@ -15,7 +15,7 @@ namespace Packet.Node.Core.Configuration;
 /// </para>
 /// <list type="bullet">
 /// <item>Fully parse + validate a candidate config <b>before</b> swapping
-/// <see cref="Current"/> — an invalid candidate leaves <see cref="Current"/>
+/// <see cref="Current"/> - an invalid candidate leaves <see cref="Current"/>
 /// untouched and raises no <see cref="OnChange"/> (atomic apply / rollback by
 /// construction).</item>
 /// <item>Only raise <see cref="OnChange"/> after <see cref="Current"/> has been

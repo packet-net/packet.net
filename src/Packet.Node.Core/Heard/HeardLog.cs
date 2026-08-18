@@ -8,29 +8,29 @@ namespace Packet.Node.Core.Heard;
 /// The MHeard log (#454): remembers which stations have been heard on each port, with a
 /// first-heard / last-heard timestamp and a frame count, so the <c>MH</c> console verb (and the
 /// REST surface) can list recently heard stations the way operators expect from BPQ / Linux-AX.25
-/// nodes — and, unlike the live <c>/api/v1/links</c> telemetry, the log <b>survives port teardown
+/// nodes - and, unlike the live <c>/api/v1/links</c> telemetry, the log <b>survives port teardown
 /// and node restart</b>.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Feed.</b> <see cref="Record"/> is called from <see cref="Telemetry.NodeTelemetry.Observe"/>
 /// for every <i>received</i> frame, with the transmitting station's source callsign. So the heard
-/// log is a derivation of the very same frame-trace stream that feeds <c>/api/v1/links</c> — one
+/// log is a derivation of the very same frame-trace stream that feeds <c>/api/v1/links</c> - one
 /// source of truth, not a parallel tap. It runs on listener pump threads, so the hot dictionary is
 /// a <see cref="ConcurrentDictionary{TKey,TValue}"/> and the per-entry count is bumped under a
 /// short lock on the entry object (entries are rare-churn relative to frames).
 /// </para>
 /// <para>
 /// <b>Persistence + survival.</b> A hot dictionary keyed by (port, callsign) is hydrated from
-/// <see cref="IHeardStore.All"/> on construction and written through on every update. Crucially —
+/// <see cref="IHeardStore.All"/> on construction and written through on every update. Crucially -
 /// and unlike <see cref="Telemetry.NodeTelemetry"/>, whose counters are dropped when a port detaches
-/// because a bounced port should count from zero — the heard log is the <em>history</em>: it is
+/// because a bounced port should count from zero - the heard log is the <em>history</em>: it is
 /// never cleared on teardown, only by the retention policy (<see cref="Prune"/>) or an explicit
 /// operator <see cref="Forget"/> / <see cref="Clear"/>.
 /// </para>
 /// <para>
 /// <b>Optional store.</b> A null store ⇒ in-memory only (the log still works for the run, it just
-/// doesn't survive a restart) — keeping tests and embedders that don't supply a <c>pdn.db</c>
+/// doesn't survive a restart) - keeping tests and embedders that don't supply a <c>pdn.db</c>
 /// unaffected, mirroring the capability cache + NET/ROM service.
 /// </para>
 /// <para>
@@ -48,10 +48,10 @@ namespace Packet.Node.Core.Heard;
 /// </remarks>
 public sealed class HeardLog : IDisposable
 {
-    /// <summary>Default age-out window — a station not heard for this long is pruned.</summary>
+    /// <summary>Default age-out window - a station not heard for this long is pruned.</summary>
     public static readonly TimeSpan DefaultRetention = TimeSpan.FromDays(30);
 
-    /// <summary>Default per-port cap — at most this many heard stations are kept per port (the
+    /// <summary>Default per-port cap - at most this many heard stations are kept per port (the
     /// oldest-heard beyond it are pruned). Bounds growth on a busy channel.</summary>
     public const int DefaultMaxPerPort = 500;
 
@@ -145,12 +145,12 @@ public sealed class HeardLog : IDisposable
     /// <summary>
     /// Record one hearing: a frame received from <paramref name="callsign"/> on
     /// <paramref name="portId"/> at <paramref name="at"/>. Sets first-heard once, advances
-    /// last-heard, bumps the count, and writes through to the store. Never throws — the telemetry
+    /// last-heard, bumps the count, and writes through to the store. Never throws - the telemetry
     /// tap that calls this already swallows faults, but this is total anyway.
     /// <paramref name="rssiDbm"/> is the per-frame RSSI (dBm) when a radio control channel measured
     /// it, else <c>null</c>; it becomes the entry's last-heard RSSI whenever this frame advances
     /// last-heard (so the stored figure tracks the newest frame, and a null on a later frame does
-    /// not erase a real earlier reading — only a newer real reading replaces it).
+    /// not erase a real earlier reading - only a newer real reading replaces it).
     /// <paramref name="snrDb"/> is the matching per-frame SNR (dB) and tracks last-heard the same way.
     /// <paramref name="preDataCarrierMs"/> is the frame's measured carrier-rise→first-data lead in ms
     /// (only burst-opening frames carry one); unlike the last-heard RSSI/SNR it feeds a rolling
@@ -193,9 +193,9 @@ public sealed class HeardLog : IDisposable
             if (preDataCarrierMs is { } pre)
             {
                 // Rolling median, not newest-wins: the sample joins the entry's bounded window
-                // (created lazily — most stations on a radio-less port never measure one) and the
+                // (created lazily - most stations on a radio-less port never measure one) and the
                 // stored median/count are recomputed from the live window. A restart hydrates the
-                // persisted median/count for display, but the window itself restarts empty — the
+                // persisted median/count for display, but the window itself restarts empty - the
                 // first new sample honestly resets the count to 1.
                 entry.PreData ??= new PreDataCarrierWindow();
                 entry.PreData.Add(pre);
@@ -387,7 +387,7 @@ public sealed class HeardLog : IDisposable
     }
 
     /// <summary>
-    /// The node-wide view: each callsign merged across every port it was heard on — the earliest
+    /// The node-wide view: each callsign merged across every port it was heard on - the earliest
     /// first-heard, the latest last-heard, the summed count, and the count of distinct ports it was
     /// heard on. Most-recently-heard first. (The per-port view is <see cref="All"/> / <see cref="ForPort"/>.)
     /// </summary>
@@ -426,7 +426,7 @@ public sealed class HeardLog : IDisposable
             .ToList();
     }
 
-    /// <summary>Forget one (port, callsign) — clears the store row and the hot entry. Returns
+    /// <summary>Forget one (port, callsign) - clears the store row and the hot entry. Returns
     /// whether the hot entry was present (the store delete is best-effort). Ordered behind
     /// everything already queued for the writer; see <see cref="Clear"/>.</summary>
     public bool Forget(string portId, string callsign)
@@ -441,7 +441,7 @@ public sealed class HeardLog : IDisposable
         return removed;
     }
 
-    /// <summary>Forget everything — the operator reset. Returns the number of hot entries removed.</summary>
+    /// <summary>Forget everything - the operator reset. Returns the number of hot entries removed.</summary>
     /// <remarks>
     /// The store mutation is ordered AFTER the writer's pending queue (#727 item 10). Since
     /// C077 <see cref="Record"/> hands snapshots to a channel drained asynchronously, so a clear
@@ -511,7 +511,7 @@ public sealed class HeardLog : IDisposable
     /// each port to <see cref="DefaultMaxPerPort"/> (configurable) by dropping its oldest-heard
     /// entries. Mutates the hot dictionary and the store in step. Returns the number of entries
     /// removed. Called once at construction and after a configurable interval by the host's
-    /// sweep — cheap and idempotent.
+    /// sweep - cheap and idempotent.
     /// </summary>
     public int Prune()
     {
@@ -591,7 +591,7 @@ public sealed class HeardLog : IDisposable
         public float? LastSnrDb;
 
         // The live rolling window (created on the first measured sample) and the stored
-        // median/count it maintains. Hydration restores median/count for display only —
+        // median/count it maintains. Hydration restores median/count for display only -
         // the window restarts empty, so the first post-restart sample resets the count.
         public PreDataCarrierWindow? PreData;
         public float? MedianPreDataCarrierMs;
@@ -619,7 +619,7 @@ public sealed class HeardLog : IDisposable
 }
 
 /// <summary>
-/// A station merged across every port it was heard on — the node-wide MHeard view
+/// A station merged across every port it was heard on - the node-wide MHeard view
 /// (<see cref="HeardLog.NodeWide"/>). The per-port rows are <see cref="HeardEntry"/>.
 /// </summary>
 /// <param name="Callsign">The station callsign.</param>

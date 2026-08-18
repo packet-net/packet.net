@@ -61,7 +61,7 @@ public class Ax25ListenerRejectAndEdgeTests
         // outbound-side behaviour:
         //
         // Flip AcceptIncoming back on so the listener will allow
-        // a fresh attempt, then SABM again — the SessionAccepted event
+        // a fresh attempt, then SABM again - the SessionAccepted event
         // must fire (proving no stale cached "reject" session is
         // intercepting it).
         listener.AcceptIncoming = true;
@@ -100,7 +100,7 @@ public class Ax25ListenerRejectAndEdgeTests
 
         await listener.StartAsync();
 
-        // First attempt — rejected.
+        // First attempt - rejected.
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
         Ax25Frame.TryParse(modem.SentFrames[0].Span, out var dm).Should().BeTrue();
@@ -110,7 +110,7 @@ public class Ax25ListenerRejectAndEdgeTests
         listener.AcceptIncoming = true;
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
 
-        // Second outbound frame should be UA — accept path.
+        // Second outbound frame should be UA - accept path.
         await modem.SentFrames.WaitForCountAsync(2, TimeSpan.FromSeconds(2));
         Ax25Frame.TryParse(modem.SentFrames[1].Span, out var ua).Should().BeTrue();
         (ua!.Control & 0xEF).Should().Be(0x63, "after the flip, a fresh SABM must elicit UA");
@@ -171,7 +171,7 @@ public class Ax25ListenerRejectAndEdgeTests
         await ListenerTestSupport.WaitFor(() => !aData.IsEmpty, TimeSpan.FromSeconds(2),
             "peer A's existing session must keep processing I-frames even after AcceptIncoming flips to false");
 
-        // Peer B (new) is rejected — DM, no SessionAccepted. Don't index the
+        // Peer B (new) is rejected - DM, no SessionAccepted. Don't index the
         // modem positionally: peer A's I-frame above also elicits its
         // delayed-ack RR (#327), so the reply to B is found by destination.
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallB));
@@ -268,7 +268,7 @@ public class Ax25ListenerRejectAndEdgeTests
     /// </summary>
     /// <remarks>
     /// The task brief suggested SABME should fall through to DM via a
-    /// "not version_2_2" guard — but the actual <c>disconnected.sdl.yaml</c>
+    /// "not version_2_2" guard - but the actual <c>disconnected.sdl.yaml</c>
     /// (t16/t17) doesn't gate on version_2_2 there. The branch is
     /// <c>sabme_able_to_establish</c>, which resolves to
     /// <c>AcceptIncoming</c>. So the listener DOES accept SABME today,
@@ -303,15 +303,15 @@ public class Ax25ListenerRejectAndEdgeTests
 
     /// <summary>
     /// A SABM with the C-bit cleared (response, not command) is malformed per AX.25
-    /// §4.3.3.1 / §6.1.2 — SABM is always a command. The listener parses with the
+    /// §4.3.3.1 / §6.1.2 - SABM is always a command. The listener parses with the
     /// LENIENT default (so a legacy AX.25 v1.x peer, which predates the v2.0
     /// command/response C-bit encoding, can still connect), so the frame is accepted and
-    /// the session lands in Connected — the behaviour this test asserts.
+    /// the session lands in Connected - the behaviour this test asserts.
     /// </summary>
     /// <remarks>
     /// The strict rejection now EXISTS at decode (#142): parsing with
     /// <c>Ax25ParseOptions.Strict</c> (which sets <c>AllowCommandFrameAsResponse=false</c>)
-    /// drops a response-direction SABM so it can never open a session — see the paired
+    /// drops a response-direction SABM so it can never open a session - see the paired
     /// <c>Ax25FrameOptionsTests.Strict_Rejects_Sabm_With_Response_Cbits_Lenient_Accepts</c>.
     /// This test pins the listener's lenient default (accept), the chosen behaviour for
     /// v1.x interop.
@@ -355,7 +355,7 @@ public class Ax25ListenerRejectAndEdgeTests
 
         modem.InjectInbound(malformed);
 
-        // Document the current behaviour. The accept path WILL fire —
+        // Document the current behaviour. The accept path WILL fire -
         // there's no command-guard on t14.
         var sawAccepted = await Task.WhenAny(accepted.Task, Task.Delay(TimeSpan.FromMilliseconds(500))) == accepted.Task;
 
@@ -369,7 +369,7 @@ public class Ax25ListenerRejectAndEdgeTests
         {
             // Future tightening: SABM-with-response-bit rejected at the
             // classifier or via a new SDL command-guard. Either way, no
-            // session is built — listener must not crash.
+            // session is built - listener must not crash.
             observed.Should().BeNull();
         }
         // The single invariant in either branch: listener stayed alive.
@@ -384,7 +384,7 @@ public class Ax25ListenerRejectAndEdgeTests
     /// inbound chain reversed == outbound chain.
     /// </summary>
     /// <remarks>
-    /// Pre-#141 behaviour: the UA went out without any digi chain — the
+    /// Pre-#141 behaviour: the UA went out without any digi chain - the
     /// peer behind the digi never saw it and the handshake didn't
     /// complete. Post-fix: the dispatcher's frame builders auto-populate
     /// the response's digipeater path from the trigger's reversed chain
@@ -436,7 +436,7 @@ public class Ax25ListenerRejectAndEdgeTests
     /// <summary>
     /// Direct unit-level proof that <see cref="ActionDispatcher"/>
     /// reverses the digipeater chain on responses to digipeated
-    /// triggers. No listener involved — drives the dispatcher directly
+    /// triggers. No listener involved - drives the dispatcher directly
     /// via a session in Disconnected and posts a SABM with a 2-hop via.
     /// </summary>
     [Fact]
@@ -468,7 +468,7 @@ public class Ax25ListenerRejectAndEdgeTests
         var trigger = new SabmReceived(inbound);
         var tx = new TransitionContext(ctx, scheduler, trigger);
 
-        // figc4.1 t14's UA emit, simplified — just the UA verb.
+        // figc4.1 t14's UA emit, simplified - just the UA verb.
         dispatcher.Execute(new[] { Ax25ActionVerb.FAssignP, Ax25ActionVerb.UA }, tx);
 
         captured.Should().NotBeNull();
@@ -530,7 +530,7 @@ public class Ax25ListenerRejectAndEdgeTests
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
 
         // No cache visibility on the API surface, but a fresh inbound
-        // SABM from the same peer must still fire SessionAccepted —
+        // SABM from the same peer must still fire SessionAccepted -
         // proving no transient session intercepted it.
         var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
         listener.SessionAccepted += (_, e) =>
@@ -553,7 +553,7 @@ public class Ax25ListenerRejectAndEdgeTests
     }
 
     /// <summary>
-    /// Parsed outbound frames addressed to <paramref name="peer"/> —
+    /// Parsed outbound frames addressed to <paramref name="peer"/> -
     /// destination-keyed so assertions stay valid when unrelated traffic
     /// (e.g. another peer's delayed-ack RR, #327) shares the modem.
     /// </summary>

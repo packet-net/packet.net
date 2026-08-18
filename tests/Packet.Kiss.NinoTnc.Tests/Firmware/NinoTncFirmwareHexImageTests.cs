@@ -96,7 +96,7 @@ public class NinoTncFirmwareHexImageTests
     [Fact]
     public void An_Image_Without_The_End_Of_File_Record_Is_Refused()
     {
-        // Without :00000001FF the bootloader would never send 'Z' — the
+        // Without :00000001FF the bootloader would never send 'Z' - the
         // flash could not complete and the modem would be stranded.
         var bytes = Encoding.ASCII.GetBytes($":020000040000fa\n{Ep256Magic}\n");
         var act = () => NinoTncFirmwareHexImage.Parse(bytes);

@@ -8,7 +8,7 @@ using Packet.Node.Tests.Support;
 namespace Packet.Node.Tests.Tls;
 
 /// <summary>
-/// Unit tests for <see cref="TlsCertificateProvider"/> — the HTTPS cert resolver:
+/// Unit tests for <see cref="TlsCertificateProvider"/> - the HTTPS cert resolver:
 /// load a supplied PKCS#12, or generate + persist + reuse a self-signed cert, all on a
 /// <see cref="FakeTimeProvider"/> (no wall-clock, repo rule §2.7). Each test owns a temp
 /// dir so the persisted .pfx never leaks between tests.

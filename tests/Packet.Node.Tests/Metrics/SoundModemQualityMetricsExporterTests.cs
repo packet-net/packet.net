@@ -7,7 +7,7 @@ namespace Packet.Node.Tests.Metrics;
 /// The per-port in-process-soundmodem FEC receive-quality bucket (#635), driven directly over
 /// synthetic <see cref="SoundModemQualitySnapshot"/> rows (the <see cref="HeadEndMetricsExporterTests"/>
 /// pattern). Pins: absent-bucket-when-no-soundmodem-ports, counters-from-zero with the bounded
-/// <c>port</c> label, and the last-frame gauge's null-vs-0 rule — omitted when the last frame carried
+/// <c>port</c> label, and the last-frame gauge's null-vs-0 rule - omitted when the last frame carried
 /// no FEC count (HDLC), emitted as 0 for a clean IL2P frame (the two are different facts).
 /// </summary>
 [Trait("Category", "Node")]
@@ -47,7 +47,7 @@ public sealed class SoundModemQualityMetricsExporterTests
 
         // Emitted from zero so rate() works from the first scrape.
         body.Should().Contain("pdn_port_fec_corrected_bytes_total{port=\"sm0\"} 0");
-        // 0 (a clean FEC frame) is a real value — the gauge IS emitted, distinct from the null case.
+        // 0 (a clean FEC frame) is a real value - the gauge IS emitted, distinct from the null case.
         body.Should().Contain("pdn_port_fec_last_frame_corrected_bytes{port=\"sm0\"} 0");
     }
 
@@ -59,7 +59,7 @@ public sealed class SoundModemQualityMetricsExporterTests
         // Counters are still present (from zero) ...
         body.Should().Contain("pdn_port_fec_frames_total{port=\"sm0\"} 5");
         body.Should().Contain("pdn_port_fec_corrected_bytes_total{port=\"sm0\"} 0");
-        // ... but the last-frame gauge is entirely absent — an unknown count is never a misleading 0.
+        // ... but the last-frame gauge is entirely absent - an unknown count is never a misleading 0.
         body.Should().NotContain("pdn_port_fec_last_frame_corrected_bytes");
     }
 

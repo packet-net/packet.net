@@ -10,17 +10,17 @@ namespace Packet.Rhp2;
 //     emitted JSON, matching XRouter's output byte-for-byte.
 //   * Replies carry `errCode` / `errText` with capital C / T. The published
 //     spec mostly writes them lowercase, but real XRouter emits the
-//     capitalised form on EVERY reply — we write XRouter's form and read
+//     capitalised form on EVERY reply - we write XRouter's form and read
 //     either (PropertyNameCaseInsensitive).
 //   * `port` is a string everywhere. Where XRouter is known to emit a JSON
 //     number instead (TRACE recv; the spec's accept example), a
 //     StringOrIntConverter normalises on read.
 //   * Request `handle` and `data` fields are nullable so field ABSENCE
 //     survives deserialization: the wire distinguishes a missing field
-//     (errCode 12, "Missing handle"/"Missing data" — RHPTEST + live
+//     (errCode 12, "Missing handle"/"Missing data" - RHPTEST + live
 //     XRouter) from a present-but-empty one ("data":"" is a legal
 //     zero-byte send). Reply `handle` fields are nullable for the same
-//     reason XRouter omits them on parameter errors — there is nothing
+//     reason XRouter omits them on parameter errors - there is nothing
 //     truthful to echo. Emission for present values is unchanged
 //     (WhenWritingNull only ever removes fields).
 
@@ -59,7 +59,7 @@ public sealed class AuthReplyMessage : RhpMessage
 }
 
 /// <summary>
-/// Combined create/bind/connect-or-listen request (<c>open</c>) — the
+/// Combined create/bind/connect-or-listen request (<c>open</c>) - the
 /// high-level alternative to the socket/bind/listen/connect sequence.
 /// </summary>
 public sealed class OpenMessage : RhpMessage
@@ -165,7 +165,7 @@ public sealed class BindMessage : RhpMessage
     }
 
     /// <summary>Socket handle from <c>socketReply</c>. Null when the wire
-    /// field was absent — the server answers errCode 12 ("Missing handle").</summary>
+    /// field was absent - the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
     public int? Handle { get; set; }
 
@@ -209,7 +209,7 @@ public sealed class ListenMessage : RhpMessage
     }
 
     /// <summary>Socket handle to listen on. Null when the wire field was
-    /// absent — the server answers errCode 12 ("Missing handle").</summary>
+    /// absent - the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
     public int? Handle { get; set; }
 
@@ -249,7 +249,7 @@ public sealed class ConnectMessage : RhpMessage
     }
 
     /// <summary>Socket handle to connect. Null when the wire field was
-    /// absent — the server answers errCode 12 ("Missing handle").</summary>
+    /// absent - the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
     public int? Handle { get; set; }
 
@@ -293,12 +293,12 @@ public sealed class SendMessage : RhpMessage
     }
 
     /// <summary>Socket handle to send on. Null when the wire field was
-    /// absent — the server answers errCode 12 ("Missing handle").</summary>
+    /// absent - the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
     public int? Handle { get; set; }
 
     /// <summary>
-    /// Payload as a Latin-1 wire string — use
+    /// Payload as a Latin-1 wire string - use
     /// <see cref="RhpDataEncoding"/> to convert binary payloads. The field
     /// is mandatory even when empty (RHPTEST): null (absent on the wire)
     /// draws errCode 12 "Missing data", while <c>""</c> is a legal
@@ -346,7 +346,7 @@ public sealed class SendReplyMessage : RhpMessage
     public int? Status { get; set; }
 }
 
-/// <summary>Send a datagram to an explicit destination (<c>sendto</c> — all-lowercase "to" on the wire).</summary>
+/// <summary>Send a datagram to an explicit destination (<c>sendto</c> - all-lowercase "to" on the wire).</summary>
 public sealed class SendToMessage : RhpMessage
 {
     /// <summary>Creates a <c>sendto</c> message.</summary>
@@ -355,12 +355,12 @@ public sealed class SendToMessage : RhpMessage
     }
 
     /// <summary>Socket handle to send on. Null when the wire field was
-    /// absent — the server answers errCode 12 ("Missing handle").</summary>
+    /// absent - the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
     public int? Handle { get; set; }
 
     /// <summary>
-    /// Payload as a Latin-1 wire string — use
+    /// Payload as a Latin-1 wire string - use
     /// <see cref="RhpDataEncoding"/> to convert binary payloads. Null when
     /// the wire field was absent (see <see cref="SendMessage.Data"/>).
     /// </summary>
@@ -384,7 +384,7 @@ public sealed class SendToMessage : RhpMessage
     public int? Tos { get; set; }
 }
 
-/// <summary>Reply to <c>sendto</c> (<c>sendtoReply</c> — all-lowercase "to" on the wire).</summary>
+/// <summary>Reply to <c>sendto</c> (<c>sendtoReply</c> - all-lowercase "to" on the wire).</summary>
 public sealed class SendToReplyMessage : RhpMessage
 {
     /// <summary>Creates a <c>sendtoReply</c> message.</summary>
@@ -407,8 +407,8 @@ public sealed class SendToReplyMessage : RhpMessage
 }
 
 /// <summary>
-/// Server notification: data arrived, or — for sockets opened in TRACE /
-/// RAW mode — a decoded frame record (<c>recv</c>).
+/// Server notification: data arrived, or - for sockets opened in TRACE /
+/// RAW mode - a decoded frame record (<c>recv</c>).
 /// </summary>
 public sealed class RecvMessage : RhpMessage
 {
@@ -422,7 +422,7 @@ public sealed class RecvMessage : RhpMessage
     public int Handle { get; set; }
 
     /// <summary>
-    /// Payload as a Latin-1 wire string — use
+    /// Payload as a Latin-1 wire string - use
     /// <see cref="RhpDataEncoding"/> to recover binary payloads.
     /// </summary>
     [JsonPropertyName("data")]
@@ -430,7 +430,7 @@ public sealed class RecvMessage : RhpMessage
 
     /// <summary>
     /// Port the data arrived on. XRouter emits a JSON string in DGRAM mode
-    /// but a JSON number in TRACE mode — normalised to a string on read.
+    /// but a JSON number in TRACE mode - normalised to a string on read.
     /// </summary>
     [JsonPropertyName("port")]
     [JsonConverter(typeof(StringOrIntConverter))]
@@ -446,7 +446,7 @@ public sealed class RecvMessage : RhpMessage
 
     // TRACE / RAW metadata. None of these appear in plain STREAM /
     // DGRAM recv messages, and ilen/pid/ptcl/tseq aren't in the published
-    // spec at all — they're XRouter-observed.
+    // spec at all - they're XRouter-observed.
 
     /// <summary>"sent" or "rcvd" (TRACE / RAW).</summary>
     [JsonPropertyName("action")]
@@ -531,7 +531,7 @@ public sealed class AcceptMessage : RhpMessage
 
     /// <summary>
     /// Port the connection arrived on. The spec's example shows a JSON
-    /// number but real XRouter sends a string — normalised to a string
+    /// number but real XRouter sends a string - normalised to a string
     /// on read.
     /// </summary>
     [JsonPropertyName("port")]
@@ -594,7 +594,7 @@ public sealed class CloseMessage : RhpMessage
     }
 
     /// <summary>Socket handle to close. Always present on server pushes;
-    /// null when a client request omitted it (errCode 12, not 3 — "3 is
+    /// null when a client request omitted it (errCode 12, not 3 - "3 is
     /// for handles that are well-formed but unknown", RHPTEST).</summary>
     [JsonPropertyName("handle")]
     public int? Handle { get; set; }

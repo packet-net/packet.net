@@ -6,8 +6,8 @@ namespace Packet.Node.Tests.Tuning;
 
 /// <summary>
 /// The node-side tuning session state machine (<see cref="PortTuningSession"/>): the structured
-/// event feed (armed → peer-connected → rounds → terminal), the operator "next round" gate, and —
-/// above all — that the port-restore callback fires <b>exactly once on every exit path</b>. Driven
+/// event feed (armed → peer-connected → rounds → terminal), the operator "next round" gate, and -
+/// above all - that the port-restore callback fires <b>exactly once on every exit path</b>. Driven
 /// over an in-memory link pair against a scripted peer running the real <see cref="TuningSession"/>
 /// loop, so the wire protocol is exercised end to end with no hardware.
 /// </summary>
@@ -174,8 +174,8 @@ public sealed class PortTuningSessionTests
         var peerRun = TuningSession.RunMeterAsync(peerLink, peerMeter, NoDelay, TextWriter.Null);
 
         _ = await DriveAsync(session, reader, advanceRounds: 0);
-        await session.StopAsync(); // second stop — must not restore again
-        await session.DisposeAsync(); // third teardown — still no extra restore
+        await session.StopAsync(); // second stop - must not restore again
+        await session.DisposeAsync(); // third teardown - still no extra restore
         await peerRun.WaitAsync(Timeout);
         sub.Dispose();
 
@@ -208,7 +208,7 @@ public sealed class PortTuningSessionTests
         await peerRun.WaitAsync(Timeout);
         driverSub.Dispose();
 
-        // Subscribe AFTER the session has finished — the replay must carry the whole trend, then end.
+        // Subscribe AFTER the session has finished - the replay must carry the whole trend, then end.
         var lateSub = session.Subscribe(out var lateReader);
         var replayed = new List<TuningEvent>();
         using var cts = new CancellationTokenSource(Timeout);

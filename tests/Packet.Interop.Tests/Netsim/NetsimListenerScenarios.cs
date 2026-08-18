@@ -25,7 +25,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// </para>
 /// <para>
 /// The pre-listener scenario (<see cref="NetsimConnectedModeScenarios"/>)
-/// remains as the canonical low-level rig reference — useful for tests
+/// remains as the canonical low-level rig reference - useful for tests
 /// that need to drive specific transitions or interrogate session state
 /// at points the listener hides.
 /// </para>
@@ -42,8 +42,8 @@ public class NetsimListenerScenarios
 
     // Headroom for a local state mutation to settle after the remote signal
     // implying it has already been observed (e.g. the accepting side
-    // reaching Connected once ConnectAsync — which only resolves on
-    // DL-CONNECT-confirm — has returned). Resolves near-instantly on an idle
+    // reaching Connected once ConnectAsync - which only resolves on
+    // DL-CONNECT-confirm - has returned). Resolves near-instantly on an idle
     // host; the budget only bites under CPU contention. WaitUntil returns as
     // soon as the predicate holds, so a generous value costs nothing.
     private static readonly TimeSpan StateSettleBudget = TimeSpan.FromSeconds(10);

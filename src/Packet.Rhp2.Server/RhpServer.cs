@@ -14,7 +14,7 @@ namespace Packet.Rhp2.Server;
 /// <summary>Options for one <see cref="RhpServer"/> instance.</summary>
 public sealed class RhpServerOptions
 {
-    /// <summary>Bind address (loopback is the trust boundary — RHP has no TLS).</summary>
+    /// <summary>Bind address (loopback is the trust boundary - RHP has no TLS).</summary>
     public required IPAddress Bind { get; init; }
 
     /// <summary>TCP port (9000 conventional; 0 = ephemeral, for tests).</summary>
@@ -63,7 +63,7 @@ public sealed class RhpServerOptions
     /// Optional per-source-IP throttle on failed <c>auth</c> attempts (only consulted
     /// when <see cref="RequireAuth"/> is on). Once an IP accumulates the throttle's
     /// failure budget within its window, further <c>auth</c> attempts from it are
-    /// refused without reaching the password verify — the same sliding-window defence
+    /// refused without reaching the password verify - the same sliding-window defence
     /// the web panel uses, applied to the cleartext RHP <c>auth</c> message so a
     /// publicly-exposed port can't be brute-forced. Null disables throttling.
     /// </summary>
@@ -71,7 +71,7 @@ public sealed class RhpServerOptions
 }
 
 /// <summary>
-/// The RHPv2 server (PWP-0222/0245, XRouter-compatible — see <c>docs/rhp2-server.md</c> for
+/// The RHPv2 server (PWP-0222/0245, XRouter-compatible - see <c>docs/rhp2-server.md</c> for
 /// scope and the named-deviations table). A JSON-over-TCP front-end on the node's packet
 /// engine: requests are dispatched per client connection, an outbound <c>open</c> (Active)
 /// becomes an <see cref="INodeConnection"/> via <see cref="IRhpGateway"/>, and each open
@@ -79,11 +79,11 @@ public sealed class RhpServerOptions
 /// </summary>
 /// <remarks>
 /// <para><b>Wire contracts matched to live XRouter:</b> replies echo the request <c>id</c>;
-/// async notifications carry a <c>seqno</c> and never an <c>id</c> — the seqno counter is
+/// async notifications carry a <c>seqno</c> and never an <c>id</c> - the seqno counter is
 /// <b>per RHP connection</b>, starts at 0, and is shared across all push types
 /// (recv/accept/status/server-close), per RHPTEST and the live wire; <c>errCode</c>/<c>errText</c>
 /// are capitalised; an unknown <c>type</c> is answered with <c>{type}Reply</c> + errCode 2;
-/// an absent <c>handle</c>/<c>data</c> field is errCode 12 ("Missing handle"/"Missing data" —
+/// an absent <c>handle</c>/<c>data</c> field is errCode 12 ("Missing handle"/"Missing data" -
 /// 3 is reserved for well-formed-but-unknown handles), and parameter-error replies omit the
 /// handle echo; handles are numbered from one server-wide counter (from 100, like the
 /// reference).</para>
@@ -104,7 +104,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     // "unreliable datagram (AX25 UI, ...)" mode and `custom` only as "user specified protocol".
     // So: `dgram` is a PURE datagram (the UI PID is the implicit no-Layer-3 0xF0), and `custom`
     // carries the PID as the FIRST octet of `data` (data[0] = PID on TX, prepended to data on RX)
-    // — a convention G8PZT clarified for AX.25 (the written spec leaves `custom` underspecified),
+    // - a convention G8PZT clarified for AX.25 (the written spec leaves `custom` underspecified),
     // resolving packet.net#647. See docs/rhp2-server.md (R-7).
     private const byte DefaultPid = 0xF0;        // no-Layer-3 PID: the implicit PID of every `dgram` (pure-datagram) UI frame
 
@@ -192,13 +192,13 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         catch (ObjectDisposedException)
         {
-            // listener disposed during shutdown — normal.
+            // listener disposed during shutdown - normal.
         }
     }
 
     // One RHP client TCP connection: read frames sequentially, dispatch each. Slow
     // operations (the AX.25 connect behind `open`) run on background tasks so one
-    // in-flight open never blocks another handle's traffic — replies correlate by id,
+    // in-flight open never blocks another handle's traffic - replies correlate by id,
     // so out-of-order completion is fine (and matches the async reference).
     private async Task HandleClientAsync(Socket socket, CancellationToken ct)
     {
@@ -221,11 +221,11 @@ public sealed partial class RhpServer : IAsyncDisposable
                 catch (TimeoutException)
                 {
                     LogClientStalled(client.Peer, options.InFrameTimeout);
-                    break;   // slowloris — peer started a frame and stalled; drop it
+                    break;   // slowloris - peer started a frame and stalled; drop it
                 }
                 catch (Exception ex) when (ex is IOException or ObjectDisposedException or EndOfStreamException)
                 {
-                    break;   // client gone / stream desynced — drop the connection
+                    break;   // client gone / stream desynced - drop the connection
                 }
 
                 if (frame is null)
@@ -245,7 +245,7 @@ public sealed partial class RhpServer : IAsyncDisposable
                 catch (Exception ex) when (ex is RhpProtocolException or JsonException)
                 {
                     // Not a JSON object / no type: we can't even shape a reply. The stream
-                    // is suspect (framing desync) — close the connection rather than guess.
+                    // is suspect (framing desync) - close the connection rather than guess.
                     LogBadFrame(client.Peer, ex.Message);
                     break;
                 }
@@ -275,7 +275,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     private async Task DispatchAsync(ClientState client, RhpMessage msg, CancellationToken ct)
     {
         // The auth gate: when required and not yet satisfied, every non-auth request is
-        // refused with 14 — per request. (Deviation D2: a bad auth does NOT wedge the
+        // refused with 14 - per request. (Deviation D2: a bad auth does NOT wedge the
         // connection; a later good auth recovers. See docs/rhp2-server.md.)
         if (options.RequireAuth && !client.Authed && msg is not AuthMessage)
         {
@@ -342,7 +342,7 @@ public sealed partial class RhpServer : IAsyncDisposable
                 await HandleListenAsync(client, m, ct).ConfigureAwait(false);
                 break;
             // The deferred ops still validate their parameters first: an absent handle is
-            // errCode 12 ("Missing handle") before the 16 deferral — exactly the live wire's
+            // errCode 12 ("Missing handle") before the 16 deferral - exactly the live wire's
             // precedence (XRouter answers 12 on connect/status/sendto with no handle too).
             case ConnectMessage m:
                 await WriteAsync(client, m.Handle is null
@@ -360,7 +360,7 @@ public sealed partial class RhpServer : IAsyncDisposable
 
             case UnknownMessage unknown:
                 // Match live XRouter: an unrecognised type is answered with `{type}Reply`,
-                // errCode 2. Built as raw JSON — there is no DTO for a manufactured type.
+                // errCode 2. Built as raw JSON - there is no DTO for a manufactured type.
                 var reply = new JsonObject
                 {
                     ["type"] = UnknownReplyType(unknown.Type),
@@ -376,7 +376,7 @@ public sealed partial class RhpServer : IAsyncDisposable
 
             default:
                 // A reply/notification shape sent BY a client (authReply, recv, accept, ...)
-                // is nonsensical — log and ignore rather than invent semantics.
+                // is nonsensical - log and ignore rather than invent semantics.
                 LogIgnoredMessage(client.Peer, msg.Type);
                 break;
         }
@@ -410,15 +410,15 @@ public sealed partial class RhpServer : IAsyncDisposable
         {
             // Refused at the wire (deviation D7): XRouter accepts an alphabetic SSID like
             // G9DUM-S here and then wedges in background SABM retries. An ABSENT local is
-            // fine — a stream open defaults to the node callsign (deviation D8), a dgram open
+            // fine - a stream open defaults to the node callsign (deviation D8), a dgram open
             // stays unbound-source until sendto names one.
             (err, text) = (RhpErrorCode.InvalidLocalAddress, RhpErrorCode.Text(RhpErrorCode.InvalidLocalAddress));
         }
         else if (open.Mode == SocketMode.Stream && (open.Flags & (int)OpenFlags.Active) == 0)
         {
-            // Deferred by name (docs/rhp2-server.md §Scope): the passive form of `open` —
+            // Deferred by name (docs/rhp2-server.md §Scope): the passive form of `open` -
             // the BSD socket/bind/listen path covers every validated client's listener needs.
-            // (Dgram is connectionless — Active/Passive doesn't apply.)
+            // (Dgram is connectionless - Active/Passive doesn't apply.)
             (err, text) = (RhpErrorCode.OperationNotSupported, "passive open is not supported (use socket/bind/listen); only Active (0x80) opens");
         }
         else if (open.Mode == SocketMode.Stream && string.IsNullOrWhiteSpace(open.Remote))
@@ -438,7 +438,7 @@ public sealed partial class RhpServer : IAsyncDisposable
 
         // Dgram/custom open = the combined socket+bind form: create a bound datagram socket and
         // reply Ok. `dgram` is a pure UI datagram (implicit PID 0xF0); `custom` carries the PID as
-        // data[0]. (connect / send-on-connected-dgram stay deferred — docs/rhp2-server.md R-6/R-7.)
+        // data[0]. (connect / send-on-connected-dgram stay deferred - docs/rhp2-server.md R-6/R-7.)
         if (open.Mode is SocketMode.Dgram or SocketMode.Custom)
         {
             var kind = open.Mode == SocketMode.Custom ? DatagramKind.Custom : DatagramKind.Dgram;
@@ -456,7 +456,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;
         }
 
-        // The connect can take seconds of air time — run it off the dispatch loop so this
+        // The connect can take seconds of air time - run it off the dispatch loop so this
         // client's other handles stay live; the reply correlates by id whenever it lands.
         // (Deviation D4: the reply carries the RESOLVED outcome, not an early optimistic one.)
         _ = Task.Run(async () =>
@@ -515,7 +515,7 @@ public sealed partial class RhpServer : IAsyncDisposable
 
             // Shape-compatibility with the async reference: a status push announcing the link
             // is up follows the successful reply (clients that watch status see XRouter's
-            // signal; clients that don't — DAPPS — ignore it).
+            // signal; clients that don't - DAPPS - ignore it).
             await WriteAsync(client, new StatusMessage
             {
                 Handle = handle.Id,
@@ -527,7 +527,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }, CancellationToken.None);
     }
 
-    // Create a datagram socket bound to (local, port) in one step — the `open`(dgram|custom) form,
+    // Create a datagram socket bound to (local, port) in one step - the `open`(dgram|custom) form,
     // and the shared body the socket→bind path reaches at bind. Registers the promiscuous UI RX
     // subscription (torn down with the handle) and replies Ok + handle. A bad bind port lands on
     // the openReply. `local` may be null (an unbound-source datagram socket: RX is promiscuous, and
@@ -570,7 +570,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }, ct).ConfigureAwait(false);
     }
 
-    // (Re)attach a dgram handle's promiscuous UI RX subscription for its current BoundPort — the
+    // (Re)attach a dgram handle's promiscuous UI RX subscription for its current BoundPort - the
     // event-driven analogue of a stream listener's Registration (no Pump task). Every received UI
     // frame on the scoped port(s) becomes a `recv` push. Torn down in TearDownHandleAsync. Throws
     // RhpGatewayException on a bad port (→ the caller's reply).
@@ -585,7 +585,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     // client filters by recv.local. Carries a per-connection seqno and no id (mirrors
     // PumpHandleAsync). PID carriage differs by socket kind and adds no separate wire field: a
     // `dgram` socket delivers info as-is (its PID is implicitly 0xF0); a `custom` socket prepends
-    // the frame's PID as the first octet of `data` (data = [pid] ++ info — per G8PZT's AX.25
+    // the frame's PID as the first octet of `data` (data = [pid] ++ info - per G8PZT's AX.25
     // clarification of `custom`, which PWP-0222 §1.2 defines only as "user specified protocol").
     private static async Task OnUiReceivedAsync(RhpHandle handle, UiDatagram dg)
     {
@@ -621,7 +621,7 @@ public sealed partial class RhpServer : IAsyncDisposable
 
     private async Task HandleSocketAsync(ClientState client, SocketMessage msg, CancellationToken ct)
     {
-        // Same family/mode ladder as open — ax25 + stream only in v1 (docs/rhp2-server.md §Scope).
+        // Same family/mode ladder as open - ax25 + stream only in v1 (docs/rhp2-server.md §Scope).
         int err = 0;
         string? text = null;
         bool knownFamily = msg.Pfam is ProtocolFamily.Ax25 or ProtocolFamily.NetRom or ProtocolFamily.Inet or ProtocolFamily.Unix;
@@ -650,7 +650,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;
         }
 
-        // Per-client handle cap — a socket handle counts like any other.
+        // Per-client handle cap - a socket handle counts like any other.
         if (!client.TryReserveHandle(options.MaxHandlesPerClient))
         {
             LogHandleCapReached(client.Peer, options.MaxHandlesPerClient);
@@ -684,7 +684,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     {
         if (msg.Handle is not { } bindHandle)
         {
-            // Absent handle is a missing PARAMETER (12), not an invalid handle (3) — RHPTEST:
+            // Absent handle is a missing PARAMETER (12), not an invalid handle (3) - RHPTEST:
             // "3 is for handles that are well-formed but unknown". No handle echo: there is
             // nothing truthful to echo (matching the live wire's shape).
             await WriteAsync(client, new BindReplyMessage { Id = msg.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }, ct).ConfigureAwait(false);
@@ -697,7 +697,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         if (string.IsNullOrWhiteSpace(msg.Local) || !IsValidCallsign(msg.Local))
         {
-            // Absent, empty or malformed local is 6 on the live wire — and an invalid
+            // Absent, empty or malformed local is 6 on the live wire - and an invalid
             // callsign (e.g. the alphabetic SSID G9DUM-S) is refused HERE, deterministically,
             // where XRouter accepts the bind and later wedges (deviation D7).
             await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = bindHandle, ErrCode = RhpErrorCode.InvalidLocalAddress, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidLocalAddress) }, ct).ConfigureAwait(false);
@@ -705,14 +705,14 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
 
         // Re-bind before listen is legal (XRouter allows a second bind); a null port means all
-        // ports — exactly what DAPPS sends — and the string "0" is its wire synonym (XRouter
+        // ports - exactly what DAPPS sends - and the string "0" is its wire synonym (XRouter
         // convention, rhp2lib field notes §12).
         var boundPort = msg.Port?.Trim();
         handle.BoundLocal = msg.Local.Trim();
         handle.BoundPort = string.IsNullOrEmpty(boundPort) || boundPort == "0" ? null : boundPort;
 
         // A datagram socket (dgram or custom) starts (or re-points, on a second bind) its
-        // promiscuous UI RX subscription here — there is no listen step for datagrams. A bad bind
+        // promiscuous UI RX subscription here - there is no listen step for datagrams. A bad bind
         // port lands on the bindReply.
         if (handle.IsDatagram)
         {
@@ -744,7 +744,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         if (handle.IsDatagram)
         {
-            // A datagram socket (dgram or custom) has no listening state — its recv is the
+            // A datagram socket (dgram or custom) has no listening state - its recv is the
             // promiscuous UI tap, already active from bind. Listen on it is not supported
             // (docs/rhp2-server.md R-6/R-7).
             await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
@@ -757,7 +757,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         if (handle.Listening)
         {
-            // Re-listen on an already-listening socket is idempotent Ok — OBSERVED live XRouter
+            // Re-listen on an already-listening socket is idempotent Ok - OBSERVED live XRouter
             // behaviour (the R-4 wire-diff oracle caught this: errCode 9 "Duplicate socket" is
             // only for a SECOND socket claiming the same callsign, which the gateway raises).
             await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
@@ -782,7 +782,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     }
 
     // An inbound station connected to a listening callsign: allocate the CHILD handle (owned by
-    // the listener's client), announce it with an async accept push (seqno, no id —
+    // the listener's client), announce it with an async accept push (seqno, no id -
     // accept.port is a STRING, the XRouter wire shape), then pump its session like any stream.
     private async Task OnInboundAcceptedAsync(RhpHandle listenerHandle, INodeConnection connection, string portLabel)
     {
@@ -792,7 +792,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;
         }
 
-        // The child handle counts against the listener's owner — refuse (and drop the
+        // The child handle counts against the listener's owner - refuse (and drop the
         // inbound) rather than let accepts grow a client's handle set without bound.
         if (!listenerHandle.Owner.TryReserveHandle(options.MaxHandlesPerClient))
         {
@@ -816,7 +816,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }, CancellationToken.None).ConfigureAwait(false);
 
         // The protocol lifecycle (PWP-0222 / rhp2lib protocol primer): the accept push is
-        // followed by a status push announcing the CHILD's link is up — same flags as the
+        // followed by a status push announcing the CHILD's link is up - same flags as the
         // active-open path's announcement, before any recv can flow.
         await WriteAsync(listenerHandle.Owner, new StatusMessage
         {
@@ -838,7 +838,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;
         }
 
-        // Deviation D3: a handle is only usable by the connection that created it — anyone
+        // Deviation D3: a handle is only usable by the connection that created it - anyone
         // else sees the same "invalid handle" an unknown id gets (no existence oracle).
         if (!handles.TryGetValue(sendHandle, out var handle) || handle.Owner != client)
         {
@@ -855,7 +855,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         if (send.Data is null)
         {
             // `data` is mandatory even when empty (RHPTEST): absence is errCode 12
-            // ("Missing data", no handle echo — the live wire's exact shape), while
+            // ("Missing data", no handle echo - the live wire's exact shape), while
             // "data":"" is a legal zero-byte send that proceeds like any other.
             await WriteAsync(client, new SendReplyMessage { Id = send.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingDataText }, ct).ConfigureAwait(false);
             return;
@@ -863,14 +863,14 @@ public sealed partial class RhpServer : IAsyncDisposable
         if (handle.Listening)
         {
             // A LISTENER rejects everything but accept/close with 16 (RHPTEST, against
-            // XRouter v505d) — distinct from 17 for a non-listening unconnected stream.
+            // XRouter v505d) - distinct from 17 for a non-listening unconnected stream.
             // Deviation D9: the pinned live container (505c) still answers 17 here.
             await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = sendHandle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
             return;
         }
         if (handle.Connection is null)
         {
-            // A non-listening socket handle has no link to send on — the wire's 17.
+            // A non-listening socket handle has no link to send on - the wire's 17.
             await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = sendHandle, ErrCode = RhpErrorCode.NotConnected, ErrText = RhpErrorCode.Text(RhpErrorCode.NotConnected) }, ct).ConfigureAwait(false);
             return;
         }
@@ -890,7 +890,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
         {
-            // The link under the handle is gone — the wire's errCode 17 (XRouter-observed).
+            // The link under the handle is gone - the wire's errCode 17 (XRouter-observed).
             await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = send.Handle, ErrCode = RhpErrorCode.NotConnected, ErrText = RhpErrorCode.Text(RhpErrorCode.NotConnected) }, ct).ConfigureAwait(false);
         }
     }
@@ -900,13 +900,13 @@ public sealed partial class RhpServer : IAsyncDisposable
     // depends on the socket kind (no separate wire field): a `dgram` socket always emits PID 0xF0
     // (pure datagram) with info = the whole `data`; a `custom` socket takes the PID from data[0]
     // and the info from data[1..] (per G8PZT's AX.25 clarification of `custom`). An empty `data` is refused
-    // (errCode 1) — a dgram UI frame needs an info field, and a custom datagram needs at least the
+    // (errCode 1) - a dgram UI frame needs an info field, and a custom datagram needs at least the
     // PID octet. TX runs through the gateway (RF or loopback).
     private async Task HandleSendToAsync(ClientState client, SendToMessage msg, CancellationToken ct)
     {
         if (msg.Handle is not { } sendHandle)
         {
-            // Absent handle → 12 "Missing handle" (never 3), no handle echo — the live wire's shape.
+            // Absent handle → 12 "Missing handle" (never 3), no handle echo - the live wire's shape.
             await WriteAsync(client, new SendToReplyMessage { Id = msg.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }, ct).ConfigureAwait(false);
             return;
         }
@@ -930,7 +930,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         if (msg.Data.Length == 0)
         {
-            // An EMPTY payload is refused (errCode 1) — distinct from UDP's legal zero-byte
+            // An EMPTY payload is refused (errCode 1) - distinct from UDP's legal zero-byte
             // datagram (protocol.md): a `dgram` UI frame must carry an information field, and a
             // `custom` datagram must carry at least the PID octet (data[0]).
             var why = handle.IsCustom
@@ -963,7 +963,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         try
         {
             // PID carriage (no separate wire field): a `custom` socket takes the PID from the first
-            // octet of `data` and the info from the rest; a `dgram` socket is a pure datagram — the
+            // octet of `data` and the info from the rest; a `dgram` socket is a pure datagram - the
             // whole `data` is info and the PID is the implicit no-Layer-3 0xF0.
             var bytes = RhpDataEncoding.FromWireString(msg.Data);   // non-empty (checked above)
             byte pid;
@@ -983,7 +983,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         catch (RhpGatewayException gex)
         {
-            // The gateway owns the "why" (no such port, no route) — copy its code/text verbatim.
+            // The gateway owns the "why" (no such port, no route) - copy its code/text verbatim.
             await WriteAsync(client, new SendToReplyMessage { Id = msg.Id, Handle = sendHandle, ErrCode = gex.ErrCode, ErrText = gex.Message }, ct).ConfigureAwait(false);
         }
     }
@@ -992,7 +992,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     {
         if (close.Handle is not { } closeHandle)
         {
-            // RHPTEST: a MISSING handle is 12 ("Missing handle"), not 3 — "3 is for handles
+            // RHPTEST: a MISSING handle is 12 ("Missing handle"), not 3 - "3 is for handles
             // that are well-formed but unknown". No handle echo, matching the live wire.
             await WriteAsync(client, new CloseReplyMessage { Id = close.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }, ct).ConfigureAwait(false);
             return;
@@ -1008,7 +1008,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     }
 
     // Session → client: forward the link's bytes as async recv pushes until it ends, then
-    // announce the end with a server-initiated close push (seqno, no id) — the wire's
+    // announce the end with a server-initiated close push (seqno, no id) - the wire's
     // "the peer hung up" signal.
     private async Task PumpHandleAsync(RhpHandle handle, CancellationToken ct)
     {
@@ -1038,7 +1038,7 @@ public sealed partial class RhpServer : IAsyncDisposable
 
                 if (chunk.IsEmpty)
                 {
-                    break;   // EOF — peer disconnected
+                    break;   // EOF - peer disconnected
                 }
 
                 for (int off = 0; off < chunk.Length; off += RecvChunk)
@@ -1055,7 +1055,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            // teardown — normal.
+            // teardown - normal.
         }
         catch (Exception ex)
         {
@@ -1114,7 +1114,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
     }
 
-    // Refuse a (typed) request with an error reply of its matching reply type — used by the
+    // Refuse a (typed) request with an error reply of its matching reply type - used by the
     // pre-auth gate, where the request itself is otherwise valid.
     private static Task ReplyErrorAsync(ClientState client, RhpMessage msg, int errCode, CancellationToken ct)
     {
@@ -1175,13 +1175,13 @@ public sealed partial class RhpServer : IAsyncDisposable
     }
 
     // The strict outbound-construction callsign rule applied at the RHP wire: AX.25 SSIDs
-    // are numeric 0–15, so e.g. G9DUM-S is refused (errCode 6/7) rather than handed to the
+    // are numeric 0-15, so e.g. G9DUM-S is refused (errCode 6/7) rather than handed to the
     // engine. XRouter accepts these and wedges in background SABM retries (deviation D7).
     private static bool IsValidCallsign(string text)
         => Callsign.TryParse(text.Trim().ToUpperInvariant(), out _);
 
     // Writes are serialized per client (replies from the dispatch loop interleave with pushes
-    // from handle pumps). A write failure means the client is gone — swallowed; the read loop
+    // from handle pumps). A write failure means the client is gone - swallowed; the read loop
     // notices and tears the client down.
     private static Task WriteAsync(ClientState client, RhpMessage msg, CancellationToken ct)
         => WriteFramedAsync(client, RhpJson.Serialize(msg), ct);
@@ -1267,13 +1267,13 @@ public sealed partial class RhpServer : IAsyncDisposable
         public SemaphoreSlim WriteGate { get; } = new(1, 1);
         public string Peer { get; }
 
-        /// <summary>The source IP alone (no port) — the throttle key, stable across the
+        /// <summary>The source IP alone (no port) - the throttle key, stable across the
         /// many short-lived connections a brute-forcer would open.</summary>
         public string PeerIp { get; }
         public bool Authed { get; set; }
 
         /// <summary>Next push seqno: one counter per RHP connection, starting at 0, shared
-        /// across all push types (recv/accept/status/server-close) — RHPTEST-verified.</summary>
+        /// across all push types (recv/accept/status/server-close) - RHPTEST-verified.</summary>
         public int NextSeqno() => Interlocked.Increment(ref seqno);
 
         /// <summary>Atomically reserve one handle slot if the client is under

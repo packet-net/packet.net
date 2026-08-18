@@ -5,7 +5,7 @@ using Packet.Radio;
 namespace Packet.Node.Core.Radios;
 
 /// <summary>
-/// The <see cref="IRadioStatusMonitor"/> for a radio-control channel that isn't a Tait CCDI radio —
+/// The <see cref="IRadioStatusMonitor"/> for a radio-control channel that isn't a Tait CCDI radio -
 /// the common-subset <see cref="IRadioControl"/> surface only. It reports the radio as attached, the
 /// configured kind and control device, and the last carrier-sense state, but has no identity, no
 /// health sampling, and an <c>unknown</c> connection state (the common contract tracks none of

@@ -23,17 +23,17 @@ namespace Packet.Ax25.Properties;
 /// Categories covered (one nested class each, mirroring the task brief):
 /// </para>
 /// <list type="bullet">
-///   <item><c>FlagMutationProperties</c> — set_X / clear_X idempotency.</item>
-///   <item><c>SequenceVariableProperties</c> — V(s)/V(r)/V(a)/RC assignment + wrap.</item>
-///   <item><c>PendingFrameAssignmentProperties</c> — N(r):=V(r) etc.</item>
-///   <item><c>FrameEmissionProperties</c> — RR/UA/DM/I_command etc.</item>
-///   <item><c>UpwardSignalProperties</c> — DL_* signals.</item>
-///   <item><c>TimerProperties</c> — start_TX / stop_TX.</item>
-///   <item><c>QueueClearProperties</c> — discard_* verbs.</item>
-///   <item><c>UnknownVerbProperties</c> — typo / catch-all defence.</item>
+///   <item><c>FlagMutationProperties</c> - set_X / clear_X idempotency.</item>
+///   <item><c>SequenceVariableProperties</c> - V(s)/V(r)/V(a)/RC assignment + wrap.</item>
+///   <item><c>PendingFrameAssignmentProperties</c> - N(r):=V(r) etc.</item>
+///   <item><c>FrameEmissionProperties</c> - RR/UA/DM/I_command etc.</item>
+///   <item><c>UpwardSignalProperties</c> - DL_* signals.</item>
+///   <item><c>TimerProperties</c> - start_TX / stop_TX.</item>
+///   <item><c>QueueClearProperties</c> - discard_* verbs.</item>
+///   <item><c>UnknownVerbProperties</c> - typo / catch-all defence.</item>
 /// </list>
 /// <para>
-/// Each property runs 200 iterations by default — fast enough to keep
+/// Each property runs 200 iterations by default - fast enough to keep
 /// the whole property suite well under 60s, broad enough to catch any
 /// verb-level regression. A handful of properties that explore richer
 /// input spaces drop to 50 to keep wall-clock down. None require
@@ -246,7 +246,7 @@ public class FlagMutationProperties
     }
 
     /// <summary>
-    /// The set / clear verbs touch *only* the flag they're named after —
+    /// The set / clear verbs touch *only* the flag they're named after -
     /// no cross-contamination between flag verbs. Exhausts the cross product
     /// of (verb-under-test, observed-flag) pairs to confirm.
     /// </summary>
@@ -339,7 +339,7 @@ public class SequenceVariableProperties
         rig.Context.IsExtended = false;
         rig.Context.VS = (byte)(startingVs & 0x07);
         var initial = rig.Context.VS;
-        var n = (byte)(steps & 0x1F);  // 0..31 — enough wraps to flush mod-8
+        var n = (byte)(steps & 0x1F);  // 0..31 - enough wraps to flush mod-8
 
         for (int i = 0; i < n; i++)
         {
@@ -357,7 +357,7 @@ public class SequenceVariableProperties
         rig.Context.IsExtended = true;
         rig.Context.VS = (byte)(startingVs & 0x7F);
         var initial = rig.Context.VS;
-        var n = steps;  // 0..255 — enough to span mod-128
+        var n = steps;  // 0..255 - enough to span mod-128
 
         for (int i = 0; i < n; i++)
         {
@@ -406,7 +406,7 @@ public class SequenceVariableProperties
     [Property(MaxTest = 200)]
     public void RC_Increment_Increments_By_One(int startingRc)
     {
-        // RC is an int, not mod-anything — just verify naive +1 semantics
+        // RC is an int, not mod-anything - just verify naive +1 semantics
         // for the range the spec actually uses (0..N2 ≈ 0..255). Negative
         // starting values are degenerate but well-defined (we still +1).
         var rig = ActionDispatcherPropertyHelpers.NewRig();
@@ -638,7 +638,7 @@ public class FrameEmissionProperties
 
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         rig.Context.VR = safeVr;
-        // No N(r) := V(r) — verb should default Nr from V(R).
+        // No N(r) := V(r) - verb should default Nr from V(R).
         rig.Dispatcher.Execute(verb, rig.Context, rig.Scheduler);
 
         rig.SFrames.Should().ContainSingle();
@@ -822,7 +822,7 @@ public class UpwardSignalProperties
     }
 
     /// <summary>
-    /// figc4.7 verbatim spellings (with parenthesised letter codes) — must
+    /// figc4.7 verbatim spellings (with parenthesised letter codes) - must
     /// emit a single <see cref="DataLinkErrorIndication"/> matching the
     /// letter inside the parens.
     /// </summary>
@@ -939,7 +939,7 @@ public class TimerProperties
 
     /// <summary>
     /// figc4.7 title-case forms (<c>Start T1</c>, <c>Stop T1</c>,
-    /// <c>Start T3</c>, <c>Stop T3</c>) are aliases — same scheduler
+    /// <c>Start T3</c>, <c>Stop T3</c>) are aliases - same scheduler
     /// behaviour as the snake_case forms.
     /// </summary>
     [Property(MaxTest = 200)]

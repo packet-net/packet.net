@@ -10,7 +10,7 @@ namespace Packet.Kiss.NinoTnc;
 /// <remarks>
 /// Despite the name, this is <b>not</b> an RF dBm figure: bench measurement
 /// (2026-07-02, firmware 3.41 on the Tait rig) shows it is the RMS level of
-/// the TNC's RX audio in dB — open-squelch flat-tap noise reads ≈ −33,
+/// the TNC's RX audio in dB - open-squelch flat-tap noise reads ≈ −33,
 /// while a carrier quieting the channel with a 440 Hz CQBEEP tone reads
 /// ≈ −62. It tracks what the modem actually hears, which makes it a remote
 /// audio-level meter for deviation/level tuning. <b>Firmware 3.41 only:</b>
@@ -24,7 +24,7 @@ public sealed record NinoTncRssiReading(float LevelDb)
 
     /// <summary>
     /// Try to parse a GETRSSI reply out of a decoded KISS frame. Requires
-    /// the firmware reply command byte (raw 0xE0 — see
+    /// the firmware reply command byte (raw 0xE0 - see
     /// <see cref="NinoTncCommands.IsReply"/>) and the <c>RSSI:</c> prefix.
     /// </summary>
     public static bool TryParse(KissFrame frame, out NinoTncRssiReading? parsed)

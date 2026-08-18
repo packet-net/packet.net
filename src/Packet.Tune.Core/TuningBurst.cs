@@ -19,7 +19,7 @@ public static class TuningBurst
     /// <summary>The destination address burst frames are sent to.</summary>
     public const string Destination = "TUNE";
 
-    /// <summary>Info-field length — short on purpose (bursts should be cheap
+    /// <summary>Info-field length - short on purpose (bursts should be cheap
     /// in airtime) but long enough to exercise the modem.</summary>
     public const int InfoLength = 40;
 

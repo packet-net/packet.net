@@ -21,10 +21,10 @@ namespace Packet.Node.Core.Transports;
 /// <item><see cref="SerialKissTransport"/> → <c>KissSerialModem.Open</c>.</item>
 /// <item><see cref="NinoTncTransport"/> → <c>NinoTncSerialPort.Open</c> +
 /// <c>SetModeAsync</c>.</item>
-/// <item><see cref="KissTcpTransport"/> → <c>KissTcpClient.ConnectAsync</c> — a
+/// <item><see cref="KissTcpTransport"/> → <c>KissTcpClient.ConnectAsync</c> - a
 /// softmodem / net-sim (the software-RF channel).</item>
 /// <item><see cref="AxudpTransport"/> → <c>AxudpFrameTransport</c> over a
-/// <c>Packet.Axudp.AxudpSocket</c> (AX.25 frames over UDP — the BPQAXIP tunnel).</item>
+/// <c>Packet.Axudp.AxudpSocket</c> (AX.25 frames over UDP - the BPQAXIP tunnel).</item>
 /// </list>
 /// <para>
 /// The closed union means the switch is exhaustive over the known kinds; the
@@ -49,7 +49,7 @@ public sealed class TransportFactory : ITransportFactory
         switch (transport)
         {
             case SerialKissTransport s:
-                // Native IAx25Transport (no ACKMODE — no ITxCompletionTransport).
+                // Native IAx25Transport (no ACKMODE - no ITxCompletionTransport).
                 return KissSerialModem.Open(s.Device, s.Baud, timeProvider);
 
             case NinoTncTransport n:
@@ -71,10 +71,10 @@ public sealed class TransportFactory : ITransportFactory
                 {
                     // Full-control NinoTNC over a split-station head-end's raw TCP pipe: resolve
                     // (headEndId, deviceId) → host:tcpPort via the inventory, open, then apply the
-                    // configured mode — the whole NinoTNC surface (GETVER / mode / GETRSSI / ACKMODE)
+                    // configured mode - the whole NinoTNC surface (GETVER / mode / GETRSSI / ACKMODE)
                     // works remotely, distinct from the control-less kiss-tcp arm. A NinoTNC's KISS
                     // baud is a fixed 57600 (never changes), so clock the head-end line to it via the
-                    // line verb before opening the pipe (#567) — the raw socket cannot carry line rate.
+                    // line verb before opening the pipe (#567) - the raw socket cannot carry line rate.
                     var resolver = headEndResolver
                         ?? throw new InvalidOperationException(
                             $"nino-tnc-tcp transport for head-end '{nt.HeadEndId}' device '{nt.DeviceId}' needs a " +
@@ -111,7 +111,7 @@ public sealed class TransportFactory : ITransportFactory
 
             case AxudpTransport a:
                 {
-                    // AXUDP is a native IAx25Transport — no KISS, no synthesis, no CSMA/ACKMODE
+                    // AXUDP is a native IAx25Transport - no KISS, no synthesis, no CSMA/ACKMODE
                     // capabilities (a UDP link has none). Returned directly.
                     var remote = await ResolveAsync(a.Host, a.Port, cancellationToken).ConfigureAwait(false);
                     return new AxudpFrameTransport(remote, a.LocalPort, timeProvider);
@@ -144,7 +144,7 @@ public sealed class TransportFactory : ITransportFactory
                 {
                     // The radio IS the modem: open it, enter Transparent mode, and frame AX.25
                     // over its FFSK byte pipe with KISS SLIP. Bind by serial (scanned), device
-                    // path — same stable-identity resolution as the radio-attach path — or a
+                    // path - same stable-identity resolution as the radio-attach path - or a
                     // split-station head-end device (#585).
                     var opts = new TaitTransparentTransportOptions
                     {
@@ -160,7 +160,7 @@ public sealed class TransportFactory : ITransportFactory
                         // the inventory and dial the raw pipe, with setBaud wired to the head-end's
                         // POST /ports/{id}/line verb. That callback carries BOTH the open-time
                         // clock to the CONFIGURED CCDI command baud (#576's configured-baud
-                        // convention — a restarted head-end's bridge reopens at its default, so
+                        // convention - a restarted head-end's bridge reopens at its default, so
                         // the inventory's current rate must not be trusted) AND the
                         // Command↔Transparent runtime re-clock (tait-transparent is the only
                         // runtime SetBaudRate caller; the raw socket cannot carry line rate).
@@ -191,7 +191,7 @@ public sealed class TransportFactory : ITransportFactory
     /// scanning candidate ports (at the configured command baud) for the CCDI serial number
     /// (shared with the radio-attach path via <see cref="RadioSerialResolver"/>), so a
     /// re-enumerated <c>/dev/ttyUSB*</c> still resolves to the right physical radio. A serial with
-    /// no plugged-in match throws — the port supervisor logs it and the port stays down, exactly
+    /// no plugged-in match throws - the port supervisor logs it and the port stays down, exactly
     /// like any other transport open failure.
     /// </summary>
     private static async Task<string> ResolveTaitTransparentDeviceAsync(

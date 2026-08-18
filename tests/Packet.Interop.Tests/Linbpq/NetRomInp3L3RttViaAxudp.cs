@@ -17,18 +17,18 @@ using Xunit.Abstractions;
 namespace Packet.Interop.Tests.Linbpq;
 
 /// <summary>
-/// <b>Best-effort INP3 interop vs real LinBPQ over AXUDP — DRAFT SKELETON, double-gated OFF.</b>
+/// <b>Best-effort INP3 interop vs real LinBPQ over AXUDP - DRAFT SKELETON, double-gated OFF.</b>
 /// Proves pdn's INP3 overlay (L3RTT / RIF) interoperates with a real LinBPQ across the same
 /// AXUDP interlink seam <see cref="NetRomL4CircuitViaAxudp"/> already establishes via
 /// <see cref="NetRomService.ConnectCircuitAsync"/>. The full rationale, the feasibility analysis,
 /// and the exact BPQ-fixture config delta this skeleton waits on live in
-/// <c>docs/netrom-inp3-interop.md</c> — read it before un-gating.
+/// <c>docs/netrom-inp3-interop.md</c> - read it before un-gating.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why a skeleton, not a live test (docs/netrom-inp3-interop.md §2–§4).</b> INP3's observable
+/// <b>Why a skeleton, not a live test (docs/netrom-inp3-interop.md §2-§4).</b> INP3's observable
 /// behaviour (L3RTT probe/reflect; RIF time-routes) rides a <em>connected-mode</em> PID-0xCF
-/// interlink — not the connectionless NODES broadcast the netsim/AXUDP NET/ROM ingest tests watch.
+/// interlink - not the connectionless NODES broadcast the netsim/AXUDP NET/ROM ingest tests watch.
 /// Today <em>(a)</em> neither <c>docker/linbpq/bpq32.cfg</c> nor <c>docker/xrouter/XROUTER.CFG</c>
 /// enables INP3, and <em>(b)</em> only <see cref="NetRomL4CircuitViaAxudp"/> stands up the
 /// interlink INP3 needs. So this test is <b>double-gated</b> and stays a green skip until both
@@ -38,7 +38,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// </para>
 /// <para>
 /// <b>The observable (public surface).</b> pdn's <see cref="NetRomService.Snapshot"/> exposes
-/// <see cref="NetRomRoute.Inp3"/> — a non-null <see cref="Inp3RouteMetric"/> (target time + hop
+/// <see cref="NetRomRoute.Inp3"/> - a non-null <see cref="Inp3RouteMetric"/> (target time + hop
 /// count) for a destination ONLY once pdn has ingested a real <see cref="Inp3Rif"/> from a
 /// neighbour. So "pdn learned a time-route from BPQ" is assertable WITHOUT internals access (the
 /// <c>Inp3EngineForTest</c>/SNTT seam is <c>InternalsVisibleTo Packet.Node.Tests</c> only, not this
@@ -46,7 +46,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// deterministic check that BPQ originates INP3 RIF and pdn parses it into the second metric space.
 /// </para>
 /// <para>
-/// <b>What it does NOT assert (deferred — docs/netrom-inp3-interop.md §3.1).</b> The L3RTT SNTT
+/// <b>What it does NOT assert (deferred - docs/netrom-inp3-interop.md §3.1).</b> The L3RTT SNTT
 /// value (needs the internals seam → a sibling <c>Packet.Node.Tests</c> test, or a new public
 /// snapshot field) and BPQ RIF cadence/alias-TLV edge cases (I-4 AMBIGUITY-I4-1 locked off). A red
 /// here is "characterise + add a <c>NetRomInp3Options</c> flag + a strict-vs-pragmatic-audit row"
@@ -70,7 +70,7 @@ public class NetRomInp3L3RttViaAxudp
     private const int BpqTelnetPort = 8010;  // node prompt (PASSWORD->SENDNODES, like NetRomL4CircuitViaAxudp)
 
     // The env-var marker the future BPQ-INP3 config-delta PR sets in interop.yml once
-    // docker/linbpq/bpq32.cfg enables INP3 (PREFERINP3ROUTES=1 + interval pins —
+    // docker/linbpq/bpq32.cfg enables INP3 (PREFERINP3ROUTES=1 + interval pins -
     // docs/netrom-inp3-interop.md §3.2). Until then the test green-skips.
     private const string BpqInp3MarkerEnv = "PDN_INTEROP_BPQ_INP3";
 
@@ -106,7 +106,7 @@ public class NetRomInp3L3RttViaAxudp
 
         // Gate 2: INP3 must be ENABLED in the BPQ fixture. Until the docs §3.2 config delta lands
         // (and flips this marker in interop.yml), BPQ originates no L3RTT/RIF, so there is nothing
-        // to interop with — green-skip rather than red-fail a vanilla stack.
+        // to interop with - green-skip rather than red-fail a vanilla stack.
         Skip.If(Environment.GetEnvironmentVariable(BpqInp3MarkerEnv) != "1",
             $"BPQ INP3 not enabled in the fixture ({BpqInp3MarkerEnv}!=1). Land the docker/linbpq/bpq32.cfg INP3 delta (docs/netrom-inp3-interop.md §3.2) and set {BpqInp3MarkerEnv}=1 in interop.yml to activate this lane.");
 
@@ -116,7 +116,7 @@ public class NetRomInp3L3RttViaAxudp
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
 
         // pdn with INP3 ON. Connect=true is required for the Inp3Host to be constructed (it rides
-        // the connected-mode interlink machinery — NetRomService.cs). L3RttInterval is shortened so
+        // the connected-mode interlink machinery - NetRomService.cs). L3RttInterval is shortened so
         // pdn probes BPQ promptly; the rest of NetRomInp3Options defaults interoperate.
         await using var netRom = new NetRomService(new NetRomConfig
         {
@@ -136,7 +136,7 @@ public class NetRomInp3L3RttViaAxudp
         await listener.StartAsync(cts.Token);
 
         // Keep originating pdn's NODES so BPQ holds a route to us (its obsolescence/AUTOADD would
-        // otherwise decay) — the same pattern NetRomL4CircuitViaAxudp uses.
+        // otherwise decay) - the same pattern NetRomL4CircuitViaAxudp uses.
         using var broadcastCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
         var broadcaster = RunBroadcastLoop(netRom, broadcastCts.Token);
 
@@ -151,7 +151,7 @@ public class NetRomInp3L3RttViaAxudp
             DumpSnapshot(netRom.Snapshot(), "after hearing BPQ");
 
             // THE INP3 ASSERTION (public surface): pdn ingests a BPQ-originated RIF and builds a
-            // time-route — a destination whose best route carries a non-null Inp3RouteMetric. This
+            // time-route - a destination whose best route carries a non-null Inp3RouteMetric. This
             // is genuine cross-implementation evidence that pdn parses a real LinBPQ INP3 RIF into
             // its second (target-time) metric space.
             var learned = await WaitForInp3TimeRouteAsync(netRom, cts.Token);
@@ -174,7 +174,7 @@ public class NetRomInp3L3RttViaAxudp
         }
     }
 
-    // True once any destination in the snapshot has a best route carrying an INP3 metric — i.e. pdn
+    // True once any destination in the snapshot has a best route carrying an INP3 metric - i.e. pdn
     // ingested a RIF. Polls within a bounded budget so a single dropped/late RIF doesn't fail outright.
     private static async Task<bool> WaitForInp3TimeRouteAsync(NetRomService netRom, CancellationToken outer)
     {

@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Rigs;
 /// A node-managed <c>rigctld</c> for one port's node-managed <c>rig:</c> block
 /// (<see cref="PortRigConfig.IsNodeManaged"/>): spawned as
 /// <c>rigctld -m &lt;model&gt; -r &lt;device&gt; [-s &lt;serialSpeed&gt;] -T 127.0.0.1 -t &lt;port&gt;</c>
-/// on a loopback port allocated <b>once</b> at start, and supervised for the port's lifetime —
+/// on a loopback port allocated <b>once</b> at start, and supervised for the port's lifetime -
 /// respawn on exit with doubling backoff (capped), forever. The <see cref="Hosting.PortSupervisor"/>
 /// creates one per node-managed port, points the existing TCP rig client(s) at
 /// <see cref="ClientConfig"/>, and disposes it LAST on teardown (clients before their daemon).
@@ -24,14 +24,14 @@ namespace Packet.Node.Core.Rigs;
 /// on Linux the child is a process-group leader (via <c>setsid</c>) so a stop SIGTERMs the whole
 /// group; the graceful stop is SIGTERM → grace period → SIGKILL the group + kill the tree. Every
 /// timer-shaped wait rides the injected <see cref="TimeProvider"/>. The surface is <b>total</b>:
-/// a missing binary or a spawn failure logs and backs off — it never throws out of the run loop
+/// a missing binary or a spawn failure logs and backs off - it never throws out of the run loop
 /// or crashes the port. There is deliberately no crash-loop fault: a respawn loop with capped
-/// backoff is exactly right for plug-and-play — the daemon self-heals when an unplugged USB
+/// backoff is exactly right for plug-and-play - the daemon self-heals when an unplugged USB
 /// device comes back.
 /// </para>
 /// <para>
 /// Because the port is allocated once and every respawn reuses it, the <c>RigctldRig</c> clients
-/// (which re-dial per command) recover from a daemon bounce without reconfiguration — the same
+/// (which re-dial per command) recover from a daemon bounce without reconfiguration - the same
 /// self-heal contract a BYO daemon gives them. Readiness is a caller concern:
 /// <see cref="WaitUntilReadyAsync"/> poll-connects the listener and reports <c>false</c> on
 /// budget expiry so the caller can degrade (never throws for "not ready").
@@ -67,10 +67,10 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
     // Completes the first time a spawn attempt throws (binary missing / not executable): a
     // launch that can't even start will not become ready within any budget, so
     // WaitUntilReadyAsync bails out early instead of burning it. Never completes for a child
-    // that launches and then exits — that one may legitimately come good on a respawn.
+    // that launches and then exits - that one may legitimately come good on a respawn.
     private readonly TaskCompletionSource spawnFaulted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    // The live child's pid, published while it runs (cleared on exit/teardown) — the disposal
+    // The live child's pid, published while it runs (cleared on exit/teardown) - the disposal
     // path signals it, and tests assert respawn/orphan behaviour through it. -1 = none.
     private readonly object childGate = new();
     private int childPid = -1;
@@ -99,18 +99,18 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
         runLoop = Task.Run(() => RunChildAsync(stopping.Token), CancellationToken.None);
     }
 
-    /// <summary>The loopback TCP port allocated for the daemon — fixed for this instance's whole
+    /// <summary>The loopback TCP port allocated for the daemon - fixed for this instance's whole
     /// life, so every respawn comes back on the same endpoint the clients already dial.</summary>
     public int Port { get; }
 
-    /// <summary>The effective <c>rig:</c> config the TCP client(s) should dial — the node-managed
+    /// <summary>The effective <c>rig:</c> config the TCP client(s) should dial - the node-managed
     /// block re-pointed at the spawned daemon (<c>127.0.0.1:<see cref="Port"/></c>). Carries the
     /// original <see cref="PortRigConfig.Device"/>, so its
     /// <see cref="PortRigConfig.DescribeEndpoint"/> stays honest about what is really attached.</summary>
     public PortRigConfig ClientConfig { get; }
 
     /// <summary>The running child's pid, or <c>null</c> when no child is currently running
-    /// (mid-backoff, or stopped). Diagnostic — tests assert respawn and no-orphan through it.</summary>
+    /// (mid-backoff, or stopped). Diagnostic - tests assert respawn and no-orphan through it.</summary>
     public int? ChildPid
     {
         get
@@ -126,12 +126,12 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
     /// Allocate the daemon's loopback port and start the supervision loop (the first spawn
     /// happens on it, in the background). Binary resolution: <paramref name="binaryPath"/> →
     /// the <see cref="BinaryPathEnvVar"/> env var → <see cref="DefaultBinaryName"/> from
-    /// <c>PATH</c>. A binary that can't launch does NOT throw here — the loop logs and backs
+    /// <c>PATH</c>. A binary that can't launch does NOT throw here - the loop logs and backs
     /// off, and <see cref="WaitUntilReadyAsync"/> reports <c>false</c> so the caller degrades.
     /// </summary>
     /// <param name="portId">The owning node port (log/category context).</param>
     /// <param name="config">The node-managed <c>rig:</c> block (<see cref="PortRigConfig.IsNodeManaged"/>
-    /// must hold — <see cref="PortRigConfig.Device"/>/<see cref="PortRigConfig.Model"/> drive the args).</param>
+    /// must hold - <see cref="PortRigConfig.Device"/>/<see cref="PortRigConfig.Model"/> drive the args).</param>
     /// <param name="loggerFactory">Sink for the supervisor's own log + the child's output
     /// (stderr → Warning, stdout → Debug under <c>rigctld:&lt;portId&gt;</c>).</param>
     /// <param name="timeProvider">Clock every backoff/grace/readiness wait rides. Null = system.</param>
@@ -158,7 +158,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
         }
 
         // Grab a free loopback port, then hand it to rigctld. (Bind-release has a nominal race;
-        // in practice the pattern is what the whole ecosystem uses — rigctld can't bind port 0.)
+        // in practice the pattern is what the whole ecosystem uses - rigctld can't bind port 0.)
         int allocatedPort;
         using (var probe = new TcpListener(IPAddress.Loopback, 0))
         {
@@ -183,8 +183,8 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
 
     /// <summary>
     /// Wait until the daemon accepts a TCP connection on <see cref="Port"/> (connect itself is
-    /// the readiness probe — the idiom the rigctld ecosystem uses), polling on the injected
-    /// clock. Returns <c>false</c> — never throws — when the budget expires, or early when the
+    /// the readiness probe - the idiom the rigctld ecosystem uses), polling on the injected
+    /// clock. Returns <c>false</c> - never throws - when the budget expires, or early when the
     /// binary could not even be launched (a missing rigctld cannot come good within the budget);
     /// the caller then degrades to running the port without a rig.
     /// </summary>
@@ -202,7 +202,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
             }
             catch (SocketException)
             {
-                // Not listening yet (or just died) — fall through to the fail-fast/deadline checks.
+                // Not listening yet (or just died) - fall through to the fail-fast/deadline checks.
             }
 
             if (spawnFaulted.Task.IsCompleted || clock.GetUtcNow() >= deadline)
@@ -214,12 +214,12 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
     }
 
     /// <summary>The child's whole supervised life: spawn → pump logs → exit → backoff → respawn,
-    /// until disposed. Total — a defect logs, never unwinds the port. (The
+    /// until disposed. Total - a defect logs, never unwinds the port. (The
     /// <see cref="Tailscale.TailscaleSidecarHostedService"/> RunChildAsync shape.)</summary>
     private async Task RunChildAsync(CancellationToken ct)
     {
         var delay = backoffBase;
-        // rigctld chatters (each verbose client command echoes) — its output gets its own
+        // rigctld chatters (each verbose client command echoes) - its output gets its own
         // per-port category, like the app supervisor's "app:<id>" children.
         var childLogger = loggerFactory.CreateLogger("rigctld:" + portId);
         try
@@ -243,7 +243,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                 if (process is null)
                 {
                     LogSpawnFailed(portId, binaryPath, spawnError ?? "unknown error");
-                    // A launch that can't start will not come good within a readiness budget —
+                    // A launch that can't start will not come good within a readiness budget -
                     // let WaitUntilReadyAsync bail out now instead of burning it.
                     spawnFaulted.TrySetResult();
                 }
@@ -264,7 +264,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                     }
                     catch (Exception)
                     {
-                        // Already closed / broken pipe — irrelevant.
+                        // Already closed / broken pipe - irrelevant.
                     }
 
                     try
@@ -353,7 +353,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
 
     /// <summary>Fail a spawn attempt up-front when the binary clearly cannot launch: under the
     /// <c>setsid</c> wrapper a missing target would otherwise "start" fine (setsid itself
-    /// launches) and immediately exit — indistinguishable from a crash, so the missing-rigctld
+    /// launches) and immediately exit - indistinguishable from a crash, so the missing-rigctld
     /// case would burn the caller's whole readiness budget instead of failing it fast. A path
     /// (contains a separator) must exist; a bare name must resolve somewhere on <c>PATH</c>.</summary>
     private static void EnsureLaunchable(string command)

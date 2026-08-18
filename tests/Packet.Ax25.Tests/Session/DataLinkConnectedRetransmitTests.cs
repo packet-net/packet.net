@@ -29,7 +29,7 @@ public class DataLinkConnectedRetransmitTests
         Connect(rig);
 
         // Configure the link to drop A's second I-frame (N(s)=1)
-        // — the gap forces B's figc4.4 t26 to take the REJ-emitting
+        // - the gap forces B's figc4.4 t26 to take the REJ-emitting
         // path (`not ns_eq_vr and not reject_exception and not SREJ_enabled`).
         rig.Link.Drop = frame =>
             frame.Source.Callsign.Equals(rig.A.Context.Local)
@@ -86,7 +86,7 @@ public class DataLinkConnectedRetransmitTests
     public void REJ_Received_In_Connected_Updates_VA_And_Stays_Connected()
     {
         // Direct-injection unit-style test of figc4.4 t25_rej_received_yes.
-        // Doesn't need network simulation — just craft the REJ frame and
+        // Doesn't need network simulation - just craft the REJ frame and
         // post it. Asserts the runtime applies V(a) := N(r) and stays in
         // Connected (no Invoke_Retransmission semantics asserted here;
         // see packet-net/ax25sdl#44).
@@ -118,7 +118,7 @@ public class DataLinkConnectedRetransmitTests
     {
         // Regression for ax25sdl#44 (loop recovery) AND packet-net/packet.net#231
         // (retransmit renumbering): the figc4.7 retransmit loop must resend
-        // every unacked frame from N(r) up to X (= the saved V(s)) — and each
+        // every unacked frame from N(r) up to X (= the saved V(s)) - and each
         // must go out with its ORIGINAL N(s), not a fresh V(s)-derived one.
         // The renumbering bug (drained retransmits got N(s):=V(s)) made every
         // resend unrecognisable to the peer, so a single loss was unrecoverable.
@@ -262,7 +262,7 @@ public class DataLinkConnectedRetransmitTests
             // peer's log (set up via aPeer.RxLog = b.ReceivedFromPeer
             // when wiring), so a frame from A landing on B is recorded
             // in B's log. The test inspects A's ReceivedFromPeer for
-            // frames *A* saw arrive — that's frames sent by B.
+            // frames *A* saw arrive - that's frames sent by B.
             peerLocal.RxLog?.Add(parsed);
             peerLocal.Target?.Enqueue(Ax25FrameClassifier.Classify(parsed));
         }

@@ -7,7 +7,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <summary>
 /// The <see cref="Ax25SessionQuirks.Ax25Spec13ClampSrejWindowToHalfModulus"/>
 /// quirk (packethacking/ax25spec#13). Selective Repeat (SREJ) requires the send
-/// window k ≤ modulus/2 — the 2·W ≤ modulus bound — because recovery state is
+/// window k ≤ modulus/2 - the 2·W ≤ modulus bound - because recovery state is
 /// keyed by the bare N(S). Above the cap, two in-flight frames can share an N(S)
 /// and SREJ recovery silently delivers a stale stored I-frame from the previous
 /// ring cycle (packet-net/packet.net#393, found by tools/Packet.LinkBench: corruption
@@ -37,7 +37,7 @@ public class Ax25Spec13SrejWindowClampTests
     // mod-128 (modulus/2 = 64).
     [InlineData(100, true, true, 64)]
     [InlineData(32, true, true, 32)]
-    // SREJ off (go-back-N) is never capped — k up to modulus-1 is legitimate.
+    // SREJ off (go-back-N) is never capped - k up to modulus-1 is legitimate.
     [InlineData(7, false, false, 7)]
     [InlineData(100, false, true, 100)]
     public void Effective_send_window_is_capped_at_half_modulus_only_under_srej(
@@ -49,7 +49,7 @@ public class Ax25Spec13SrejWindowClampTests
     [Fact]
     public void StrictlyFaithful_leaves_the_window_uncapped_reproducing_the_unsafe_figure_behaviour()
     {
-        // SREJ + k=7 on mod-8 — the corrupting configuration — runs uncapped as drawn.
+        // SREJ + k=7 on mod-8 - the corrupting configuration - runs uncapped as drawn.
         Ctx(7, srej: true, extended: false, Ax25SessionQuirks.StrictlyFaithful)
             .EffectiveWindow.Should().Be(7);
     }
@@ -58,7 +58,7 @@ public class Ax25Spec13SrejWindowClampTests
     public void The_default_mod8_window_is_unchanged_by_the_clamp()
     {
         // k=4 = modulus/2: at the safe limit, so the default is untouched whether
-        // SREJ is on or off — no behaviour change for the common case.
+        // SREJ is on or off - no behaviour change for the common case.
         Ctx(4, srej: true, extended: false, Ax25SessionQuirks.Default).EffectiveWindow.Should().Be(4);
         Ctx(4, srej: false, extended: false, Ax25SessionQuirks.Default).EffectiveWindow.Should().Be(4);
     }

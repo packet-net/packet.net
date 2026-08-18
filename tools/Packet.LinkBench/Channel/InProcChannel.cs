@@ -8,7 +8,7 @@ namespace Packet.LinkBench.Channel;
 internal sealed record InProcChannelOptions
 {
     /// <summary>Modeled signalling rate in bit/s. 0 disables airtime modelling
-    /// entirely (rung 1: lossless, instant — pure engine flow control).</summary>
+    /// entirely (rung 1: lossless, instant - pure engine flow control).</summary>
     public int Baud { get; init; }
 
     /// <summary>Keyup-to-data delay added to every transmission (KISS TXDELAY).</summary>
@@ -26,23 +26,23 @@ internal sealed record InProcChannelOptions
 
     /// <summary>Probability ∈ [0,1) that a transmitted frame is not delivered.
     /// (Frame-granularity loss; a bit-error rate collapses to this for fixed-size
-    /// frames.) Loss never suppresses the ackmode echo — the frame transmitted
+    /// frames.) Loss never suppresses the ackmode echo - the frame transmitted
     /// fine, the receiver just didn't get it, exactly like RF.</summary>
     public double LossRate { get; init; }
 
-    /// <summary>Seed for the loss roll — runs are repeatable.</summary>
+    /// <summary>Seed for the loss roll - runs are repeatable.</summary>
     public int Seed { get; init; } = 42;
 
     /// <summary>Divide every modeled delay by this factor (and scale the engine's
-    /// timers to match — the bench CLI does that) to run a slow channel faster
+    /// timers to match - the bench CLI does that) to run a slow channel faster
     /// than real time.</summary>
     public double TimeScale { get; init; } = 1.0;
 }
 
 /// <summary>
 /// The in-process channel (link-bench plan §3.1): two <see cref="IAx25Transport"/>
-/// endpoints joined by a channel model — per-frame airtime, optional
-/// half-duplex, optional loss — that emits the ackmode TX-complete echo to the
+/// endpoints joined by a channel model - per-frame airtime, optional
+/// half-duplex, optional loss - that emits the ackmode TX-complete echo to the
 /// sender <b>after the modeled airtime</b>, so ackmode pacing is exercised
 /// meaningfully. This is the engine + ackmode + (later) DCD prototyping vehicle.
 /// </summary>
@@ -76,7 +76,7 @@ internal sealed class InProcChannel : IBenchChannel
     internal Endpoint A { get; }
     internal Endpoint B { get; }
 
-    /// <summary>DCD seam (plan §8) — the policy each endpoint's TX pump consults
+    /// <summary>DCD seam (plan §8) - the policy each endpoint's TX pump consults
     /// before keying up. No-op today; a CSMA-by-DCD policy plugs in here.</summary>
     public ITxGatePolicy TxGate { get; set; } = NoOpTxGatePolicy.Instance;
 
@@ -84,7 +84,7 @@ internal sealed class InProcChannel : IBenchChannel
     /// DCD seam (plan §8), designed but deliberately not wired to the engine: the
     /// channel's busy (true) / clear (false) state, asserted while any endpoint is
     /// on the air. This is the modem→host signal the coming KISS DCD extension
-    /// will carry — an unsolicited state change, distinct from frame-RX and from
+    /// will carry - an unsolicited state change, distinct from frame-RX and from
     /// the ackmode TX-complete echo (which is a reply to MY send).
     /// </summary>
     public event EventHandler<bool>? ChannelStateChanged;
@@ -120,7 +120,7 @@ internal sealed class InProcChannel : IBenchChannel
 
     /// <summary>One transmission: gate (DCD seam) → acquire the medium (half
     /// duplex) → airtime → deliver to the peer unless the loss roll eats it.
-    /// Returns when the frame has cleared the air — the caller completes the
+    /// Returns when the frame has cleared the air - the caller completes the
     /// ackmode echo on return.</summary>
     internal async Task TransmitAsync(Endpoint sender, byte[] frame, CancellationToken ct)
     {
@@ -181,8 +181,8 @@ internal sealed class InProcChannel : IBenchChannel
     }
 
     /// <summary>
-    /// One side's modem. TX is a queue + single pump — a radio transmits one
-    /// frame at a time — so the engine's fire-and-forget sink serialises here
+    /// One side's modem. TX is a queue + single pump - a radio transmits one
+    /// frame at a time - so the engine's fire-and-forget sink serialises here
     /// just like a real TNC's buffer. <see cref="SendAwaitingCompletionAsync"/>
     /// resolves when the frame has cleared the modeled air: the ackmode echo.
     /// </summary>
@@ -217,7 +217,7 @@ internal sealed class InProcChannel : IBenchChannel
 
         public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
         {
-            // Snapshot — the listener's sink may reuse its buffer the instant
+            // Snapshot - the listener's sink may reuse its buffer the instant
             // this returns (same contract PacingKissModem honours).
             txQueue.Writer.TryWrite(new TxJob(ax25.ToArray(), DateTimeOffset.UtcNow, null));
             return Task.CompletedTask;
@@ -257,7 +257,7 @@ internal sealed class InProcChannel : IBenchChannel
             }
             catch (OperationCanceledException)
             {
-                // Disposal — drain anything still queued so ackmode waiters don't hang.
+                // Disposal - drain anything still queued so ackmode waiters don't hang.
             }
             finally
             {

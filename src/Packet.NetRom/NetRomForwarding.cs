@@ -11,19 +11,19 @@ namespace Packet.NetRom;
 /// </summary>
 public enum NetRomForwardMode
 {
-    /// <summary>Always the single best route (bounce-back excluded). Deterministic —
+    /// <summary>Always the single best route (bounce-back excluded). Deterministic -
     /// every transit datagram for a destination takes the same path.</summary>
     BestRoute,
 
     /// <summary>Per-flow quality-weighted spread: every datagram of one L4 circuit
     /// hashes to the same route (so the circuit's ordering is preserved), while
     /// distinct circuits are distributed across the kept routes in proportion to
-    /// quality. Stateless. The default — a transit node load-balances.</summary>
+    /// quality. Stateless. The default - a transit node load-balances.</summary>
     PerFlow,
 }
 
 /// <summary>
-/// The NET/ROM L3 <b>forwarding decision</b> — what a transit node does with a
+/// The NET/ROM L3 <b>forwarding decision</b> - what a transit node does with a
 /// datagram whose destination is <em>not</em> itself: drop it, or forward it (with a
 /// decremented, capped TTL) to a next-hop neighbour. Pure (no I/O): the node host
 /// feeds it the datagram, the neighbour it arrived from, this node's callsign, the
@@ -50,7 +50,7 @@ public static class NetRomForwarding
         /// <summary>Drop: the hop limit reached zero.</summary>
         DropTtlExpired,
 
-        /// <summary>Drop: the datagram's origin is this node — it has looped back.</summary>
+        /// <summary>Drop: the datagram's origin is this node - it has looped back.</summary>
         DropLooped,
 
         /// <summary>Drop: no onward route to the destination (excluding the way it came).</summary>

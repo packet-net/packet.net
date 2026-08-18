@@ -6,7 +6,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
 /// Behavioural (real-dispatcher, real-codec) coverage of the connection-lifecycle
-/// receive columns — figc4.3 (Awaiting Connection, the SABM/UA establishment wait)
+/// receive columns - figc4.3 (Awaiting Connection, the SABM/UA establishment wait)
 /// and figc4.6/4.3 (Awaiting Release, the DISC/UA teardown wait). Both states were
 /// thinly covered behaviourally (the transition-coverage ledger measured 4/25 and
 /// 2/20); this drives a station <em>into</em> each transient state and exercises the
@@ -106,7 +106,7 @@ public class ConnectionLifecycleConformanceTests
 
         // Upper layer sends data before the connect completes. figc4.3 buffers it
         // ("Push Frame on Queue"); it must NOT be transmitted while we're not yet
-        // connected (and must not throw — the drain previously popped it straight
+        // connected (and must not throw - the drain previously popped it straight
         // back as I_frame_pops_off_queue into a push verb with no DL-DATA trigger).
         h.A.Session.PostEvent(new DlDataRequest(new byte[] { 0x42 }));
         h.Settle();

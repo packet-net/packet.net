@@ -2,7 +2,7 @@
 
 [`IRigControl`](https://www.nuget.org/packages/Packet.Rig) over **flrig's XML-RPC server**
 (default `127.0.0.1:12345`). The client contract deliberately mirrors hamlib's own flrig
-backend (`rigs/dummy/flrig.c`) — the most battle-tested flrig client — including its meter
+backend (`rigs/dummy/flrig.c`) - the most battle-tested flrig client - including its meter
 conversions, so both report identical values.
 
 ```csharp
@@ -30,16 +30,16 @@ await rig.CallRawAsync("rig.cat_string", ["FA;"]);   // raw CAT passthrough
   (`main.set_frequency`).
 - Mode names are whatever the attached transceiver calls them. Setting a mode outside
   `SupportedModes` throws instead of being silently ignored (flrig drops unknown mode strings
-  without complaint — and the server-side "Ignore xmlrpc mode changes" option drops all of them).
+  without complaint - and the server-side "Ignore xmlrpc mode changes" option drops all of them).
 - The get side reports no passband width (`PassbandHz` is `null`), and widths cannot be set.
-- SWR uses the newer direct `rig.get_SWR` when present, else interpolates the 0–100
+- SWR uses the newer direct `rig.get_SWR` when present, else interpolates the 0-100
   `rig.get_swrmeter` deflection through hamlib's anchor table (capped at 10:1).
-- Power: `rig.get_pwrmeter` (0–100 deflection) scaled by `rig.get_pwrmeter_scale` — relative =
+- Power: `rig.get_pwrmeter` (0-100 deflection) scaled by `rig.get_pwrmeter_scale` - relative =
   deflection/100 × scale, watts = deflection × scale (hamlib's exact contract).
 - Meters are only meaningful while transmitting; flrig answers 0 when idle or unmetered.
 - Poll-only, multiple clients supported by flrig, state can change under you.
 
-Testing: flrig is a GUI app with no headless mode — this package's tests script an in-process
+Testing: flrig is a GUI app with no headless mode - this package's tests script an in-process
 XML-RPC fake (the established technique for flrig clients).
 
 ---

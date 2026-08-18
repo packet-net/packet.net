@@ -6,7 +6,7 @@ namespace Packet.Aprs;
 /// <param name="Timestamp">
 /// 7-byte DHM-zulu timestamp string (<c>DDHHMMz</c>) if present, else
 /// <c>null</c>. APRS101 §16 explicitly restricts status timestamps to
-/// DHM-zulu — no DHM-local, no HMS, no MDHM.
+/// DHM-zulu - no DHM-local, no HMS, no MDHM.
 /// </param>
 /// <param name="Text">
 /// The free-form status text. Up to 62 ASCII characters without a

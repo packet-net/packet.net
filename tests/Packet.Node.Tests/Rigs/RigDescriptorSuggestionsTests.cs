@@ -5,7 +5,7 @@ namespace Packet.Node.Tests.Rigs;
 /// <summary>
 /// <see cref="RigDescriptorSuggestions"/>: the passive by-id tier of "what's plugged in?". A
 /// descriptor that names the model (an IC-7300's reprogrammed CP2102, a native-USB IC-705) must
-/// suggest it; a generic USB-UART bridge (plain FTDI / CP210x / CH340 — the cable, not the rig)
+/// suggest it; a generic USB-UART bridge (plain FTDI / CP210x / CH340 - the cable, not the rig)
 /// must suggest nothing.
 /// </summary>
 [Trait("Category", "Node")]
@@ -35,11 +35,11 @@ public sealed class RigDescriptorSuggestionsTests
     }
 
     [Theory]
-    // A bare FTDI CAT cable — tells you the cable's chip, nothing about the rig behind it.
+    // A bare FTDI CAT cable - tells you the cable's chip, nothing about the rig behind it.
     [InlineData("usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0")]
     // A generic CP2102 (no model programmed into the strings, unlike the IC-7300's).
     [InlineData("usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0")]
-    // The CP2105 dual bridge modern Yaesu ship — deliberately NOT mapped to any Yaesu model.
+    // The CP2105 dual bridge modern Yaesu ship - deliberately NOT mapped to any Yaesu model.
     [InlineData("usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_01423CD5-if00-port0")]
     // A CH340 (the no-name-cable staple).
     [InlineData("usb-1a86_USB_Serial-if00-port0")]

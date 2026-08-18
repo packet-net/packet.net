@@ -4,11 +4,11 @@ using Packet.Ax25.Session;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// Phase A — adversarial channel perturbations beyond loss. The medium no longer
+/// Phase A - adversarial channel perturbations beyond loss. The medium no longer
 /// just drops frames; it also <b>duplicates</b> them (a digipeater echo, or a
 /// retransmit arriving alongside the original it was meant to replace). The
 /// invariant oracle judges: a duplicate must never be delivered upward twice (the
-/// safety invariant — reliable, gap-free, duplicate-free delivery) and the link
+/// safety invariant - reliable, gap-free, duplicate-free delivery) and the link
 /// must still converge (liveness). This stresses the figc4.4 receive path and the
 /// <c>Ax25Spec40</c> out-of-window discard guard, which is exactly what drops an
 /// in-flight duplicate once V(R) has moved past it. Failures shrink to a minimal
@@ -27,7 +27,7 @@ public class AdversarialChannelProperties
         h.Connect();
 
         // After the link is up, duplicate ~half of every frame in flight (I-frames
-        // and acks, both directions). No drops — duplication is the only
+        // and acks, both directions). No drops - duplication is the only
         // perturbation, so every submitted payload must still arrive exactly once.
         h.Link.Duplicate = _ => rng.NextDouble() < 0.5;
 
@@ -51,7 +51,7 @@ public class AdversarialChannelProperties
         int seedN, int seedBudget, int seedPattern, bool srej)
     {
         int n = 1 + Mod(seedN, 6);        // 1..6 I-frames
-        int budget = Mod(seedBudget, n + 1);   // 0..n finite drops — channel then clears
+        int budget = Mod(seedBudget, n + 1);   // 0..n finite drops - channel then clears
         int k = System.Math.Max(4, n);
         var rng = new System.Random(seedPattern);
 
@@ -60,7 +60,7 @@ public class AdversarialChannelProperties
 
         // A mean channel: a finite drop budget AND ~30% duplication, both
         // directions. Recovery (for the drops) and dedup (for the duplicates) must
-        // compose — every payload delivered exactly once, the link converges once
+        // compose - every payload delivered exactly once, the link converges once
         // the finite loss clears. Both REJ and SREJ recovery are fuzzed.
         int dropsLeft = budget;
         h.Link.Drop = _ => { if (dropsLeft > 0 && rng.NextDouble() < 0.5) { dropsLeft--; return true; } return false; };

@@ -10,10 +10,10 @@ namespace Packet.Tune;
 /// link (the <c>tait-transparent</c> port). Behavioral pass/fail/unknown with a remedy naming the
 /// exact Data-form field, for the codeplug settings that are NOT CCDI-readable:
 /// <list type="number">
-///   <item><c>transparent-mode-enabled</c> — the radio accepts Transparent-mode entry;</item>
-///   <item><c>escape-recovers</c> — the <c>+++</c> escape returns it to Command mode (the
-///     "Ignore Escape Sequence" check — <b>can wedge a misconfigured radio</b>);</item>
-///   <item><c>baud-clean</c> — a known frame round-trips byte-for-byte through both radios' FFSK
+///   <item><c>transparent-mode-enabled</c> - the radio accepts Transparent-mode entry;</item>
+///   <item><c>escape-recovers</c> - the <c>+++</c> escape returns it to Command mode (the
+///     "Ignore Escape Sequence" check - <b>can wedge a misconfigured radio</b>);</item>
+///   <item><c>baud-clean</c> - a known frame round-trips byte-for-byte through both radios' FFSK
 ///     (needs a peer CCDI port).</item>
 /// </list>
 /// The enter/escape and loopback probes are DISRUPTIVE (they enter Transparent mode and transmit)

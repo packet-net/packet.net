@@ -2,7 +2,7 @@ namespace Packet.Node.Core.Console;
 
 /// <summary>
 /// Expands the operator-facing <c>{node}</c> / <c>{call}</c> placeholders that the
-/// services banner / prompt — and the ID beacon — share. <b>The single source of
+/// services banner / prompt - and the ID beacon - share. <b>The single source of
 /// truth</b> for that substitution: <see cref="NodeCommandService"/> (banner / prompt)
 /// and <c>BeaconService</c> (beacon text) both call this so the two surfaces can never
 /// drift. <c>{call}</c> is the station callsign; <c>{node}</c> is the alias if set,
@@ -23,7 +23,7 @@ public static class NodeTextTemplate
             .Replace("{call}", callsign, StringComparison.Ordinal);
     }
 
-    /// <summary>The node's display name — the alias if set, else the callsign.
+    /// <summary>The node's display name - the alias if set, else the callsign.
     /// Matches <c>NodeConsoleEnvironment.NodeName</c>.</summary>
     public static string NodeName(string callsign, string? alias)
         => string.IsNullOrWhiteSpace(alias) ? callsign : alias;

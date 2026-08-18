@@ -8,7 +8,7 @@ namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
 /// <see cref="Ax25Session.AttachConsumerWithReplay"/>: a consumer that attaches AFTER the session
-/// has already emitted inbound DL-DATA (the outbound-connect case — the peer's connect banner
+/// has already emitted inbound DL-DATA (the outbound-connect case - the peer's connect banner
 /// arrives before the wrapping <c>Ax25NodeConnection</c> can subscribe) still receives that early
 /// data, exactly once, ahead of the live stream. This is the unit-level guard for the
 /// banner-lost-on-connect regression that the AXUDP node-to-node test proves end-to-end.
@@ -103,7 +103,7 @@ public sealed class Ax25SessionReplayTests
         // packet.net#659: Ax25Listener caches and REUSES an Ax25Session per (local, remote)
         // across connect/disconnect cycles. A one-shot buffer stays disarmed after the first
         // connection's consumer attaches, so the SECOND connect to the same peer replays
-        // nothing and the banner is lost — even though the session L2-ACKs the I-frame. The
+        // nothing and the banner is lost - even though the session L2-ACKs the I-frame. The
         // fresh DL-CONNECT-confirm on the re-dial must re-arm the buffer.
         var session = NewSession();
 

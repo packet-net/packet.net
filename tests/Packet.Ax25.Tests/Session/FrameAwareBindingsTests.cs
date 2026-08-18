@@ -14,7 +14,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <see cref="Ax25Guard.PEq1"/>, <see cref="Ax25Guard.Command"/>,
 /// <see cref="Ax25Guard.NsEqVr"/>, and <see cref="Ax25Guard.VaLeNrLeVs"/> read
 /// from the current trigger event's attached frame rather than
-/// constructor-time constants — otherwise figc4.4's I-receive paths can never
+/// constructor-time constants - otherwise figc4.4's I-receive paths can never
 /// be evaluated in production.
 /// </summary>
 public class FrameAwareBindingsTests
@@ -90,21 +90,21 @@ public class FrameAwareBindingsTests
         var (b, ctx, setTrigger) = NewBindings();
         ctx.VR = 4;
 
-        // I-frame with N(S)=4 — should match.
+        // I-frame with N(S)=4 - should match.
         setTrigger(new IFrameReceived(Ax25Frame.I(Local, Remote, nr: 0, ns: 4, info: "x"u8)));
         b[Ax25Guard.NsEqVr]().Should().BeTrue();
 
-        // I-frame with N(S)=5 — shouldn't match.
+        // I-frame with N(S)=5 - shouldn't match.
         setTrigger(new IFrameReceived(Ax25Frame.I(Local, Remote, nr: 0, ns: 5, info: "x"u8)));
         b[Ax25Guard.NsEqVr]().Should().BeFalse();
     }
 
     [Theory]
-    [InlineData(2, 4, 0, false)]  // window [V(a)=2..V(s)=4], N(R)=0 — mod-8 delta=6 > span=2
-    [InlineData(2, 4, 2, true)]   // N(R)=V(a) — fully acked, at lower edge
+    [InlineData(2, 4, 0, false)]  // window [V(a)=2..V(s)=4], N(R)=0 - mod-8 delta=6 > span=2
+    [InlineData(2, 4, 2, true)]   // N(R)=V(a) - fully acked, at lower edge
     [InlineData(2, 4, 3, true)]   // N(R) in the middle
-    [InlineData(2, 4, 4, true)]   // N(R)=V(s) — at upper edge
-    [InlineData(2, 4, 5, false)]  // N(R) beyond V(s) — invalid
+    [InlineData(2, 4, 4, true)]   // N(R)=V(s) - at upper edge
+    [InlineData(2, 4, 5, false)]  // N(R) beyond V(s) - invalid
     [InlineData(6, 2, 0, true)]   // wraps: span=4, delta=(0-6+8)%8=2 (in window)
     [InlineData(6, 2, 7, true)]   // wraps: delta=1 (in window)
     [InlineData(6, 2, 3, false)]  // wraps: delta=5 > span=4
@@ -148,7 +148,7 @@ public class FrameAwareBindingsTests
     public void Binding_Table_Is_Exhaustive_Over_Ax25Guard()
     {
         // The typed table binds every Ax25Guard atom (the whole point of the
-        // SP-010 retype — see Ax25SessionBindings.CreateDefault). This holds
+        // SP-010 retype - see Ax25SessionBindings.CreateDefault). This holds
         // even with no currentTrigger wired: the frame-aware atoms are present,
         // bound to closures that return safe defaults on a null trigger.
         var ctx = new Ax25SessionContext { Local = Local, Remote = Remote };

@@ -56,14 +56,14 @@ public sealed class TuningStartException : Exception
 /// The node's guided deviation-tuning service: at most one live <see cref="PortTuningSession"/> per
 /// port (tracked by <see cref="PortTuningRegistry"/>). It validates the port (fail-fast, reusing the
 /// capability doctor's SDM-enabled probe), <b>pauses the port's normal AX.25 traffic</b>, opens an
-/// SDM coordination link to the peer, and starts the session — with a restore callback that
+/// SDM coordination link to the peer, and starts the session - with a restore callback that
 /// un-pauses the port (a full in-place port rebuild) on every session exit path. A DI singleton;
 /// disposing it stops and restores every live session (node shutdown safety).
 /// </summary>
 /// <remarks>
 /// <para><b>Pause/restore.</b> Pause is <c>Ax25Listener.StopAsync()</c> (the listener stops
 /// transmitting/accepting; the modem serial port stays open so the session can key bursts and
-/// meter). Restore is <c>PortSupervisor.RestartPortAsync</c> under the host's supervisor gate — a
+/// meter). Restore is <c>PortSupervisor.RestartPortAsync</c> under the host's supervisor gate - a
 /// full teardown + fresh bring-up of the port, the definitive guarantee that nothing is left paused,
 /// wedged or keyed. Both run under <c>NodeHostedService.RunExclusiveAsync</c> so they serialise
 /// against config reconciles.</para>
@@ -158,7 +158,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
             {
                 var burstMeter = new NinoTncBurstMeter(port.Tnc!, port.Tait!);
                 // Probe the (firmware-3.41-era) GETRSSI level fast path once; captures the idle
-                // baseline. A no-op query on newer firmware — never fatal.
+                // baseline. A no-op query on newer firmware - never fatal.
                 try
                 {
                     await burstMeter.ProbeAudioLevelMeterAsync(cancellationToken).ConfigureAwait(false);
@@ -190,15 +190,15 @@ public sealed partial class PortTuningService : IAsyncDisposable
     /// Arm a TXDELAY-minimisation session on a port (layer 2 of
     /// docs/research/txdelay-optimisation.md): coordinator (sweeps this port's OWN
     /// TXDELAY down, keying probes) or meter (purely passive counting for a remote
-    /// coordinator). Same validate/pause/SDM plumbing — and the same
-    /// port-always-restored guarantee — as <see cref="StartAsync"/>.
+    /// coordinator). Same validate/pause/SDM plumbing - and the same
+    /// port-always-restored guarantee - as <see cref="StartAsync"/>.
     /// </summary>
     /// <param name="portId">The running port.</param>
     /// <param name="coordinator"><c>true</c> = coordinator (transmits!), <c>false</c> = meter.</param>
     /// <param name="peerSdmId">The peer radio's 8-character SDM data identity.</param>
     /// <param name="options">Sweep options. For the coordinator, a null
     /// <c>StartTxDelayMs</c> caller should pre-seed from the port's configured KISS
-    /// txDelay — the API layer does.</param>
+    /// txDelay - the API layer does.</param>
     /// <param name="cancellationToken">Cancels the start (before the session is registered).</param>
     /// <exception cref="TuningStartException">The start was refused (404/400/409).</exception>
     public Task<TuningSessionInfo> StartTxDelayMinAsync(
@@ -219,7 +219,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
     /// <summary>
     /// Arm the explicit APPLY: set + settle + verify <paramref name="txDelayMs"/> with
     /// the far meter counting, then persist via <paramref name="persist"/> when
-    /// verified. On the node an apply only outlives the session when persisted — the
+    /// verified. On the node an apply only outlives the session when persisted - the
     /// port restore is a full rebuild that re-applies the configured KISS params.
     /// </summary>
     /// <param name="portId">The running port.</param>
@@ -275,7 +275,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
     /// The shared arm plumbing every session flavour uses: validate the port (running,
     /// NinoTNC + live Tait + peer id), claim the one-session-per-port slot, pause normal
     /// AX.25 traffic, enable PROGRESS + fail-fast SDM check, open the SDM link, build +
-    /// register + start the session — and restore the port if anything fails before the
+    /// register + start the session - and restore the port if anything fails before the
     /// session takes ownership of restore.
     /// </summary>
     /// <remarks>Internal (InternalsVisibleTo <c>Packet.Node.Tests</c>) as the orchestration test
@@ -406,7 +406,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
         }
         finally
         {
-            // Free the slot only after the port has been restored — never leave it claimed.
+            // Free the slot only after the port has been restored - never leave it claimed.
             registry.Remove(session);
         }
     }

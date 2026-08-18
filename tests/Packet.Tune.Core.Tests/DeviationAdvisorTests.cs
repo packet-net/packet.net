@@ -16,7 +16,7 @@ public class DeviationAdvisorTests
     public void Zero_decodes_without_clipping_advise_sweep_not_up()
     {
         // A fully-dead burst carries no direction (too quiet, too loud and
-        // no-path all read 0/n) — a directional UP here sent the operator
+        // no-path all read 0/n) - a directional UP here sent the operator
         // the wrong way on the pre-R2-retap bench rig.
         var report = new MeterReport(0, 5, FecCorrectedBytesDelta: 0, LostAdcSamplesDelta: 0, RssiDbm: -90);
         DeviationAdvisor.Advise(report).Should().Be(TuningAdvice.Sweep);

@@ -145,7 +145,7 @@ public sealed class SqliteUserStoreTests : IDisposable
         store.Create(NewUser("hank")).Should().BeTrue();
 
         store.SetTotpSecret("gina", "JBSWY3DPEHPK3PXP", "G7XYZ").Should().BeTrue();
-        // hank cannot claim the same callsign — even with a different casing.
+        // hank cannot claim the same callsign - even with a different casing.
         store.SetTotpSecret("hank", "GEZDGNBVGY3TQOJQ", "g7xyz").Should().BeFalse();
 
         // gina still owns it; hank has none.
@@ -212,7 +212,7 @@ public sealed class SqliteUserStoreTests : IDisposable
         var summary = UserSummary.From(store.FindByUsername("liam")!);
         summary.HasTotp.Should().BeTrue();
         summary.Callsign.Should().Be("M0LIA");
-        // UserSummary has no TotpSecret member — verified at compile time; here we assert
+        // UserSummary has no TotpSecret member - verified at compile time; here we assert
         // the unenrolled projection is HasTotp:false.
         UserSummary.From(NewUser("mona")).HasTotp.Should().BeFalse();
     }
@@ -220,8 +220,8 @@ public sealed class SqliteUserStoreTests : IDisposable
     [Fact]
     public void An_old_pre_migration_db_without_totp_columns_still_opens_and_gains_them()
     {
-        // Hand-build a db with the ORIGINAL (pre-TOTP) user schema — no callsign /
-        // totp_secret / last_totp_counter columns — then a row, exactly as a node from
+        // Hand-build a db with the ORIGINAL (pre-TOTP) user schema - no callsign /
+        // totp_secret / last_totp_counter columns - then a row, exactly as a node from
         // before this feature would have on disk.
         using (var conn = new Microsoft.Data.Sqlite.SqliteConnection(
             new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = dbPath }.ToString()))

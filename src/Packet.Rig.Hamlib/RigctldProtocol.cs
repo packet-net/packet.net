@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Packet.Rig.Hamlib;
 
 /// <summary>
-/// Pure parsing for hamlib's NET rigctl ("rigctld") wire protocol, Extended Response flavour —
+/// Pure parsing for hamlib's NET rigctl ("rigctld") wire protocol, Extended Response flavour -
 /// the <c>+</c>-prefixed form where every reply is: an echo line (<c>get_freq:</c> /
 /// <c>set_freq: 7074000</c>), zero or more payload lines, and a terminating <c>RPRT n</c>.
 /// The extended protocol is the only sane machine dialect: the default protocol's replies have
@@ -13,7 +13,7 @@ namespace Packet.Rig.Hamlib;
 internal static class RigctldProtocol
 {
     /// <summary>
-    /// Hamlib error names by positive error code — <c>rig_errcode_e</c> from <c>rig.h</c>
+    /// Hamlib error names by positive error code - <c>rig_errcode_e</c> from <c>rig.h</c>
     /// (verified against Hamlib master, 2026). <c>RPRT -n</c> on the wire means error n here.
     /// </summary>
     private static readonly string[] ErrorNames =
@@ -63,8 +63,8 @@ internal static class RigctldProtocol
     /// <summary>
     /// Extract a named field from extended-reply payload lines: finds the first
     /// <c>Key: value</c> / <c>Key:&lt;tab&gt;value</c> line matching <paramref name="key"/> and
-    /// returns the trimmed value, or null. (Structured gets label their payload —
-    /// <c>Frequency: 14074000</c> — but level reads return a bare value line, so callers fall
+    /// returns the trimmed value, or null. (Structured gets label their payload -
+    /// <c>Frequency: 14074000</c> - but level reads return a bare value line, so callers fall
     /// back to <see cref="BareValue"/> where appropriate.)
     /// </summary>
     internal static string? GetField(IReadOnlyList<string> payload, string key)
@@ -102,8 +102,8 @@ internal static class RigctldProtocol
             : throw new RigProtocolException($"rigctld reply to '{command}' had unparseable number '{value}'.");
 
     /// <summary>
-    /// Interpret a <c>\chk_vfo</c> reply. The shape varies by hamlib version — bare <c>0</c>/
-    /// <c>1</c> (4.0+), <c>CHKVFO 0</c> (3.3), <c>ChkVFO: 0</c> (extended-form echo) — so accept
+    /// Interpret a <c>\chk_vfo</c> reply. The shape varies by hamlib version - bare <c>0</c>/
+    /// <c>1</c> (4.0+), <c>CHKVFO 0</c> (3.3), <c>ChkVFO: 0</c> (extended-form echo) - so accept
     /// any line whose last token is 0/1. A server that rejects the command outright
     /// (<c>RPRT -n</c>) predates VFO mode entirely, which means VFO mode is off.
     /// </summary>
@@ -133,7 +133,7 @@ internal static class RigctldProtocol
     /// Digest a <c>\dump_caps</c> payload into capability flags + identity. Keys off the stable
     /// prose lines (<c>Can get Frequency:&lt;tab&gt;Y</c>, <c>Get level: SWR(…) …</c>); hamlib
     /// prints <c>Y</c>/<c>N</c>/<c>E</c> (E = emulated by the backend, which works), so
-    /// anything but <c>N</c> counts as supported. Advertised caps are a statement of intent —
+    /// anything but <c>N</c> counts as supported. Advertised caps are a statement of intent -
     /// a rig can still reject at runtime (the dummy rig advertises PTT it cannot key without a
     /// PTT device) and that surfaces as <see cref="RigCommandException"/>.
     /// </summary>
@@ -179,7 +179,7 @@ internal static class RigctldProtocol
             else if (Value(line, "Can get DCD:") is { } gd)
             {
                 // "Can get DCD:" is the gate; the separate "DCD type:" line describes the
-                // detection mechanism, not whether the read works — deliberately ignored.
+                // detection mechanism, not whether the read works - deliberately ignored.
                 caps |= Supported(gd, RigCapabilities.DcdRead);
             }
             else if (Value(line, "Get level:") is { } levels)

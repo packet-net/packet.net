@@ -33,7 +33,7 @@ public sealed record TuningDoctorOptions
     public string Callsign { get; init; } = "N0CALL";
 
     /// <summary>The known-good mode pinned (SETHW, non-persist) before the
-    /// TXDELAY check — a stale post-flash mode 0 produces a false "pot
+    /// TXDELAY check - a stale post-flash mode 0 produces a false "pot
     /// override" verdict otherwise. Default 6 (1200 AFSK AX.25).</summary>
     public byte PinMode { get; init; } = 6;
 
@@ -42,7 +42,7 @@ public sealed record TuningDoctorOptions
     /// uses) the <b>transmitting</b> probes run: the TXDELAY software-control check,
     /// the wildcard-SDM check, and the TNC↔radio pairing check each briefly KEY THE
     /// TRANSMITTER (and the TXDELAY check perturbs the TXDELAY register). When
-    /// <c>false</c> — the safe default when probing a <em>live</em> node port — those
+    /// <c>false</c> - the safe default when probing a <em>live</em> node port - those
     /// probes are reported <see cref="DoctorOutcome.Unknown"/> with a
     /// "requires a brief transmit" detail and <b>nothing is transmitted</b>.
     /// </summary>
@@ -60,15 +60,15 @@ public sealed record TuningDoctorOptions
 /// <b>The doctor can transmit</b>: when
 /// <see cref="TuningDoctorOptions.IncludeTransmittingProbes"/> is on the TXDELAY check
 /// keys four short probe frames, the SDM probe sends one wildcard SDM, and the pairing
-/// probe keys one frame — run those on a bench/test channel.
+/// probe keys one frame - run those on a bench/test channel.
 /// </summary>
 /// <remarks>
 /// Two entry points share <b>one</b> probe implementation:
 /// <list type="bullet">
 ///   <item><see cref="RunAsync(string,string,TuningDoctorOptions,Action{string},CancellationToken)"/>
-///     opens (and closes) the serial ports itself — the standalone <c>packet-tune doctor</c> CLI.</item>
+///     opens (and closes) the serial ports itself - the standalone <c>packet-tune doctor</c> CLI.</item>
 ///   <item><see cref="RunProbesAsync(NinoTncSerialPort,TaitCcdiRadio,TuningDoctorOptions,Action{DoctorProbe},CancellationToken)"/>
-///     runs against <b>already-open</b> handles — the PDN node passes its live
+///     runs against <b>already-open</b> handles - the PDN node passes its live
 ///     <c>RunningPort</c> handles so an operator can run the doctor without tearing the
 ///     port down.</item>
 /// </list>
@@ -142,7 +142,7 @@ public static class TuningDoctor
     /// <c>RunningPort</c> handles so the doctor probes the port in place.
     /// </summary>
     /// <param name="tnc">The open NinoTNC serial port, or <c>null</c> when the port's modem
-    /// is not a NinoTNC (a serial-KISS modem exposes no NinoTNC diagnostics) — the
+    /// is not a NinoTNC (a serial-KISS modem exposes no NinoTNC diagnostics) - the
     /// TNC-diagnostic probes then report <see cref="DoctorOutcome.Unknown"/>
     /// "not a NinoTNC".</param>
     /// <param name="radio">The open Tait CCDI radio, or <c>null</c> to skip the radio probes.</param>
@@ -281,7 +281,7 @@ public static class TuningDoctor
             }
         }
 
-        // 5. TXDELAY software control — TRANSMITS (keys four probe frames + perturbs the
+        // 5. TXDELAY software control - TRANSMITS (keys four probe frames + perturbs the
         //    TXDELAY register). Gated behind IncludeTransmittingProbes.
         if (!opts.IncludeTransmittingProbes)
         {
@@ -358,7 +358,7 @@ public static class TuningDoctor
 
         // 8. SDM enabled in the radio's programming. A wildcard send TRANSMITS (one short
         //    over-air burst); the radio rejects with error 0/06 when programming disables SDM.
-        //    Gated behind IncludeTransmittingProbes — there is no non-transmitting probe for it.
+        //    Gated behind IncludeTransmittingProbes - there is no non-transmitting probe for it.
         if (!opts.IncludeTransmittingProbes)
         {
             add(new DoctorProbe(
@@ -387,7 +387,7 @@ public static class TuningDoctor
         }
 
         // 9. TNC↔radio pairing: key a short frame through the TNC and watch this radio
-        //    report its transmitter keying. TRANSMITS — gated behind IncludeTransmittingProbes.
+        //    report its transmitter keying. TRANSMITS - gated behind IncludeTransmittingProbes.
         if (!opts.IncludeTransmittingProbes)
         {
             add(new DoctorProbe("tnc-radio-pairing", DoctorOutcome.Unknown, TransmitGatedDetail, null));

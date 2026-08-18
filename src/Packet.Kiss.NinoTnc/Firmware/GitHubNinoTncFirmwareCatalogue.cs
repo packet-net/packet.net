@@ -38,7 +38,7 @@ public sealed partial class GitHubNinoTncFirmwareCatalogue : INinoTncFirmwareCat
 
     /// <summary>
     /// Filename pattern: <c>N9600A-v{major}-{minor}.hex</c>. Major and
-    /// minor are both decimal. Case-sensitive — GitHub URLs are.
+    /// minor are both decimal. Case-sensitive - GitHub URLs are.
     /// </summary>
     [GeneratedRegex(@"^N9600A-v(\d+)-(\d+)\.hex$")]
     private static partial Regex HexFileNameRegex();
@@ -51,7 +51,7 @@ public sealed partial class GitHubNinoTncFirmwareCatalogue : INinoTncFirmwareCat
     /// <summary>
     /// Create a catalogue that reads from
     /// <c>ninocarrillo/flashtnc@master</c>. <paramref name="http"/>
-    /// must be supplied — the caller owns its lifetime, and tests can
+    /// must be supplied - the caller owns its lifetime, and tests can
     /// substitute a <see cref="HttpMessageHandler"/> for offline runs.
     /// The caller is responsible for setting a sensible
     /// <c>User-Agent</c> header (GitHub requires one for unauthenticated
@@ -127,7 +127,7 @@ public sealed partial class GitHubNinoTncFirmwareCatalogue : INinoTncFirmwareCat
             if (variant == NinoTncChipVariant.Unknown)
             {
                 // Filename parses as a hex-like pattern but the major
-                // doesn't map to a known chip — skip rather than guess.
+                // doesn't map to a known chip - skip rather than guess.
                 continue;
             }
             if (entry.DownloadUrl is null)

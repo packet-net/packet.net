@@ -9,10 +9,10 @@ namespace Packet.Node.Core.Tuning;
 public enum TxDelayMinMode
 {
     /// <summary>This port is the coordinator: it sweeps its OWN TXDELAY down and keys
-    /// the probe traffic. The result is a recommendation — nothing is left applied.</summary>
+    /// the probe traffic. The result is a recommendation - nothing is left applied.</summary>
     SweepCoordinator,
 
-    /// <summary>This port is the meter: purely passive — it counts the peer's probes
+    /// <summary>This port is the meter: purely passive - it counts the peer's probes
     /// per step and reports over the side channel. Nothing local changes.</summary>
     Meter,
 
@@ -23,11 +23,11 @@ public enum TxDelayMinMode
 }
 
 /// <summary>
-/// One live TXDELAY-minimisation session on a port — the node-side wrapper that runs the
+/// One live TXDELAY-minimisation session on a port - the node-side wrapper that runs the
 /// <see cref="TxDelayMinimizer"/> / <see cref="TxDelayMinResponder"/> protocol loop
 /// (layer 2 of docs/research/txdelay-optimisation.md) over the port's SDM link, projects
 /// each sweep step into the same <see cref="TuningEvent"/> SSE feed the deviation
-/// sessions use, and — like <see cref="PortTuningSession"/> — <b>guarantees the port is
+/// sessions use, and - like <see cref="PortTuningSession"/> - <b>guarantees the port is
 /// restored to normal service on every exit path</b>. The protocol classes already
 /// guarantee the modem-level restore (original TXDELAY + polite channel access on any
 /// abort); this class adds the port-level restore (the full rebuild that un-pauses
@@ -35,7 +35,7 @@ public enum TxDelayMinMode
 /// </summary>
 /// <remarks>
 /// On the node, restore is a full port rebuild that re-applies the port's configured
-/// KISS params — so an APPLY only outlives the session when it also persists
+/// KISS params - so an APPLY only outlives the session when it also persists
 /// (<see cref="TxDelayMinPortSession"/> takes a persist callback the API wires to the
 /// config store): apply-verify → persist <c>kiss.txDelay</c> → restore re-applies the
 /// persisted value. An unpersisted apply is deliberately transient.
@@ -79,14 +79,14 @@ public sealed class TxDelayMinPortSession : IAsyncDisposable, IPortTuningSession
     /// <param name="portId">The port the session runs on.</param>
     /// <param name="peerSdmId">The peer radio's SDM data identity (reported in <see cref="Info"/>).</param>
     /// <param name="mode">Coordinator sweep, passive meter, or explicit apply.</param>
-    /// <param name="link">The coordination link (owned — disposed during teardown, before restore).</param>
+    /// <param name="link">The coordination link (owned - disposed during teardown, before restore).</param>
     /// <param name="station">The station adapter over the port's TNC (+ radio).</param>
     /// <param name="options">Sweep options (start/step/floor/probes/margins/timeouts).</param>
     /// <param name="restore">Un-pause/restore the port. Invoked exactly once during teardown.</param>
     /// <param name="applyTxDelayMs">The value an <see cref="TxDelayMinMode.Apply"/> session applies.</param>
     /// <param name="persist">Persist a verified TXDELAY (ms) into the port's KISS-params config;
     /// invoked only by a verified apply. Null = don't persist (the applied value then dies with
-    /// the port restore — see the class remarks).</param>
+    /// the port restore - see the class remarks).</param>
     /// <param name="clock">Time source for event timestamps; null = system.</param>
     public TxDelayMinPortSession(
         string sessionId,
@@ -224,7 +224,7 @@ public sealed class TxDelayMinPortSession : IAsyncDisposable, IPortTuningSession
         }
         else
         {
-            // Never started — still guarantee the port is restored.
+            // Never started - still guarantee the port is restored.
             await CleanupAsync().ConfigureAwait(false);
         }
 

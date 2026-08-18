@@ -5,8 +5,8 @@ namespace Packet.Node.Core.Configuration;
 /// to the radio behind this port's modem. When present and the radio can report signal
 /// strength, the port's transport is wrapped in <c>Packet.Radio.RssiTaggingTransport</c> at
 /// bring-up so every inbound frame carries per-frame RSSI/SNR metadata
-/// (<c>Ax25InboundFrame.Radio</c>) sampled from the radio's control channel —
-/// the signal data standard KISS cannot provide — and hardware carrier-sense (DCD),
+/// (<c>Ax25InboundFrame.Radio</c>) sampled from the radio's control channel -
+/// the signal data standard KISS cannot provide - and hardware carrier-sense (DCD),
 /// where available, gates the listener's CSMA. Null / absent = no radio
 /// attached, byte-for-byte today's behaviour.
 /// </summary>
@@ -16,33 +16,33 @@ namespace Packet.Node.Core.Configuration;
 /// channel is a <em>separate serial port</em> from the modem's (<see cref="Port"/> here vs the
 /// transport's <c>device</c>), so the binding-mode fields (<see cref="Port"/> /
 /// <see cref="Serial"/> / <see cref="HeadEndId"/>+<see cref="DeviceId"/>), <see cref="Baud"/> and
-/// the Tait extras (<see cref="HealthIntervalSeconds"/>, the hail responder) all apply — and the
+/// the Tait extras (<see cref="HealthIntervalSeconds"/>, the hail responder) all apply - and the
 /// block is only valid on a transport with a co-located radio (<c>serial-kiss</c> /
 /// <c>nino-tnc</c> locally, <c>nino-tnc-tcp</c> for a head-end binding). For <c>rig</c> the port's
-/// <c>rig:</c> block (which must also be present) says which CAT daemon to dial — the node opens a
+/// <c>rig:</c> block (which must also be present) says which CAT daemon to dial - the node opens a
 /// SECOND, dedicated connection to it and re-presents the rig's DCD / signal strength / PTT as the
 /// port's radio, so the binding-mode fields must stay unset and no transport pairing applies (a
 /// <c>kiss-tcp</c> soundmodem beside <c>rigctld</c> is the motivating case).
 /// </para>
 /// <para>
 /// Pin a <c>tait-ccdi</c> radio EITHER by device path (<see cref="Port"/>) OR by CCDI serial
-/// (<see cref="Serial"/>) — exactly one. <see cref="Serial"/> is the robust choice: USB serial
+/// (<see cref="Serial"/>) - exactly one. <see cref="Serial"/> is the robust choice: USB serial
 /// devices renumber across a replug or reboot (<c>/dev/ttyUSB0</c> ↔ <c>/dev/ttyUSB1</c>), and the
 /// CP2102 CCDI dongles in the wild share a USB serial, so <c>/dev/serial/by-id</c> can't tell two
-/// apart — the CCDI serial number can. A <see cref="Serial"/>-bound radio is located by scanning at
+/// apart - the CCDI serial number can. A <see cref="Serial"/>-bound radio is located by scanning at
 /// bring-up; no match (unplugged / powered off) degrades cleanly, exactly like a failed open.
 /// </para>
 /// <para>
 /// A radio that fails to open at port start degrades cleanly: the fault is logged
-/// and the port runs without radio metadata — an unplugged control cable (or an
+/// and the port runs without radio metadata - an unplugged control cable (or an
 /// unreachable rig daemon) must never take a working packet channel down. Changing
 /// this block is a restart-class config edit (the wrap is a construction-time
-/// choice — see <c>Hosting.ReconcilePlanner</c>).
+/// choice - see <c>Hosting.ReconcilePlanner</c>).
 /// </para>
 /// </remarks>
 public sealed record PortRadioConfig
 {
-    /// <summary>The radio-control protocol kind — one of <see cref="RadioKinds.Names"/>
+    /// <summary>The radio-control protocol kind - one of <see cref="RadioKinds.Names"/>
     /// (<c>tait-ccdi</c> = Tait CCDI serial control; <c>rig</c> = the port's <c>rig:</c> CAT
     /// daemon re-presented as the radio, over a dedicated second connection). Matched
     /// case- and hyphen/underscore-insensitively.</summary>

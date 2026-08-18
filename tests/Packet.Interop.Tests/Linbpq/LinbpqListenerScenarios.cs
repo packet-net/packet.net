@@ -11,7 +11,7 @@ using Xunit;
 namespace Packet.Interop.Tests.Linbpq;
 
 /// <summary>
-/// Listener-side interop against LinBPQ — we listen on net-sim node a
+/// Listener-side interop against LinBPQ - we listen on net-sim node a
 /// (KISS-TCP 8100) under callsign <c>PNTEST</c>; BPQ initiates an
 /// outbound <c>C PNTEST</c> via its node-prompt telnet listener on
 /// 127.0.0.1:8010; the resulting SABM travels through net-sim's
@@ -21,7 +21,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the inverse of <see cref="LinbpqViaNetsimConnectedMode"/> —
+/// This is the inverse of <see cref="LinbpqViaNetsimConnectedMode"/> -
 /// that test has us initiate against BPQ as the acceptor; this one has
 /// BPQ initiate against us as the acceptor. It validates that our
 /// <see cref="Ax25Listener"/> is interoperable as the inbound-accept
@@ -74,7 +74,7 @@ public class LinbpqListenerScenarios
     // Budget for each blocking read of a BPQ telnet prompt (user/password).
     // BPQ prints these promptly once the socket is up, but under host
     // contention the read can lag; a tight 5 s could spuriously give up and
-    // send credentials into a not-yet-ready prompt. Generous and harmless —
+    // send credentials into a not-yet-ready prompt. Generous and harmless -
     // ReadUntilAsync returns as soon as the needle is seen.
     private static readonly TimeSpan TelnetReadBudget = TimeSpan.FromSeconds(15);
 
@@ -101,8 +101,8 @@ public class LinbpqListenerScenarios
         listener.SessionAccepted += (_, e) =>
         {
             // BPQ's outbound source on the wire is its NODECALL with
-            // an SSID assigned by BPQ; we accept any session — the
-            // listener doesn't filter — and just record the first
+            // an SSID assigned by BPQ; we accept any session - the
+            // listener doesn't filter - and just record the first
             // one. The remote-side disconnection wires inline below.
             accepted.TrySetResult(e.Session);
             e.Session.DataLinkSignalEmitted += (_, sig) =>
@@ -149,7 +149,7 @@ public class LinbpqListenerScenarios
             Encoding.ASCII.GetBytes("Packet.NET listener says hi\r"),
             Ax25Frame.PidNoLayer3));
 
-        // Tell BPQ to drop the link from its side — type "B" (bye) at
+        // Tell BPQ to drop the link from its side - type "B" (bye) at
         // the node prompt of the remote-end session it just opened.
         // We can't drive that easily without holding the same telnet
         // session; the more deterministic approach is to issue

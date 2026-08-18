@@ -7,12 +7,12 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// Boots the real <c>Packet.Node</c> composition root and exercises the routing boundary of the
-/// capability doctor — <c>GET /api/v1/ports/{id}/doctor</c> (safe/read) and
+/// capability doctor - <c>GET /api/v1/ports/{id}/doctor</c> (safe/read) and
 /// <c>POST /api/v1/ports/{id}/doctor?interrupt=true</c> (admin/audited/transmits). The success
 /// path probes a live port's serial handles, which can't be stood up under the in-memory WAF (and
 /// is covered hardware-free by <c>PortDoctorRunnerTests</c>), so these assert the 404s that don't
 /// touch the air: an unknown port id, and a configured-but-not-running port. Auth is off by default
-/// (no <c>management.auth.enabled</c>), so the admin-scoped POST is reachable here — the scope gate
+/// (no <c>management.auth.enabled</c>), so the admin-scoped POST is reachable here - the scope gate
 /// is a no-op until auth is turned on.
 /// </summary>
 [Trait("Category", "Node")]
@@ -26,7 +26,7 @@ public sealed class PortDoctorApiTests : IDisposable
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         // One disabled port: configured (valid config) but not brought up, so its id never names a
-        // *running* port — the doctor has no live handles to probe → 404.
+        // *running* port - the doctor has no live handles to probe → 404.
         File.WriteAllText(configPath, """
             schemaVersion: 1
             identity:

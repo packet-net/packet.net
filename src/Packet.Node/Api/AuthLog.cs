@@ -8,7 +8,7 @@ namespace Packet.Node.Api;
 /// </summary>
 /// <remarks>
 /// <b>No secrets ever cross this surface.</b> Every parameter is a username, a source
-/// IP, a scope, or an outcome enum name — never a password, an access/refresh token,
+/// IP, a scope, or an outcome enum name - never a password, an access/refresh token,
 /// or a token hash. The username is not secret (it appears in the user list), but a
 /// missing one is redacted to a placeholder by the caller so a line never logs a blank.
 /// </remarks>

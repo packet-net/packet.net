@@ -10,7 +10,7 @@ namespace Packet.NetRom.Tests.Wire;
 /// Vectors and totality tests for the INP3 RIF / RIP / TLV wire codec
 /// (<see cref="Inp3Rif"/> / <see cref="Inp3Rip"/> / <see cref="Inp3Tlv"/>),
 /// against the locked byte layouts in
-/// <c>docs/netrom-inp3-i1-wire-spec.md</c> §2.5–2.6. Every hex vector in the spec
+/// <c>docs/netrom-inp3-i1-wire-spec.md</c> §2.5-2.6. Every hex vector in the spec
 /// is asserted here, including the unknown-TLV-retained, alias/EOP, and
 /// horizon/withdrawal cases, plus round-trip and the totality (never-throw)
 /// contract on garbage and truncation.
@@ -292,12 +292,12 @@ public class Inp3RifTests
 
         // The alias TLV type (0x00) is identical to the EOP byte (AMBIGUITY-RIF-2),
         // so a 0x00 that cannot be satisfied as a TLV is *necessarily* read as the
-        // EOP — this is the same rule that lets a multi-RIP RIF find its boundaries
+        // EOP - this is the same rule that lets a multi-RIP RIF find its boundaries
         // (a real EOP is followed by the next RIP's shifted callsign, whose first
         // octet never frames as a short alias TLV within the remaining body). The RIP
         // therefore keeps its routing fields (450 ms) and simply drops the malformed
         // trailing alias; the leftover bytes are a trailing partial. (A truncated
-        // alias can NOT be soundly distinguished from EOP-plus-partial here — that's
+        // alias can NOT be soundly distinguished from EOP-plus-partial here - that's
         // the documented residual flagged for I-5 interop validation.)
 
         // Strict: the leftover (03 52 44) is an un-frameable trailing partial → reject.
@@ -313,7 +313,7 @@ public class Inp3RifTests
     [Fact]
     public void A_target_time_above_the_horizon_is_flagged_unreachable()
     {
-        // Max encodable target time 0xFFFF = 655350 ms — above the 600 000 ms horizon,
+        // Max encodable target time 0xFFFF = 655350 ms - above the 600 000 ms horizon,
         // so still a withdrawal. (RIP-4 covers exactly-horizon; this covers above it.)
         var bytes = Hex("FF 9A 60 98 A8 8A 40 60 01 FF FF 00");
         Inp3Rif.TryParse(bytes, out var rif).Should().BeTrue();
@@ -347,7 +347,7 @@ public class Inp3RifTests
         // decode (NetRomCallsign.TryReadShifted → false). Build a callsign whose
         // shifted form is invalid: 0x00 chars are not A-Z/0-9 once unshifted.
         var bytes = new byte[Inp3Rip.PrefixLength + 1];   // garbage prefix + a byte
-        // leave it all-zero except the EOP slot won't be reached — callsign decode fails first.
+        // leave it all-zero except the EOP slot won't be reached - callsign decode fails first.
         Inp3Rip.TryParse(bytes, out var rip, out int consumed).Should().BeFalse();
         rip.Should().BeNull();
         consumed.Should().Be(0);

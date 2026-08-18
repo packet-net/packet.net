@@ -6,15 +6,15 @@ read signal strength and health from the radio while packets flow.
 This chapter is about **option 1** from the [overview](index.md#three-ways-a-radio-can-join-a-port):
 a radio *attached to* a TNC port. Your modem stays a TNC; the radio's own serial
 control channel is a **second cable** the node reads alongside. (Its cable-free
-sibling — **option 3**, a CAT rig as the port's radio — is
+sibling - **option 3**, a CAT rig as the port's radio - is
 [below](#kind-rig--re-use-the-ports-cat-rig-as-its-radio).)
 
 ## Before you start
 
 - A **NinoTNC** or **serial KISS** port already working in PDN. (A *cabled*
-  `tait-ccdi` radio block is only valid on the serial-modem port kinds —
+  `tait-ccdi` radio block is only valid on the serial-modem port kinds -
   `nino-tnc` and `serial-kiss`. A `kiss-tcp` or AXUDP port has no physical radio
-  beside the node to cable to — though a `kiss-tcp` port *can* carry a
+  beside the node to cable to - though a `kiss-tcp` port *can* carry a
   [rig-backed radio](#kind-rig--re-use-the-ports-cat-rig-as-its-radio), which
   needs no cable at all.)
 - A **Tait TM8100 / TM8200** radio wired to the machine by its **CCDI** serial
@@ -34,16 +34,16 @@ sibling — **option 3**, a CAT rig as the port's radio — is
    section. Flip it **on**.
 3. Leave **Radio type** on *Tait CCDI (TM8100 / TM8200)*.
 4. Click **Scan for radios**. The node probes every candidate serial port and lists
-   what answers — each entry shows the **model and serial number** (and the device
+   what answers - each entry shows the **model and serial number** (and the device
    path it was found on), e.g.
 
-   > **TM8110 · s/n 19925328** — `/dev/ttyUSB0 · 28800 baud`
+   > **TM8110 · s/n 19925328** - `/dev/ttyUSB0 · 28800 baud`
 
-5. Click your radio in the list. That pins the port to it **by CCDI serial** — the
+5. Click your radio in the list. That pins the port to it **by CCDI serial** - the
    robust choice (see below). Save the port.
 
 The whole point of scan-to-attach is **"pick your radio by model + serial, not a
-device path"** — you never have to know or guess which `/dev/ttyUSB*` it landed on.
+device path"** - you never have to know or guess which `/dev/ttyUSB*` it landed on.
 
 Once saved and the port restarts, an **attached** badge appears, inbound frames
 start carrying RSSI/SNR, and the radio shows up on the dashboard
@@ -56,7 +56,7 @@ NinoTNC port with a Tait radio attached, bound by serial:
 
 > [!NOTE]
 > **Where config lives.** A node keeps its config in its `pdn.db`, not a watched
-> file ([config-in-DB](../docs/config-in-db.md), #473) — so "edit it directly" means
+> file ([config-in-DB](../docs/config-in-db.md), #473) - so "edit it directly" means
 > either the web UI/API, or the export-edit-import round-trip: `pdn config export
 > --db /var/lib/packetnet/pdn.db --out node.yaml`, edit the YAML, `pdn config import
 > node.yaml --db /var/lib/packetnet/pdn.db`. Both verbs read a database that already
@@ -87,18 +87,18 @@ The fields:
 | Field | Meaning | Default |
 |---|---|---|
 | `kind` | Control protocol: `tait-ccdi` (this chapter), or `rig` (below). | *(required)* |
-| `serial` | The radio's **CCDI serial number** — the stable binding. `tait-ccdi` only. | — |
-| `port` | **OR** the control device path, e.g. `/dev/ttyUSB0`. `tait-ccdi` only. | — |
+| `serial` | The radio's **CCDI serial number** - the stable binding. `tait-ccdi` only. | - |
+| `port` | **OR** the control device path, e.g. `/dev/ttyUSB0`. `tait-ccdi` only. | - |
 | `baud` | Control-channel baud. `tait-ccdi` only. | `28800` |
 | `healthIntervalSeconds` | Health-sample cadence, seconds. `tait-ccdi` only. | `10` |
 
 > [!IMPORTANT]
-> For `tait-ccdi`, set **exactly one** of `serial` or `port` — not both, not
+> For `tait-ccdi`, set **exactly one** of `serial` or `port` - not both, not
 > neither. Binding by `serial` is strongly preferred (next section). `port` is the
-> advanced fallback. For `kind: rig` set **neither** — the rig-backed radio has no
+> advanced fallback. For `kind: rig` set **neither** - the rig-backed radio has no
 > control cable of its own.
 
-## `kind: rig` — re-use the port's CAT rig as its radio
+## `kind: rig` - re-use the port's CAT rig as its radio
 
 A port that already has a `rig:` block (hamlib `rigctld` / flrig CAT control) can
 re-present **that same rig** as the port's radio:
@@ -121,14 +121,14 @@ The node dials a **second, dedicated connection** to the same daemon, so the
 carrier-sense polling never queues behind the status poller's meter reads. What you
 get depends on what the rig reports:
 
-- **DCD** (`get_dcd`) gates the node's CSMA — the node holds its keyups while the
+- **DCD** (`get_dcd`) gates the node's CSMA - the node holds its keyups while the
   rig hears carrier, exactly like a Tait's hardware DCD.
 - **Calibrated signal strength** (dBm) RSSI-tags inbound frames, feeding the same
   link-quality surfaces as a Tait attachment ([chapter 2](02-see-your-link-quality.md)).
-  A rig with DCD but no calibrated meter still works — the port just runs without
+  A rig with DCD but no calibrated meter still works - the port just runs without
   per-frame signal metadata.
 
-Because there is no control cable, a rig-backed radio works with **any** transport —
+Because there is no control cable, a rig-backed radio works with **any** transport -
 the `kiss-tcp` soundmodem + `rigctld` pairing above is the motivating setup. The
 `rig:` block on the same port is **required** (it says which daemon to dial); the
 `serial`/`port`/`baud` fields above are `tait-ccdi`-only and must stay unset. An
@@ -138,7 +138,7 @@ just without the radio.
 ### Let the node run rigctld for you (`device:` + `model:`)
 
 The `rig:` block has **two shapes**. `host:`/`port:` (as above) points at a daemon
-**you** run — and remains the only shape for **flrig** (it's a GUI application the
+**you** run - and remains the only shape for **flrig** (it's a GUI application the
 node can't sensibly spawn). Alternatively, give the node the rig's serial device and
 hamlib model number, and it **spawns and supervises `rigctld` itself**:
 
@@ -152,9 +152,9 @@ hamlib model number, and it **spawns and supervises `rigctld` itself**:
 
 The node launches `rigctld -m <model> -r <device>` on a loopback port it allocates
 itself, points its own rig client(s) at it, and **restarts it with backoff** if it
-dies or the USB device disappears — plug the rig back in and the attachment
+dies or the USB device disappears - plug the rig back in and the attachment
 self-heals, no config edit, no systemd unit of your own. Set **either** `device:` +
-`model:` **or** `host:`/`port:` — never both (`device:` selects the node-managed
+`model:` **or** `host:`/`port:` - never both (`device:` selects the node-managed
 shape, so `port:` and a remote `host:` must stay unset). Prefer the
 `/dev/serial/by-id/…` path: it survives USB renumbering, exactly like binding a Tait
 by CCDI serial.
@@ -163,8 +163,8 @@ by CCDI serial.
 
 You don't have to type any of that. The port editor (**Ports → edit → Rig control
 (CAT)**) has a **Scan for rigs** button: the node lists the local serial devices,
-greys out anything already claimed by a port (and says what claims it), and — where
-the USB descriptor identifies the rig (modern Icoms name themselves) — pre-fills the
+greys out anything already claimed by a port (and says what claims it), and - where
+the USB descriptor identifies the rig (modern Icoms name themselves) - pre-fills the
 hamlib model for you. Pick the device (the by-id path is chosen automatically), and
 if the model wasn't recognised, pick it from the searchable hamlib catalogue
 (the same list `rigctl -l` prints). Saving writes the `rig:` block through the same
@@ -181,7 +181,7 @@ can't tell two of them apart.
 
 The **CCDI serial number is baked into the radio** and never changes. When you bind
 by `serial`, the node **scans at bring-up** for whichever port answers with that
-serial and opens that one — so re-enumeration across a replug or reboot just works.
+serial and opens that one - so re-enumeration across a replug or reboot just works.
 Bind by `port` (device path) only when you have a reason to.
 
 You can list attachable radios at any time from the API (this is what the **Scan**
@@ -192,13 +192,13 @@ GET /api/v1/radios/scan
 ```
 
 It returns each radio's `serial`, `model`, `ccdiVersion`, `baud`, `devicePath`, and
-`byIdPath` — everything you need to fill in a `serial:` binding.
+`byIdPath` - everything you need to fill in a `serial:` binding.
 
 ## If the radio isn't there
 
 Attaching a radio is **best-effort and non-fatal**. If the control cable is
 unplugged, the radio is off, or a `serial:` bind finds no match, the node **logs the
-fault and runs the port anyway** — just without signal metadata. An unplugged
+fault and runs the port anyway** - just without signal metadata. An unplugged
 control cable must never take a working packet channel down.
 
 Changing the `radio:` block is a **restart-class** edit: the port restarts to pick
@@ -206,5 +206,5 @@ it up (the telemetry wrap is chosen when the port is built, not live-toggled).
 
 ## Next
 
-You've attached a radio — now go **see the link**:
+You've attached a radio - now go **see the link**:
 [2. See your link quality →](02-see-your-link-quality.md)

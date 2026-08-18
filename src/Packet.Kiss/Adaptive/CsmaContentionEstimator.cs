@@ -4,22 +4,22 @@ namespace Packet.Kiss.Adaptive;
 
 /// <summary>
 /// Adaptive PERSIST + SLOTTIME estimator. Watches frame outcomes for
-/// channel-contention signals — specifically <see cref="FrameOutcome.AckModeTimedOut"/>
+/// channel-contention signals - specifically <see cref="FrameOutcome.AckModeTimedOut"/>
 /// (the TNC accepted the frame but the modem's CSMA never got a clear
 /// channel before the host timed out) and <see cref="FrameOutcome.Lost"/>
-/// (frame got out but the peer never ACKed at the AX.25 layer) — and
+/// (frame got out but the peer never ACKed at the AX.25 layer) - and
 /// ratchets the CSMA knobs in response: drop PERSIST (less aggressive
 /// transmit) and raise SLOTTIME (longer back-off) on contention,
 /// slowly walk PERSIST back up when the channel stays clear.
 /// </summary>
 /// <remarks>
 /// <para>
-/// PERSIST is the 0–255 probability parameter (transmit-when-free
+/// PERSIST is the 0-255 probability parameter (transmit-when-free
 /// probability is roughly (P+1)/256). SLOTTIME is the back-off slot
 /// length in 10 ms units. The KISS-spec defaults are 63 / 10.
 /// </para>
 /// <para>
-/// TXDELAY is *not* tuned by this estimator — its
+/// TXDELAY is *not* tuned by this estimator - its
 /// <see cref="Recommend"/> returns null for the TXDELAY field so the
 /// caller can compose it with <see cref="TxDelayHillClimbEstimator"/>
 /// (or any other TXDELAY estimator) via
@@ -27,7 +27,7 @@ namespace Packet.Kiss.Adaptive;
 /// </para>
 /// <para>
 /// On the bench (audio cross-wire, no real CSMA contention) this
-/// estimator stays at its initial values forever — there's nothing
+/// estimator stays at its initial values forever - there's nothing
 /// to learn from. It earns its keep on a real shared channel.
 /// </para>
 /// </remarks>
@@ -102,7 +102,7 @@ public sealed class CsmaContentionEstimator : IAdaptiveParameterEstimator
                     }
                     break;
                 case FrameOutcome.AcknowledgedAfterRetransmit:
-                    // Retransmit doesn't necessarily mean CSMA contention — could
+                    // Retransmit doesn't necessarily mean CSMA contention - could
                     // be preamble too short, peer missed a bit, etc. Reset the
                     // streak but don't penalise.
                     state.SuccessStreak = 0;
@@ -118,7 +118,7 @@ public sealed class CsmaContentionEstimator : IAdaptiveParameterEstimator
                     // Frame went out over the air but the peer never ACKed at
                     // the AX.25 layer. Could be collision (CSMA-ish) or could
                     // be range / link quality. Treat as a soft contention
-                    // signal — drop PERSIST a bit, leave SLOTTIME.
+                    // signal - drop PERSIST a bit, leave SLOTTIME.
                     state.SuccessStreak = 0;
                     state.Persistence = (byte)Math.Max(MinPersistence, state.Persistence - (PersistStepDown / 2));
                     break;

@@ -7,7 +7,7 @@ namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
 /// Unit tests for the §6.3.2 reverts-to merge and the §1436 version-2.0 default
-/// set (<see cref="XidNegotiator"/>) — the substantive logic of the MDL "Apply
+/// set (<see cref="XidNegotiator"/>) - the substantive logic of the MDL "Apply
 /// Negotiated Parameters" placeholder, pinned per parameter without the harness.
 /// </summary>
 public class XidNegotiatorTests

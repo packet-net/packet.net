@@ -51,7 +51,7 @@ public class AxudpSocketTests
 
         var receiveTask = receiver.ReceiveAsync(cts.Token);
         // SendAsync always appends the FCS; ReceiveAsync strips + validates it, so the
-        // decoded frame is clean — the 2 trailing FCS octets are NOT slurped into Info.
+        // decoded frame is clean - the 2 trailing FCS octets are NOT slurped into Info.
         await sender.SendAsync(new IPEndPoint(IPAddress.Loopback, receiver.LocalPort), frame, cts.Token);
 
         var result = await receiveTask;
@@ -66,7 +66,7 @@ public class AxudpSocketTests
     public async Task Receive_Drops_A_Datagram_With_A_Bad_Fcs()
     {
         // A datagram whose trailing FCS doesn't validate is dropped (as every real
-        // peer drops a bad-CRC datagram); the next valid one is delivered — proving
+        // peer drops a bad-CRC datagram); the next valid one is delivered - proving
         // the drop, not a hang.
         using var receiver = new AxudpSocket(localPort: 0);
         using var sender = new AxudpSocket(localPort: 0);

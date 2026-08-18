@@ -11,7 +11,7 @@ namespace Packet.Node.Core.Applications.Catalog;
 /// operator upload), verifies them, assembles the payload in a temp staging dir, then commits
 /// it into <c>&lt;appsRoot&gt;/&lt;id&gt;/</c> behind a <c>.pdn-install.json</c> marker (O1 in
 /// <c>docs/app-catalog.md</c>) so updates/uninstalls touch only the files the installer placed
-/// — app-created state survives. The placed <c>pdn-app.yaml</c> sits at the package-dir root
+/// - app-created state survives. The placed <c>pdn-app.yaml</c> sits at the package-dir root
 /// exactly as a hand-installed package, so the existing discovery picks it up unchanged.
 /// </summary>
 public sealed partial class AppInstaller : IAppInstaller
@@ -93,7 +93,7 @@ public sealed partial class AppInstaller : IAppInstaller
                 return InstallOutcome.Failure(id, assembled.Error);
             }
 
-            // The staged manifest's id must match the catalog id — never commit a mislabelled
+            // The staged manifest's id must match the catalog id - never commit a mislabelled
             // payload into the wrong dir.
             var manifestId = ReadManifestId(Path.Combine(staging, ManifestFileName));
             if (manifestId is null)
@@ -575,7 +575,7 @@ public sealed partial class AppInstaller : IAppInstaller
     }
 
     /// <summary>Every regular file under <paramref name="dir"/>, as package-dir-relative,
-    /// forward-slash paths (the marker's payload spelling) — sorted for determinism.</summary>
+    /// forward-slash paths (the marker's payload spelling) - sorted for determinism.</summary>
     private static string[] RelativePaths(string dir)
     {
         if (!Directory.Exists(dir))

@@ -16,7 +16,7 @@ namespace Packet.Kiss.Serial;
 /// </summary>
 /// <remarks>
 /// Plain serial KISS has no ACKMODE TX-completion signal, so this transport deliberately does
-/// NOT implement <see cref="ITxCompletionTransport"/> — a consumer probing
+/// NOT implement <see cref="ITxCompletionTransport"/> - a consumer probing
 /// <c>is ITxCompletionTransport</c> correctly skips it and falls back to fire-and-forget sends.
 /// For NinoTNC-specific features (ACKMODE TX-completion correlation,
 /// SETHW mode switching, TX-Test frame classification), use
@@ -53,7 +53,7 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
 
     /// <summary>
     /// Fired for every inbound KISS frame after framing/unescaping.
-    /// Subscribers run on the read-pump task — keep handlers fast and
+    /// Subscribers run on the read-pump task - keep handlers fast and
     /// non-blocking. Use <see cref="ReadFramesAsync"/> if you'd rather
     /// pull frames on your own task.
     /// </summary>
@@ -89,7 +89,7 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
 
     /// <summary>
     /// Open a KISS modem whose serial port is bridged as a raw binary TCP pipe by a remote
-    /// head-end (the split-station topology — see
+    /// head-end (the split-station topology - see
     /// <c>docs/research/split-station-rf-headend.md</c>) and start the read pump. KISS framing
     /// rides the socket unchanged, so the modem behaves exactly as over a local serial port.
     /// </summary>
@@ -298,7 +298,7 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
         {
             return;
         }
-        // Dispose the SerialPort *first* — on Windows, SerialPort.BaseStream.ReadAsync
+        // Dispose the SerialPort *first* - on Windows, SerialPort.BaseStream.ReadAsync
         // does not honour cancellation tokens reliably. Closing the underlying
         // handle is what actually unblocks the pending read so the pump can exit.
         try

@@ -3,7 +3,7 @@ using Packet.Node.Core.Api;
 namespace Packet.Node.Core.Radios;
 
 /// <summary>
-/// Scans the machine's serial ports for attached radios — the node-host seam behind
+/// Scans the machine's serial ports for attached radios - the node-host seam behind
 /// <c>GET /api/v1/radios/scan</c>. Read-scope, but it opens candidate serial ports transiently to
 /// probe them, so implementations keep it bounded (a timeout) and single-flight (no two concurrent
 /// scans hammering the same bus). A test double substitutes scripted results without touching

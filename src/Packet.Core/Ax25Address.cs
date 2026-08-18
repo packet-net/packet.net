@@ -8,7 +8,7 @@ namespace Packet.Core;
 /// Per AX.25 v2.2 §3.12, each address slot is 7 octets:
 /// </para>
 /// <list type="number">
-///   <item>Octets 1–6: callsign chars, each left-shifted by 1 (so bit 0 of each byte is reserved for HDLC frame-end signalling).</item>
+///   <item>Octets 1-6: callsign chars, each left-shifted by 1 (so bit 0 of each byte is reserved for HDLC frame-end signalling).</item>
 ///   <item>Octet 7 (SSID byte): bit layout depends on whether this slot is destination, source, or repeater.</item>
 /// </list>
 /// <para>SSID byte layout:</para>
@@ -80,12 +80,12 @@ public readonly record struct Ax25Address(Callsign Callsign, bool CrhBit, bool E
             char c = (char)(b >> 1);
             if (c == ' ')
             {
-                // padding — but anything after a space must also be padding
+                // padding - but anything after a space must also be padding
                 continue;
             }
             if (i > baseLen)
             {
-                // We had a space then a non-space — malformed
+                // We had a space then a non-space - malformed
                 throw new ArgumentException($"address octet {i} contains non-space after padding", nameof(source));
             }
             baseChars[baseLen++] = c;

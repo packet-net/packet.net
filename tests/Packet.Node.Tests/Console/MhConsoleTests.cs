@@ -12,7 +12,7 @@ namespace Packet.Node.Tests.Console;
 /// Dispatch tests for the MHeard <c>MH</c> console verb (#454): drive the real
 /// <see cref="NodeCommandService"/> over a scripted connection against a real <see cref="HeardLog"/>
 /// seeded via <see cref="HeardLog.Record"/>. They lock the output formatting, the node-wide vs
-/// per-port behaviour, and the not-available + nothing-heard messages. Read-only — never demands
+/// per-port behaviour, and the not-available + nothing-heard messages. Read-only - never demands
 /// elevation.
 /// </summary>
 [Trait("Category", "Node")]
@@ -57,7 +57,7 @@ public sealed class MhConsoleTests
         conn.Text.Should().Contain("Heard (node-wide):");
         conn.Text.Should().Contain("M0LTE-1");
         conn.Text.Should().Contain("G0ABC");
-        // M0LTE-1 was heard on 2 ports with a total count of 3 — the node-wide merge.
+        // M0LTE-1 was heard on 2 ports with a total count of 3 - the node-wide merge.
         conn.Text.Should().MatchRegex(@"M0LTE-1\s+\S+\s+3\s+2");
         conn.Text.Should().NotContain("Not authorised");   // read-only, no elevation
     }

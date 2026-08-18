@@ -9,7 +9,7 @@ namespace Packet.Node.Core.Tuning;
 /// node turns the console-oriented <see cref="TuningSession"/> protocol loop into a structured
 /// event stream: the loop drives an unmodified copy of the protocol over the inner link, and the
 /// node decodes the same <c>HI</c>/<c>MS</c>/<c>AD</c> telegrams off the wire into
-/// <see cref="Packet.Node.Core.Api.TuningEvent"/>s — no fork of the protocol logic.
+/// <see cref="Packet.Node.Core.Api.TuningEvent"/>s - no fork of the protocol logic.
 /// </summary>
 internal sealed class ObservingTuningLink : ITuningLink
 {

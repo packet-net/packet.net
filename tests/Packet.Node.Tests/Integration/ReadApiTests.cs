@@ -8,9 +8,9 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// Boots the real <c>Packet.Node</c> composition root and exercises the Slice 3
 /// read API (step 1): the unauthenticated <c>GET /api/v1/*</c> endpoints the web
-/// monitor consumes. Mirrors <see cref="HostBootTests"/> — a temp YAML config with
+/// monitor consumes. Mirrors <see cref="HostBootTests"/> - a temp YAML config with
 /// telnet disabled (so no fixed TCP port is bound under the WAF) and the routing
-/// store pointed at the same temp dir — and asserts each endpoint is reachable and
+/// store pointed at the same temp dir - and asserts each endpoint is reachable and
 /// projects the configured node identity / port set.
 /// </summary>
 [Trait("Category", "Node")]
@@ -26,7 +26,7 @@ public sealed class ReadApiTests : IDisposable
         // One configured (disabled) port so /api/v1/ports has a non-empty array to
         // size against, while telnet stays off so the WAF-hosted node binds no fixed
         // TCP port (could clash across parallel test classes). A disabled port is a
-        // legal idle-node port — it is not brought up, so no transport is opened.
+        // legal idle-node port - it is not brought up, so no transport is opened.
         var dir = TestPaths.NewPath("packetnet-readapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");

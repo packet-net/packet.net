@@ -10,10 +10,10 @@ namespace Packet.NetRom.Tests.Routing;
 /// <summary>
 /// Tests for the INP3 <b>recently-withdrawn</b> set on <see cref="NetRomRoutingTable"/>
 /// (invariant W, design <c>docs/netrom-inp3-host-integration-design.md</c> §6): when a
-/// destination loses its <b>last</b> <c>Inp3</c>-bearing route — withdrawn at the horizon in
+/// destination loses its <b>last</b> <c>Inp3</c>-bearing route - withdrawn at the horizon in
 /// <see cref="NetRomRoutingTable.IngestRif"/>, dropped by
 /// <see cref="NetRomRoutingTable.MarkNeighbourDown"/>, or aged out by
-/// <see cref="NetRomRoutingTable.Sweep"/> — it enters <see cref="NetRomRoutingTable.RecentlyWithdrawn"/>
+/// <see cref="NetRomRoutingTable.Sweep"/> - it enters <see cref="NetRomRoutingTable.RecentlyWithdrawn"/>
 /// (a read-only peek), the host <see cref="NetRomRoutingTable.DrainRecentlyWithdrawn"/>s it ONCE at
 /// the start of a fan-out round (atomic snapshot+clear), and
 /// <see cref="NetRomRoutingTable.BuildRif"/> emits one horizon RIP per entry of the snapshot the
@@ -116,19 +116,19 @@ public sealed class Inp3RecentlyWithdrawnTests
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
         table.IngestRif(NbrB, Port, Me, neighbourSnttMs: 20, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
 
-        // Withdraw only the NbrA route at the horizon — NbrB's INP3 route survives.
+        // Withdraw only the NbrA route at the horizon - NbrB's INP3 route survives.
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: Inp3Rip.HorizonMs)));
 
         table.RecentlyWithdrawn().Should().BeEmpty("an INP3 route to SOT still exists via NbrB");
     }
 
-    // ─── The default-off guard (design §7.1) — the load-bearing detail ───
+    // ─── The default-off guard (design §7.1) - the load-bearing detail ───
 
     [Fact]
     public void A_quality_only_MarkNeighbourDown_never_populates_the_set()
     {
         var table = NewTable();
-        // A vanilla NODES quality route only — no IngestRif ever called. This is the
+        // A vanilla NODES quality route only - no IngestRif ever called. This is the
         // INP3-off world (the L4 dial-failure path runs MarkNeighbourDown with INP3 off).
         table.Ingest(NbrA, Me, "vhf", Nodes("RDG", (DestSot, "SOT", NbrA, 200)));
 
@@ -196,7 +196,7 @@ public sealed class Inp3RecentlyWithdrawnTests
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
         table.MarkNeighbourDown(new NeighbourKey(Port, NbrA));   // SOT withdrawn, but…
 
-        // …a BuildRif that is NOT handed the withdrawn snapshot (the default — e.g. a pure
+        // …a BuildRif that is NOT handed the withdrawn snapshot (the default - e.g. a pure
         // poison-reverse RIF, or a caller that does not drive the withdrawn set) appends no
         // withdrawal RIPs. The set is unaffected (BuildRif never touches it).
         table.BuildRif(Me, NbrB).Rips.Should().NotContain(r => r.Destination == DestSot,
@@ -213,7 +213,7 @@ public sealed class Inp3RecentlyWithdrawnTests
 
         // The host drains ONCE at the round start (atomic snapshot+clear), then fans the SAME
         // snapshot out to every neighbour. Both RIFs carry the horizon withdrawal, and the live set
-        // is already empty (drained) — so a concurrent mid-round add lands in the NEXT round's drain.
+        // is already empty (drained) - so a concurrent mid-round add lands in the NEXT round's drain.
         var snapshot = table.DrainRecentlyWithdrawn();
         var towardB = table.BuildRif(Me, NbrB, snapshot);
         var towardC = table.BuildRif(Me, new Callsign("GB7ZZZ", 0), snapshot);
@@ -250,7 +250,7 @@ public sealed class Inp3RecentlyWithdrawnTests
 
         // …then re-learned via NbrB in the SAME round (before the host drains). It now holds a
         // finite INP3 route again, so BuildRif must carry it FINITE (its real metric), not as a
-        // horizon withdrawal — the emitted-finite-dest is excluded from the horizon-RIP pass even
+        // horizon withdrawal - the emitted-finite-dest is excluded from the horizon-RIP pass even
         // though it is still in the withdrawn snapshot the host passes.
         table.IngestRif(NbrB, Port, Me, neighbourSnttMs: 20, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
 
@@ -267,7 +267,7 @@ public sealed class Inp3RecentlyWithdrawnTests
         var table = NewTable();
         // Force Me into the withdrawn set via the public clear/build contract is impossible
         // (the table never withdraws itself), but assert BuildRif never poisons Me even with a
-        // populated set — the Source invariant.
+        // populated set - the Source invariant.
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
         table.MarkNeighbourDown(new NeighbourKey(Port, NbrA));
 

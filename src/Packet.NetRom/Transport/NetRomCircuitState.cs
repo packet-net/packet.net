@@ -7,7 +7,7 @@ namespace Packet.NetRom.Transport;
 /// </summary>
 public enum NetRomCircuitState
 {
-    /// <summary>No circuit — the initial and terminal state.</summary>
+    /// <summary>No circuit - the initial and terminal state.</summary>
     Disconnected,
 
     /// <summary>We sent a Connect Request and are awaiting the Connect Acknowledge.</summary>
@@ -20,7 +20,7 @@ public enum NetRomCircuitState
     Disconnecting,
 }
 
-/// <summary>Why a circuit ended — surfaced to the consumer on close.</summary>
+/// <summary>Why a circuit ended - surfaced to the consumer on close.</summary>
 public enum NetRomCircuitCloseReason
 {
     /// <summary>A clean disconnect (either end requested it and it was acknowledged).</summary>
@@ -29,6 +29,6 @@ public enum NetRomCircuitCloseReason
     /// <summary>The far end refused our Connect Request (Connect Acknowledge with the refuse bit).</summary>
     Refused,
 
-    /// <summary>Retries were exhausted on a connect / disconnect / data message — the link is dead.</summary>
+    /// <summary>Retries were exhausted on a connect / disconnect / data message - the link is dead.</summary>
     Timeout,
 }

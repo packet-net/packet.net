@@ -19,13 +19,13 @@ namespace Packet.AprsIs.Spike;
 /// <remarks>
 /// <para>
 /// The BPQ MQTT plugin publishes each on-air frame twice: once as
-/// <c>kiss</c> (raw KISS bytes — either standard data frame cmd=0x00,
+/// <c>kiss</c> (raw KISS bytes - either standard data frame cmd=0x00,
 /// or ACKMODE cmd=0x0C with a 2-byte sequence tag prefix) and once as
 /// <c>ax25/trace/bpqformat</c> (a JSON envelope around BPQ's own
 /// monitor-format line, e.g.
 /// <c>09:42:59R GB7RDG-2>EI5IYB-1 Port=3 &lt;XID C P> ...</c>). That gives
 /// us a third-party reference decoder we can A/B against for every
-/// frame type BPQ sees — including connected-mode I/RR/REJ/SREJ/UA/DM/
+/// frame type BPQ sees - including connected-mode I/RR/REJ/SREJ/UA/DM/
 /// SABM/DISC/FRMR/XID that the APRS differential never exercised.
 /// </para>
 /// <para>
@@ -158,7 +158,7 @@ public static class BpqDifferentialMode
         // 1. Extract AX.25 bytes from the MQTT-published kiss payload.
         //    The BPQ MQTT plugin uses different framings for sent vs rcvd:
         //      sent: standard KISS  (C0 cmd [body] C0), cmd 0x00 = Data or 0x0C = AckMode (2-byte tag prefix)
-        //      rcvd: BPQ internal   (00 00 00 00 00 LEN 00 [ax25]) — no FEND wrapping, no escapes
+        //      rcvd: BPQ internal   (00 00 00 00 00 LEN 00 [ax25]) - no FEND wrapping, no escapes
         //    Detect via the leading byte.
         if (!TryExtractAx25(kissBytes, out var ax25, out var framingError))
         {
@@ -433,7 +433,7 @@ public static class BpqDifferentialMode
 
     static bool CallsignEqual(string ours, string theirs)
     {
-        // Strict equality is enough — both sides emit "BASE" or "BASE-N".
+        // Strict equality is enough - both sides emit "BASE" or "BASE-N".
         return string.Equals(ours, theirs, StringComparison.Ordinal);
     }
 
@@ -457,7 +457,7 @@ public static class BpqDifferentialMode
     // ─── BPQ monitor-line parser ──────────────────────────────────────
 
     /// <summary>
-    /// Parsed shape of one BPQ monitor line — the text BPQ publishes in
+    /// Parsed shape of one BPQ monitor line - the text BPQ publishes in
     /// the JSON envelope's <c>payload</c> field.
     /// </summary>
     sealed record BpqLine(
@@ -472,7 +472,7 @@ public static class BpqDifferentialMode
         int? Nr)
     {
         // 09:42:59R [SRC][-SSID]>[DEST][-SSID][,VIA1[-SSID]][,VIA2...] Port=N <TAG flags...>[: info]
-        // Source and destination may each be empty — BPQ emits e.g. ">IS" for
+        // Source and destination may each be empty - BPQ emits e.g. ">IS" for
         // its own ID beacon (empty source) and "PD4R-12>,TEST" for that
         // station's QRV broadcast (empty destination).
         static readonly Regex Re = new(

@@ -8,22 +8,22 @@ namespace Packet.Ax25.Session;
 /// signal_lower verb (figc4.4 t19/t20 and the SREJ retransmit paths).
 /// </summary>
 /// <param name="IsCommand">
-/// Always <c>true</c> — I-frames are commands per §4.3.1. Modelled as
+/// Always <c>true</c> - I-frames are commands per §4.3.1. Modelled as
 /// a parameter for symmetry with the other frame specs.
 /// </param>
 /// <param name="PBit">
 /// P bit value. Read from <see cref="PendingFrame.PfBit"/> (default
-/// <c>false</c> — figc4.4 sets <c>p := 0</c> explicitly before
+/// <c>false</c> - figc4.4 sets <c>p := 0</c> explicitly before
 /// <c>I_command</c>). I-frames carry only a P bit (commands); they're
 /// never responses, so no F bit semantics.
 /// </param>
 /// <param name="Nr">
-/// N(R) field — the acknowledgement sequence number. Read from
+/// N(R) field - the acknowledgement sequence number. Read from
 /// <see cref="PendingFrame.Nr"/>, defaulting to
 /// <see cref="Ax25SessionContext.VR"/>.
 /// </param>
 /// <param name="Ns">
-/// N(S) field — the send sequence number of this I-frame. Read from
+/// N(S) field - the send sequence number of this I-frame. Read from
 /// <see cref="PendingFrame.Ns"/>, defaulting to
 /// <see cref="Ax25SessionContext.VS"/>.
 /// </param>

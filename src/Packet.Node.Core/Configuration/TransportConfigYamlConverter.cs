@@ -14,7 +14,7 @@ namespace Packet.Node.Core.Configuration;
 /// <para>
 /// The transport records are flat (scalar fields only), so the converter reads
 /// the mapping's key/value scalars into a small dictionary and builds the
-/// concrete record from it — no nested-object re-entrancy needed. An unknown or
+/// concrete record from it - no nested-object re-entrancy needed. An unknown or
 /// missing <c>kind:</c> throws a <see cref="YamlException"/> with the document
 /// mark, which the loader surfaces as a clear parse error (the candidate is
 /// then rejected whole, never partially applied).
@@ -110,7 +110,7 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 Host = Required(fields, "host", kind, start),
                 Port = Int(fields, "port", 0, start),
                 LocalPort = Int(fields, "localport", 0, start),
-                // AXUDP always carries the 2-octet AX.25 FCS (the de-facto wire form —
+                // AXUDP always carries the 2-octet AX.25 FCS (the de-facto wire form -
                 // RFC 1226 + ax25ipd + BPQAXIP + XRouter all require it; see
                 // AxudpTransport). There is no FCS knob. A stale 'includeFcs:' key from
                 // an old config lands in 'fields' unread (harmless), so a pre-removal

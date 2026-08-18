@@ -6,7 +6,7 @@ namespace Packet.Aprs;
 /// <remarks>
 /// <para>
 /// Items are like objects (see <see cref="AprsObject"/>) but have a
-/// variable-length name (3–9 characters) instead of a fixed 9-byte
+/// variable-length name (3-9 characters) instead of a fixed 9-byte
 /// name slot, and have no timestamp. Used for transient or
 /// less-frequently-updated points of interest such as first-aid
 /// stations, rare DX spots, gas stations.

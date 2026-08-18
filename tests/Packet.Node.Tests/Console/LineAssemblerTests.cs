@@ -5,7 +5,7 @@ using Packet.Node.Core.Console;
 namespace Packet.Node.Tests.Console;
 
 /// <summary>
-/// Line-editing behaviour of <see cref="LineAssembler"/> — in particular
+/// Line-editing behaviour of <see cref="LineAssembler"/> - in particular
 /// backspace/DEL handling, which must stay in step with the telnet connection's
 /// server-side echo so the parsed line matches what the user sees.
 /// </summary>
@@ -46,7 +46,7 @@ public sealed class LineAssemblerTests
     {
         var a = new LineAssembler();
         // A telnet client that sends "CR alone" as CR-NUL (RFC 854). Two such lines
-        // must yield exactly "a" and "b" — the NUL must NOT prepend to "b" (that leak
+        // must yield exactly "a" and "b" - the NUL must NOT prepend to "b" (that leak
         // is what made a relayed "/quit" arrive at BPQ as "\0/quit" and be ignored).
         var lines = a.Push(new byte[] { (byte)'a', (byte)'\r', 0x00, (byte)'b', (byte)'\r', 0x00 }).ToList();
         lines.Should().HaveCount(2);
@@ -58,7 +58,7 @@ public sealed class LineAssemblerTests
     public void A_stray_nul_is_dropped_mid_line()
     {
         var a = new LineAssembler();
-        // NUL is telnet NOP — never line content, even mid-line.
+        // NUL is telnet NOP - never line content, even mid-line.
         var line = a.Push(new byte[] { (byte)'a', 0x00, (byte)'b', (byte)'\r' }).Single();
         Encoding.ASCII.GetString(line).Should().Be("ab");
     }

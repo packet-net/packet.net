@@ -7,7 +7,7 @@ using Xunit;
 namespace Packet.NetRom.Tests;
 
 /// <summary>
-/// The NET/ROM L3 forwarding decision (<see cref="NetRomForwarding.Decide"/>) — the
+/// The NET/ROM L3 forwarding decision (<see cref="NetRomForwarding.Decide"/>) - the
 /// transit node's verdict on a datagram addressed to someone else: drop (TTL expired
 /// / looped / no route) or forward (with a decremented, capped TTL) to a next-hop
 /// neighbour. Mirrors the de-facto reference (LinBPQ <c>L4Code.c</c>).
@@ -237,7 +237,7 @@ public sealed class NetRomForwardingTests
     public void Prefers_the_lowest_target_time_inp3_route_overriding_quality_and_per_flow()
     {
         // OnwardNbr is the best QUALITY route; AltNbr is the fastest by measured TIME. With
-        // preferInp3Routes on, every flow forwards over AltNbr (the time winner) — overriding
+        // preferInp3Routes on, every flow forwards over AltNbr (the time winner) - overriding
         // both the quality ranking AND the per-flow spread (time-space forwards the fastest path).
         var routing = Inp3RoutesTo(Dest, (OnwardNbr, 200, 300, 2), (AltNbr, 100, 100, 3));
 
@@ -258,7 +258,7 @@ public sealed class NetRomForwardingTests
     public void preferInp3Routes_off_ignores_the_inp3_metric_entirely()
     {
         // The degenerate-to-today guard: routes carry INP3 metrics that would change the pick,
-        // but with the knob off the metric is never read — the quality route is chosen, identical
+        // but with the knob off the metric is never read - the quality route is chosen, identical
         // to a node that never heard of INP3.
         var routing = Inp3RoutesTo(Dest, (OnwardNbr, 200, 999, 9), (AltNbr, 100, 1, 1));
 
@@ -318,7 +318,7 @@ public sealed class NetRomForwardingTests
     public void Inp3_tie_break_is_target_time_then_hop_then_callsign()
     {
         // Two INP3 routes at the same target time: the lower hop count wins (then, on a hop tie,
-        // the lower neighbour callsign ordinal — mirroring Inp3RouteSelector).
+        // the lower neighbour callsign ordinal - mirroring Inp3RouteSelector).
         var byHop = Inp3RoutesTo(Dest, (AltNbr, 200, 100, 3), (OnwardNbr, 100, 100, 2));
         NetRomForwarding.Decide(Datagram(Source, Dest, 20), FromNbr, Me, byHop, 25, NetRomForwardMode.PerFlow, preferInp3Routes: true)
             .NextHop.Should().Be(OnwardNbr, "equal target time → fewer hops wins");
