@@ -30,12 +30,12 @@ namespace Packet.Node.Core.Mqtt;
 /// The broker connection is captured at first-enabled-frame (like the traffic log's startup-bound
 /// path); the payload/topic knobs (node name, instance, base64, QoS, RF-only, prefix) are re-read from
 /// the live config on every frame, so those are hot edits. While disabled the stream is drained and
-/// discarded — nothing is published and nothing backs up.
+/// discarded - nothing is published and nothing backs up.
 /// </para>
 /// </remarks>
 public sealed partial class MqttFrameEmitter : BackgroundService
 {
-    /// <summary>The KISS multi-drop port for these single-port modems — used both for the
+    /// <summary>The KISS multi-drop port for these single-port modems - used both for the
     /// <c>port{N}</c> topic segment and the KISS type byte of the <c>framed</c> payload. kissproxy's
     /// captured traffic is all <c>port0</c>; a small const rather than a config knob (v1).</summary>
     internal const byte KissPort = 0;
@@ -52,7 +52,7 @@ public sealed partial class MqttFrameEmitter : BackgroundService
     private readonly string machineSuffix;
 
     // Publish counters, exported as pdn_mqtt_published_total / pdn_mqtt_publish_failures_total by
-    // the /metrics exporter (#582 — the emitter previously only logged). Interlocked because the
+    // the /metrics exporter (#582 - the emitter previously only logged). Interlocked because the
     // background loop writes while a scrape reads.
     private long publishedTotal;
     private long publishFailuresTotal;
@@ -61,7 +61,7 @@ public sealed partial class MqttFrameEmitter : BackgroundService
     // depth. Volatile: written by the loop, read by scrapes.
     private volatile IMqttPublishSink? activeSink;
 
-    /// <summary>Production constructor — the sink is a real started <see cref="ManagedMqttPublishSink"/>.</summary>
+    /// <summary>Production constructor - the sink is a real started <see cref="ManagedMqttPublishSink"/>.</summary>
     public MqttFrameEmitter(NodeTelemetry telemetry, IConfigProvider config, ILogger<MqttFrameEmitter>? logger = null)
         : this(telemetry, config, logger, ManagedMqttPublishSink.CreateAsync)
     {
@@ -88,11 +88,11 @@ public sealed partial class MqttFrameEmitter : BackgroundService
     /// <c>pdn_mqtt_published_total</c>. Two per emitted frame (unframed + framed).</summary>
     public long PublishedTotal => Interlocked.Read(ref publishedTotal);
 
-    /// <summary>Publish attempts that faulted (the frame is dropped from the MQTT feed only — the
+    /// <summary>Publish attempts that faulted (the frame is dropped from the MQTT feed only - the
     /// radio path is unaffected), for <c>pdn_mqtt_publish_failures_total</c>.</summary>
     public long PublishFailuresTotal => Interlocked.Read(ref publishFailuresTotal);
 
-    /// <summary>Messages queued in the managed client awaiting the broker (bounded, drop-oldest —
+    /// <summary>Messages queued in the managed client awaiting the broker (bounded, drop-oldest -
     /// see <see cref="ManagedMqttPublishSink.MaxPendingMessages"/>), for
     /// <c>pdn_mqtt_pending_messages</c>. Zero until the sink starts.</summary>
     public long PendingMessages => activeSink?.PendingMessageCount ?? 0;
@@ -111,7 +111,7 @@ public sealed partial class MqttFrameEmitter : BackgroundService
                 var cfg = config.Current.Mqtt;
                 if (!cfg.Enabled)
                 {
-                    continue;   // drain + discard while off — nothing published, nothing backs up.
+                    continue;   // drain + discard while off - nothing published, nothing backs up.
                 }
 
                 if (sink is null)
@@ -160,7 +160,7 @@ public sealed partial class MqttFrameEmitter : BackgroundService
     {
         // RF-only filter, mirroring OarcReporter.MapTrace: every current pdn transport is a real AX.25
         // RF port, so isRf is always true and the filter is pass-through until a non-RF transport
-        // exists — honoured anyway so it's correct the day one is added.
+        // exists - honoured anyway so it's correct the day one is added.
         const bool isRf = true;
         if (cfg.RfOnly && !isRf)
         {
@@ -170,11 +170,11 @@ public sealed partial class MqttFrameEmitter : BackgroundService
         var ax25 = ToBytes(frame.Raw);
         var (unframedTopic, framedTopic) = BuildTopics(cfg, frame);
 
-        // unframed: the SLIP-decoded AX.25 bytes = MonitorEvent.Raw (frame.ToBytes()) — the topic the
+        // unframed: the SLIP-decoded AX.25 bytes = MonitorEvent.Raw (frame.ToBytes()) - the topic the
         // collector actually ingests.
         await PublishCountedAsync(sink, unframedTopic, Encode(cfg, ax25), cfg.Qos, ct).ConfigureAwait(false);
 
-        // framed: the full raw KISS frame WITH FEND framing — 0xC0 | (port<<4)|Data | SLIP(ax25) | 0xC0
+        // framed: the full raw KISS frame WITH FEND framing - 0xC0 | (port<<4)|Data | SLIP(ax25) | 0xC0
         // via the shared Packet.Kiss encoder (no hand-rolled SLIP).
         var framed = KissEncoder.Encode(KissPort, KissCommand.Data, ax25);
         await PublishCountedAsync(sink, framedTopic, Encode(cfg, framed), cfg.Qos, ct).ConfigureAwait(false);
@@ -182,7 +182,7 @@ public sealed partial class MqttFrameEmitter : BackgroundService
 
     /// <summary>One counted publish: success bumps <see cref="PublishedTotal"/>, a fault bumps
     /// <see cref="PublishFailuresTotal"/> and rethrows (the loop's catch logs it and drops the
-    /// frame from the MQTT feed only — the radio path is unaffected).</summary>
+    /// frame from the MQTT feed only - the radio path is unaffected).</summary>
     private async ValueTask PublishCountedAsync(
         IMqttPublishSink sink, string topic, byte[] payload, int qos, CancellationToken ct)
     {

@@ -4,7 +4,7 @@ namespace Packet.Radio.Tait.Tests;
 /// The Tait band catalogue + product-code parser (<see cref="TaitBandCatalog"/>): reading the
 /// <c>[A-Z][0-9]</c> band designator off a product code (the character pair after the first <c>-</c>),
 /// mapping it to a UK amateur band, and the null cases (unknown / malformed / absent). The band split
-/// — hence the amateur band — is CCDI-readable even though the tuned frequency is not.
+/// - hence the amateur band - is CCDI-readable even though the tuned frequency is not.
 /// </summary>
 public class TaitBandCatalogTests
 {
@@ -16,7 +16,7 @@ public class TaitBandCatalogTests
 
     [Theory]
     [InlineData("TMAB12-B100_0201", "B1", "2m")]      // the live 2m bench rig
-    [InlineData("TMAB12-A400_0201", "A4", "4m")]      // 66–88 MHz = UK 4m (OARC wiki says "none"; wrong for UK)
+    [InlineData("TMAB12-A400_0201", "A4", "4m")]      // 66-88 MHz = UK 4m (OARC wiki says "none"; wrong for UK)
     [InlineData("TMAB12-H500_0201", "H5", "70cm")]    // 70cm fixture
     [InlineData("TMAB12-H600_0201", "H6", "70cm")]
     [InlineData("TMAB12-H700_0201", "H7", "70cm")]

@@ -3,7 +3,7 @@ using System.IO.Ports;
 namespace Packet.Radio.Tait;
 
 /// <summary>
-/// The narrow byte-level seam <see cref="TaitCcdiRadio"/> drives the wire over — same pattern
+/// The narrow byte-level seam <see cref="TaitCcdiRadio"/> drives the wire over - same pattern
 /// as <c>Packet.Kiss.Serial</c>'s <c>ISerialPortIo</c>: blocking finite-timeout reads, blocking
 /// writes, and a name. Production wraps a <see cref="SerialPort"/>; tests substitute a scripted
 /// fake so transactions, unsolicited demux, and dispose ordering run without hardware.
@@ -23,7 +23,7 @@ internal interface ISerialIo : IDisposable
     /// <summary>
     /// Change the line rate on the already-open port. Used by the Transparent-mode transport
     /// when the radio's Transparent-mode terminal baud differs from its Command-mode CCDI baud
-    /// (§1.8) — the CCDI <c>t</c> command is issued at the command rate, then the port is
+    /// (§1.8) - the CCDI <c>t</c> command is issued at the command rate, then the port is
     /// re-clocked to the transparent rate for the byte pipe (and back on exit). A no-op-safe
     /// seam for the scripted test IO.
     /// </summary>

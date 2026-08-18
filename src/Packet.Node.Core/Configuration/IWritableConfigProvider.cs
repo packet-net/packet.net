@@ -1,7 +1,7 @@
 namespace Packet.Node.Core.Configuration;
 
 /// <summary>
-/// A <see cref="IConfigProvider"/> that also accepts <b>edits</b> — the seam the
+/// A <see cref="IConfigProvider"/> that also accepts <b>edits</b> - the seam the
 /// web control API writes config through. Kept separate from
 /// <see cref="IConfigProvider"/> so read-only consumers (and the test fakes) are
 /// unaffected: only the providers that can persist an edit implement this.
@@ -13,8 +13,8 @@ namespace Packet.Node.Core.Configuration;
 /// running node exactly as it was and raises no <see cref="IConfigProvider.OnChange"/>.
 /// A successful <see cref="TryApply"/> persists the candidate (so it survives a
 /// restart) and advances <see cref="IConfigProvider.Current"/> + raises
-/// <see cref="IConfigProvider.OnChange"/> — the same signal the file watcher
-/// raises — so the reconcile path is identical whether an edit arrived over the
+/// <see cref="IConfigProvider.OnChange"/> - the same signal the file watcher
+/// raises - so the reconcile path is identical whether an edit arrived over the
 /// web or by hand-editing the file.
 /// </remarks>
 public interface IWritableConfigProvider : IConfigProvider
@@ -92,6 +92,6 @@ public sealed record ConfigApplyResult(
     public bool Applied => Outcome == ConfigApplyOutcome.Applied;
 }
 
-/// <summary>One config validation failure — a dotted config path and a
+/// <summary>One config validation failure - a dotted config path and a
 /// human-readable message (the shape the API's <c>ValidationProblem</c> wraps).</summary>
 public sealed record ConfigValidationError(string Path, string Message);

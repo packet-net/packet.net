@@ -1,9 +1,9 @@
 # PDN MQTT frame emission (kissproxy-compatible)
 
-**Status:** ✅ **shipped** (PR #558 — `MqttFrameEmitter`, default-off; released in **node-v0.28.0**,
+**Status:** ✅ **shipped** (PR #558 - `MqttFrameEmitter`, default-off; released in **node-v0.28.0**,
 2026-07-05). Emitter hardening ([#582](https://github.com/packet-net/packet.net/issues/582)) has since
 landed: the client id is salted with a stable per-machine suffix (`{node}_pdn_{8-hex}`, the head-end's
-`machineSuffix` pattern — same-hostname nodes no longer kick each other off the broker), the managed
+`machineSuffix` pattern - same-hostname nodes no longer kick each other off the broker), the managed
 client's pending queue is bounded (10 k, drop-oldest) instead of MQTTnet's unbounded default, and the
 emitter exports `pdn_mqtt_published_total` / `pdn_mqtt_publish_failures_total` /
 `pdn_mqtt_pending_messages` on `/metrics`. The fidelity caveats below are **accepted limitations** of
@@ -24,11 +24,11 @@ kissproxy/gb7rdg-node/40m/toModem/unframed/port0/AckModeKissCmd
 Topic: `[{prefix}/]kissproxy/{host}/{instance}/{fromModem|toModem}/{sub}` where:
 
 - `{host}` = machine name (here `gb7rdg-node`).
-- `{instance}` = the modem id — **operationally the band** (`70cm`/`40m`/`2m`/`6m`). This is how the
+- `{instance}` = the modem id - **operationally the band** (`70cm`/`40m`/`2m`/`6m`). This is how the
   collector's `band` column is populated. **PDN must emit the band here or it fragments the DB.**
 - direction `fromModem` = RX (heard), `toModem` = TX (sent).
 - `{sub}` is one of three: `framed` (full KISS frame incl. FEND + type byte), `unframed/port{p}/{Cmd}KissCmd`
-  (SLIP-decoded AX.25 bytes — **the topic the collector actually ingests**), `decoded/port{p}/`
+  (SLIP-decoded AX.25 bytes - **the topic the collector actually ingests**), `decoded/port{p}/`
   (single-line ax2txt human decode; collector does **not** ingest this).
 - `{Cmd}` ∈ {DataFrame, AckMode, TxDelay, Persistence, SlotTime, TxTail, FullDuplex, SetHardware, ExitKissMode}.
 
@@ -38,25 +38,25 @@ Payload encoding honours a per-modem **base64** flag (default raw binary; base64
 `InsertLineBreaks`). `main` and `web-interface` branches are byte-identical on this contract;
 `web-interface` merely adds a non-essential `.../timing/ackmode` JSON topic.
 
-**Key alignment:** PDN's `MonitorEvent.Raw` = `frame.ToBytes()` = the unframed AX.25 bytes — a
+**Key alignment:** PDN's `MonitorEvent.Raw` = `frame.ToBytes()` = the unframed AX.25 bytes - a
 direct match for the `unframed` payload the collector reads.
 
 ## PDN design
 
 - **`MqttFrameEmitter : BackgroundService`** subscribing `NodeTelemetry.Subscribe(out ChannelReader<MonitorEvent>)`
-  — the same both-directions, port-stamped, RSSI/SNR-bearing stream the OARC reporter and traffic
+  - the same both-directions, port-stamped, RSSI/SNR-bearing stream the OARC reporter and traffic
   log already ride. Clone `TrafficLogService`. ~a few dozen lines + the publish mapping.
 - **`MqttConfig`** (default **off**) next to `OarcConfig`/`TrafficConfig` (record + `NodeConfig`
   property + `MqttConfigValidator` composed in `NodeConfigValidator` + a self-gating hosted service
   in `Program.cs`). Fields: `Enabled`, `BrokerHost`, `BrokerPort` (1883/8883), `UseTls`,
   `Username`, `Password`, `TopicPrefix` (default `""`), `NodeName` (default = machine name),
   `Base64` (default false), `Qos` (default 2), `RfOnly`. **First integration with a broker
-  credential** — password lives in gitignored `appsettings.Local.json`, validator checks
+  credential** - password lives in gitignored `appsettings.Local.json`, validator checks
   host/creds coherence only when enabled.
-- **Per-port instance label** — a per-port field feeds the `{instance}` topic segment (default =
+- **Per-port instance label** - a per-port field feeds the `{instance}` topic segment (default =
   port id); set to the band for `gb7rdg-node` DB continuity. (See open decision below.)
 - **Direction map** `in→fromModem`, `out→toModem` (mirrors the OARC reporter's `in→rcvd` map).
-- **MQTTnet** already pinned (`4.3.7.1207`, `Directory.Packages.props`) — a consumer spike used it;
+- **MQTTnet** already pinned (`4.3.7.1207`, `Directory.Packages.props`) - a consumer spike used it;
   the publisher is new. Consider a bump to MQTTnet 5 for a product dependency.
 
 ## Fidelity caveats (accepted limitations of the shipped v1)
@@ -66,7 +66,7 @@ gaps in the emitter are tracked separately in
 [#582](https://github.com/packet-net/packet.net/issues/582).
 
 1. `MonitorEvent.Raw` is a **re-encode of the parsed frame**, and `FrameTraced` fires only for
-   frames that parsed — so **parse-rejects are invisible** and malformed frames aren't byte-exact.
+   frames that parsed - so **parse-rejects are invisible** and malformed frames aren't byte-exact.
    *Accepted*: fine for the collector's parseable-traffic purpose; if byte-exact / unparseable
    capture is later wanted, add a thin `IAx25Transport` decorator tap (sees exact wire bytes) and
    hand it the same publisher. (Template: `InboundRadioTap`.)
@@ -74,7 +74,7 @@ gaps in the emitter are tracked separately in
    AX.25-level tap does not distinguish the G8BPQ ACKMODE wrapper. *Accepted*: v1 emits `DataFrame`
    for data traffic (the bulk of the 137 k); AckMode fidelity would need the KISS-level tap or the
    existing ACKMODE/`ack_timing` path.
-3. PDN can attach **RSSI/SNR** per RX frame (richer than kissproxy) — but **not inside the
+3. PDN can attach **RSSI/SNR** per RX frame (richer than kissproxy) - but **not inside the
    kissproxy topics** (would break the collector's parser). *Not implemented*: if wanted, emit it
    on a separate additive topic / JSON envelope, leaving the kissproxy topics byte-identical.
 

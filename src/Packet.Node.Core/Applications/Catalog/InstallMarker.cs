@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Applications.Catalog;
 /// previously-recorded <see cref="Payload"/> and writes the new set, so app-CREATED state
 /// (e.g. <c>dapps.db</c>, <c>convers.yaml</c>) is never touched; on uninstall it deletes the
 /// recorded payload + the marker and leaves state behind. A package with no marker was
-/// hand-sideloaded — the installer refuses to uninstall it.
+/// hand-sideloaded - the installer refuses to uninstall it.
 /// </summary>
 public sealed record InstallMarker
 {
@@ -36,7 +36,7 @@ public sealed record InstallMarker
     public IReadOnlyDictionary<string, string> Sha256s { get; init; } =
         new Dictionary<string, string>();
 
-    /// <summary>The package-dir-relative paths the installer placed — exactly the set it will
+    /// <summary>The package-dir-relative paths the installer placed - exactly the set it will
     /// delete on the next update or on uninstall. Never includes app-created state.</summary>
     public IReadOnlyList<string> Payload { get; init; } = [];
 }

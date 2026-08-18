@@ -15,7 +15,7 @@ namespace Packet.Node.Tests.Support;
 /// </para>
 /// <para>
 /// The fix lowers only the <b>retry count</b> N2 (10 → 4), leaving T1V at the
-/// spec default. That bounds the connect budget at <c>(4+1)·6 s = 30 s</c> — the
+/// spec default. That bounds the connect budget at <c>(4+1)·6 s = 30 s</c> - the
 /// same generous-but-bounded envelope as <see cref="Wait.DefaultBudget"/>, so a
 /// genuinely stuck connect fails in 30 s instead of 66 s, while a connect that is
 /// merely scheduling-delayed still completes. Critically, T1 itself stays 6 s, so
@@ -33,7 +33,7 @@ internal static class TestAx25Timing
     /// spec-default T1V this bounds their connect budget at (4+1)·6 s = 30 s.</summary>
     public static readonly int StationN2 = 4;
 
-    /// <summary>Test N2 for a node port's <c>Ax25PortParams.N2</c> — bounds the
+    /// <summary>Test N2 for a node port's <c>Ax25PortParams.N2</c> - bounds the
     /// node's own connect-OUT (the relay test) at the same 30 s envelope.</summary>
     public static readonly int NodeN2 = 4;
 }

@@ -6,7 +6,7 @@ namespace Packet.Radio.Tait.Tests;
 
 /// <summary>
 /// The station-control (<see cref="IRigControl"/>) view of the CCDI radio, over the same
-/// scripted <see cref="FakeSerialIo"/> the driver's own tests use — wire commands and replies
+/// scripted <see cref="FakeSerialIo"/> the driver's own tests use - wire commands and replies
 /// are built with the real codec so no checksum is ever guessed.
 /// </summary>
 public class TaitRigControlTests
@@ -204,7 +204,7 @@ public class TaitRigControlTests
         rig.Capabilities.Should().NotHaveFlag(RigCapabilities.DcdRead);
         rig.Capabilities.Should().NotHaveFlag(RigCapabilities.SignalStrengthRead);
 
-        // The Tait driver serves carrier-sense and RSSI natively on IRadioControl — the
+        // The Tait driver serves carrier-sense and RSSI natively on IRadioControl - the
         // messages redirect callers there instead of the rig-seam bridge.
         var dcd = async () => await rig.ReadDcdAsync();
         (await dcd.Should().ThrowAsync<NotSupportedException>())
@@ -228,7 +228,7 @@ public class TaitRigControlTests
 
         io.WrittenAscii.Should().Contain(Frame('f', "90") + "\r");
 
-        // The radio object survives the adapter — the port supervisor still owns it.
+        // The radio object survives the adapter - the port supervisor still owns it.
         var act = async () => await rig.GetPttAsync();
         await act.Should().ThrowAsync<ObjectDisposedException>();
     }

@@ -7,12 +7,12 @@ namespace Packet.Ax25.Tests.Session;
 /// <summary>
 /// Shared test helpers for <c>Ax25Listener</c> unit tests. The
 /// <see cref="LoopbackModem"/> in particular is used by every
-/// <c>Ax25Listener*Tests.cs</c> file — extracted here so additions in one
+/// <c>Ax25Listener*Tests.cs</c> file - extracted here so additions in one
 /// file (e.g. a new injector overload) automatically benefit the others.
 /// </summary>
 /// <remarks>
 /// Keep this internal to the test assembly. The Listener API doesn't
-/// expose any kind of fake-modem fixture and shouldn't — the listener's
+/// expose any kind of fake-modem fixture and shouldn't - the listener's
 /// dependency on <see cref="IAx25Transport"/> is the seam tests poke through.
 /// </remarks>
 internal static class ListenerTestSupport
@@ -48,14 +48,14 @@ internal static class ListenerTestSupport
 /// <remarks>
 /// Utilities the broader coverage tests need:
 /// <list type="bullet">
-/// <item><see cref="DropOutbound"/> — if <c>true</c>, outbound frames are
+/// <item><see cref="DropOutbound"/> - if <c>true</c>, outbound frames are
 /// counted but not appended to <see cref="SentFrames"/>. Lets tests
 /// simulate "peer never saw our UA" without changing the listener API.</item>
-/// <item><see cref="SendDelay"/> — sleep this long inside
+/// <item><see cref="SendDelay"/> - sleep this long inside
 /// <see cref="SendAsync"/> before recording. Lets tests probe whether
 /// the listener's outbound path is on a separate thread from the inbound
-/// pump (it should be — fire-and-forget).</item>
-/// <item><see cref="OutboundFrameCount"/> — count of every send attempt
+/// pump (it should be - fire-and-forget).</item>
+/// <item><see cref="OutboundFrameCount"/> - count of every send attempt
 /// regardless of <see cref="DropOutbound"/>.</item>
 /// </list>
 /// </remarks>
@@ -70,7 +70,7 @@ internal sealed class LoopbackModem : ITxCompletionTransport, ICsmaChannelParams
     /// <summary>Outbound frames the listener / session has handed to the transport.</summary>
     public ObservableList<ReadOnlyMemory<byte>> SentFrames { get; } = new();
 
-    /// <summary>If <c>true</c>, outbound frames are dropped — <see cref="SentFrames"/> stays empty.</summary>
+    /// <summary>If <c>true</c>, outbound frames are dropped - <see cref="SentFrames"/> stays empty.</summary>
     public bool DropOutbound { get; set; }
 
     /// <summary>If non-zero, <see cref="SendAsync"/> sleeps for this long before recording.</summary>
@@ -89,7 +89,7 @@ internal sealed class LoopbackModem : ITxCompletionTransport, ICsmaChannelParams
 
     /// <summary>
     /// Push raw inbound AX.25 bytes (which may be malformed / strict-rejected) as a single
-    /// frame — for tests that assert the listener drops a frame at parse time. The transport
+    /// frame - for tests that assert the listener drops a frame at parse time. The transport
     /// seam is already AX.25-only, so there is no non-Data KISS-command case to inject here
     /// (that filtering now lives in the KISS transport, tested there).
     /// </summary>
@@ -126,9 +126,9 @@ internal sealed class LoopbackModem : ITxCompletionTransport, ICsmaChannelParams
     /// <summary>
     /// When non-null, <see cref="SendAwaitingCompletionAsync"/> is supported: the frame is
     /// recorded like a plain send and the call's completion resolves when the test releases
-    /// this gate (one release = one TX-completion echo) — letting tests control exactly when a
+    /// this gate (one release = one TX-completion echo) - letting tests control exactly when a
     /// frame "clears the air". When null (default), confirmed-TX is unsupported and the call
-    /// throws, like a transport with no ACKMODE — and the listener latches back to plain sends.
+    /// throws, like a transport with no ACKMODE - and the listener latches back to plain sends.
     /// </summary>
     public SemaphoreSlim? AckEchoGate { get; set; }
 

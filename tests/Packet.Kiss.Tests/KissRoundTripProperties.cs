@@ -6,7 +6,7 @@ namespace Packet.Kiss.Tests;
 public class KissRoundTripProperties
 {
     /// <summary>
-    /// For any port (0–15), any command, and any payload, encoding and
+    /// For any port (0-15), any command, and any payload, encoding and
     /// then decoding must return exactly the same frame. This is the
     /// fundamental correctness property for the KISS framing layer.
     /// </summary>

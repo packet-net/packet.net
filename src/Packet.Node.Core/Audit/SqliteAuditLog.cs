@@ -9,7 +9,7 @@ namespace Packet.Node.Core.Audit;
 /// <summary>
 /// The SQLite-backed <see cref="IAuditLog"/>: persists privileged-action records to
 /// the same consolidated <c>pdn.db</c> the users + NET/ROM routing table live in. Raw
-/// SQL via Dapper (no EF — the node host's persistence decision), mirroring
+/// SQL via Dapper (no EF - the node host's persistence decision), mirroring
 /// <c>SqliteUserStore</c> / <c>SqliteNetRomRoutingStore</c>.
 /// </summary>
 /// <remarks>
@@ -18,7 +18,7 @@ namespace Packet.Node.Core.Audit;
 /// is simply unavailable); <see cref="Record"/> swallows + logs any write fault and
 /// never throws, so an action path can never be taken down by the audit sink.
 /// <see cref="Recent"/> returns empty on fault. WAL mode, a fresh pooled connection per
-/// call — the same discipline as the sibling stores.
+/// call - the same discipline as the sibling stores.
 /// </para>
 /// <para>
 /// <b>Bounded.</b> The table is capped at <see cref="RowCap"/> rows: each insert prunes
@@ -27,7 +27,7 @@ namespace Packet.Node.Core.Audit;
 /// prune is cheap.
 /// </para>
 /// <para>
-/// <b>No secrets.</b> Callers pass a summarised/ hashed detail line — the store persists
+/// <b>No secrets.</b> Callers pass a summarised/ hashed detail line - the store persists
 /// it verbatim and never inspects it. It also emits a structured log line per record so
 /// auditing is visible in the node's normal logs as well as the DB.
 /// </para>
@@ -60,7 +60,7 @@ public sealed partial class SqliteAuditLog : IAuditLog
     private readonly int rowCap;
 
     /// <summary>Open (creating if absent) the audit log at <paramref name="dbPath"/> and
-    /// ensure its schema. A schema/open failure is logged, not thrown — the node still
+    /// ensure its schema. A schema/open failure is logged, not thrown - the node still
     /// boots, just without persisted auditing. <paramref name="rowCap"/> bounds retained
     /// rows (defaults to <see cref="RowCap"/>; lower values are for tests).</summary>
     public SqliteAuditLog(string dbPath, ILogger<SqliteAuditLog>? logger = null, int rowCap = RowCap)

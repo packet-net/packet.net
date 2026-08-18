@@ -58,14 +58,14 @@ internal sealed class FakeSerialIo : ISerialIo
     public void Enqueue(byte[] bytes) => incoming.Add(bytes);
 
     /// <summary>Answer every write of <paramref name="commandWithoutCr"/> with
-    /// <paramref name="responseAscii"/> — but only while <paramref name="onlyWhen"/> (evaluated at
+    /// <paramref name="responseAscii"/> - but only while <paramref name="onlyWhen"/> (evaluated at
     /// write time) returns true; while it returns false the command is silently swallowed. A null
     /// gate always answers. The gate models radio state a command can change, e.g. "a radio stuck
     /// in Transparent mode only answers CCDI once the <c>+++</c> escape has been seen".</summary>
     public void RespondTo(string commandWithoutCr, string responseAscii, Func<bool>? onlyWhen = null) =>
         responses[commandWithoutCr] = (responseAscii, onlyWhen);
 
-    /// <summary>Make every subsequent <see cref="Read"/> throw <paramref name="fault"/> —
+    /// <summary>Make every subsequent <see cref="Read"/> throw <paramref name="fault"/> -
     /// models a hard IO failure (a dead head-end socket), which faults the driver's pump.</summary>
     public void FailReads(Exception fault) => readFault = fault;
 

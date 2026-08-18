@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Transports;
 /// The #464 fix end-to-end at the transport layer: a real <see cref="KissTcpClient"/>
 /// whose far end goes <em>half-open</em> (the TNC/net-sim rebooted with no FIN, so
 /// the read would otherwise hang forever) must self-heal through
-/// <see cref="ReconnectingKissModem"/> — the read-idle timeout ends the dead
+/// <see cref="ReconnectingKissModem"/> - the read-idle timeout ends the dead
 /// inner's stream, the wrapper re-dials a fresh KissTcpClient, and frames resume,
 /// with the KISS parameters re-applied to the reconnected modem and the backoff
 /// bounded.
@@ -21,7 +21,7 @@ namespace Packet.Node.Tests.Transports;
 /// <remarks>
 /// This deliberately wires the two real production pieces together
 /// (KissTcpClient over a loopback duplex stream + ReconnectingKissModem) rather
-/// than booting the whole web host — a focused component test, not a
+/// than booting the whole web host - a focused component test, not a
 /// WebApplicationFactory integration. The "dial" hands out KissTcpClients over
 /// fresh in-memory pipe pairs, so each "connection" is independently severable.
 /// </remarks>
@@ -37,7 +37,7 @@ public sealed class KissTcpReconnectIntegrationTests
         var minBackoff = TimeSpan.FromSeconds(1);
         var maxBackoff = TimeSpan.FromSeconds(30);
 
-        // The first connection: a peer that goes silent and never closes — a
+        // The first connection: a peer that goes silent and never closes - a
         // half-open link. The read-idle timeout is what rescues it.
         using var firstPeer = new LoopbackEndpoint(time, idle);
         // The second connection (after the re-dial): a live peer that delivers a
@@ -73,7 +73,7 @@ public sealed class KissTcpReconnectIntegrationTests
             minBackoff: minBackoff,
             maxBackoff: maxBackoff);
 
-        // Configure KISS params before the drop — they must be replayed to the
+        // Configure KISS params before the drop - they must be replayed to the
         // reconnected modem (a fresh connection starts at the modem's defaults).
         await modem.SetTxDelayAsync(40);
         await modem.SetPersistenceAsync(63);
@@ -93,7 +93,7 @@ public sealed class KissTcpReconnectIntegrationTests
         });
 
         // Trip the first (dead) link's idle timeout so it ends and the wrapper
-        // re-dials. Advance only until the single re-dial has happened — then
+        // re-dials. Advance only until the single re-dial has happened - then
         // stop, so we don't perturb the recovered link's clock while its queued
         // frame is being read.
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
@@ -126,7 +126,7 @@ public sealed class KissTcpReconnectIntegrationTests
         using var goodPeer = new LoopbackEndpoint(time, Timeout.InfiniteTimeSpan);
         await goodPeer.PeerWriteAsync(Data("back"));
 
-        // The dial refuses twice (peer still rebooting) then succeeds — proving
+        // The dial refuses twice (peer still rebooting) then succeeds - proving
         // the bounded-backoff retry loop, not just a single re-dial.
         var attempts = 0;
         Func<CancellationToken, Task<IAx25Transport>> dial = _ =>
@@ -230,7 +230,7 @@ public sealed class KissTcpReconnectIntegrationTests
             }
             catch
             {
-                // peer torn down — fine
+                // peer torn down - fine
             }
         }
 

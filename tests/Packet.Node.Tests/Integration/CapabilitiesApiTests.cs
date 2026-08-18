@@ -11,7 +11,7 @@ namespace Packet.Node.Tests.Integration;
 /// capability-cache control surface: the read projection (<c>GET /api/v1/capabilities</c>,
 /// from <c>PdnReadApi</c>) and the operate-gated forget action (<c>DELETE
 /// /api/v1/capabilities/{id}</c>, from <c>PdnCapabilitiesApi</c>). Mirrors
-/// <see cref="ReadApiTests"/> / <see cref="SessionsApiTests"/> — a temp YAML config with no
+/// <see cref="ReadApiTests"/> / <see cref="SessionsApiTests"/> - a temp YAML config with no
 /// ports and telnet disabled (so the WAF host binds no fixed TCP port), the routing/cap store
 /// in the same temp dir. The cache is seeded by reaching the registered
 /// <see cref="PeerCapabilityCache"/> singleton through the host container and recording
@@ -28,8 +28,8 @@ public sealed class CapabilitiesApiTests : IDisposable
         NodeYaml.Build(callsign: Callsign), "capsapi");
 
     // Seed the registered cache singleton with two deterministic records:
-    //   vhf:GB7RDG-1 — a v2.2 peer that answered SREJ via XID (both positive, no refusal).
-    //   vhf:G8PZT-2  — offered SABME, came back mod-8 (extended=false, stamps LastRefused).
+    //   vhf:GB7RDG-1 - a v2.2 peer that answered SREJ via XID (both positive, no refusal).
+    //   vhf:G8PZT-2  - offered SABME, came back mod-8 (extended=false, stamps LastRefused).
     private void Seed()
     {
         var cache = node.Service<PeerCapabilityCache>();
@@ -150,7 +150,7 @@ public sealed class CapabilitiesApiTests : IDisposable
         var resp = await client.DeleteAsync("/api/v1/capabilities/vhf:GB7RDG-1");
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
-        // The record survives — the gate rejected the action before it reached the cache.
+        // The record survives - the gate rejected the action before it reached the cache.
         node.Service<PeerCapabilityCache>().All().Should().HaveCount(2);
     }
 

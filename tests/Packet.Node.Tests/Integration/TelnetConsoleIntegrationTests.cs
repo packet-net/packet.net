@@ -9,7 +9,7 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// The local dial-in path (exit criterion iii): a plain TCP client reaches the
-/// prompt and the same commands work — no callsign, no KISS, no AX.25. Drives a
+/// prompt and the same commands work - no callsign, no KISS, no AX.25. Drives a
 /// real <see cref="TelnetConsoleListener"/> bound to an ephemeral loopback port.
 /// </summary>
 [Trait("Category", "Node")]
@@ -196,7 +196,7 @@ public sealed class TelnetConsoleIntegrationTests
             "the prompt is on its own CR-LF line, not overwriting the banner");
 
         // Server-side echo: a typed character (no newline, no command dispatch)
-        // comes back — so the only possible source is the echo.
+        // comes back - so the only possible source is the echo.
         await stream.WriteAsync(Encoding.ASCII.GetBytes("Z"));
         await stream.FlushAsync();
         await Wait.ForAsync(() => Text().Contains('Z'), "typed characters are echoed");

@@ -1,7 +1,7 @@
 namespace Packet.Node.Core.Applications.Catalog;
 
 /// <summary>
-/// The pdn <b>app catalog</b> — the curated index of <i>available</i> apps (the
+/// The pdn <b>app catalog</b> - the curated index of <i>available</i> apps (the
 /// <c>catalog/apps.yaml</c> file baked into the node .deb at
 /// <c>/usr/share/packetnet/catalog/apps.yaml</c>). This is the C# shape of that file; the full
 /// contract is <c>docs/app-catalog.md</c>.
@@ -9,7 +9,7 @@ namespace Packet.Node.Core.Applications.Catalog;
 /// <remarks>
 /// Distinct from the <c>Packages</c> namespace: that discovers <i>installed</i> packages
 /// (<c>pdn-app.yaml</c> on disk). This describes the menu of things the owner <i>could</i>
-/// install — each entry pins, per RID, an https artifact by sha256.
+/// install - each entry pins, per RID, an https artifact by sha256.
 /// </remarks>
 public sealed record AppCatalogDocument
 {
@@ -26,7 +26,7 @@ public sealed record AppCatalogDocument
 /// per-RID, sha256-pinned artifact the installer fetches.</summary>
 public sealed record AppCatalogEntry
 {
-    /// <summary>Stable app identity — lowercase <c>[a-z0-9-]</c>. Becomes the install
+    /// <summary>Stable app identity - lowercase <c>[a-z0-9-]</c>. Becomes the install
     /// directory name (<c>&lt;appsRoot&gt;/&lt;id&gt;</c>), matching the package-discovery
     /// convention exactly.</summary>
     public required string Id { get; init; }
@@ -44,7 +44,7 @@ public sealed record AppCatalogEntry
     /// <summary>Optional lucide icon name (cosmetic).</summary>
     public string? Icon { get; init; }
 
-    /// <summary>Declared capabilities — shown to the owner at install/enable time, not
+    /// <summary>Declared capabilities - shown to the owner at install/enable time, not
     /// enforced here.</summary>
     public IReadOnlyList<string> Capabilities { get; init; } = [];
 
@@ -73,7 +73,7 @@ public enum ArtifactKind
     Pdnapp,
 }
 
-/// <summary>The artifact for one catalog entry — exactly one of the kind-specific sub-objects
+/// <summary>The artifact for one catalog entry - exactly one of the kind-specific sub-objects
 /// is populated, selected by <see cref="Kind"/>.</summary>
 public sealed record ArtifactSpec
 {
@@ -93,19 +93,19 @@ public sealed record ArtifactSpec
 /// <summary>A single sha256-pinned https artifact reference.</summary>
 public sealed record ArtifactRef
 {
-    /// <summary>The download URL — MUST be <c>https://</c> (validated).</summary>
+    /// <summary>The download URL - MUST be <c>https://</c> (validated).</summary>
     public required string Url { get; init; }
 
-    /// <summary>The expected sha256 of the fetched bytes — a 64-char lowercase hex string.
+    /// <summary>The expected sha256 of the fetched bytes - a 64-char lowercase hex string.
     /// A mismatch is a hard install refusal.</summary>
     public required string Sha256 { get; init; }
 }
 
 /// <summary>A sha256-pinned binary plus where (and with what mode) it lands in the package
-/// dir — the <c>assets</c> kind's per-RID binary.</summary>
+/// dir - the <c>assets</c> kind's per-RID binary.</summary>
 public sealed record BinaryRef
 {
-    /// <summary>The download URL — MUST be <c>https://</c>.</summary>
+    /// <summary>The download URL - MUST be <c>https://</c>.</summary>
     public required string Url { get; init; }
 
     /// <summary>The expected sha256 (64-char lowercase hex).</summary>

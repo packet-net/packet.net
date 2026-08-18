@@ -5,7 +5,7 @@ namespace Packet.Ax25.Session;
 
 /// <summary>
 /// Consumes the action chain attached to an SDL transition. Implementations
-/// decide how (or whether) to enforce action handlers — production uses
+/// decide how (or whether) to enforce action handlers - production uses
 /// <see cref="ActionDispatcher"/>, tests can substitute a recording stub.
 /// </summary>
 public interface IActionDispatcher
@@ -33,14 +33,14 @@ public interface IActionDispatcher
 /// <remarks>
 /// <para>
 /// The action vocabulary is bounded by the SDL transcriptions we've
-/// produced. New verbs land here as new pages are transcribed — one
+/// produced. New verbs land here as new pages are transcribed - one
 /// <c>case</c> arm per verb. Unknown actions throw, which keeps
 /// transcription typos from being silent.
 /// </para>
 /// <para>
 /// Timer durations default to spec values (T1=3000ms, T2=1500ms,
 /// T3=30000ms). The actual values are negotiated via XID and should be
-/// updated on the dispatcher when negotiation completes — for now we
+/// updated on the dispatcher when negotiation completes - for now we
 /// expose them as <c>init</c>-only properties.
 /// </para>
 /// </remarks>
@@ -69,28 +69,28 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// </summary>
     public ISubroutineRegistry Subroutines => subroutines;
 
-    /// <summary>Spec-default response-delay timer (T2) — the fallback for <see cref="T2Duration"/>.</summary>
+    /// <summary>Spec-default response-delay timer (T2) - the fallback for <see cref="T2Duration"/>.</summary>
     public static readonly TimeSpan DefaultT2 = TimeSpan.FromMilliseconds(1500);
 
-    /// <summary>Spec-default inactive-link timer (T3) — the fallback for <see cref="T3Duration"/>.</summary>
+    /// <summary>Spec-default inactive-link timer (T3) - the fallback for <see cref="T3Duration"/>.</summary>
     public static readonly TimeSpan DefaultT3 = TimeSpan.FromMilliseconds(30000);
 
-    /// <summary>Spec-default SRT initial default — the fallback for <see cref="InitialSrt"/> (§6.7.1.2 ⇒ T1V 6000 ms).</summary>
+    /// <summary>Spec-default SRT initial default - the fallback for <see cref="InitialSrt"/> (§6.7.1.2 ⇒ T1V 6000 ms).</summary>
     public static readonly TimeSpan DefaultInitialSrt = TimeSpan.FromMilliseconds(3000);
 
-    /// <summary>Spec-default N2 (retry count) — the fallback for <see cref="InitialN2"/> (§6.7.1.3 ⇒ 10).</summary>
+    /// <summary>Spec-default N2 (retry count) - the fallback for <see cref="InitialN2"/> (§6.7.1.3 ⇒ 10).</summary>
     public const int DefaultInitialN2 = 10;
 
     /// <summary>
     /// Spec-default acknowledgement-timer T2 written by the <c>T2 := 3000</c>
-    /// establishment verb — the fallback for <see cref="InitialT2"/> (§6.7.1.1
+    /// establishment verb - the fallback for <see cref="InitialT2"/> (§6.7.1.1
     /// ⇒ 3000 ms). Distinct from <see cref="DefaultT2"/> (1500 ms), which is the
     /// dispatcher's <see cref="T2Duration"/> fallback for arming a T2 timer; the
     /// figure's <c>Set_Version</c> establishment constant is 3000 ms.
     /// </summary>
     public static readonly TimeSpan DefaultInitialT2 = TimeSpan.FromMilliseconds(3000);
 
-    /// <summary>Spec-default mod-8 send-window k written by the <c>k := 8</c> establishment verb — the fallback for <see cref="InitialK"/> (§6.7.1.4 ⇒ 8).</summary>
+    /// <summary>Spec-default mod-8 send-window k written by the <c>k := 8</c> establishment verb - the fallback for <see cref="InitialK"/> (§6.7.1.4 ⇒ 8).</summary>
     public const int DefaultInitialK = 8;
 
     /// <summary>Default acknowledgement timer (T1).</summary>
@@ -109,7 +109,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// Defaults to the AX.25 v2.2 §6.7.1.2 value (3000 ms ⇒ T1V 6000 ms).
     /// </summary>
     /// <remarks>
-    /// §6.7.1.2 names this the SRT <em>initial default</em> — an implementation /
+    /// §6.7.1.2 names this the SRT <em>initial default</em> - an implementation /
     /// configuration parameter, not a wire constant. Exposing it lets a node seed
     /// a longer (or shorter) acknowledgement-timer baseline per port without
     /// touching the figure: the establishment transition still runs
@@ -127,7 +127,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// </summary>
     /// <remarks>
     /// §6.7.1.3 names N2 a "retry count" implementation/configuration parameter,
-    /// not a wire constant — the figure's <c>N2 := 10</c> just seeds the default.
+    /// not a wire constant - the figure's <c>N2 := 10</c> just seeds the default.
     /// Exposing it lets a node configure a per-port retry count that survives the
     /// establishment handshake: the previous hard-coded 10 silently overwrote any
     /// <see cref="Ax25SessionContext.N2"/> seeded on the session (the same defect
@@ -143,10 +143,10 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// bodies. Defaults to the AX.25 v2.2 §6.7.1.1 value (3000 ms).
     /// </summary>
     /// <remarks>
-    /// §6.7.1.1 names T2 a configurable timer, not a wire constant — the figure's
+    /// §6.7.1.1 names T2 a configurable timer, not a wire constant - the figure's
     /// <c>T2 := 3000</c> just seeds the default. The hard-coded 3000 ms previously
     /// written by this verb would silently overwrite any
-    /// <see cref="Ax25SessionContext.T2"/> seeded on the session — the same defect
+    /// <see cref="Ax25SessionContext.T2"/> seeded on the session - the same defect
     /// class as the SRT/T1V clobber (packet-net/packet.net#292) and the N2 clobber
     /// (#300). Today the data-link establishment path does not invoke
     /// <c>Set_Version</c> as a subroutine (so the verb is inert on connect, and a
@@ -154,8 +154,8 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// here keeps the verb consistent with <see cref="InitialSrt"/> /
     /// <see cref="InitialN2"/> and forecloses a re-introduced clobber if an upstream
     /// <c>Packet.Ax25.Sdl</c> revision puts <c>Set_Version</c> back on the
-    /// establishment path. (No T2 timer is armed from this in the current figures —
-    /// the delayed-ack flush is LM-SEIZE-driven — but the value is the per-session
+    /// establishment path. (No T2 timer is armed from this in the current figures -
+    /// the delayed-ack flush is LM-SEIZE-driven - but the value is the per-session
     /// T2 the day a real T2 timer lands.)
     /// </remarks>
     public TimeSpan InitialT2 { get; init; } = DefaultInitialT2;
@@ -166,24 +166,24 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// AX.25 v2.2 §6.7.1.4 mod-8 value (8).
     /// </summary>
     /// <remarks>
-    /// §6.7.1.4 names k a configurable window, not a wire constant — the figure's
+    /// §6.7.1.4 names k a configurable window, not a wire constant - the figure's
     /// <c>k := 8</c> just seeds the mod-8 default. The hard-coded 8 previously
     /// written by this verb would silently overwrite any
-    /// <see cref="Ax25SessionContext.K"/> seeded on the session — the same defect
+    /// <see cref="Ax25SessionContext.K"/> seeded on the session - the same defect
     /// class as #292 / #300. Today the data-link establishment path does not invoke
     /// <c>Set_Version</c> as a subroutine (so the verb is inert on connect, and a
     /// configured k already survives), but threading the configured value through
     /// here keeps the verb consistent with <see cref="InitialN2"/> and forecloses a
     /// re-introduced clobber if an upstream <c>Packet.Ax25.Sdl</c> revision puts
     /// <c>Set_Version</c> back on the establishment path. This is the <em>mod-8</em>
-    /// window only — the mod-128 <c>k := 32</c> verb stays the spec mod-128 default
+    /// window only - the mod-128 <c>k := 32</c> verb stays the spec mod-128 default
     /// (32), which is then legitimately narrowed by XID negotiation, so it is
     /// intentionally <b>not</b> seeded here.
     /// </remarks>
     public int InitialK { get; init; } = DefaultInitialK;
 
     /// <summary>
-    /// Management retry timer (TM201) duration — armed by the MDL machine's
+    /// Management retry timer (TM201) duration - armed by the MDL machine's
     /// <c>Start TM201</c> verb on each XID-command send (figc5.1/figc5.2,
     /// §C5.3). The §C5.3 prose does not give a numeric default for TM201; it is
     /// the management analogue of the data-link T1, so we default it to the same
@@ -220,7 +220,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// no-op sink.
     /// </param>
     /// <param name="sendUpward">
-    /// Called when an action raises a signal to Layer 3 — the five DL
+    /// Called when an action raises a signal to Layer 3 - the five DL
     /// primitives (<c>DL_CONNECT_indication</c>, <c>DL_CONNECT_confirm</c>,
     /// <c>DL_DISCONNECT_indication</c>, <c>DL_DISCONNECT_confirm</c>,
     /// <c>DL_DATA_indication</c>) and the error-indication letter
@@ -232,7 +232,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <c>LM_DATA_request</c>). Defaults to a no-op sink.
     /// </param>
     /// <param name="sendInternal">
-    /// Called when an action raises an internal signal — to the
+    /// Called when an action raises an internal signal - to the
     /// management data-link (<c>MDL_NEGOTIATE_request</c>) or the
     /// internal I-frame queue (<c>push_*</c> verbs). Defaults to a
     /// no-op sink.
@@ -249,31 +249,31 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// (<c>Establish_Data_Link</c>, <c>UI_Check</c>,
     /// <c>Select_T1_Value</c>, …). Defaults to a fresh
     /// <see cref="DefaultSubroutineRegistry"/> with no-op stubs for
-    /// every known subroutine — sufficient for testing transition flow
+    /// every known subroutine - sufficient for testing transition flow
     /// without figc4.7's real bodies wired.
     /// </param>
     /// <param name="sendMdl">
-    /// Called when the MDL machine raises a signal to Layer 3 —
+    /// Called when the MDL machine raises a signal to Layer 3 -
     /// <c>MDL-NEGOTIATE Confirm</c> / <c>MDL-ERROR Indicate (B/C/D)</c>
     /// (figc5.x, §C5.3). Defaults to a no-op sink; only the MDL driver wires it.
     /// </param>
     /// <param name="sendXidCommand">
-    /// Called when the MDL <c>XID_command</c> verb fires — builds and sends the
+    /// Called when the MDL <c>XID_command</c> verb fires - builds and sends the
     /// XID command frame carrying our offered parameter set (§6.3.2). Defaults to
     /// a no-op; only the MDL driver wires it (the data-link machine never emits
     /// this verb).
     /// </param>
     /// <param name="applyNegotiatedParameters">
     /// Called when the MDL <c>Apply Negotiated Parameters</c> subroutine verb
-    /// fires (figc5.2) — the §6.3.2 reverts-to merge of our offer and the peer's
-    /// XID response. Defaults to a no-op (the figc5.3–figc5.8 per-parameter
+    /// fires (figc5.2) - the §6.3.2 reverts-to merge of our offer and the peer's
+    /// XID response. Defaults to a no-op (the figc5.3-figc5.8 per-parameter
     /// subroutines are an un-transcribed placeholder); the MDL driver supplies
     /// the real merge via <see cref="XidNegotiator"/>.
     /// </param>
     /// <param name="setVersion20">
     /// Called when the shared <c>set_version_2_0</c> verb fires. Defaults to the
     /// data-link figc4.6 semantics (clear <see cref="Ax25SessionContext.IsExtended"/>
-    /// only — the data-link path runs its remaining v2.0 verbs separately). The
+    /// only - the data-link path runs its remaining v2.0 verbs separately). The
     /// MDL driver overrides it with the complete §1436 version-2.0 default set,
     /// since the figc5.2 FRMR path draws a single "Set Version 2.0" box.
     /// </param>
@@ -301,7 +301,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         this.sendInternal = sendInternal ?? (_ => { });
         this.sendIFrame = sendIFrame ?? (_ => { });
         this.subroutines = subroutines ?? new DefaultSubroutineRegistry();
-        // MDL (figc5.x) hooks — no-op / minimal defaults so a data-link
+        // MDL (figc5.x) hooks - no-op / minimal defaults so a data-link
         // dispatcher built without them is unaffected. The MDL driver
         // (Ax25ManagementDataLink) supplies real callbacks. setVersion20
         // defaults to the data-link figc4.6 semantics (clear IsExtended only);
@@ -373,14 +373,14 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The verb is a generated <see cref="Ax25ActionVerb"/> — the codegen
+    /// The verb is a generated <see cref="Ax25ActionVerb"/> - the codegen
     /// in <c>Packet.Ax25.Sdl</c> (0.8.0+) is the SOLE canonicaliser, so
     /// every figure-spelling variant has already been folded to one typed
     /// member before it reaches us (no runtime alias map, no string
     /// normalisation). The dispatch below is a switch <em>expression</em>
     /// over that closed set: a new or renamed verb that lands without a
     /// matching arm is a compile error (CS8509), which with
-    /// <c>TreatWarningsAsErrors</c> on fails the build — killing the
+    /// <c>TreatWarningsAsErrors</c> on fails the build - killing the
     /// verb-vs-dispatch bug class (UI-reception #258, DL-DATA-while-
     /// connecting #263) at compile time rather than at runtime.
     /// </para>
@@ -389,7 +389,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// frames, raise signals, call subroutines) and most call void
     /// methods, so they are wrapped in the <see cref="Do"/> helper to
     /// yield a value; the whole switch is assigned to a discard. Behaviour
-    /// is a 1:1 port of the prior string switch — keep each arm identical.
+    /// is a 1:1 port of the prior string switch - keep each arm identical.
     /// </para>
     /// </remarks>
     public void Execute(Ax25ActionVerb verb, TransitionContext tx)
@@ -399,8 +399,8 @@ public sealed class ActionDispatcher : IActionDispatcher
         var ctx = tx.Session;
         var scheduler = tx.Scheduler;
 
-        // Quirk SrejCommandIgnored (default on): an SREJ sent as a COMMAND is off-spec —
-        // §4.3.2.4 makes SREJ response-only — and no deployed stack acts on receiving one
+        // Quirk SrejCommandIgnored (default on): an SREJ sent as a COMMAND is off-spec -
+        // §4.3.2.4 makes SREJ response-only - and no deployed stack acts on receiving one
         // (direwolf omits the path; linbpq gates the resend on RESP). Both still apply the
         // N(R) acknowledgement, and so do we: this suppresses the RETRANSMIT TAIL only.
         //
@@ -434,7 +434,7 @@ public sealed class ActionDispatcher : IActionDispatcher
 
         // Quirk Ax25Spec42SrejTargetsGap (default on): figc4.4's out-of-sequence
         // I_received SREJ path (with a selective-reject exception already
-        // outstanding) does `N(r) := N(s)` before SREJ — requesting the frame that
+        // outstanding) does `N(r) := N(s)` before SREJ - requesting the frame that
         // just arrived rather than the missing gap, so multi-frame SREJ recovery
         // livelocks (packethacking/ax25spec#42; direwolf flags the same erratum and
         // requests the gap). Retarget the SREJ to V(R), the next still-missing
@@ -457,7 +457,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         // is re-accepted and re-delivered and the link fails to converge
         // (packethacking/ax25spec#47; direwolf's dl_data_indication drain advances vr). The
         // verb `V(r) := V(r) - 1` (VRAssignVR1) appears ONLY in these three figc4.5
-        // drain loops, so rewriting it to VRAssignVRPlus1 is precisely scoped — no
+        // drain loops, so rewriting it to VRAssignVRPlus1 is precisely scoped - no
         // trigger gate needed. Remove once ax25sdl ships a corrected figc4.5.
         if (ctx.Quirks.Ax25Spec47TimerRecoveryDrainAdvancesVR
             && verb == Ax25ActionVerb.VRAssignVR1)
@@ -468,7 +468,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         // Exhaustive dispatch. Every arm yields a value (via Do for the
         // void-returning ones) so the compiler enforces completeness; the
         // result is discarded. A missing or renamed enum member fails the
-        // build with CS8509 (an error here, TreatWarningsAsErrors) — that is
+        // build with CS8509 (an error here, TreatWarningsAsErrors) - that is
         // the whole point: a new verb cannot ship without a handler.
         //
         // CS8524 is the *separate* "you didn't handle an out-of-band integer
@@ -489,15 +489,15 @@ public sealed class ActionDispatcher : IActionDispatcher
             Ax25ActionVerb.SetAcknowledgePending => Do(() => ctx.AcknowledgePending = true),
             // Clear Acknowledge Pending also cancels the §6.7.1.2 acknowledge-delay
             // timer the construction sites arm on LM-SEIZE Request (the deferred
-            // grant that coalesces per-frame RRs into one cumulative ack — #385).
+            // grant that coalesces per-frame RRs into one cumulative ack - #385).
             // Every transmission whose N(R) supersedes the pending ack runs this
             // verb in its action chain (the I-command t03 paths, the RR/RNR/REJ
             // and enquiry/poll-response paths, Transmit_Enquiry, the t23 confirm
-            // flush itself, and Clear_Exception_Conditions on link reset) — so the
+            // flush itself, and Clear_Exception_Conditions on link reset) - so the
             // verb is exactly the "delayed ack satisfied or superseded" chokepoint.
             // The SREJ chains deliberately do NOT run it (figc4.x bookkeeping: an
             // SREJ's N(R) is not a cumulative acknowledgement), so a pending
-            // delayed ack still flushes after an SREJ — correct, and it keeps this
+            // delayed ack still flushes after an SREJ - correct, and it keeps this
             // change entirely out of the SREJ recovery paths. No timer named "T2"
             // is ever armed by an SDL verb (no Start T2 exists in the figures), so
             // the cancel can never race a figure-armed timer; rigs that grant the
@@ -513,7 +513,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // ─── Timer operations ──────────────────────────────────────
             //
             // T1 uses the per-session <see cref="Ax25SessionContext.T1V"/>
-            // value — refreshed dynamically by figc4.7's Select_T1_Value
+            // value - refreshed dynamically by figc4.7's Select_T1_Value
             // subroutine and by figc4.1/4.2's link-establishment paths
             // (SRT := Initial Default; T1V := 2 * SRT). T2 and T3 stay on
             // the dispatcher's static defaults until per-session values
@@ -612,12 +612,12 @@ public sealed class ActionDispatcher : IActionDispatcher
             Ax25ActionVerb.DLDATAIndication => Do(() => sendUpward(BuildDataIndication(tx))),
             // DL_UNIT_DATA_indication delivers a received UI frame's payload
             // upward. Previously the case label was left in display form so
-            // the normalised verb fell through to the default throw — every
+            // the normalised verb fell through to the default throw - every
             // UI reception (UI_Check → DL-UNIT-DATA Indication) crashed
             // (packet-net/packet.net#258). The typed verb makes that impossible.
             Ax25ActionVerb.DLUNITDATAIndication => Do(() => sendUpward(new DataLinkUnitDataIndication(ExtractIncomingInfo(tx), ExtractIncomingPid(tx)))),
 
-            // DL_ERROR_indication_* — per §C5 error-code letter table. The
+            // DL_ERROR_indication_* - per §C5 error-code letter table. The
             // letter (or the C_D pair / the (add) annotation) is surfaced as
             // the error code. The §C5 forms (C_D, D, E, F, G, I, K, L, M, N,
             // O, T, U) and the figc4.7 verbatim forms (A, J, K, Q, add)
@@ -644,7 +644,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             //
             // The LM_*_request verbs go to the link multiplexer (the
             // medium-access arbiter), not directly to the radio. See
-            // figc4.4 t53–t59 for the seize/release/data flow that
+            // figc4.4 t53-t59 for the seize/release/data flow that
             // implements P-persistence on the channel.
             Ax25ActionVerb.LMSeizeRequest => Do(() => sendLinkMux(new LinkMultiplexerSeizeRequest())),
             Ax25ActionVerb.LMReleaseRequest => Do(() => sendLinkMux(new LinkMultiplexerReleaseRequest())),
@@ -666,7 +666,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // machine, driven by Ax25ManagementDataLink. On a data-link
             // dispatcher the MDL callbacks default to no-ops / the bare timer
             // ops, so an accidental MDL verb in a data-link table is inert
-            // rather than a crash (it can't happen — the tables are disjoint).
+            // rather than a crash (it can't happen - the tables are disjoint).
             //
             // XID_command (signal_lower): build + send our XID *command* frame
             // carrying the offered parameter set (§6.3.2). The frame factory
@@ -701,7 +701,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             //
             // Multiple "discard queue" spellings exist across figures
             // (discard_frame_queue, discard_queue, discard_I_frame_queue,
-            // Discard I Queue Entries) — all clear the I-frame transmit
+            // Discard I Queue Entries) - all clear the I-frame transmit
             // queue.
             Ax25ActionVerb.DiscardFrameQueue => Do(() => ctx.IFrameQueue.Clear()),
             Ax25ActionVerb.DiscardQueue => Do(() => ctx.IFrameQueue.Clear()),
@@ -709,7 +709,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             Ax25ActionVerb.DiscardIQueueEntries => Do(() => ctx.IFrameQueue.Clear()),
 
             // discard_I_frame / discard_contents_of_I_frame drop the current
-            // incoming frame's payload — explicit "we are not delivering this
+            // incoming frame's payload - explicit "we are not delivering this
             // upward". No context mutation; we just don't fire a
             // DL_DATA_indication for this trigger.
             Ax25ActionVerb.DiscardIFrame => Do(() => { /* no-op: incoming not stored anywhere */ }),
@@ -749,7 +749,7 @@ public sealed class ActionDispatcher : IActionDispatcher
                     }
                 }
             }),
-            // Sreject := Sreject + 1 (figc4.x SREJ-exception spelling variant) —
+            // Sreject := Sreject + 1 (figc4.x SREJ-exception spelling variant) -
             // same bookkeeping as increment_srej_exception.
             Ax25ActionVerb.SrejectAssignSrejectPlus1 => Do(() =>
             {
@@ -798,7 +798,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // k := 8 seeds the mod-8 send-window from the configurable
             // <see cref="InitialK"/> (§6.7.1.4; default 8) so a configured WindowSize
             // survives establishment, mirroring InitialN2 (#300). The mod-128 k := 32
-            // stays the spec default (32), narrowed only by XID — intentionally not seeded.
+            // stays the spec default (32), narrowed only by XID - intentionally not seeded.
             Ax25ActionVerb.KAssign8 => Do(() => ctx.K = InitialK),
             Ax25ActionVerb.KAssign32 => Do(() => ctx.K = 32),
             // T2 := 3000 seeds the response-delay timer from the configurable
@@ -829,7 +829,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // the new-sample term is (T1V - remaining_when_stopped): the elapsed
             // portion of T1 from arm to stop. The sample is a valid round-trip
             // ONLY when T1 was stopped by an acknowledgement of the frame that
-            // armed it — i.e. it was running, so remaining > 0. On a
+            // armed it - i.e. it was running, so remaining > 0. On a
             // timeout/retransmit remaining is 0, the sample degenerates to the
             // full T1V (= 2·SRT), and since T1V derives from SRT the IIR
             // self-amplifies (SRT' = 1.125·SRT) → unbounded growth → overflow.
@@ -914,7 +914,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // event; throws otherwise. The figc4.7 arrow form folds here too.
             // Pruning the just-acknowledged frames out of SentIFrames here keeps a
             // later stale/duplicate REJ/SREJ from replaying an already-acked frame
-            // (the mod-8 SREJ ring-wrap duplicate; #231-class) — direwolf deletes
+            // (the mod-8 SREJ ring-wrap duplicate; #231-class) - direwolf deletes
             // each acknowledged txdata_by_ns[ns] at the same point (ax25_link.c).
             Ax25ActionVerb.VAAssignNR => Do(() =>
             {
@@ -1005,7 +1005,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <summary>
     /// Read the P/F bit from the incoming frame. Used by <c>F := P</c> to echo
     /// the peer's poll bit back in the final. <see cref="Ax25Frame.PollFinal"/>
-    /// is mode-aware — bit 4 of the control octet under modulo-8 (and for U
+    /// is mode-aware - bit 4 of the control octet under modulo-8 (and for U
     /// frames), but bit 0 of the second control octet for an extended
     /// (modulo-128) I or S frame (Fig 4.1b).
     /// </summary>
@@ -1031,7 +1031,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// every <c>signal_lower</c> verb. For example, figc4.4 t23
     /// (DL_FLOW_OFF, own_receiver_busy=Yes) draws bare
     /// <c>set_own_receiver_busy; RNR_response; clear_acknowledge_pending</c>
-    /// with no N(R) or F-bit setup beforehand — the spec assumes the
+    /// with no N(R) or F-bit setup beforehand - the spec assumes the
     /// implementation fills in <c>N(R) = V(R)</c> (current receive state)
     /// and <c>F = 0</c> implicitly. Other transitions are explicit when
     /// they need a specific value (e.g. <c>F := 1; N(r) := V(r); RR</c>
@@ -1126,21 +1126,21 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <para>
     /// Emits directly rather than via <see cref="Ax25SessionContext.IFrameQueue"/>:
     /// the queue + fresh-frame drain (figc4.4 t03 "I frame pops off queue")
-    /// assigns <c>N(S):=V(S)</c> and increments V(S) — correct for a *fresh*
+    /// assigns <c>N(S):=V(S)</c> and increments V(S) - correct for a *fresh*
     /// frame, but it renumbers a *retransmitted* one to the current V(S), so the
     /// peer never sees the missing sequence number and the gap never fills (the
     /// figure assumes the push + transmit interleave; the runtime decoupled them
     /// into push-now / drain-later, losing the N(S) semantics). N(S) is the supplied
     /// original sequence; N(R) piggybacks the current V(R); P=0 (the poll, when
     /// needed, is a separate enquiry). Silently skips if the frame has been
-    /// evicted from storage — matches linbpq/direwolf.
+    /// evicted from storage - matches linbpq/direwolf.
     /// </para>
     /// <para>
     /// For the SREJ-driven selective replay (<paramref name="selectiveReplay"/> =
     /// true) only an <em>outstanding</em> frame (N(S) ∈ [V(a), V(s))) is re-sent,
     /// and at most once per recovery cycle. A REJ/SREJ that names an already-
-    /// acknowledged N(S) — a stale or duplicated supervisory frame arriving after
-    /// V(a) has moved past it, or a redundant SREJ for a frame already in flight —
+    /// acknowledged N(S) - a stale or duplicated supervisory frame arriving after
+    /// V(a) has moved past it, or a redundant SREJ for a frame already in flight -
     /// must NOT cause a resend: that copy becomes a duplicate once the peer's V(R)
     /// has wrapped around the ring and is then mis-delivered as new data (the mod-8
     /// SREJ ring-wrap bug; #231-class). direwolf deletes each
@@ -1242,7 +1242,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <remarks>
     /// The figc4.4 / figc4.5 stored-frame drain loop draws retrieval and
     /// delivery as two separate actions (Retrieve, then DL-DATA Indication),
-    /// so this stages rather than delivers — otherwise the loop body's own
+    /// so this stages rather than delivers - otherwise the loop body's own
     /// DL-DATA Indication would double-deliver. If no stored frame matches,
     /// this is a no-op (matching linbpq / direwolf).
     /// </remarks>
@@ -1264,7 +1264,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// In figc4.4 some paths fire <c>DL_DATA_indication</c> after a
     /// <c>retrieve_stored_V_r_I_frame</c> verb, which dequeues a
     /// previously-saved out-of-sequence frame. That delivery path needs
-    /// to plumb the stored frame's Info/Pid through — not yet wired,
+    /// to plumb the stored frame's Info/Pid through - not yet wired,
     /// because <c>retrieve_stored_V_r_I_frame</c> itself isn't wired.
     /// The current implementation only handles the simple case (deliver
     /// the trigger frame's Info/Pid).
@@ -1337,7 +1337,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// </para>
     /// <para>
     /// Returns <c>null</c> (rather than an empty list) when the trigger
-    /// has no inbound frame OR the inbound frame has no digipeaters —
+    /// has no inbound frame OR the inbound frame has no digipeaters -
     /// this lets the wire-translation layer fall back to the context's
     /// <see cref="Ax25SessionContext.Digipeaters"/> for direct links and
     /// for outbound-initiated frames (SABM via our own configured digi

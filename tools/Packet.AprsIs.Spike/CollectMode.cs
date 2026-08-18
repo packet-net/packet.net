@@ -82,7 +82,7 @@ public static class CollectMode
                 {
                     if (rawLine.Length == 0 || rawLine[0] == '#')
                     {
-                        // Server keepalive / comment — track but don't persist.
+                        // Server keepalive / comment - track but don't persist.
                         continue;
                     }
 

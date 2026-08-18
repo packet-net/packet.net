@@ -13,7 +13,7 @@ using Xunit;
 namespace Packet.Interop.Tests.Linbpq;
 
 /// <summary>
-/// v2.2 arc — <b>mod-8 Selective Reject (SREJ) interop against the real LinBPQ
+/// v2.2 arc - <b>mod-8 Selective Reject (SREJ) interop against the real LinBPQ
 /// container over net-sim</b>. This is the proof that PDN gets <i>working SREJ on
 /// the wire to LinBPQ</i>: a dropped I-frame is recovered by LinBPQ sending us an
 /// <b>SREJ</b> (selective retransmit), not a REJ (go-back-N).
@@ -22,7 +22,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <para>
 /// <b>The headline finding (source-verified against LinBPQ 6.0.25.23 + on the
 /// wire).</b> Contrary to the earlier "BPQ = go-back-N only" inference, LinBPQ
-/// <i>does</i> do mod-8 SREJ — but with two hard requirements, both proven here on
+/// <i>does</i> do mod-8 SREJ - but with two hard requirements, both proven here on
 /// the live stack:
 /// </para>
 /// <list type="number">
@@ -31,7 +31,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// switches its reject scheme from REJ to SREJ, <c>L2Code.c</c> ~L4230). An XID on
 /// an <i>already-established</i> link is ignored (verified: BPQ never answers a
 /// post-connect XID on this port). The AX.25 v2.2 figures instead negotiate XID
-/// <i>after</i> the connect (figc4.6 raises MDL-NEGOTIATE on the UA) — that
+/// <i>after</i> the connect (figc4.6 raises MDL-NEGOTIATE on the UA) - that
 /// post-connect XID never reaches BPQ's responder. So speaking SREJ to BPQ needs the
 /// <b>pre-SABM</b> exchange, which is what
 /// <see cref="Ax25ListenerOptions.PreConnectXidNegotiatesSrej"/> drives.</item>
@@ -46,12 +46,12 @@ namespace Packet.Interop.Tests.Linbpq;
 /// </list>
 /// <para>
 /// <b>What this test does.</b> Over net-sim node a (KISS-TCP 8100), it sends BPQ an
-/// XID command (mod-8, SREJ + SREJ-multiframe, MSB-first PV — exactly what the
+/// XID command (mod-8, SREJ + SREJ-multiframe, MSB-first PV - exactly what the
 /// production <see cref="Ax25ManagementDataLink"/> offer now serialises), waits for
 /// BPQ's XID response (which confirms SREJ-multi + mod-8), then SABMs. With the link
 /// in SREJ mode it sends three I-frames, dropping our N(S)=1 on the send side so BPQ
 /// sees a gap (0 then 2). It asserts BPQ emits an <b>SREJ</b> (S-frame, low nibble
-/// <c>0b1101</c>) for N(R)=1 — NOT a REJ — and that our selective retransmit of
+/// <c>0b1101</c>) for N(R)=1 - NOT a REJ - and that our selective retransmit of
 /// frame 1 completes the sequence (BPQ acks up to N(R)=3). A companion case proves
 /// the contrast: a plain SABM connect with <i>no</i> pre-SABM XID recovers the same
 /// dropped frame via <b>REJ</b> (go-back-N), since BPQ's link stays <c>Ver2point2=0</c>.

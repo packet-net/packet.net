@@ -5,7 +5,7 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Tests.Api;
 
 /// <summary>
-/// Locks <see cref="WebAuthnFido2Builder"/>'s accepted-origin computation — the
+/// Locks <see cref="WebAuthnFido2Builder"/>'s accepted-origin computation - the
 /// load-bearing tier split between the zero-config localhost default (tier 1) and the
 /// operator-pinned real-domain path (tier 3, e.g. <c>pdn.m0lte.uk</c> reached from a
 /// phone on the LAN). The security-critical property: when origins are pinned, the
@@ -34,7 +34,7 @@ public sealed class WebAuthnFido2BuilderTests
     {
         // A browser hitting the default port (https→443) sends a bare `Host: pdn.m0lte.uk`
         // with no port, and the origin it then signs into clientDataJSON likewise has no
-        // port — so the serving origin we derive must match (no port).
+        // port - so the serving origin we derive must match (no port).
         var req = RequestFor("https", "pdn.m0lte.uk");
         WebAuthnFido2Builder.ServingOrigin(req).Should().Be("https://pdn.m0lte.uk");
     }
@@ -106,7 +106,7 @@ public sealed class WebAuthnFido2BuilderTests
     public void PinnedOrigins_can_list_more_than_one()
     {
         // Reachable under more than one name (e.g. a split-horizon LAN name + a public
-        // name) — both pinned, both trusted, nothing else.
+        // name) - both pinned, both trusted, nothing else.
         var cfg = new WebAuthnConfig
         {
             RelyingPartyId = "pdn.m0lte.uk",

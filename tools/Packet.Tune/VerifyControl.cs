@@ -8,7 +8,7 @@ namespace Packet.Tune;
 /// <summary>
 /// <c>verify-control</c>: prove a NinoTNC is under software control.
 /// Reads the DIP positions + config mode from GETALL, pins a known-good
-/// mode (SETHW, non-persist — default 6, <c>--mode N</c> overrides,
+/// mode (SETHW, non-persist - default 6, <c>--mode N</c> overrides,
 /// <c>--keep-mode</c> skips), then measures the effective TXDELAY at two
 /// commanded values via <see cref="TxDelayControlCheck"/>. If the measured
 /// value tracks the commanded one, the TXDELAY pot is at minimum and KISS
@@ -16,7 +16,7 @@ namespace Packet.Tune;
 /// </summary>
 /// <remarks>
 /// The mode pinning exists because of a real bench failure (2026-07-02):
-/// straight after the 3.44 firmware flash the TNC boots mode 0 (9600 GFSK —
+/// straight after the 3.44 firmware flash the TNC boots mode 0 (9600 GFSK -
 /// dead on the rig's narrow channels), and the timing check then produced a
 /// FALSE "pot override" verdict. Measure in a mode that actually decodes.
 /// </remarks>
@@ -74,13 +74,13 @@ internal static class VerifyControl
         else
         {
             // Pin a known-good mode before measuring: a stale mode (e.g. the
-            // post-flash default 0 — 9600 GFSK, dead on narrow channels)
+            // post-flash default 0 - 9600 GFSK, dead on narrow channels)
             // makes the timing check report a false "pot override".
             Console.WriteLine($"  pinning mode {pinMode} (SETHW +16, non-persist) for the check — --keep-mode skips this");
             try
             {
                 // Verified (#633): an ignored SETHW leaves the check measuring the OLD mode's bit
-                // rate against the new mode's arithmetic — a false "pot override" verdict, which is
+                // rate against the new mode's arithmetic - a false "pot override" verdict, which is
                 // the very failure this command exists to rule out.
                 await tnc.SetModeAsync(pinMode, persistToFlash: false);
             }

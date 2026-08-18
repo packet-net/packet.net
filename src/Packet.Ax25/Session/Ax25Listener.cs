@@ -11,7 +11,7 @@ namespace Packet.Ax25.Session;
 /// First-class AX.25 inbound-acceptance coordinator. Owns one
 /// <see cref="IAx25Transport"/>, address-filters inbound frames against
 /// <see cref="MyCall"/>, dispatches to the per-peer <see cref="Ax25Session"/>
-/// (creating one on first contact — inbound SABM or outbound
+/// (creating one on first contact - inbound SABM or outbound
 /// <see cref="ConnectAsync(Callsign, CancellationToken)"/>), and surfaces
 /// per-frame TX/RX events so monitor / promiscuous-capture UIs can tap
 /// the channel.
@@ -20,7 +20,7 @@ namespace Packet.Ax25.Session;
 /// <para>
 /// packet.net is being shaped into a packet-radio <em>node</em>: a station
 /// that exists to accept inbound connections, not merely make outbound
-/// ones. The Listener is the foundational piece of that shape — every
+/// ones. The Listener is the foundational piece of that shape - every
 /// node-style consumer (BBS, gateway, automatic forwarder, the TUI) goes
 /// through it instead of reinventing the inbound-pump / session-rebuild
 /// loop the TUI's <c>SessionRunner</c> originally carried.
@@ -28,7 +28,7 @@ namespace Packet.Ax25.Session;
 /// <para>
 /// <b>Per-peer session cache.</b> The Listener keeps a
 /// <see cref="ConcurrentDictionary{TKey, TValue}"/> keyed by remote
-/// callsign. Sessions survive disconnect — they sit idle in the
+/// callsign. Sessions survive disconnect - they sit idle in the
 /// Disconnected state, retaining their
 /// <see cref="Ax25SessionContext"/> (and therefore their SRT / T1V
 /// smoothing / sequence-variable history) for the next time that peer
@@ -63,7 +63,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     private readonly ITxCompletionTransport? txCompletion;
 
     // Native carrier-sense CSMA gate (OQ-012): the link-multiplexer consults it before every
-    // keyup and holds the transmission while the channel is busy. Off by default — with no
+    // keyup and holds the transmission while the channel is busy. Off by default - with no
     // source (Ax25ListenerOptions.CarrierSense == null) it always reports clear, so every send
     // is byte-for-byte the prior fire-and-forget path and the SDL transition behaviour is
     // untouched. A radio-attached node port injects its IRadioControl DCD (via RadioCarrierSense)
@@ -79,10 +79,10 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     // Published by reference: BuildSession / EvictExcessLocked read a coherent
     // snapshot under a single volatile read; UpdateSessionParameters swaps the
     // whole record atomically. Existing cached sessions keep the context they
-    // were built with — object identity preserved.
+    // were built with - object identity preserved.
     private Ax25SessionParameters sessionParameters;
     // Sessions are keyed by the (local, remote) callsign PAIR: with local aliases (below) the
-    // same remote can hold one link to MyCall and another to an app callsign simultaneously —
+    // same remote can hold one link to MyCall and another to an app callsign simultaneously -
     // a remote-only key would conflate them. The console/MyCall path is unchanged semantically
     // (its key is just (MyCall, remote) now).
     private readonly ConcurrentDictionary<SessionKey, CachedSession> sessions = new();
@@ -90,7 +90,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     private readonly Dictionary<SessionKey, LinkedListNode<SessionKey>> lruIndex = new();
     private readonly object cacheGate = new();
     // Additional local callsigns this listener answers for (inbound SABM/TEST) and may
-    // originate from — the multi-callsign seam the node's RHPv2 server registers app
+    // originate from - the multi-callsign seam the node's RHPv2 server registers app
     // callsigns into (an RHP client's `bind` is what adds one). Value = refcount, so two
     // independent registrations of the same callsign compose.
     private readonly ConcurrentDictionary<Callsign, int> localAliases = new();
@@ -172,7 +172,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         }
 
         /// <summary>
-        /// The session's management data-link (MDL) driver — runs the XID
+        /// The session's management data-link (MDL) driver - runs the XID
         /// parameter-negotiation FSM. Started by the data-link's
         /// <c>MDL-NEGOTIATE Request</c> poke (raised after the UA on a v2.2
         /// connect); inbound XID-response / FRMR-of-XID frames are routed here
@@ -187,7 +187,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         /// runs an over-N1 payload through its segmenter, and the
         /// <c>SendUpward</c> fan-out runs every inbound DL-DATA indication
         /// through its reassembler (0x08 PID → reassemble, else pass through).
-        /// One per session — it owns the per-session reassembly buffer.
+        /// One per session - it owns the per-session reassembly buffer.
         /// </summary>
         public required SegmentationLayer Segmentation { get; init; }
     }
@@ -239,7 +239,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// Register an additional local callsign this listener answers for: an inbound SABM (or
     /// connectionless TEST) addressed to it is accepted exactly as one addressed to
     /// <see cref="MyCall"/>, with the session's <see cref="Ax25SessionContext.Local"/> set to
-    /// the alias — and <see cref="ConnectAsync(Callsign, Callsign, CancellationToken)"/> can
+    /// the alias - and <see cref="ConnectAsync(Callsign, Callsign, CancellationToken)"/> can
     /// originate from it. This is the multi-callsign seam the node's RHPv2 server uses to
     /// answer for application callsigns (a client's <c>bind</c> registers one). Refcounted:
     /// each <see cref="AddLocalAlias"/> is balanced by one <see cref="RemoveLocalAlias"/>.
@@ -251,7 +251,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// Remove one registration of <paramref name="alias"/> (see <see cref="AddLocalAlias"/>).
     /// The listener stops answering for the callsign when the last registration is removed;
     /// live sessions on it keep running until they disconnect (their cache key keeps routing
-    /// their frames — removal only stops <em>new</em> inbound acceptance).
+    /// their frames - removal only stops <em>new</em> inbound acceptance).
     /// </summary>
     public void RemoveLocalAlias(Callsign alias)
     {
@@ -274,7 +274,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// <summary>
     /// Fires once per peer-initiated connect, after the listener has
     /// built (or reused) the session and posted SABM. The session is
-    /// already mid-handshake when this fires — consumers attach
+    /// already mid-handshake when this fires - consumers attach
     /// onData / onDisconnect handlers on the session's signal stream
     /// and proceed from there.
     /// </summary>
@@ -294,7 +294,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// </summary>
     /// <param name="modem">The AX.25 frame transport the listener attaches to. Reads frames via
     /// <see cref="IAx25Transport.ReceiveAsync"/>; sends via <see cref="IAx25Transport.SendAsync"/>.</param>
-    /// <param name="options">Listener options — required <see cref="Ax25ListenerOptions.MyCall"/> and optional timing / cache knobs.</param>
+    /// <param name="options">Listener options - required <see cref="Ax25ListenerOptions.MyCall"/> and optional timing / cache knobs.</param>
     public Ax25Listener(IAx25Transport modem, Ax25ListenerOptions options)
         : this(modem, options, TimeProvider.System, null)
     {
@@ -303,8 +303,8 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// <summary>
     /// Test-injection ctor: supply a custom <see cref="TimeProvider"/> so tests can drive
     /// T1/T2/T3 with a <c>FakeTimeProvider</c>. The native carrier-sense CSMA source (if any)
-    /// is taken from <see cref="Ax25ListenerOptions.CarrierSense"/> — the first-class,
-    /// parity-tracked medium-access seam — so the link-multiplexer holds every keyup while the
+    /// is taken from <see cref="Ax25ListenerOptions.CarrierSense"/> - the first-class,
+    /// parity-tracked medium-access seam - so the link-multiplexer holds every keyup while the
     /// channel is busy (see <see cref="CarrierSenseGate"/>). A <c>null</c> source (the default)
     /// is the always-clear degenerate gate: transmissions are never deferred, so behaviour is
     /// byte-for-byte the same as before.
@@ -342,7 +342,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
         LogStarted(portName, MyCall.ToString());
         pumpTask = Task.Run(() => InboundPumpAsync(lifecycleCts.Token), CancellationToken.None);
-        // Don't await pumpStarted in production — the pump signals
+        // Don't await pumpStarted in production - the pump signals
         // immediately on entering the loop, so awaiting it would only
         // add a context switch. Tests that want to be sure the pump is
         // ready can await `StartAsync` then await a brief settle.
@@ -370,14 +370,14 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// and every cached <see cref="Ax25Session"/> keeps its own object identity
     /// and its already-seeded <see cref="Ax25SessionContext"/> (and therefore its
     /// in-flight timers, sequence variables, and SRT/T1V smoothing). The new
-    /// values apply only to sessions built <em>after</em> this call — a peer that
+    /// values apply only to sessions built <em>after</em> this call - a peer that
     /// connects in (or out) next picks them up; current QSOs are untouched.
     /// </para>
     /// <para>
     /// The swap is a single atomic reference publish, so a session being built
     /// concurrently on the inbound pump reads either the whole old record or the
     /// whole new one, never a torn mix. <see cref="Ax25SessionParameters.MaxCachedPeers"/> takes effect
-    /// on the next eviction pass (the next session add) — it never evicts a live
+    /// on the next eviction pass (the next session add) - it never evicts a live
     /// session synchronously here.
     /// </para>
     /// </remarks>
@@ -409,11 +409,11 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     /// <summary>
     /// Initiate an outbound connect originating from <paramref name="local"/> instead of
-    /// <see cref="MyCall"/> — the multi-callsign origination the node's RHPv2 server uses to
+    /// <see cref="MyCall"/> - the multi-callsign origination the node's RHPv2 server uses to
     /// dial out as an application's callsign. The session's cache key is the (local, remote)
     /// pair, so the same remote can hold simultaneous links to MyCall and to an alias; the
     /// inbound filter routes the peer's replies by that pair (no alias registration needed
-    /// for an outbound link — its live cache key admits them).
+    /// for an outbound link - its live cache key admits them).
     /// </summary>
     /// <remarks>
     /// Whether this dial prefers AX.25 v2.2 (SABME / mod-128, degrading to v2.0 for
@@ -445,7 +445,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// As <see cref="ConnectAsync(Callsign, Callsign, bool, CancellationToken)"/>, but also
     /// overrides the listener's <see cref="Ax25ListenerOptions.PreConnectXidNegotiatesSrej"/>
     /// per dial. <paramref name="preConnectXidNegotiatesSrej"/> only takes effect on a mod-8
-    /// dial (<paramref name="extended"/> = <c>false</c>) — the v2.2/SABME path negotiates XID
+    /// dial (<paramref name="extended"/> = <c>false</c>) - the v2.2/SABME path negotiates XID
     /// post-UA. The node's per-peer capability cache uses this to skip the pre-SABM XID probe
     /// for a neighbour it already knows does not answer one (go-back-N), or to force it.
     /// </summary>
@@ -491,7 +491,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // IsExtended drives the figc4.7 Establish_Data_Link modulo branch (SABME vs
         // SABM) and, via Ax25Spec44, routes the connect through AwaitingV22Connection
         // (figc4.6) so the FRMR/DM v2.0 fallbacks (Ax25Spec45 / Ax25Spec48) are
-        // reachable. Set only on the outbound dial — the inbound answerer adopts the
+        // reachable. Set only on the outbound dial - the inbound answerer adopts the
         // peer's version from the SABM/SABME it receives (figc4.1). A cached session
         // re-dialled after a prior fallback dropped it to mod-8 is re-armed here, so
         // every dial starts from the caller's chosen preference.
@@ -502,11 +502,11 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // BPQ does mod-8 SREJ but only honours an XID that PRECEDES the SABM (its
         // ProcessXIDCommand runs on the no-active-link path and sets Ver2point2; an
         // XID on an established link is ignored). The v2.2 figures negotiate XID
-        // post-UA instead — which never reaches BPQ's responder — so SREJ-to-BPQ
+        // post-UA instead - which never reaches BPQ's responder - so SREJ-to-BPQ
         // specifically needs this pre-SABM exchange. Proven on the wire
         // (SrejXidViaNetsim). Safe regardless of peer: if no XID response arrives in
         // the budget, we fall through to a plain SABM (go-back-N link). Skipped on
-        // the extended (SABME) path — that uses the figc4.6 post-UA MDL negotiation.
+        // the extended (SABME) path - that uses the figc4.6 post-UA MDL negotiation.
         if (!extended && preConnectXidNegotiatesSrej)
         {
             LogPreConnectXid(portName, local.ToString(), remote.ToString());
@@ -518,7 +518,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
         cached.Session.PostEvent(new DlConnectRequest());
 
-        // figc4.2 budget — wait up to N2 * T1V for UA. Use the session's
+        // figc4.2 budget - wait up to N2 * T1V for UA. Use the session's
         // negotiated values to give the right backstop on slow links.
         var budget = TimeSpan.FromMilliseconds(
             (cached.Session.Context.N2 + 1) * cached.Session.Context.T1V.TotalMilliseconds);
@@ -562,12 +562,12 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             catch (OperationCanceledException) { break; }
         }
 
-        // An explicit caller-cancel is a cancellation, not a timeout — honour it first.
+        // An explicit caller-cancel is a cancellation, not a timeout - honour it first.
         ct.ThrowIfCancellationRequested();
 
         // Final drain before declaring failure: a DL-CONNECT-confirm enqueued in
-        // the last poll window — after the loop's inner drain, as the budget
-        // expired and Task.Delay was cancelled — would otherwise be lost to a
+        // the last poll window - after the loop's inner drain, as the budget
+        // expired and Task.Delay was cancelled - would otherwise be lost to a
         // spurious timeout even though the connect actually succeeded.
         if (DrainForConfirm() is { } lateConfirm)
         {
@@ -588,7 +588,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// setting <see cref="Ax25SessionContext.SrejEnabled"/>) before returning so the
     /// caller can post DL-CONNECT-request. A peer that does not answer XID leaves the
     /// MDL to exhaust its TM201 retries; we cap the wait and proceed to a plain SABM
-    /// (go-back-N) regardless — the dial is never blocked by a non-XID peer.
+    /// (go-back-N) regardless - the dial is never blocked by a non-XID peer.
     /// </summary>
     private async Task NegotiateSrejBeforeConnectAsync(CachedSession cached, CancellationToken ct)
     {
@@ -597,7 +597,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // Offer SREJ: DefaultOfferFor reads SrejEnabled to advertise SREJ + the
         // OPSREJMult bit BPQ's XID responder requires. The peer's XID response is
         // applied by the inbound router (XidNegotiator.ApplyNegotiated), which sets
-        // SrejEnabled to the MUTUAL result — true only if the peer also offered SREJ.
+        // SrejEnabled to the MUTUAL result - true only if the peer also offered SREJ.
         ctx.SrejEnabled = true;
         ctx.ImplicitReject = false;
 
@@ -619,16 +619,16 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             cached.Mdl.Negotiate();
 
             // Optimistic short probe, NOT a full connection-retry budget. A peer that
-            // does pre-session XID (BPQ) answers on the FIRST frame — its XID response is
+            // does pre-session XID (BPQ) answers on the FIRST frame - its XID response is
             // immediate on the no-active-link path. A peer that doesn't (another PDN, a
             // dumb v2.0 TNC) never answers, so waiting the full (N2+1)·T1V establishment
-            // budget (≈ up to 12 s) just stalls every mod-8 dial to it — including NET/ROM
-            // interlinks — before the SABM fallback. So wait only ~2·T1V (one command +
+            // budget (≈ up to 12 s) just stalls every mod-8 dial to it - including NET/ROM
+            // interlinks - before the SABM fallback. So wait only ~2·T1V (one command +
             // one retry / a loss margin), floored at 1.5 s so a clean link gets a fair
             // shot and capped at 3.5 s so a silent peer degrades to go-back-N promptly.
             // The MDL leaves Negotiating on the XID response (success), a FRMR (v2.0
             // fallback), or give-up. (Adaptive per-neighbour reuse is the capability cache,
-            // §5.G — remember who answers and skip the probe entirely.)
+            // §5.G - remember who answers and skip the probe entirely.)
             var budget = TimeSpan.FromMilliseconds(
                 Math.Min(3_500, Math.Max(1_500, 2 * ctx.T1V.TotalMilliseconds)));
             using var budgetCts = new CancellationTokenSource(budget, timeProvider);
@@ -676,7 +676,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// and each is posted as its own <see cref="DlDataRequest"/>. Otherwise a
     /// single un-segmented request is posted. An over-N1 payload on a session
     /// that has <em>not</em> negotiated the segmenter throws
-    /// <see cref="InvalidOperationException"/> — the request is rejected
+    /// <see cref="InvalidOperationException"/> - the request is rejected
     /// cleanly rather than truncated or sent oversize.
     /// </para>
     /// <para>
@@ -716,7 +716,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     }
 
     /// <summary>
-    /// Send a connectionless UI (unproto) frame on this port's modem — the send
+    /// Send a connectionless UI (unproto) frame on this port's modem - the send
     /// path connected-mode <see cref="SendData"/> is not: it bypasses the session
     /// layer entirely. This is what an upper layer uses to transmit
     /// promiscuously-heard broadcasts (NET/ROM NODES routing broadcasts ride a UI
@@ -737,7 +737,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     /// <summary>
     /// Send a connectionless UI (unproto) frame originating from an <b>explicit source</b>
-    /// callsign instead of <see cref="MyCall"/> — the multi-callsign origination the node's
+    /// callsign instead of <see cref="MyCall"/> - the multi-callsign origination the node's
     /// RHPv2 server uses to emit a DGRAM datagram (the wire's <c>sendto</c>) as an application's
     /// bound callsign (e.g. an IP-over-AX.25 UI frame, pid <c>0xCC</c>, or a native beacon / APRS
     /// frame, pid <c>0xF0</c>). Like the <see cref="SendUiAsync(Callsign, ReadOnlyMemory{byte}, byte, CancellationToken)"/>
@@ -761,7 +761,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// <summary>
     /// Send a strict outbound frame on the modem, then trace it as
     /// <see cref="FrameDirection.Transmitted"/>. The trace MUST come after the send
-    /// so the monitor's TX order matches the wire — centralised here so that ordering
+    /// so the monitor's TX order matches the wire - centralised here so that ordering
     /// (and the comment explaining it) lives in one place rather than being repeated
     /// at every connectionless send site. The per-session <c>SendBytes</c> path keeps
     /// its own copy because it interleaves T1 re-arming with the send.
@@ -783,7 +783,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     /// <summary>
     /// Send a connectionless AX.25 <b>TEST command</b> frame (§4.3.4.2) to
-    /// <paramref name="destination"/> with the given information field — the
+    /// <paramref name="destination"/> with the given information field - the
     /// "axping" probe. A spec-compliant responder echoes the information field back
     /// in a TEST <em>response</em>; the caller correlates that response (via
     /// <see cref="FrameTraced"/>) to measure round-trip time. Like
@@ -792,7 +792,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// frame is built via the strict <see cref="Ax25Frame.Test"/> factory, and it is
     /// traced as <see cref="FrameDirection.Transmitted"/>. <paramref name="pollFinal"/>
     /// defaults to the P bit set (a command soliciting a response). Not every node
-    /// implements TEST — a peer that doesn't simply never responds (the caller sees a
+    /// implements TEST - a peer that doesn't simply never responds (the caller sees a
     /// timeout / loss), which is not an error.
     /// </summary>
     public async Task SendTestAsync(
@@ -873,7 +873,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     private volatile bool ackmodeUnsupported;
 
     /// <summary>
-    /// Frames whose transmission (re)arms T1 in the figures — an I-frame, an
+    /// Frames whose transmission (re)arms T1 in the figures - an I-frame, an
     /// enquiry (S-frame command with P=1), or a mode-setting command
     /// (SABM/SABME/DISC, whose AwaitingConnection/Release retries T1 drives).
     /// Only these get the ACKMODE TX-complete→T1 treatment; responses and
@@ -887,7 +887,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         }
         if ((frame.Control & 0x03) == 0x01)
         {
-            return frame.IsCommand && frame.PollFinal; // RR/RNR/REJ command P=1 — an enquiry
+            return frame.IsCommand && frame.PollFinal; // RR/RNR/REJ command P=1 - an enquiry
         }
         var uBase = frame.Control & 0xEF;
         return uBase is 0x2F or 0x6F or 0x43; // SABM / SABME / DISC
@@ -909,7 +909,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                 // non-Data KISS commands itself), so there is no wire-protocol filter here.
                 // Parse under the port's configured options (read live, so a
                 // reseed applies from the next frame). A frame the options
-                // reject is dropped here — before tracing and dispatch — so a
+                // reject is dropped here - before tracing and dispatch - so a
                 // Strict port is deaf to it end-to-end (no session can open
                 // from it, and the monitor/NET-ROM taps don't see it either).
                 var parseOptions = Volatile.Read(ref sessionParameters).ParseOptions ?? Ax25ParseOptions.Lenient;
@@ -948,7 +948,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             Interlocked.Exchange(ref running, 0);
         }
         // Note on event-handler exceptions:
-        // The Listener is a long-running infrastructure component —
+        // The Listener is a long-running infrastructure component -
         // a buggy SessionAccepted / FrameTraced subscriber must not
         // be allowed to crash the pump or leak through StopAsync /
         // DisposeAsync. We swallow synchronously here; future work
@@ -1005,7 +1005,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     private void DispatchInbound(Ax25Frame parsed, ReadOnlyMemory<byte> payload, Ax25ParseOptions parseOptions)
     {
         // Frames not addressed to us: monitor-only (trace already fired). "Us" is MyCall, any
-        // registered local alias (app callsigns — see AddLocalAlias), or the local side of a
+        // registered local alias (app callsigns - see AddLocalAlias), or the local side of a
         // live session (an outbound link originated FROM an alias keeps receiving its replies
         // even if the alias was deregistered mid-session).
         var local = parsed.Destination.Callsign;
@@ -1032,19 +1032,19 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         LogRx(portName, parsed.Source.Callsign.ToString(), local.ToString(), Ax25FrameDescriber.Describe(parsed));
 
         // Connectionless TEST (§4.3.4.2) is link-independent and must be handled BEFORE any
-        // session routing — see TryInterceptConnectionlessTest for the full rationale.
+        // session routing - see TryInterceptConnectionlessTest for the full rationale.
         if (TryInterceptConnectionlessTest(parsed))
         {
             return;
         }
 
-        // Existing session — deliver to the cached state machine and we're done.
+        // Existing session - deliver to the cached state machine and we're done.
         if (TryRouteToCachedSession(key, parsed, payload, parseOptions))
         {
             return;
         }
 
-        // No cached session — run the establishment / transient handling.
+        // No cached session - run the establishment / transient handling.
         HandleNoCachedSession(key, local, parsed.Source.Callsign, parsed);
     }
 
@@ -1058,12 +1058,12 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// echoing the information field (the "axping" answer).</item>
     /// <item>TEST <em>response</em> → the echo to our own axping. The AxPinger initiator
     /// correlates it via <c>FrameTraced</c>, which already fired upstream on the pump
-    /// (before <see cref="DispatchInbound"/>) — so we simply absorb it here. Routing it
+    /// (before <see cref="DispatchInbound"/>) - so we simply absorb it here. Routing it
     /// onward would only emit a connectionless DM (the t05 catch-all), which is
     /// spec-noise back at a station that just answered our probe.</item>
     /// </list>
     /// Returns <c>true</c> when the frame was a TEST and has been absorbed (the caller
-    /// returns without touching a session — observation-safe); <c>false</c> otherwise.
+    /// returns without touching a session - observation-safe); <c>false</c> otherwise.
     /// </summary>
     private bool TryInterceptConnectionlessTest(Ax25Frame parsed)
     {
@@ -1087,7 +1087,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     private bool TryRouteToCachedSession(
         SessionKey key, Ax25Frame parsed, ReadOnlyMemory<byte> payload, Ax25ParseOptions parseOptions)
     {
-        // Existing session — deliver to the cached state machine and we're done. SABM from a
+        // Existing session - deliver to the cached state machine and we're done. SABM from a
         // peer we've seen before lands in the cached session's Disconnected state and runs
         // figc4.1 t14 just like a fresh one. We re-fire SessionAccepted in that case so
         // consumers can re-arm any per-session handlers they attached the last time around.
@@ -1098,7 +1098,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
         TouchLru(key);
 
-        // The routing parse (line ~268) was modulo-8 — we didn't yet know
+        // The routing parse (line ~268) was modulo-8 - we didn't yet know
         // which session, hence which modulo. Addresses precede the control
         // field and are modulo-independent, so routing is valid; but an
         // extended (modulo-128) I/S frame's 2-octet control field was
@@ -1107,7 +1107,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         var frame = ReparseAtSessionModulo(parsed, payload, cached.Session.Context, parseOptions);
         var cachedClassified = Ax25FrameClassifier.Classify(frame);
 
-        // XID / FRMR-of-XID routing — these belong to the MDL machine, not
+        // XID / FRMR-of-XID routing - these belong to the MDL machine, not
         // the data-link session (the data-link Connected state has no XID
         // handler, and would FRMR-handle a FRMR as a full link reset):
         //
@@ -1172,7 +1172,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// </summary>
     private void HandleNoCachedSession(SessionKey key, Callsign local, Callsign peer, Ax25Frame parsed)
     {
-        // No cached session — the establishment / transient paths below deal in
+        // No cached session - the establishment / transient paths below deal in
         // U-frames (SABM/SABME) or fall to the Disconnected catch-all (→ DM),
         // all correctly decoded at modulo-8: an unknown peer can't already have
         // an extended link with us, so no second pass is needed here.
@@ -1197,40 +1197,40 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         //      correct for *cached* sessions in Connected/etc. but have
         //      no transition in Disconnected. The catch-all is named
         //      `all_other_commands` for exactly this case. (TEST never
-        //      reaches here — it is intercepted connectionlessly above. An
+        //      reaches here - it is intercepted connectionlessly above. An
         //      XID *command* with AcceptIncoming=true is likewise intercepted
-        //      above — the pre-session responder path — and never reaches
+        //      above - the pre-session responder path - and never reaches
         //      here; an XID *response* with no negotiation, or any XID with
         //      AcceptIncoming=false, still does and falls to t05.)
         //
         // The transient session uses the listener's current
         // AcceptIncoming for case (a)'s reject behaviour, and always
-        // true for case (b) — the catch-alls don't gate on it.
+        // true for case (b) - the catch-alls don't gate on it.
         bool isSabmShaped = classified is SabmReceived || classified is SabmeReceived;
 
         // A deregistered alias whose session is gone: only the live-session key kept the
         // frame past the filter; with no cached session and no registration, don't build a
-        // transient responder AS the alias — fall silent (we no longer answer for it).
+        // transient responder AS the alias - fall silent (we no longer answer for it).
         if (!local.Equals(MyCall) && !localAliases.ContainsKey(local))
         {
             return;
         }
 
         // Pre-session XID *command* (a peer doing pre-SABM negotiation to us, no
-        // active link yet). §4.3.3.7 makes answering an XID command unconditional —
+        // active link yet). §4.3.3.7 makes answering an XID command unconditional -
         // "A station receiving an XID command returns an XID response unless a UA is
-        // pending or a FRMR condition exists" — and §6.3.2 has negotiation happen
+        // pending or a FRMR condition exists" - and §6.3.2 has negotiation happen
         // *before* the connection so the subsequent SABM's link adopts the negotiated
         // parameters. The MDL (Annex C5.3) is a connection-independent machine, so
         // answering here is plain spec-compliant behaviour, not a pragmatic opt-in.
         //
         // The defect this closes is purely inbound routing: without this, the command
         // fell through to a transient session, got reclassified to all_other_commands,
-        // and the peer's pre-connect XID went unanswered (figc4.1 t05 → DM) — stalling
+        // and the peer's pre-connect XID went unanswered (figc4.1 t05 → DM) - stalling
         // PDN↔PDN NET/ROM mod-8 interlinks where the initiator opens with XID.
         //
         // We build + cache a real session (NOT transient): object identity is the
-        // staging mechanism — the (local,remote)-keyed cache persists the negotiated
+        // staging mechanism - the (local,remote)-keyed cache persists the negotiated
         // link context across the XID→SABM sequence, and the inbound SABM's figc4.1
         // t14 "Set Version 2.0" clears only IsExtended (it does NOT touch SrejEnabled),
         // so a staged SrejEnabled survives into the connection. We seed the context
@@ -1250,8 +1250,8 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             xidSession.Session.Context.ImplicitReject = false;
 
             // Build + send the F=1 XID response (the figc5.1 responder path). DO NOT
-            // raise SessionAccepted — there's no DL-CONNECT yet; the following SABM
-            // raises it. DO NOT dispose the scheduler — the session must persist for
+            // raise SessionAccepted - there's no DL-CONNECT yet; the following SABM
+            // raises it. DO NOT dispose the scheduler - the session must persist for
             // that SABM, and the responder arms no timer, so nothing leaks.
             xidSession.Mdl.RespondToXidCommand(parsed);
             return;
@@ -1312,7 +1312,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// sync inbound pump (<see cref="DispatchInbound"/>); the modem send is async,
     /// so we materialise the info field (the inbound buffer is reused after the
     /// pump moves on) and fire-and-forget an awaited send on a tracked Task with a
-    /// try/catch — never block the pump, never leave an unobserved Task. A failed
+    /// try/catch - never block the pump, never leave an unobserved Task. A failed
     /// send (modem torn down mid-flight) is swallowed: the inbound pump must not
     /// die because a connectionless courtesy reply couldn't go out.
     /// </remarks>
@@ -1322,7 +1322,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // once DispatchInbound returns, but the send below runs after that.
         var echo = command.Info.ToArray();
         var responder = command.Source.Callsign;
-        // Respond AS the callsign the TEST was addressed to — MyCall normally, the alias when
+        // Respond AS the callsign the TEST was addressed to - MyCall normally, the alias when
         // an app callsign was pinged (the station "at" that callsign answers, not the node).
         var respondAs = command.Destination.Callsign;
         // F bit of the response mirrors the P bit of the command (§4.3.4.2).
@@ -1376,7 +1376,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// <summary>
     /// Re-decode an inbound I/S frame at a known session's negotiated modulo.
     /// The inbound pump parses every frame at modulo-8 for routing (the session,
-    /// and thus the modulo, isn't known until the address is read) — which is
+    /// and thus the modulo, isn't known until the address is read) - which is
     /// always valid for the address fields but mis-reads an extended
     /// (modulo-128) I/S frame's 2-octet control field. Once the session is
     /// matched, this second pass re-parses the raw bytes at the session's
@@ -1403,7 +1403,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         {
             return routed;
         }
-        // Same options as the routing parse — a frame can't get stricter or
+        // Same options as the routing parse - a frame can't get stricter or
         // looser treatment just because its session negotiated mod-128.
         return Ax25Frame.TryParse(payload.Span, parseOptions, extended: true, out var ext)
             ? ext
@@ -1456,7 +1456,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     private const int MaxSequenceSpaceWindow = 127;
 
     // Build the per-session context, seeding the port's configured parameters. Pure and
-    // side-effect-free (no closures, no scheduler) — the build-time seed of N1/N2/K/T1V/T2
+    // side-effect-free (no closures, no scheduler) - the build-time seed of N1/N2/K/T1V/T2
     // and the session quirks. A later reseed never reaches into an existing session's context.
     private static Ax25SessionContext SeedSessionContext(
         Callsign local, Callsign peer, bool allowAccept, Ax25SessionParameters sp)
@@ -1468,7 +1468,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             AcceptIncoming = allowAccept,
         };
         // Seed the port's configured session quirks before any SDL transition
-        // runs. Like the timing knobs below, this is build-time only — a later
+        // runs. Like the timing knobs below, this is build-time only - a later
         // reseed never reaches into an existing session's context.
         if (sp.Quirks is { } quirks)
         {
@@ -1507,8 +1507,8 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // transition runs (T1V is what the T1 timer arms; SRT is what
             // figc4.7's Select_T1_Value smooths). The establishment path
             // (figc4.1 t13/t14) then runs `SRT := Initial Default; T1V := 2 * SRT`
-            // unconditionally — which would clobber this seed back to the spec
-            // default (packet-net/packet.net#292) — so we ALSO set the dispatcher's
+            // unconditionally - which would clobber this seed back to the spec
+            // default (packet-net/packet.net#292) - so we ALSO set the dispatcher's
             // InitialSrt to t1v/2 below, making `T1V := 2 * SRT` reproduce t1v.
             ctx.T1V = t1v;
             ctx.Srt = t1v / 2;
@@ -1545,19 +1545,19 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // transmission from the monitor.
             Ax25Frame.TryParse(bytes.Span, Ax25ParseOptions.Lenient, ctx.IsExtended, out var parsedTx);
 
-            // Fire-and-forget — the dispatcher's frame sinks are sync, so a sync
+            // Fire-and-forget - the dispatcher's frame sinks are sync, so a sync
             // write on the modem is fine here. The send happens before TraceFrame
             // so subscribers see TX in the order frames hit the wire.
             //
             // TX-complete→T1 (RestartT1OnTxComplete): the SDL arms T1 the moment a
-            // frame is handed to the modem — but behind a buffering TNC on a slow
+            // frame is handed to the modem - but behind a buffering TNC on a slow
             // channel, enqueue and cleared-the-air differ by up to (queue depth ×
             // airtime), so T1 has to be sized for worst-case queue + airtime +
             // the peer's T2 + the ack's airtime, and Select_T1's SRT smoothing
             // measures queue noise instead of round trips. When the option is on,
             // a T1-arming frame is sent in ACKMODE instead, and the TNC's
             // TX-completion echo pushes a still-running T1's deadline out to
-            // (TX-complete + T1V) — the timer the figures intended, measured from
+            // (TX-complete + T1V) - the timer the figures intended, measured from
             // when the frame actually finished transmitting. If the SDL already
             // stopped T1 (the ack won the race), RearmIfRunning touches nothing.
             // Echo loss / no ACKMODE support degrades to enqueue-time semantics.
@@ -1567,7 +1567,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // SendAndRearmT1Async), which holds the keyup while the channel is busy and keys up
             // when it clears. The gate completes synchronously when there is no carrier-sense
             // source or the channel is clear, so with no radio DCD wired every send is the same
-            // synchronous fire-and-forget as before — no reordering, no extra hop, and the SDL
+            // synchronous fire-and-forget as before - no reordering, no extra hop, and the SDL
             // transition behaviour is untouched. This is the native medium-access seam: the stack
             // itself owns the deferral (source supplied via Ax25ListenerOptions.CarrierSense).
             if (options.RestartT1OnTxComplete && txCompletion is not null && !ackmodeUnsupported && parsedTx is not null && FrameArmsT1(parsedTx))
@@ -1615,8 +1615,8 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                 }
                 catch (NotSupportedException)
                 {
-                    // The transport has no ACKMODE — latch and stop trying (the frame
-                    // was NOT sent by the failed call, so send it plainly now — the gate was
+                    // The transport has no ACKMODE - latch and stop trying (the frame
+                    // was NOT sent by the failed call, so send it plainly now - the gate was
                     // already consulted above).
                     ackmodeUnsupported = true;
                     _ = modem.SendAsync(frame);
@@ -1642,7 +1642,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // passes through unchanged. Non-DATA signals (connect/disconnect/error)
         // bypass the shim entirely. The dispatcher's
         // `DLDATAIndication => sendUpward(BuildDataIndication(tx))` is
-        // untouched — the seam is here at the boundary, keeping the
+        // untouched - the seam is here at the boundary, keeping the
         // dispatcher / SDL clean.
         void SendUpward(DataLinkSignal sig)
         {
@@ -1651,7 +1651,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                 var reassembled = segmentation.OnDataIndication(dataInd);
                 if (reassembled is null)
                 {
-                    return;   // mid-series segment — nothing to deliver yet
+                    return;   // mid-series segment - nothing to deliver yet
                 }
 
                 sig = reassembled;
@@ -1683,7 +1683,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             sendUpward: SendUpward,
             // Grant LM-SEIZE after the §6.7.1.2 acknowledge delay (T2). The
             // listener fronts a KISS modem (TCP / serial / loopback), so the
-            // medium is contention-free from the session's point of view —
+            // medium is contention-free from the session's point of view -
             // real channel access (CSMA persist/slottime) is the TNC's job,
             // and it buffers. The grant itself is mandatory: without it the
             // figc4.x delayed ack (Set Ack Pending + LM-SEIZE Request → RR on
@@ -1691,23 +1691,23 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // data never acknowledges received I-frames and the peer retries
             // into link failure (#327). But granting IMMEDIATELY acks once
             // per received I-frame: t23 clears Ack-Pending when the RR
-            // flushes, so the next in-sequence frame re-seizes — five
+            // flushes, so the next in-sequence frame re-seizes - five
             // back-to-back I-frames cost five RR keyups, and on a half-duplex
             // channel that TX occupancy deafens the port to the peer's next
             // window, leaving the F=1 checkpoint answer to a later poll
             // carrying a stale V(R) the peer rolls back to (#385). So the
             // grant is deferred by the context's T2 (the v2.2 §6.7.1.2
-            // acknowledge timer — the SDL figures themselves ack immediately
+            // acknowledge timer - the SDL figures themselves ack immediately
             // and never arm T2): the first in-sequence I-frame of a burst
             // arms T2 (t26 requests the seize only while no ack is pending),
             // follow-on frames just advance V(R), and the single confirm at
-            // expiry emits ONE cumulative RR — Enquiry_Response reads
+            // expiry emits ONE cumulative RR - Enquiry_Response reads
             // N(R):=V(R) at dispatch time. Any other N(R)-bearing emission in
             // the meantime (a piggybacking I-frame, an REJ, an enquiry/poll
             // response) supersedes the pending ack: its action chain runs
             // Clear Acknowledge Pending, which also cancels the armed T2 (see
             // ActionDispatcher), and a confirm that fires anyway lands on the
-            // no-ack-pending branch (LM-RELEASE only — no stale RR can ever
+            // no-ack-pending branch (LM-RELEASE only - no stale RR can ever
             // reach the wire). T2 ≤ 0 restores the legacy immediate grant
             // (ack-per-frame). Posts are deferred by PostEvent's
             // run-to-completion queue; bounded: the confirm path only emits
@@ -1735,27 +1735,27 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             },
             // The data-link figc4.6 UA-received path raises MDL-NEGOTIATE Request
             // after a successful v2.2 connect; hand it to the MDL driver to open
-            // the XID exchange. (Other internal signals — push_I_frame_queue — are
+            // the XID exchange. (Other internal signals - push_I_frame_queue - are
             // queue-management that mutate ctx directly; nothing to do here.)
             sendInternal: sig => { if (sig is MdlNegotiateRequestSignal) { mdl.Negotiate(); } },
             subroutines: new DefaultSubroutineRegistry())
         {
             // Per-port timer overrides. InitialSrt seeds the establishment path's
             // `SRT := Initial Default; T1V := 2 * SRT` so a configured T1V actually
-            // reaches the session's T1 timer (packet-net/packet.net#292) — without it,
+            // reaches the session's T1 timer (packet-net/packet.net#292) - without it,
             // the SDL resets T1V to 2×3000 ms on every connect. T3 arms the
             // inactive-link timer. The live T2 (the §6.7.1.2 acknowledge delay) is
             // read from ctx.T2 by the sendLinkMux grant above; the dispatcher copies
             // below only guard against an establishment-verb clobber (#292 class).
             InitialSrt = sp.T1V is { } t1vSeed ? t1vSeed / 2 : ActionDispatcher.DefaultInitialSrt,
             // Seed the establishment path's `N2 := 10` so a configured N2 survives the
-            // SABM/SABME connect that would otherwise reset it to the spec default —
+            // SABM/SABME connect that would otherwise reset it to the spec default -
             // the same clobber class as InitialSrt above (#292). Without this the
             // listener's (N2+1)·T1V connect backstop is always the 66 s spec maximum.
             InitialN2 = sp.N2 ?? ActionDispatcher.DefaultInitialN2,
             // Seed the establishment-path `T2 := 3000` and (mod-8) `k := 8` link-param
             // verbs from the configured values so they survive a connect that runs
-            // Set_Version — the same #292/#300 clobber class. These verbs are inert on
+            // Set_Version - the same #292/#300 clobber class. These verbs are inert on
             // the connect path in the current SDL (Set_Version isn't invoked there, so
             // the BuildSession ctx seeds already survive), but seeding them here keeps
             // every establishment-init verb consistent and forecloses a re-introduced
@@ -1922,7 +1922,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// <summary>
     /// Invoke each subscriber on a multicast delegate independently,
     /// swallowing any exception per-handler so one buggy subscriber
-    /// can't suppress others. The Listener is infrastructure code —
+    /// can't suppress others. The Listener is infrastructure code -
     /// a faulty event consumer must not be able to break the
     /// inbound pump or starve other consumers.
     /// </summary>
@@ -1935,7 +1935,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         }
     }
 
-    // ─── Debug logging (EventId band 5200–5299: AX.25 session layer) ────
+    // ─── Debug logging (EventId band 5200-5299: AX.25 session layer) ────
 
     [LoggerMessage(EventId = 5200, Level = LogLevel.Information, Message = "AX.25 [{Port}] listener started as {MyCall}")]
     private partial void LogStarted(string port, string myCall);
@@ -2056,7 +2056,7 @@ public sealed class Ax25ListenerOptions
     /// <remarks>
     /// The value seeds both <see cref="Ax25SessionContext.T1V"/> and, via the
     /// dispatcher's <see cref="ActionDispatcher.InitialSrt"/> (= T1V/2), the
-    /// establishment path's <c>SRT := Initial Default; T1V := 2 * SRT</c> — so a
+    /// establishment path's <c>SRT := Initial Default; T1V := 2 * SRT</c> - so a
     /// configured T1V survives the SABM/SABME connect that would otherwise reset
     /// it to the spec default (packet-net/packet.net#292). figc4.7's
     /// <c>Select_T1_Value</c> still smooths the *running* value from round-trip
@@ -2065,13 +2065,13 @@ public sealed class Ax25ListenerOptions
     public TimeSpan? T1V { get; init; }
 
     /// <summary>
-    /// Override the session-context default T2 — the AX.25 v2.2 §6.7.1.2
+    /// Override the session-context default T2 - the AX.25 v2.2 §6.7.1.2
     /// acknowledge (response-delay) timer. Received in-sequence I-frames
     /// coalesce into one cumulative RR sent T2 after the first
     /// unacknowledged frame, unless an N(R)-bearing transmission (a
     /// piggybacking I-frame, an REJ, a poll/enquiry response) supersedes
     /// it first. If <c>null</c>, sessions use the spec default (3 s).
-    /// <see cref="TimeSpan.Zero"/> disables the delay entirely — every
+    /// <see cref="TimeSpan.Zero"/> disables the delay entirely - every
     /// received I-frame is acknowledged immediately (ack-per-frame, the
     /// pre-#385 behaviour and what the SDL figures draw).
     /// </summary>
@@ -2090,7 +2090,7 @@ public sealed class Ax25ListenerOptions
     public int? K { get; init; }
 
     /// <summary>
-    /// LRU cap on cached per-peer sessions. Default 64 — most node
+    /// LRU cap on cached per-peer sessions. Default 64 - most node
     /// deployments sit well within that; the cap is a memory safety
     /// belt to keep a misbehaving / spam-SABM peer from creating
     /// unbounded sessions.
@@ -2099,12 +2099,12 @@ public sealed class Ax25ListenerOptions
 
     /// <summary>
     /// Wire-parse options for this port's <em>inbound</em> frames. If
-    /// <c>null</c>, the listener uses <see cref="Ax25ParseOptions.Lenient"/> —
+    /// <c>null</c>, the listener uses <see cref="Ax25ParseOptions.Lenient"/> -
     /// the historical behaviour of the parameterless decoder overloads. Set
     /// <see cref="Ax25ParseOptions.Strict"/> for spec-exact acceptance, or a
     /// peer preset (<see cref="Ax25ParseOptions.Bpq"/> etc.) to match a known
     /// neighbour. A frame the options reject is dropped before tracing or
-    /// dispatch — the port is deaf to it, exactly as if it had failed CRC.
+    /// dispatch - the port is deaf to it, exactly as if it had failed CRC.
     /// The outbound construction path is unaffected (frames we build are
     /// always strict).
     /// </summary>
@@ -2113,9 +2113,9 @@ public sealed class Ax25ListenerOptions
     /// <summary>
     /// SDL figure-defect / de-facto-interop quirks seeded onto each new
     /// session's <see cref="Ax25SessionContext.Quirks"/>. If <c>null</c>,
-    /// sessions use <see cref="Ax25SessionQuirks.Default"/> (spec-correct —
+    /// sessions use <see cref="Ax25SessionQuirks.Default"/> (spec-correct -
     /// the existing behaviour). <see cref="Ax25SessionQuirks.StrictlyFaithful"/>
-    /// runs the figures exactly as drawn, defects included — conformance
+    /// runs the figures exactly as drawn, defects included - conformance
     /// study only, not for on-air use.
     /// </summary>
     public Ax25SessionQuirks? Quirks { get; init; }
@@ -2129,12 +2129,12 @@ public sealed class Ax25ListenerOptions
     /// answers our SABME with FRMR (LinBPQ) falls back via
     /// <see cref="Ax25SessionQuirks.Ax25Spec45FrmrFallbackReestablishesV20"/>, and one that
     /// answers with DM (XRouter) falls back via
-    /// <see cref="Ax25SessionQuirks.Ax25Spec48DmRejectionDegradesToV20"/> — so a dial never
+    /// <see cref="Ax25SessionQuirks.Ax25Spec48DmRejectionDegradesToV20"/> - so a dial never
     /// fails against a non-v2.2 peer. When <c>false</c>, a dial initiates a plain v2.0
     /// (SABM / mod-8) connect, the historical behaviour.
     /// </summary>
     /// <remarks>
-    /// Affects the <em>outbound</em> dial only — the inbound answerer is untouched and
+    /// Affects the <em>outbound</em> dial only - the inbound answerer is untouched and
     /// still adopts whatever the peer offers (an inbound SABM runs <c>Set Version 2.0</c>,
     /// an inbound SABME runs <c>Set Version 2.2</c>, per figc4.1). A per-call override is
     /// available on <see cref="Ax25Listener.ConnectAsync(Callsign, Callsign, bool, CancellationToken)"/>.
@@ -2152,7 +2152,7 @@ public sealed class Ax25ListenerOptions
     /// advertising SREJ + SREJ-multiframe at mod-8; if the peer answers with an XID
     /// response that also offers SREJ, the link runs SREJ recovery (selective
     /// retransmit) instead of go-back-N. If the peer does not answer XID (or rejects
-    /// it), the dial proceeds to a plain SABM and the link is go-back-N — so this is
+    /// it), the dial proceeds to a plain SABM and the link is go-back-N - so this is
     /// always safe to leave on.
     /// </summary>
     /// <remarks>
@@ -2163,13 +2163,13 @@ public sealed class Ax25ListenerOptions
     /// the no-active-link path and sets <c>LINK-&gt;Ver2point2</c>; an XID on an
     /// already-established link is ignored). The AX.25 v2.2 figures instead negotiate
     /// XID <i>after</i> the connect (figc4.6 raises MDL-NEGOTIATE on the UA), which is
-    /// what we do on the v2.2/SABME path and what direwolf does — but that post-connect
+    /// what we do on the v2.2/SABME path and what direwolf does - but that post-connect
     /// XID never reaches BPQ's responder. So speaking SREJ to BPQ specifically needs
     /// the pre-SABM exchange; this knob enables it for the mod-8 dial.
     /// </para>
     /// <para>
     /// Reuses the per-session management-data-link driver
-    /// (<see cref="Ax25ManagementDataLink"/>) and the existing inbound XID routing —
+    /// (<see cref="Ax25ManagementDataLink"/>) and the existing inbound XID routing -
     /// it is the same XID exchange the post-UA path runs, simply triggered before the
     /// SABM. Affects the <em>outbound</em> dial only; the inbound answerer is
     /// untouched. Set <c>false</c> to restore the historical plain-SABM mod-8 dial
@@ -2190,8 +2190,8 @@ public sealed class Ax25ListenerOptions
     /// <summary>
     /// Optional carrier-sense (CSMA) source the listener consults before it keys the radio:
     /// while it reports the channel busy the transmission is held, and it keys up once the
-    /// channel clears (or a bounded wait expires — fail-open; see <see cref="CarrierSenseGate"/>).
-    /// This is the general medium-access seam — any source that can observe channel occupancy
+    /// channel clears (or a bounded wait expires - fail-open; see <see cref="CarrierSenseGate"/>).
+    /// This is the general medium-access seam - any source that can observe channel occupancy
     /// (a radio-control channel's hardware DCD via <c>Packet.Radio.RadioCarrierSense</c>, or a
     /// future KISS DCD extension) supplies one so the AX.25 stack itself defers a keyup while
     /// another station is transmitting.
@@ -2199,8 +2199,8 @@ public sealed class Ax25ListenerOptions
     /// <remarks>
     /// <c>null</c> (the default) is the always-clear degenerate gate: transmissions are never
     /// deferred, so behaviour is byte-for-byte the same as before, and the SDL transition
-    /// behaviour is untouched — only the <em>physical</em> keyup is deferred, and only when a
-    /// source is present and the channel is genuinely busy. Radio-agnostic by construction —
+    /// behaviour is untouched - only the <em>physical</em> keyup is deferred, and only when a
+    /// source is present and the channel is genuinely busy. Radio-agnostic by construction -
     /// <see cref="ICarrierSense"/> is a neutral, dependency-free capability
     /// (<c>Packet.Ax25.Transport.Abstractions</c>), not a radio detail. First-class and
     /// ax25-ts-parity-tracked (OQ-012): it mirrors the TypeScript
@@ -2215,16 +2215,16 @@ public sealed class Ax25ListenerOptions
     /// P=1 enquiry, SABM/SABME/DISC) is transmitted in KISS ACKMODE and a
     /// still-running T1 is re-armed to (now + T1V) when the TNC's
     /// TX-completion echo reports the frame has actually cleared the air.
-    /// Default <c>false</c> — T1 runs from enqueue, the historical behaviour.
+    /// Default <c>false</c> - T1 runs from enqueue, the historical behaviour.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The SDL figures start T1 the instant a frame is "sent", which behind a
-    /// buffering TNC means <em>enqueued</em> — on a 1200-baud channel a k-deep
+    /// buffering TNC means <em>enqueued</em> - on a 1200-baud channel a k-deep
     /// window is many seconds of airtime that all counts against T1, so the
     /// timer must be sized for worst-case queue depth rather than for the
     /// response time it is meant to bound (a k=4 window of 256-byte frames is
-    /// ~8.5 s of air against the 6 s default T1V — measured self-destructing in
+    /// ~8.5 s of air against the 6 s default T1V - measured self-destructing in
     /// <c>tools/Packet.LinkBench</c> rung 1b/2). With this option on, T1
     /// effectively runs from the moment the frame finished transmitting:
     /// near-default T1V works at any window size, and <c>Select_T1</c>'s SRT
@@ -2245,7 +2245,7 @@ public sealed class Ax25ListenerOptions
 /// <summary>
 /// The subset of <see cref="Ax25ListenerOptions"/> that a running
 /// <see cref="Ax25Listener"/> can live-reseed via
-/// <see cref="Ax25Listener.UpdateSessionParameters"/> — the per-session AX.25
+/// <see cref="Ax25Listener.UpdateSessionParameters"/> - the per-session AX.25
 /// timing / window / cache knobs that only ever affect a session at the moment
 /// it is built, plus the port's compatibility knobs (<see cref="ParseOptions"/>,
 /// read live per inbound frame, and <see cref="Quirks"/>, seeded at session
@@ -2278,16 +2278,16 @@ public sealed record Ax25SessionParameters
     public int? K { get; init; }
 
     /// <summary>
-    /// N1 (maximum information-field length, octets) seed for newly-built sessions —
+    /// N1 (maximum information-field length, octets) seed for newly-built sessions -
     /// the PACLEN cap. <c>null</c> ⇒ the session-context default (256, the AX.25 v2.2
     /// default + XID-offered N1). Seeds <see cref="Ax25SessionContext.N1"/> at build
     /// time; XID negotiation may still LOWER it (the negotiator takes the min of the
     /// two ends' offered N1), and the segmenter/accept-bound read the live
-    /// <c>context.N1</c>. Build-time only, like the timer/window knobs — a reseed
+    /// <c>context.N1</c>. Build-time only, like the timer/window knobs - a reseed
     /// changes the value for <em>future</em> sessions, never a live session's N1.
     /// </summary>
     /// <remarks>
-    /// This is a node-host per-port config seed, not a parity-tracked listener flag — it
+    /// This is a node-host per-port config seed, not a parity-tracked listener flag - it
     /// lives on the live-reseed parameter record (not <see cref="Ax25ListenerOptions"/>),
     /// so a freshly-constructed listener carries it via a post-construction
     /// <see cref="Ax25Listener.UpdateSessionParameters"/> reseed (the node host does this).
@@ -2299,7 +2299,7 @@ public sealed record Ax25SessionParameters
 
     /// <summary>
     /// Inbound wire-parse options. <c>null</c> ⇒ <see cref="Ax25ParseOptions.Lenient"/>.
-    /// Unlike the timing knobs this is not seeded into a session at build time —
+    /// Unlike the timing knobs this is not seeded into a session at build time -
     /// the inbound pump reads the live value per frame, so a reseed takes effect
     /// on the very next frame off the modem (it gates what the port hears at all,
     /// not how an established session behaves).
@@ -2312,13 +2312,13 @@ public sealed record Ax25SessionParameters
     public Ax25SessionQuirks? Quirks { get; init; }
 
     /// <summary>Prefer AX.25 v2.2 (SABME / mod-128) on outbound dials. Default <c>true</c>
-    /// (mirrors the <see cref="Ax25ListenerOptions"/> default). Gates the dial — a
+    /// (mirrors the <see cref="Ax25ListenerOptions"/> default). Gates the dial - a
     /// reseed changes the default for <em>future</em> dials, not links already up.</summary>
     public bool PreferExtendedConnect { get; init; } = true;
 
     /// <summary>Run a pre-SABM XID exchange to negotiate SREJ on mod-8 dials (the LinBPQ
     /// SREJ accommodation). Default <c>true</c> (mirrors the <see cref="Ax25ListenerOptions"/>
-    /// default). Gates the dial — a reseed changes the default for <em>future</em> dials.</summary>
+    /// default). Gates the dial - a reseed changes the default for <em>future</em> dials.</summary>
     public bool PreConnectXidNegotiatesSrej { get; init; } = true;
 
     /// <summary>Project the live-reseedable subset out of a full options record.</summary>

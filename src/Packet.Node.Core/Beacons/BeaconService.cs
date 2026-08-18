@@ -19,15 +19,15 @@ namespace Packet.Node.Core.Beacons;
 /// <para>
 /// <b>Default-OFF, no regression.</b> The effective beacon for a port is the per-port
 /// override (<see cref="PortConfig.Beacon"/>) merged over the system default
-/// (<see cref="NodeConfig.Beacon"/>) — see <see cref="EffectiveBeacon.Resolve"/>.
+/// (<see cref="NodeConfig.Beacon"/>) - see <see cref="EffectiveBeacon.Resolve"/>.
 /// Both default to <see cref="BeaconConfig.Enabled"/> = <c>false</c>, so a node that
-/// never configured a beacon never arms a timer and never transmits — byte-for-byte as
+/// never configured a beacon never arms a timer and never transmits - byte-for-byte as
 /// before beacons existed. The service only ever <see cref="IBeaconChannel.SendUiAsync"/>es
 /// when the effective beacon is enabled.
 /// </para>
 /// <para>
 /// <b>Lifecycle.</b> <see cref="AttachPort"/> / <see cref="DetachPort"/> mirror
-/// <c>NodeTelemetry.AttachPort/DetachPort</c> and the NET/ROM attach lifecycle — the
+/// <c>NodeTelemetry.AttachPort/DetachPort</c> and the NET/ROM attach lifecycle - the
 /// supervisor calls them as ports come up and go down. On attach, if the effective
 /// beacon is enabled, a periodic timer is armed; on detach the timer is stopped and
 /// disposed.
@@ -37,7 +37,7 @@ namespace Packet.Node.Core.Beacons;
 /// <see cref="IConfigProvider.Current"/> at attach and at each <see cref="Reapply"/>,
 /// so a config edit that changes the interval / text / enabled flag re-arms cleanly.
 /// The host calls <see cref="Reapply"/> after every reconcile (a beacon-only edit is a
-/// no-op for the port supervisor's reconcile plan, so the host must re-arm explicitly —
+/// no-op for the port supervisor's reconcile plan, so the host must re-arm explicitly -
 /// the same way the console reads <c>ServicesConfig</c> live).
 /// </para>
 /// <para>
@@ -123,7 +123,7 @@ public sealed partial class BeaconService : IAsyncDisposable
         }
     }
 
-    /// <summary>Number of ports with a live (enabled) beacon timer — for tests.</summary>
+    /// <summary>Number of ports with a live (enabled) beacon timer - for tests.</summary>
     internal int ArmedCount => ports.Values.Count(p => p.IsArmed);
 
     // Resolve the effective beacon for the port from the LIVE config and (re-)arm or
@@ -185,7 +185,7 @@ public sealed partial class BeaconService : IAsyncDisposable
         }
         if (!port.TryBeginSend())
         {
-            // Previous beacon still in flight (a stalled modem) — skip this tick.
+            // Previous beacon still in flight (a stalled modem) - skip this tick.
             return;
         }
         try

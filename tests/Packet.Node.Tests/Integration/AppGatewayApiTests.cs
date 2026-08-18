@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Integration;
 /// over the in-memory TestServer with one app whose <c>ui.upstream</c> points at a stub
 /// <see cref="HttpListener"/> running on loopback; the forwarder's outbound call is real, so a
 /// request through the node reaches the stub, which echoes back the rebased path and the
-/// injected identity headers. Auth is off here (an idle node), so the read gate passes — the
+/// injected identity headers. Auth is off here (an idle node), so the read gate passes - the
 /// auth path itself is covered by the auth suites.
 /// </summary>
 [Trait("Category", "Node")]
@@ -124,7 +124,7 @@ public sealed class AppGatewayApiTests : IDisposable
     [Fact]
     public async Task Proxies_the_trailing_slash_launcher_url()
     {
-        // The launcher links to /apps/{id}/ (trailing slash) — the catch-all must forward it
+        // The launcher links to /apps/{id}/ (trailing slash) - the catch-all must forward it
         // (rest = "" → upstream "/"), NOT 302-loop. (Regression: a `/apps/{id}` redirect route
         // shadowed this and looped; found in lab live-verify.)
         await using var factory = new WebApplicationFactory<Program>();
@@ -141,13 +141,13 @@ public sealed class AppGatewayApiTests : IDisposable
     public async Task Bare_no_slash_app_url_serves_the_spa_shell_not_the_proxied_app()
     {
         // The bare `/apps/{id}` (no trailing slash) is the SPA's in-panel route for a slot/embedded
-        // app — a hard reload there must boot the SPA shell so the app stays embedded in pdn chrome
+        // app - a hard reload there must boot the SPA shell so the app stays embedded in pdn chrome
         // (AppFrame), NOT proxy the raw app. (Regression: F5 on /apps/bbs dropped pdn's chrome and
         // left only the bare BBS UI; found in lab live-verify.)
         //
         // Use a self-contained web root with a stub SPA shell: the gateway serves `index.html` from
         // the web root, and the committed/built wwwroot is NOT reliably at the WebApplicationFactory
-        // content root across machines (it's present locally, absent under CI — which silently fell
+        // content root across machines (it's present locally, absent under CI - which silently fell
         // through to the proxy and made this assertion flap). Pinning the web root makes it deterministic.
         string webRoot = TestPaths.NewPath("pdn-gw-webroot");
         Directory.CreateDirectory(webRoot);

@@ -1,22 +1,22 @@
 namespace Packet.Node.Core.Rigs;
 
 /// <summary>
-/// Suggests a rig manufacturer/model from a <c>/dev/serial/by-id</c> basename — the passive tier
+/// Suggests a rig manufacturer/model from a <c>/dev/serial/by-id</c> basename - the passive tier
 /// of "what's plugged in?". A small curated table of case-insensitive substring patterns, each of
 /// which appears in the udev descriptor <b>only</b> when the named rig is on the other end:
 /// either the rig has native USB with its own vendor/product strings (<c>Icom Inc. IC-705</c>),
 /// or its built-in bridge chip ships with the model programmed into the USB strings (the
-/// IC-7300's CP2102). Generic bridge names (FTDI / CP210x / CH340 / PL2303 — a plain USB-UART
+/// IC-7300's CP2102). Generic bridge names (FTDI / CP210x / CH340 / PL2303 - a plain USB-UART
 /// cable) deliberately suggest <b>nothing</b>: the cable says nothing about the rig behind it.
 /// </summary>
 /// <remarks>
-/// No hamlib model numbers live here — numbers drift across hamlib versions, so the scanner
+/// No hamlib model numbers live here - numbers drift across hamlib versions, so the scanner
 /// resolves each suggestion against the installed catalogue by name at runtime
 /// (<see cref="RigModelCatalogue.ResolveNumber"/>). Manufacturer/model strings are spelled
 /// exactly as hamlib's <c>rigctl -l</c> spells them so that resolution can be exact-ish.
 /// Notably absent, on purpose: modern Yaesu (FT-991A / FTDX10 / FT-710 present a generic
 /// "Silicon Labs CP2105 Dual USB to UART Bridge Controller"), Elecraft (K3/KX3 use plain FTDI
-/// cables), and Kenwood desk rigs (TS-590/TS-890 present a generic Silicon Labs bridge) — none
+/// cables), and Kenwood desk rigs (TS-590/TS-890 present a generic Silicon Labs bridge) - none
 /// of their descriptors identify the model.
 /// </remarks>
 public static class RigDescriptorSuggestions

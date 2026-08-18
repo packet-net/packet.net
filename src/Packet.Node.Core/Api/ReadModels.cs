@@ -4,9 +4,9 @@ namespace Packet.Node.Core.Api;
 // serves under /api/v1. Field names match docs/node-api.md + the web UI's
 // src/lib/types.ts (System.Text.Json's web defaults camel-case the PascalCase
 // properties, so NodeStatus.Callsign → "callsign"). These are pure value shapes
-// — the projection logic lives in the API endpoint layer.
+// - the projection logic lives in the API endpoint layer.
 
-/// <summary>Node health summary — the dashboard top strip + station card.</summary>
+/// <summary>Node health summary - the dashboard top strip + station card.</summary>
 public sealed record NodeStatus(
     string Callsign,
     string? Alias,
@@ -29,7 +29,7 @@ public sealed record NodeStatus(
 public sealed record NetRomSummary(int Neighbours, int Destinations, bool Inp3Enabled);
 
 /// <summary>The persistent traffic log's health: whether it is running this boot,
-/// and how many frames it has dropped (writer behind — the log's loss counter,
+/// and how many frames it has dropped (writer behind - the log's loss counter,
 /// never the radio path's).</summary>
 public sealed record TrafficLogStatus(bool Enabled, long Dropped);
 
@@ -125,7 +125,7 @@ public sealed record LinkStats(
 public sealed record LogLine(string T, string Lvl, string Msg);
 
 /// <summary>
-/// One heard station for the MHeard surface (#454) — the REST projection of a
+/// One heard station for the MHeard surface (#454) - the REST projection of a
 /// <c>HeardEntry</c> / <c>HeardStationSummary</c>. The two instants render as relative-ago
 /// strings (the NetRom/Capabilities row style) so the client needs no clock of its own. For the
 /// node-wide view <see cref="PortId"/> is null and <see cref="Ports"/> is the count of distinct
@@ -134,22 +134,22 @@ public sealed record LogLine(string T, string Lvl, string Msg);
 /// </summary>
 /// <param name="LastRssiDbm">Received signal strength (dBm) of the most recent frame heard from this
 /// station (on this port, or on whichever port heard it last for the node-wide view), when a radio
-/// control channel measured it — <c>null</c> when the port has no radio attached or the newest frame
+/// control channel measured it - <c>null</c> when the port has no radio attached or the newest frame
 /// carried no attributed RSSI.</param>
 /// <param name="LastSnrDb">Signal-to-noise ratio (dB) of the most recent frame heard from this station
 /// (on this port, or on whichever port heard it last for the node-wide view), when a radio control
-/// channel measured it — <c>null</c> when the port has no radio attached or the newest frame carried
+/// channel measured it - <c>null</c> when the port has no radio attached or the newest frame carried
 /// no attributed SNR.</param>
 /// <param name="MedianPreDataCarrierMs">Rolling median of the station's measured carrier-rise→data
-/// lead (ms) — its effective TXDELAY as heard here plus a small constant rig overhead — over the last
+/// lead (ms) - its effective TXDELAY as heard here plus a small constant rig overhead - over the last
 /// 32 burst-opening frames a radio attributed. <c>null</c> when never measured.</param>
 /// <param name="PreDataCarrierSamples">Samples behind <see cref="MedianPreDataCarrierMs"/> (a
 /// confidence signal); 0 when never measured.</param>
 /// <param name="TxDelayAdvisory">The passive excess-TXDELAY advisory for this station, when its
 /// median pre-data carrier exceeds the threshold with enough samples behind it (e.g.
-/// <c>"GB7XXX keys ~412 ms before data — TXDELAY likely too high, wasting airtime …"</c>);
+/// <c>"GB7XXX keys ~412 ms before data - TXDELAY likely too high, wasting airtime …"</c>);
 /// <c>null</c> for a healthy or unmeasured station. Computed by
-/// <c>Packet.Tune.Core.ExcessTxDelayAdvisor</c> — see docs/research/txdelay-optimisation.md.</param>
+/// <c>Packet.Tune.Core.ExcessTxDelayAdvisor</c> - see docs/research/txdelay-optimisation.md.</param>
 public sealed record HeardStation(
     string Callsign,
     string? PortId,

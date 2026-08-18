@@ -86,7 +86,7 @@ public class ActionDispatcherTests
     // ─── Timer operations ──────────────────────────────────────────────
 
     // Only T1 and T3 have canonical SDL verbs (StartT1/StopT1/StartT3/StopT3);
-    // T2 has no Ax25ActionVerb member — no SDL figure arms or cancels it, so the
+    // T2 has no Ax25ActionVerb member - no SDL figure arms or cancels it, so the
     // dispatcher exposes no T2 timer verb to test.
     [Theory]
     [InlineData(Ax25ActionVerb.StartT1, "T1")]
@@ -118,7 +118,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, time, expiries, _, _, _, _, _, _) = NewRig();
         d.Execute(Ax25ActionVerb.StartT1, ctx, s);
 
-        // start_T1 reads ctx.T1V (default 6s) — not dispatcher.T1Duration.
+        // start_T1 reads ctx.T1V (default 6s) - not dispatcher.T1Duration.
         time.Advance(ctx.T1V);
 
         expiries.Should().ContainSingle().Which.Should().Be("T1");
@@ -136,7 +136,7 @@ public class ActionDispatcherTests
 
         ctx.T1V.Should().Be(TimeSpan.FromMilliseconds(3000));
         s.IsRunning("T1").Should().BeTrue();
-        // Advance just shy of expiry — should still be running.
+        // Advance just shy of expiry - should still be running.
         time.Advance(TimeSpan.FromMilliseconds(2999));
         expiries.Should().BeEmpty();
         time.Advance(TimeSpan.FromMilliseconds(1));
@@ -451,7 +451,7 @@ public class ActionDispatcherTests
         // canonical via the runtime ActionVerbAliases map, but the dispatcher's
         // case label was left in display form so the normalised verb fell through
         // to the default throw and every UI reception crashed. The verb is now the
-        // typed Ax25ActionVerb.DLUNITDATAIndication — codegen is the sole
+        // typed Ax25ActionVerb.DLUNITDATAIndication - codegen is the sole
         // canonicaliser and the exhaustive switch guarantees a handler exists.
         var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
         var info = "ui-payload"u8.ToArray();
@@ -566,7 +566,7 @@ public class ActionDispatcherTests
 
     // (The former "unknown action throws" test is gone: Verb is now the closed
     // Ax25ActionVerb enum and the dispatcher's exhaustive switch handles every
-    // member, so there is no runtime "unknown verb" path to exercise — a missing
+    // member, so there is no runtime "unknown verb" path to exercise - a missing
     // or renamed verb is caught at compile time via CS8509 instead.)
 
     // ─── Reads from incoming frame ─────────────────────────────────────
@@ -603,7 +603,7 @@ public class ActionDispatcherTests
     public void VA_Assign_From_Nr_Throws_When_Trigger_Has_No_Frame()
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
-        // DlConnectRequest is an upper-layer primitive — no attached frame.
+        // DlConnectRequest is an upper-layer primitive - no attached frame.
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
         var act = () => d.Execute(Ax25ActionVerb.VAAssignNR, tx);
@@ -820,7 +820,7 @@ public class ActionDispatcherTests
     public void Push_Old_I_Frame_N_R_On_Queue_Retransmits_Stored_Frame_With_Its_Original_Ns()
     {
         // push_old_I_frame_N_r_on_queue retransmits the stored frame whose N(S)
-        // equals the incoming N(R). It must go out with its ORIGINAL N(s) — not
+        // equals the incoming N(R). It must go out with its ORIGINAL N(s) - not
         // be enqueued for the fresh-frame drain (which would renumber it to V(s)
         // and break the peer's gap-fill). See packet-net/packet.net#231.
         var sentI = new List<IFrameSpec>();
@@ -845,7 +845,7 @@ public class ActionDispatcherTests
         // Pretend we sent an I-frame with N(S) = 3 (still outstanding, see above).
         ctx.SentIFrames[3] = (oldPayload, Ax25Frame.PidNoLayer3);
 
-        // Now an RR comes in with N(R) = 3 — meaning "I want frame 3 again".
+        // Now an RR comes in with N(R) = 3 - meaning "I want frame 3 again".
         var bytes = new byte[15];
         new Ax25Address(new Callsign("M0LTE", 0), CrhBit: true, ExtensionBit: false).Write(bytes.AsSpan(0, 7));
         new Ax25Address(new Callsign("G7XYZ", 7), CrhBit: false, ExtensionBit: true).Write(bytes.AsSpan(7, 7));
@@ -974,7 +974,7 @@ public class ActionDispatcherTests
     // figc4.7's Set_Version_2_0 / Set_Version_2_2 bodies carry `N2 := 10`,
     // `T2 := 3000`, and (mod-8) `k := 8`. Mirroring the InitialSrt (#292) /
     // InitialN2 (#300) pattern, each writes a CONFIGURABLE dispatcher seed
-    // defaulting to the spec value — so a per-port configured N2/T2/k survives
+    // defaulting to the spec value - so a per-port configured N2/T2/k survives
     // establishment if a future SDL ever runs Set_Version on the connect path,
     // and the default stays exactly the spec constant. The mod-128 `k := 32`
     // stays the spec mod-128 default (XID-negotiated), intentionally un-seeded.
@@ -1051,7 +1051,7 @@ public class ActionDispatcherTests
     [Fact]
     public void K_Assign_32_Stays_The_Spec_Mod128_Default_Even_When_Seeded()
     {
-        // mod-128 k is the spec 32, then XID-negotiated — it is NOT the operator's
+        // mod-128 k is the spec 32, then XID-negotiated - it is NOT the operator's
         // mod-8 WindowSize knob, so the configured InitialK must not leak into it.
         var (_, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var d = NewSeededDispatcher(initialK: 6);
@@ -1125,7 +1125,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.Srt = TimeSpan.FromMilliseconds(3000);
         ctx.T1V = TimeSpan.FromMilliseconds(6000);
-        ctx.T1RemainingWhenLastStopped = TimeSpan.Zero;   // T1 expired — no measurement
+        ctx.T1RemainingWhenLastStopped = TimeSpan.Zero;   // T1 expired - no measurement
 
         d.Execute(Ax25ActionVerb.SRTAssign7SRT8PlusT18RemainingTimeOnT1WhenLastStopped8, ctx, s);
 
@@ -1170,7 +1170,7 @@ public class ActionDispatcherTests
         }
 
         // 50 iterations of (7/8)^n decay: residual = 2200 * 0.875^50 ≈ 3ms.
-        // Well within 10ms of 800ms — i.e. essentially converged.
+        // Well within 10ms of 800ms - i.e. essentially converged.
         ctx.Srt.Should().BeCloseTo(TimeSpan.FromMilliseconds(800), TimeSpan.FromMilliseconds(10));
     }
 
@@ -1232,7 +1232,7 @@ public class ActionDispatcherTests
 
     // KnownSubroutines is now derived from the figc4.7 redraw. The
     // _F_0 / _F_1 names from the prior hand-stubbed list don't exist
-    // any more — Enquiry_Response collapses both into one subroutine.
+    // any more - Enquiry_Response collapses both into one subroutine.
     // New names from the redraw: Establish_Extended_Data_Link,
     // Set_Version_2_0, Set_Version_2_2.
     [Theory]
@@ -1249,7 +1249,7 @@ public class ActionDispatcherTests
     [InlineData("Enquiry_Response")]
     [InlineData("Set_Version_2_0")]
     [InlineData("Set_Version_2_2")]
-    // Legacy aliases — kept as no-op stubs for back-compat with
+    // Legacy aliases - kept as no-op stubs for back-compat with
     // pre-redraw YAML pages.
     [InlineData("Enquiry_Response_F_0")]
     [InlineData("Enquiry_Response_F_1")]

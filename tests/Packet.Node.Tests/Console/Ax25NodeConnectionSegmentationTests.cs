@@ -17,7 +17,7 @@ namespace Packet.Node.Tests.Console;
 /// application <c>WriteAsync</c> larger than N1 must be framed into several ordinary
 /// I-frames over a v2.0 link (no XID ⇒ no segmenter negotiated, e.g. LinBPQ). Before the
 /// chunking fix the whole buffer went to <see cref="Ax25Listener.SendData"/>, which throws
-/// <see cref="InvalidOperationException"/> on an over-N1 payload without the segmenter — the
+/// <see cref="InvalidOperationException"/> on an over-N1 payload without the segmenter - the
 /// exception escaped <c>WriteAsync</c> and surfaced as RHP errCode 17 "Not connected", so
 /// the body never reached the wire and the forwarding cycle was torn down (the live GB7RDG
 /// multi-frame-forwarding failure, 2026-06-12).

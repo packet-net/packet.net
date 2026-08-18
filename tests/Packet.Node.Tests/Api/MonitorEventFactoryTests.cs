@@ -6,11 +6,11 @@ using Packet.Node.Core.Api;
 namespace Packet.Node.Tests.Api;
 
 /// <summary>
-/// Unit tests for <see cref="MonitorEventFactory"/> — the pure decode of a traced
+/// Unit tests for <see cref="MonitorEventFactory"/> - the pure decode of a traced
 /// <see cref="Ax25FrameEventArgs"/> into the web monitor's <see cref="MonitorEvent"/>
 /// wire shape. Each test builds a real frame via the <see cref="Ax25Frame"/>
 /// factories and asserts the projected type/class, N(S)/N(R) presence, PID name,
-/// direction, command flag, and raw-byte fidelity. No WAF or host — this is the
+/// direction, command flag, and raw-byte fidelity. No WAF or host - this is the
 /// decode in isolation.
 /// </summary>
 public sealed class MonitorEventFactoryTests
@@ -137,7 +137,7 @@ public sealed class MonitorEventFactoryTests
 
         evt.Type.Should().Be("UA");
         evt.ClassKind.Should().Be("U");
-        // UA is a response — dest C=0, source C=1.
+        // UA is a response - dest C=0, source C=1.
         evt.Command.Should().BeFalse();
     }
 

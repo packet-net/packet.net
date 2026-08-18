@@ -4,7 +4,7 @@ using Packet.Radio.Tait.Ccdi;
 namespace Packet.Tait.Spike;
 
 /// <summary>
-/// Radio-to-radio short data message (SDM) over the air — no TNC involved: the radios' own
+/// Radio-to-radio short data message (SDM) over the air - no TNC involved: the radios' own
 /// FFSK modems carry it. Sends from one radio, watches the other for the FFSK-received
 /// PROGRESS / RING, then drains its SDM buffer.
 /// </summary>

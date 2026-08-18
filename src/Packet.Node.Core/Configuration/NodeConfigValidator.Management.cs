@@ -9,7 +9,7 @@ public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
     /// Whether two listeners would fight for the same socket. String equality is not
     /// enough: a wildcard bind (<c>0.0.0.0</c> / <c>::</c> / empty) covers every local
     /// address, so <c>0.0.0.0:8080</c> and <c>127.0.0.1:8080</c> collide even though the
-    /// strings differ — Kestrel fails to bind at startup and the node never comes up.
+    /// strings differ - Kestrel fails to bind at startup and the node never comes up.
     /// This mattered little while http defaulted to loopback; it matters now that the
     /// default is the wildcard (see <see cref="HttpConfig.Bind"/>).
     /// </summary>
@@ -64,7 +64,7 @@ public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
         RuleFor(m => m.Auth.SysopElevationMinutes!.Value).GreaterThan(0)
             .When(m => m.Auth.SysopElevationMinutes.HasValue)
             .WithMessage("management.auth.sysopElevationMinutes must be positive.");
-        // A refresh token must outlive the access token it renews — otherwise the
+        // A refresh token must outlive the access token it renews - otherwise the
         // silent-renew has nothing to renew with (the refresh token would expire
         // first, forcing a re-login the moment the access token did). Only checked
         // when BOTH are explicitly set; either-default is fine (60 < 10080).
@@ -81,7 +81,7 @@ public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
         // mDNS / DNS-SD advertisement. A set InstanceName becomes a single DNS-SD service
         // instance label AND an avahi-publish positional, so it must fit RFC 6763's 63-octet
         // limit and never lead with '-' (which avahi-publish would read as an option) or carry
-        // control characters. Checked always — inert when disabled, but a bad name should be
+        // control characters. Checked always - inert when disabled, but a bad name should be
         // rejected at config-apply, not silently break the advert later.
         RuleFor(m => m.Mdns.InstanceName!)
             .Must(n => System.Text.Encoding.UTF8.GetByteCount(n) <= 63)
@@ -96,7 +96,7 @@ public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
 
 /// <summary>
 /// Validates the WebAuthn relying-party config. The RP id must be non-empty and a
-/// plausible domain label (never an IP literal — an IP is not a legal RP id, see
+/// plausible domain label (never an IP literal - an IP is not a legal RP id, see
 /// docs/passkeys-lan-trust-pattern.md §1). Each allowed origin, when given, must be an
 /// absolute http/https URL (the exact origin the verifier pins).
 /// </summary>
@@ -117,7 +117,7 @@ public sealed class WebAuthnConfigValidator : AbstractValidator<WebAuthnConfig>
             .WithMessage("each management.auth.webAuthn.allowedOrigins entry must be an absolute http(s) origin (e.g. https://pdn.lab.example:8443).");
     }
 
-    // An RP id must be a registrable domain string — never an IP literal. We reject a
+    // An RP id must be a registrable domain string - never an IP literal. We reject a
     // value that parses as an IPv4/IPv6 address; everything else (a bare label like
     // "localhost" or a dotted name like "pdn.lab.example") is accepted as a domain.
     private static bool BeARegistrableDomainNotAnIp(string? rpId) =>

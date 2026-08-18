@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// Boots the real <c>Packet.Node</c> composition root and exercises the input-validation
-/// boundary of <c>POST /api/v1/ping</c> — the connectionless TEST ping ("axping"). The
+/// boundary of <c>POST /api/v1/ping</c> - the connectionless TEST ping ("axping"). The
 /// success path (a real TEST echo) needs a live peer that answers TEST, which can't be
 /// stood up under the in-memory WAF (and the human live-verifies it against GB7RDG), so
 /// these tests assert the two pre-flight rejections that don't touch the air: an
@@ -42,7 +42,7 @@ public sealed class PingApiTests : IDisposable
     {
         var client = node.CreateClient();
 
-        // 'vhf' is configured but disabled — not a running port, so ping can't send on it.
+        // 'vhf' is configured but disabled - not a running port, so ping can't send on it.
         var resp = await client.PostAsJsonAsync("/api/v1/ping", new
         {
             station = "GB7RDG-1",

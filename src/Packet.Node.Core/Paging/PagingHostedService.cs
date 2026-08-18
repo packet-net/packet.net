@@ -12,7 +12,7 @@ namespace Packet.Node.Core.Paging;
 /// <summary>
 /// Hosts the POCSAG paging service: a TCP line server (PAGE/HEARD) that transmits and receives
 /// POCSAG pages over a dedicated soundmodem audio device. Off by default. Reconciles on config
-/// change like the RHP server — serialized, teardown-then-rebuild, and a device/bind failure is
+/// change like the RHP server - serialized, teardown-then-rebuild, and a device/bind failure is
 /// logged rather than thrown so it can never crash the node.
 /// </summary>
 public sealed partial class PagingHostedService : IHostedService, IAsyncDisposable
@@ -53,7 +53,7 @@ public sealed partial class PagingHostedService : IHostedService, IAsyncDisposab
         {
             if (_running is not null && _running == next)
             {
-                return; // record equality — nothing relevant changed
+                return; // record equality - nothing relevant changed
             }
 
             await TearDownAsync().ConfigureAwait(false);
@@ -78,7 +78,7 @@ public sealed partial class PagingHostedService : IHostedService, IAsyncDisposab
             }
             catch (Exception ex)
             {
-                // A device open or bind clash must not crash the node — log and run without paging.
+                // A device open or bind clash must not crash the node - log and run without paging.
                 LogStartFailed(ex, next.Device, next.Port);
                 await TearDownAsync().ConfigureAwait(false);
             }

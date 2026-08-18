@@ -29,7 +29,7 @@ public sealed class PortRadioIntegrationTests
         Enabled = true,
         Transport = new SerialKissTransport { Device = device },
         Radio = new PortRadioConfig { Kind = "tait-ccdi", Port = "/dev/ttyUSB0", Baud = 28800 },
-        // Bounded connect budget — the in-memory channel is instant (see #47).
+        // Bounded connect budget - the in-memory channel is instant (see #47).
         Ax25 = new Ax25PortParams { N2 = TestAx25Timing.NodeN2 },
     };
 

@@ -6,7 +6,7 @@ namespace Packet.Tune.Core;
 /// <summary>
 /// The driving end of the TXDELAY-minimisation protocol: sweep this station's own KISS
 /// TXDELAY <b>down</b> from its configured value over an <see cref="ITuningLink"/>
-/// side channel (canonically <see cref="SdmTuningLink"/> — mode/TXDELAY-agnostic, so
+/// side channel (canonically <see cref="SdmTuningLink"/> - mode/TXDELAY-agnostic, so
 /// the coordination keeps working while the parameter under it is being changed), with
 /// the far station (<see cref="TxDelayMinResponder"/>) counting decodes per step.
 /// </summary>
@@ -15,9 +15,9 @@ namespace Packet.Tune.Core;
 /// by the link):</para>
 /// <list type="number">
 ///   <item>C→M <c>propose|k|start|step</c>; the meter answers <c>confirm</c> (or
-///     <c>reject</c> — nothing has been transmitted yet).</item>
+///     <c>reject</c> - nothing has been transmitted yet).</item>
 ///   <item>The coordinator pins its channel-access params (persistence 255 /
-///     slottime 0 — the TNC's random CSMA deferral would otherwise swamp the
+///     slottime 0 - the TNC's random CSMA deferral would otherwise swamp the
 ///     measurement). From here every exit path restores.</item>
 ///   <item>Per step (descending from <c>start</c> by <c>step</c>, floored at the
 ///     option minimum): C→M <c>step|ms|k</c> (its sequence number is the tag every
@@ -32,7 +32,7 @@ namespace Packet.Tune.Core;
 ///     polite channel access are restored on every path. APPLY is a separate explicit
 ///     call (<see cref="ApplyAsync"/>).</item>
 /// </list>
-/// <para>Only this station's TXDELAY changes — the meter is purely passive, so unlike
+/// <para>Only this station's TXDELAY changes - the meter is purely passive, so unlike
 /// mode coordination there is no commit/revert choreography and no watchdog re-home:
 /// abort safety is entirely local (restore in <c>finally</c>).</para>
 /// </remarks>
@@ -78,7 +78,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
 
     /// <summary>
     /// Run one full sweep. Returns the sweep table + knee + recommendation; the modem
-    /// is left at the sweep's starting TXDELAY with polite channel access restored —
+    /// is left at the sweep's starting TXDELAY with polite channel access restored -
     /// applying the recommendation is the separate, explicit <see cref="ApplyAsync"/>.
     /// </summary>
     public async Task<TxDelaySweepResult> RunSweepAsync(CancellationToken cancellationToken = default)
@@ -182,7 +182,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
                     $"{(step.MedianPreDataCarrierMs is { } pre ? $", heard pre-data ~{pre:0} ms" : string.Empty)}"));
                 if (step.Decoded < k)
                 {
-                    break; // the drop step — the knee is the step above it
+                    break; // the drop step - the knee is the step above it
                 }
             }
         }
@@ -237,7 +237,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
     /// <summary>
     /// The explicit APPLY: set <paramref name="txDelayMs"/>, settle, verify with
     /// <see cref="TxDelayMinOptions.ProbesPerStep"/> more separately-keyed probes
-    /// counted by the meter, and — only when every probe decoded — LEAVE the modem at
+    /// counted by the meter, and - only when every probe decoded - LEAVE the modem at
     /// the applied value (persisting it into configuration is the caller's step, e.g.
     /// the port's KISS-params config on the node). A failed verify restores the sweep's
     /// starting TXDELAY. Channel access is pinned for the verify and restored either
@@ -292,7 +292,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
         }
     }
 
-    /// <summary>Best-effort <c>done</c> — the meter exits its loop. Carries the
+    /// <summary>Best-effort <c>done</c> - the meter exits its loop. Carries the
     /// recommendation when one exists (for the meter operator's log).</summary>
     public async Task EndAsync(int? recommendedMs = null, CancellationToken cancellationToken = default)
     {
@@ -323,9 +323,9 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
     }
 
     /// <summary>Reply-driven retry around <see cref="RunProbePassAsync"/>: a lost report (the SDM
-    /// receipt is unreliable — see <see cref="SdmTuningLink"/>) is recovered by re-running the whole
+    /// receipt is unreliable - see <see cref="SdmTuningLink"/>) is recovered by re-running the whole
     /// pass. A fresh pass carries a fresh announce sequence = a fresh probe tag, so the meter opens a
-    /// fresh counter and re-measures — re-running is idempotent bar the re-keyed probes. Station
+    /// fresh counter and re-measures - re-running is idempotent bar the re-keyed probes. Station
     /// faults (<see cref="TxDelayMinException"/>) are not retried; the final attempt's failure
     /// propagates to the caller's abort/restore path.</summary>
     private async Task<TxDelaySweepStep> RunProbePassWithRetryAsync(
@@ -355,7 +355,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
             new TxDelayMinMessage { Action = announce, TxDelayMs = txDelayMs, Count = k }.ToTelegram(tag),
             cancellationToken).ConfigureAwait(false);
 
-        // Wedge guard: the meter radio's auto-ack of the announce is in flight — the
+        // Wedge guard: the meter radio's auto-ack of the announce is in flight - the
         // settle frame the TXDELAY set transmits must not race our own radio's RX ack.
         await Task.Delay(options.PreKeyDelay, clock, cancellationToken).ConfigureAwait(false);
 

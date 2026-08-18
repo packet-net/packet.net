@@ -5,7 +5,7 @@ namespace Packet.NetRom.Transport;
 /// <summary>
 /// The tunable knobs of the NET/ROM L4 transport (the circuit layer). As with
 /// <see cref="Packet.NetRom.Routing.NetRomRoutingOptions"/>, NET/ROM has <b>no
-/// single normative standard</b> for these — the canonical appendix names a few
+/// single normative standard</b> for these - the canonical appendix names a few
 /// (OBSINIT-style defaults), but the timers and window come from the de-facto
 /// reference (BPQ's <c>L4*</c> knobs / the Linux <c>transport_*</c> tunables).
 /// Per CLAUDE.md every divergence is a named knob defaulted to a widely
@@ -13,7 +13,7 @@ namespace Packet.NetRom.Transport;
 /// </summary>
 /// <remarks>
 /// All durations are driven by an injected <see cref="System.TimeProvider"/>
-/// (§2.7) — no wall-clock anywhere in the circuit layer.
+/// (§2.7) - no wall-clock anywhere in the circuit layer.
 /// </remarks>
 public sealed record NetRomCircuitOptions
 {
@@ -47,7 +47,7 @@ public sealed record NetRomCircuitOptions
     public byte TimeToLive { get; init; } = NetRomNetworkHeader.DefaultTimeToLive;
 
     /// <summary>
-    /// Maximum bytes of user data per Information datagram — the fragment size. A
+    /// Maximum bytes of user data per Information datagram - the fragment size. A
     /// logical send larger than this is split across several Information messages
     /// with the more-follows flag set on all but the last. Canonical maximum
     /// (and default) is <see cref="NetRomPacket.MaxPayload"/> (236).
@@ -56,30 +56,30 @@ public sealed record NetRomCircuitOptions
 
     /// <summary>
     /// The number of queued-but-undelivered received Information messages at which
-    /// this node asserts <em>choke</em> (tells the peer to stop sending) — the
+    /// this node asserts <em>choke</em> (tells the peer to stop sending) - the
     /// receive-side flow-control high-water mark. Choke is released once the
     /// backlog drains below it. Default <b>0</b> meaning the receiver never
-    /// self-chokes (it always drains promptly — the node bridge does); a host that
+    /// self-chokes (it always drains promptly - the node bridge does); a host that
     /// can stall its reader sets this so backpressure reaches the wire.
     /// </summary>
     public int ChokeThreshold { get; init; }
 
     /// <summary>
     /// Offer (and accept) LinBPQ-style negotiated NET/ROM L4 payload compression on
-    /// circuits this node originates or accepts — the BPQ <c>L4Compress</c> /
+    /// circuits this node originates or accepts - the BPQ <c>L4Compress</c> /
     /// <c>L2Compress</c> capability. <b>Default <c>false</c></b> (decline): a circuit
     /// then runs uncompressed, which every NET/ROM peer can read, so this is the
     /// always-safe interop path. When <c>true</c>, the circuit advertises compression in
     /// its Connect Request / Acknowledge and only actually compresses outbound data when
     /// the <em>other end</em> also agreed (the <see cref="NetRomCircuit"/> tracks the
     /// per-circuit negotiated result). Compressed payloads are a zlib stream (RFC 1950)
-    /// flagged with the BPQ <c>L4COMP</c> bit — see <see cref="NetRomCompression"/>.
+    /// flagged with the BPQ <c>L4COMP</c> bit - see <see cref="NetRomCompression"/>.
     /// </summary>
     public bool CompressionEnabled { get; init; }
 
     /// <summary>
     /// The proposed session timer (T1, whole seconds) carried in the trailing 2 octets
-    /// of a LinBPQ extended Connect Request — the carrier for the compression-supported
+    /// of a LinBPQ extended Connect Request - the carrier for the compression-supported
     /// bit. Only emitted when <see cref="CompressionEnabled"/> is set (otherwise the
     /// canonical 15-octet Connect Request is sent). Default <b>60</b> s, matching BPQ's
     /// <c>L4TIMEOUT</c>; the high nibble is reserved for the compress flag so the value
@@ -93,7 +93,7 @@ public sealed record NetRomCircuitOptions
     /// <summary>
     /// BPQ / LinBPQ-flavoured defaults (the de-facto reference). Today identical to
     /// <see cref="Default"/> (BPQ's <c>L4WINDOW=4</c>, <c>L4TIMEOUT=60</c> is the
-    /// idle-circuit timeout not the per-message one, <c>L4RETRIES=3</c>) — kept
+    /// idle-circuit timeout not the per-message one, <c>L4RETRIES=3</c>) - kept
     /// named so a future BPQ-specific accommodation lands here without churning
     /// call sites.
     /// </summary>

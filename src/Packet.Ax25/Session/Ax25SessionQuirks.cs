@@ -2,7 +2,7 @@ namespace Packet.Ax25.Session;
 
 /// <summary>
 /// Per-session toggles for deliberate, documented deviations from the AX.25
-/// SDL figures, used where a figure is a confirmed upstream spec defect — and,
+/// SDL figures, used where a figure is a confirmed upstream spec defect - and,
 /// distinctly, where the published <i>wire format</i> is under-specified and we
 /// match the only known interoperating implementation by default (see
 /// <see cref="SegmentFirstCarriesL3Pid"/>).
@@ -12,7 +12,7 @@ namespace Packet.Ax25.Session;
 /// This is the session-layer analogue of <see cref="Packet.Core.Ax25ParseOptions"/>
 /// (which covers wire-parse pragmatism). The SDL tables themselves
 /// (<c>Packet.Ax25.Sdl</c>, from <c>packet-net/ax25sdl</c>) stay faithful to the
-/// published figures — including their defects — so the canonical transcription
+/// published figures - including their defects - so the canonical transcription
 /// tracks the in-progress draft. Where a figure is provably wrong, the runtime
 /// corrects it here, behind a named flag, rather than diverging the tables.
 /// </para>
@@ -26,7 +26,7 @@ namespace Packet.Ax25.Session;
 /// <b>Two flavours of quirk live here.</b>
 /// </para>
 /// <para>
-/// (1) <b>Figure-defect quirks</b> — name the flag <c>Ax25Spec&lt;issue&gt;…</c>
+/// (1) <b>Figure-defect quirks</b> - name the flag <c>Ax25Spec&lt;issue&gt;…</c>
 /// after the <c>packethacking/ax25spec</c> issue it works around (so it is
 /// greppable and removable once the spec is fixed), default it to the corrected
 /// behaviour, document the spec prose + the de-facto implementation evidence, and
@@ -34,7 +34,7 @@ namespace Packet.Ax25.Session;
 /// carrying the upstream resolution.
 /// </para>
 /// <para>
-/// (2) <b>De-facto-interop quirks</b> — where the spec text is genuinely ambiguous
+/// (2) <b>De-facto-interop quirks</b> - where the spec text is genuinely ambiguous
 /// or silent and a single real implementation establishes the de-facto wire
 /// format. These are <i>not</i> tied to a filed figure-defect issue, so they do
 /// <b>not</b> take the <c>Ax25Spec&lt;NN&gt;</c> prefix; name them descriptively
@@ -46,21 +46,21 @@ namespace Packet.Ax25.Session;
 public sealed record Ax25SessionQuirks
 {
     /// <summary>
-    /// <b>De-facto-interop quirk (not a figure-defect — no ax25spec issue).</b>
+    /// <b>De-facto-interop quirk (not a figure-defect - no ax25spec issue).</b>
     /// Controls the §6.6 segmentation wire format. AX.25 v2.2 Figure 6.2 draws a
     /// segmented I-frame's info field as the 0x08 segmented-PID octet plus a single
     /// <c>FXXXXXXX</c> F/X octet (First-indicator + 7-bit remaining-count) followed
-    /// directly by the segment data — there is <b>no field carrying the original
+    /// directly by the segment data - there is <b>no field carrying the original
     /// Layer-3 PID</b> through a segmented series, so a figure-literal reassembly has
     /// no way to recover it and must deliver the payload as
     /// <see cref="Ax25Frame.PidNoLayer3"/> (0xF0). The §6.6 prose ("a two-octet
     /// header") is ambiguous enough to admit a second reading, and <b>Dire Wolf
-    /// (WB2OSZ) — the only known v2.2 segmenter — takes it</b>: its <i>first</i>
+    /// (WB2OSZ) - the only known v2.2 segmenter - takes it</b>: its <i>first</i>
     /// segment carries an extra <b>inner-PID octet</b> (the original L3 PID) between
     /// the F/X octet and the data, which its reassembler reads back so the
     /// reassembled payload keeps its original PID (verified byte-exact against
-    /// <c>ax25_link.c</c> <c>dl_data_request</c> ~L1330–1410 + <c>dl_data_indication</c>
-    /// ~L2010–2030, and on the wire via the #177 docker stack).
+    /// <c>ax25_link.c</c> <c>dl_data_request</c> ~L1330-1410 + <c>dl_data_indication</c>
+    /// ~L2010-2030, and on the wire via the #177 docker stack).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -69,7 +69,7 @@ public sealed record Ax25SessionQuirks
     /// <c>[F/X octet][inner-PID = original L3 PID][segment data…]</c> and subsequent
     /// segments are <c>[F/X octet][segment data…]</c>; the reassembler reads the
     /// inner PID off the first segment and delivers the reassembled payload with that
-    /// <b>original L3 PID</b>. The inner-PID octet counts toward the segment budget —
+    /// <b>original L3 PID</b>. The inner-PID octet counts toward the segment budget -
     /// it occupies one of the first segment's N1−1 payload slots, leaving N1−2 for
     /// data (Dire Wolf's <c>DIVROUNDUP(len + 1, N1 − 1)</c> "+1 for the original
     /// PID"). This interoperates with Dire Wolf out of the box <i>and</i> fixes the
@@ -79,7 +79,7 @@ public sealed record Ax25SessionQuirks
     /// When <c>false</c> (<see cref="StrictlyFaithful"/>), the runtime emits and
     /// expects the figure-literal format: every segment is
     /// <c>[F/X octet][segment data…]</c> with no inner-PID octet, and a reassembled
-    /// payload is delivered as <see cref="Ax25Frame.PidNoLayer3"/> (0xF0) — Figure 6.2
+    /// payload is delivered as <see cref="Ax25Frame.PidNoLayer3"/> (0xF0) - Figure 6.2
     /// exactly as drawn, for strict conformance study.
     /// </para>
     /// <para>
@@ -95,7 +95,7 @@ public sealed record Ax25SessionQuirks
     /// <summary>
     /// Ignore the retransmission request carried by a received SREJ sent as a
     /// <b>command</b>, while still honouring the acknowledgement it carries. Default
-    /// <c>true</c> — matching every surveyed implementation.
+    /// <c>true</c> - matching every surveyed implementation.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -105,13 +105,13 @@ public sealed record Ax25SessionQuirks
     /// <c>srej_frame</c>: "Command path has been omitted because SREJ can only be
     /// response") and linbpq gates the resend on <c>if (MSGFLAG &amp; RESP)</c>
     /// (<c>L2Code.c</c> SFRAME). Both still process the N(R) acknowledgement, and so do
-    /// we — this quirk suppresses only the retransmission.
+    /// we - this quirk suppresses only the retransmission.
     /// </para>
     /// <para>
     /// <b>Why it needed a flag (packet-net/packet.net#674).</b> Until the corrected
     /// figc4.5 landed (<c>ax25sdl</c> 0.10.1 ← <c>packethacking/ax25spec#65</c>), the
     /// command paths carried <i>only</i> the go-back-N <c>Invoke Retransmission</c>,
-    /// which the then-current selective-retransmit workaround skipped — so the command
+    /// which the then-current selective-retransmit workaround skipped - so the command
     /// form retransmitted nothing <b>by accident</b>, as a side effect of working around
     /// a buggy figure. The correction gives all four SREJ paths a native single-frame
     /// selective retransmit, which makes the command form actionable for the first time.
@@ -132,7 +132,7 @@ public sealed record Ax25SessionQuirks
     /// <summary>
     /// Work around <c>packethacking/ax25spec#40</c>: figc4.4's out-of-sequence
     /// <c>I_received</c> handling has no receive-window guard. Any frame whose
-    /// N(S) ≠ V(R) is treated as a future gap and gets SREJ'd (or REJ'd) —
+    /// N(S) ≠ V(R) is treated as a future gap and gets SREJ'd (or REJ'd) -
     /// including a <i>duplicate</i> whose N(S) lies behind V(R), a frame the
     /// receiver has already delivered. AX.25 inherits its sequencing from
     /// ITU-T X.25 §2.4.6.4, which <i>discards</i> any I-frame whose N(S) falls
@@ -145,10 +145,10 @@ public sealed record Ax25SessionQuirks
     /// <remarks>
     /// When <c>true</c> (default), an I-frame whose N(S) is outside the receive
     /// window is routed to figc4.4's own discard path (the
-    /// <c>reject_exception:Yes</c> branch — process the acknowledgement, discard
+    /// <c>reject_exception:Yes</c> branch - process the acknowledgement, discard
     /// the data, respond RR(V(R)) only if P=1) instead of the SREJ/REJ path. The
     /// window predicate is OR'd into the figure's <c>reject_exception</c> decision
-    /// — the exact point where the figure already chooses discard-over-reject — so
+    /// - the exact point where the figure already chooses discard-over-reject - so
     /// no new transition or per-action rewrite is needed, and the fix covers both
     /// the SREJ and REJ out-of-sequence branches (the decision precedes the
     /// <c>srej_enabled</c> split). When <c>false</c>, the figure runs as drawn
@@ -175,11 +175,11 @@ public sealed record Ax25SessionQuirks
     /// </summary>
     /// <remarks>
     /// When <c>true</c> (default), the SRT IIR update is skipped unless a genuine
-    /// round-trip was measured this cycle — T1 was running and stopped by an ack,
+    /// round-trip was measured this cycle - T1 was running and stopped by an ack,
     /// i.e. <c>T1RemainingWhenLastStopped &gt; 0</c>. On the timeout/retransmit
     /// path SRT is left unchanged (T1V still backs off via the RC term), per Karn.
     /// When <c>false</c>, the figure runs as drawn (the divergent IIR, for strict
-    /// conformance study — will overflow under sustained loss). Not gated behind a
+    /// conformance study - will overflow under sustained loss). Not gated behind a
     /// T1V cap deliberately: leaving the unguarded path divergent keeps the fuzzer
     /// able to catch any *other* SRT-growth source rather than masking it. Delete
     /// once ax25sdl ships a figc4.7 carrying the Karn guard. Implemented in
@@ -190,7 +190,7 @@ public sealed record Ax25SessionQuirks
     /// <summary>
     /// Work around <c>packethacking/ax25spec#42</c>: figc4.4's out-of-sequence
     /// <c>I_received</c> SREJ path, when a selective-reject exception is already
-    /// outstanding, does <c>N(r) := N(s)</c> before sending SREJ — so it requests
+    /// outstanding, does <c>N(r) := N(s)</c> before sending SREJ - so it requests
     /// retransmission of the frame that just <i>arrived</i> (and was just saved),
     /// not the missing gap. With more than one frame outstanding the real gap is
     /// never re-requested: the peer keeps resending the already-received frame and
@@ -202,7 +202,7 @@ public sealed record Ax25SessionQuirks
     /// </summary>
     /// <remarks>
     /// When <c>true</c> (default), the SREJ target is retargeted from N(S) to V(R)
-    /// — the next still-missing frame — so the SREJ requests the actual gap. The
+    /// - the next still-missing frame - so the SREJ requests the actual gap. The
     /// rewrite fires only on an <c>I_received</c> trigger (the sole figure path
     /// carrying the <c>N(r) := N(s)</c> verb, connected.sdl.yaml), so it is inert
     /// elsewhere. When <c>false</c>, the figure runs as drawn (SREJ asks for the
@@ -218,7 +218,7 @@ public sealed record Ax25SessionQuirks
     /// <c>RNR</c> → <c>Clear Acknowledge Pending</c>) on the <c>Own Receiver
     /// Busy? = Yes</c> branch, with the <c>No</c> branch returning straight to
     /// Connected. So a station that is <i>not</i> busy and receives DL-FLOW-OFF
-    /// does nothing — it never enters the busy condition and never sends RNR, so
+    /// does nothing - it never enters the busy condition and never sends RNR, so
     /// the primitive can never establish flow control from a clean state (its
     /// entire purpose). §6.4.10 ("whenever a TNC enters a busy condition it sends
     /// an RNR response") and the mirror <c>DL-FLOW-ON</c> handler (correctly acting
@@ -228,11 +228,11 @@ public sealed record Ax25SessionQuirks
     /// <remarks>
     /// When <c>true</c> (default), the <c>own_receiver_busy</c> guard is inverted
     /// for the <c>DL_FLOW_OFF_request</c> trigger only, so a not-busy station takes
-    /// the action branch (enter busy + RNR) and an already-busy one no-ops —
+    /// the action branch (enter busy + RNR) and an already-busy one no-ops -
     /// scoped to that trigger, inert elsewhere. When <c>false</c>, the figure runs
     /// as drawn (DL-FLOW-OFF is a no-op from a clean state). Unlike the other
-    /// quirks this has <i>no de-facto corroboration</i> — neither direwolf nor
-    /// linbpq implements DL-FLOW-OFF — so it rests on the §6.4.10 prose and the
+    /// quirks this has <i>no de-facto corroboration</i> - neither direwolf nor
+    /// linbpq implements DL-FLOW-OFF - so it rests on the §6.4.10 prose and the
     /// figure contradicting its own primitive. Delete once ax25sdl ships a figc4.4
     /// with the branches corrected. Implemented in packet-net/packet.net ←
     /// packethacking/ax25spec#43 (packet-net/ax25sdl#60, faithful figure).
@@ -242,8 +242,8 @@ public sealed record Ax25SessionQuirks
     /// <summary>
     /// Work around <c>packethacking/ax25spec#44</c>: figc4.1/figc4.2 route the <c>Disconnected</c>
     /// <c>DL-CONNECT request</c> path <i>unconditionally</i> to
-    /// <c>"1 Awaiting Connection"</c> — <c>Establish Data Link</c> &#8594;
-    /// <c>Set Layer 3 Initiated</c> &#8594; <b>Awaiting Connection</b> — with <b>no
+    /// <c>"1 Awaiting Connection"</c> - <c>Establish Data Link</c> &#8594;
+    /// <c>Set Layer 3 Initiated</c> &#8594; <b>Awaiting Connection</b> - with <b>no
     /// version branch</b>, regardless of modulo. (Verified against the authoritative
     /// graphml source <c>DataLink_Disconnected.graphml</c> in <c>packet-net/ax25sdl</c>:
     /// the initiator's DL-CONNECT edge has no modulo test; version routing exists
@@ -255,7 +255,7 @@ public sealed record Ax25SessionQuirks
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Two real bugs follow from the mis-routing — both fixed by this redirect:
+    /// Two real bugs follow from the mis-routing - both fixed by this redirect:
     /// (1) <c>AwaitingConnection</c>'s T1-expiry retry sends a hardcoded
     /// <c>SABM (P==1)</c> (figc4.2 <c>t05_t1_expiry_no</c> &#8594; <c>SABMPEqEq1</c>), so a
     /// lost initial SABME <b>downgrades the link to mod-8</b> on the first retry; and
@@ -277,11 +277,11 @@ public sealed record Ax25SessionQuirks
     /// figc4.6 <c>t14</c> sets version 2.0 (<c>IsExtended=false</c>) before
     /// re-establishing, so the subsequent SABM connect naturally stays mod-8. When
     /// <c>false</c>, the figure runs as drawn (a mod-128 connect parks in
-    /// <c>AwaitingConnection</c> and downgrades on retry — for strict conformance
+    /// <c>AwaitingConnection</c> and downgrades on retry - for strict conformance
     /// study). Unlike the guard-rewriting quirks this rewrites a transition's
     /// <i>target state</i> (in <see cref="Ax25Session"/>'s dispatch path), scoped to
     /// the single <c>Disconnected</c> DL-CONNECT transition under <c>IsExtended</c>.
-    /// De-facto corroboration: direwolf's author hit the identical defect —
+    /// De-facto corroboration: direwolf's author hit the identical defect -
     /// <c>ax25_link.c</c> ~L1060 <c>enter_new_state(S, S-&gt;modulo == 128 ?
     /// state_5_awaiting_v22_connection : state_1_awaiting_connection)</c> with the
     /// comment "Original always sent SABM and went to state 1 … my enhancement".
@@ -295,7 +295,7 @@ public sealed record Ax25SessionQuirks
     /// handler (t14) draws <c>Establish Data Link</c> <i>before</i>
     /// <c>Set Version 2.0</c>. <c>Establish_Data_Link</c> (figc4.7) branches on
     /// <c>mod_128</c>, so while the link is still extended the §975 v2.0 fallback
-    /// re-establishes with a <b>SABME</b> — but a FRMR (which only a pre-v2.2 peer
+    /// re-establishes with a <b>SABME</b> - but a FRMR (which only a pre-v2.2 peer
     /// sends) is precisely the signal to drop to v2.0/SABM. So the fallback as drawn
     /// fails against a real v2.0 peer (it re-sends SABME → another FRMR/DM) and
     /// produces a modulo split against a v2.2 peer (re-establish SABME, but the
@@ -310,7 +310,7 @@ public sealed record Ax25SessionQuirks
     /// a no-op. When <c>false</c>, the figure runs as drawn (re-establish SABME).
     /// De-facto corroboration: direwolf's FRMR handler calls <c>set_version_2_0</c>
     /// before <c>establish_data_link</c> ("Erratum: Need to force v2.0. This is not
-    /// in flow chart." — <c>ax25_link.c</c>, state_5 ~L234). Only meaningful once
+    /// in flow chart." - <c>ax25_link.c</c>, state_5 ~L234). Only meaningful once
     /// <see cref="Ax25Spec44Mod128ConnectRoutesToV22"/> makes figc4.6 reachable by an
     /// initiator. Delete once ax25sdl ships a figc4.6 t14 with the actions reordered.
     /// </remarks>
@@ -323,14 +323,14 @@ public sealed record Ax25SessionQuirks
     /// of the DM and only the <c>F=0</c> branch (<c>t11_dm_received_no</c>) drops back
     /// toward v2.0 (→ <c>AwaitingConnection</c>); the <c>F=1</c> branch
     /// (<c>t11_dm_received_yes</c>) treats the DM as a §975 connection <i>refusal</i> and
-    /// tears the link down to <c>Disconnected</c> with <b>no fallback</b> — leaving
+    /// tears the link down to <c>Disconnected</c> with <b>no fallback</b> - leaving
     /// <see cref="Ax25SessionContext.IsExtended"/> stuck <c>true</c>. But a DM is precisely
     /// the signal that the peer cannot do v2.2 (it does not recognise our SABME), and a peer
-    /// that DMs our <i>polled</i> SABME (P=1) correctly answers <b>F=1</b> — so a real
+    /// that DMs our <i>polled</i> SABME (P=1) correctly answers <b>F=1</b> - so a real
     /// non-v2.2 peer that refuses SABME with DM(F=1) hits the teardown branch and our
     /// v2.2-preferred connect dies instead of degrading. (Verified on the wire: XRouter
     /// answers our SABME(P=1) with DM(F=1) and figc4.6 routes it straight to
-    /// <c>Disconnected</c> — packet.net interop <c>XrouterViaNetsimExtendedMode</c>.) This
+    /// <c>Disconnected</c> - packet.net interop <c>XrouterViaNetsimExtendedMode</c>.) This
     /// is the DM analogue of the FRMR fallback (<see cref="Ax25Spec45FrmrFallbackReestablishesV20"/>):
     /// a pre-v2.2 peer signals "no v2.2" with <i>either</i> an FRMR (BPQ) <i>or</i> a DM
     /// (XRouter), and both must degrade to v2.0/SABM rather than fail.
@@ -338,13 +338,13 @@ public sealed record Ax25SessionQuirks
     /// <remarks>
     /// <para>
     /// When <c>true</c> (default), a <c>DM_received</c> firing in
-    /// <c>AwaitingV22Connection</c> — for <b>either F=0 or F=1</b> — is treated exactly
+    /// <c>AwaitingV22Connection</c> - for <b>either F=0 or F=1</b> - is treated exactly
     /// like the figc4.6 <c>t14_frmr_received</c> v2.0 fallback: version 2.0 is forced
     /// (<see cref="Ax25SessionContext.IsExtended"/> = <c>false</c>) and the link is
     /// re-established via <b>SABM</b> (the matched DM transition is rewritten to run
-    /// <c>t14_frmr_received</c>'s action chain — SRT reset, <c>Establish_Data_Link</c>
+    /// <c>t14_frmr_received</c>'s action chain - SRT reset, <c>Establish_Data_Link</c>
     /// → SABM since the link is now mod-8, <c>Set Layer 3 Initiated</c>,
-    /// <c>Set Version 2.0</c> — and lands in <c>AwaitingConnection</c>, the v2.0 path).
+    /// <c>Set Version 2.0</c> - and lands in <c>AwaitingConnection</c>, the v2.0 path).
     /// So <i>any</i> DM to our SABME means "peer can't do v2.2, retry mod-8", never a
     /// refusal. When <c>false</c> (<see cref="StrictlyFaithful"/>), the figure runs as
     /// drawn: DM(F=0) drops to <c>AwaitingConnection</c> with no re-establish and DM(F=1)
@@ -353,7 +353,7 @@ public sealed record Ax25SessionQuirks
     /// <para>
     /// <b>Scope is the extended-connect state only.</b> A DM received in
     /// <c>AwaitingConnection</c> (in response to a subsequent <i>SABM</i>) stays a genuine
-    /// v2.0 refusal → <c>Disconnected</c> (figc4.2 <c>t03</c>), unchanged — the quirk is
+    /// v2.0 refusal → <c>Disconnected</c> (figc4.2 <c>t03</c>), unchanged - the quirk is
     /// keyed on <c>From == AwaitingV22Connection</c>, so it is inert once the fallback has
     /// already dropped us to the mod-8 path. Like <see cref="Ax25Spec44Mod128ConnectRoutesToV22"/>
     /// / <see cref="Ax25Spec45FrmrFallbackReestablishesV20"/>, this rewrites a transition in
@@ -373,14 +373,14 @@ public sealed record Ax25SessionQuirks
     /// Work around <c>packethacking/ax25spec#47</c>: figc4.5 (Timer Recovery) draws the
     /// in-sequence <c>I_received</c> stored-frame drain loop with
     /// <c>V(r) := V(r) - 1</c> in its body, where the structurally-identical
-    /// figc4.4 (Connected) handler — same path, same pre-loop <c>V(r) := V(r) + 1</c>
-    /// — uses <c>V(r) := V(r) + 1</c>. The drain delivers each consecutively-stored
+    /// figc4.4 (Connected) handler - same path, same pre-loop <c>V(r) := V(r) + 1</c>
+    /// - uses <c>V(r) := V(r) + 1</c>. The drain delivers each consecutively-stored
     /// (previously SREJ-gap-filled) frame and must <i>advance</i> V(R) past it; a
     /// decrement makes V(R) net-stationary (or regress) the moment one stored frame
     /// is drained, so a station recovering in Timer Recovery delivers the gap-filled
     /// frames but leaves V(R) pointing back at an already-delivered sequence number.
     /// The peer's next (genuine, still-unacknowledged-window) retransmit is then
-    /// taken as new data and <b>re-delivered</b>, and the link fails to converge —
+    /// taken as new data and <b>re-delivered</b>, and the link fails to converge -
     /// reproduced under simultaneous bidirectional SREJ at low n (k = 4): A delivers
     /// the peer's two-frame stream twice (<c>[0x80,0x81,0x80,0x81]</c>).
     /// </summary>
@@ -396,7 +396,7 @@ public sealed record Ax25SessionQuirks
     /// decrement, reproducing the duplicate-delivery / non-convergence for strict
     /// conformance study). De-facto corroboration: direwolf's
     /// <c>dl_data_indication</c> drain (<c>ax25_link.c</c>) advances <c>state-&gt;vr</c>
-    /// as it pulls each stored frame off <c>rxdata_by_ns[]</c> — it never decrements.
+    /// as it pulls each stored frame off <c>rxdata_by_ns[]</c> - it never decrements.
     /// Delete once ax25sdl ships a figc4.5 carrying the corrected increment
     /// (packethacking/ax25spec#47). The figc4.4 (Connected) handler is already correct, so no
     /// quirk is needed there.
@@ -409,11 +409,11 @@ public sealed record Ax25SessionQuirks
     /// <i>everything</i> is acknowledged (figc4.5's RR-response F=1 path with
     /// V(S)=V(A) → Connected; re-entry re-initialises RC). The partial-ack branch
     /// (V(S)≠V(A) → invoke retransmission, stay in Timer Recovery) never touches
-    /// RC — and under sustained bulk transfer the sender almost always has fresh
+    /// RC - and under sustained bulk transfer the sender almost always has fresh
     /// I-frames in flight when the F=1 lands, so it lives in Timer Recovery
     /// indefinitely while making continuous forward progress, RC ratcheting +1 on
-    /// every T1 hiccup and never resetting. After N2 <i>lifetime</i> hiccups —
-    /// not N2 <i>consecutive</i> failures — the link is declared dead
+    /// every T1 hiccup and never resetting. After N2 <i>lifetime</i> hiccups -
+    /// not N2 <i>consecutive</i> failures - the link is declared dead
     /// (<c>t21_t1_expiry_yes_no</c>: DL-ERROR I → DM → Disconnected) even though
     /// acks were flowing seconds earlier. Reproduced by
     /// <c>tools/Packet.LinkBench</c> on net-sim: a 32 KiB transfer at 1200 baud
@@ -424,25 +424,25 @@ public sealed record Ax25SessionQuirks
     /// <para>
     /// When <c>true</c> (default), a T1 expiry that follows V(A)-advancing
     /// progress since the previous T1 expiry clamps RC to 1 <i>before</i> the
-    /// figures' <c>RC = N2?</c> guard is evaluated — the peer acknowledging
+    /// figures' <c>RC = N2?</c> guard is evaluated - the peer acknowledging
     /// <i>new</i> data is exactly the proof RC exists to test ("they can hear
     /// us, and we can hear them"), so that expiry starts a fresh
     /// consecutive-failure run instead of continuing a lifetime tally. RC then
     /// counts <i>consecutive</i> recovery failures, and a genuinely dead link
     /// still exhausts N2 (no progress → no clamps). When <c>false</c>
     /// (<see cref="StrictlyFaithful"/>), the figures run as drawn (RC ratchets
-    /// across a working link — strict conformance study).
+    /// across a working link - strict conformance study).
     /// </para>
     /// <para>
     /// The clamp deliberately happens at T1-expiry time and goes to 1, not to 0
     /// at ack time: RC==0 is also the figures' Karn signal to
-    /// <c>Select_T1</c>'s sampling branch ("no retransmission in progress — the
+    /// <c>Select_T1</c>'s sampling branch ("no retransmission in progress - the
     /// round trip is clean"), so zeroing RC mid-recovery would feed
     /// retransmit-polluted samples into the SRT estimator and corrupt T1V (it
     /// measurably wedged the SREJ-under-loss suite that way). De-facto
     /// corroboration: rax25 (Thomas Habets, who filed #9) ships the
-    /// equivalent fix — <c>state.rs</c> resets <c>rc</c> on every <c>va</c>
-    /// update — with before/after pcaps on a 75 % loss channel in the issue
+    /// equivalent fix - <c>state.rs</c> resets <c>rc</c> on every <c>va</c>
+    /// update - with before/after pcaps on a 75 % loss channel in the issue
     /// (rax25's RC plays no role in its RTT estimation, so it can reset
     /// eagerly; ours clamps lazily for Karn's sake). Delete once ax25spec
     /// resolves #9 and ax25sdl ships figures carrying the reset.
@@ -456,27 +456,27 @@ public sealed record Ax25SessionQuirks
     /// must satisfy <c>k ≤ modulus/2</c> (≤ 4 for mod-8, ≤ 64 for mod-128).
     /// Selective Repeat keys retransmission-recovery state by the bare N(S), so
     /// the sender and receiver windows must not overlap modulo the sequence
-    /// space — the classic 2·W ≤ modulus bound. AX.25 lets <c>k</c> range to
+    /// space - the classic 2·W ≤ modulus bound. AX.25 lets <c>k</c> range to
     /// modulus−1 (fine for go-back-N, which buffers no out-of-order frames), and
     /// the figures never enforce the tighter Selective-Repeat bound, so a session
     /// running SREJ with <c>k &gt; modulus/2</c> can, under loss, <b>silently
     /// deliver a stale stored I-frame from the previous ring cycle</b> (one with
     /// the same N(S) exactly <c>modulus</c> frames back) in place of the live
-    /// frame — exact-length, wrong-content payload corruption. Reproduced by
+    /// frame - exact-length, wrong-content payload corruption. Reproduced by
     /// <c>tools/Packet.LinkBench</c>: at mod-8, 5% loss, SREJ on, corruption
     /// appears at <c>k ≥ 5</c> and is absent at <c>k ≤ 4</c> (packet-net/packet.net#393).
     /// </summary>
     /// <remarks>
     /// When <c>true</c> (default), <see cref="Ax25SessionContext.EffectiveWindow"/>
     /// caps the outstanding-I-frame window at <c>modulus/2</c> whenever
-    /// <see cref="Ax25SessionContext.SrejEnabled"/> is set — both the
+    /// <see cref="Ax25SessionContext.SrejEnabled"/> is set - both the
     /// <c>v_s_eq_v_a_plus_k</c> guard and the I-frame-queue drain honour the cap,
     /// so no more than <c>modulus/2</c> frames are ever outstanding and two
     /// in-flight frames can never share an N(S). A configured <c>k</c> above the
     /// cap is silently run at the safe window for the duration that SREJ is in
     /// effect (the configured value is untouched and applies again if SREJ is
     /// disabled / on a go-back-N link). When <c>false</c>
-    /// (<see cref="StrictlyFaithful"/>), the figures run as drawn — SREJ at
+    /// (<see cref="StrictlyFaithful"/>), the figures run as drawn - SREJ at
     /// <c>k &gt; modulus/2</c> is permitted and corrupts under loss, for
     /// conformance study only. Tighten or remove once ax25spec#13 resolves how
     /// the spec should bound <c>k</c>.
@@ -484,13 +484,13 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec13ClampSrejWindowToHalfModulus { get; init; } = true;
 
     /// <summary>
-    /// Default preset — spec-<i>correct</i> behaviour (all quirks on). This is
+    /// Default preset - spec-<i>correct</i> behaviour (all quirks on). This is
     /// what a session uses unless explicitly configured otherwise.
     /// </summary>
     public static Ax25SessionQuirks Default { get; } = new();
 
     /// <summary>
-    /// Every quirk off — execute the SDL figures exactly as drawn, including
+    /// Every quirk off - execute the SDL figures exactly as drawn, including
     /// known defects. For strict conformance testing against the published
     /// figures, not for on-air use.
     /// </summary>

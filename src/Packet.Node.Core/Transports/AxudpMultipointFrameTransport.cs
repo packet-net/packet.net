@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Transports;
 /// <summary>
 /// Presents a multipoint AXUDP endpoint (the BPQ <c>BPQAXIP</c> analog) as a single
 /// <see cref="IAx25Transport"/>: ONE UDP socket reaching MANY partners, each addressed
-/// by <c>callsign → ip:port</c>, with a per-peer broadcast flag — so an
+/// by <c>callsign → ip:port</c>, with a per-peer broadcast flag - so an
 /// <c>Ax25Listener</c> runs over a mesh of AXUDP links through the exact same seam the
 /// KISS / point-to-point AXUDP transports use.
 /// </summary>
@@ -26,7 +26,7 @@ namespace Packet.Node.Core.Transports;
 /// <item>The destination callsign matches a configured peer → the datagram goes to that
 /// peer's endpoint (BPQ's <c>MAP &lt;call&gt; &lt;ip&gt; UDP &lt;port&gt;</c>).</item>
 /// <item>The destination is a <em>broadcast</em> address (NODES / ID / BEACON / a UI
-/// frame to any unmapped pseudo-destination — the BPQAXIP <c>BROADCAST NODES</c> /
+/// frame to any unmapped pseudo-destination - the BPQAXIP <c>BROADCAST NODES</c> /
 /// <c>BROADCAST ID</c> model) → the datagram is fanned out to every peer whose
 /// <c>broadcast</c> flag is set (the <c>B</c> suffix on a <c>MAP</c> line).</item>
 /// <item>Otherwise (a connected-mode / addressed frame to a station we have no MAP for)
@@ -42,10 +42,10 @@ namespace Packet.Node.Core.Transports;
 /// </para>
 /// <para>
 /// Like the point-to-point AXUDP transport this is a <em>native</em>
-/// <see cref="IAx25Transport"/> only — no CSMA (<see cref="ICsmaChannelParams"/>) and no
+/// <see cref="IAx25Transport"/> only - no CSMA (<see cref="ICsmaChannelParams"/>) and no
 /// TX-completion (<see cref="ITxCompletionTransport"/>); a UDP mesh has neither. The
 /// 2-octet AX.25 FCS is appended on send and stripped + validated on receive inside
-/// <see cref="AxudpMultipointSocket"/> (the de-facto wire form — see its remarks).
+/// <see cref="AxudpMultipointSocket"/> (the de-facto wire form - see its remarks).
 /// </para>
 /// </remarks>
 public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
@@ -65,7 +65,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
     // for but have heard from. A configured peer endpoint always takes precedence.
     private readonly ConcurrentDictionary<Callsign, IPEndPoint> learned = new();
 
-    // Cutover-observability state (logging only — never gates a send/receive). Per-endpoint
+    // Cutover-observability state (logging only - never gates a send/receive). Per-endpoint
     // last-sent instant so the "sent to {Call}" log is a first-contact / resume-after-silence
     // TRANSITION, not a per-frame line on a busy port. The learned set above doubles as the
     // first-time-learned guard for the inbound "learned peer endpoint" Debug log; this tracks
@@ -125,7 +125,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
         // address to pick the peer; AxudpMultipointSocket.SendAsync appends the FCS.
         if (!TryReadDestination(ax25.Span, out var destination))
         {
-            // Too short / unparseable destination slot — not a routable AX.25 frame. Drop.
+            // Too short / unparseable destination slot - not a routable AX.25 frame. Drop.
             LogUnroutable("frame too short to read a destination address");
             return;
         }
@@ -164,7 +164,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
             return;
         }
 
-        // No route — drop (don't fan a directed frame to every peer). Counted for diagnosis.
+        // No route - drop (don't fan a directed frame to every peer). Counted for diagnosis.
         LogNoRoute(destination);
     }
 
@@ -190,7 +190,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
 
             // Cutover observability: a per-datagram Trace (who we heard + from where) and a
             // first-time-per-endpoint Debug (the endpoint became reachable). Reading the source
-            // here is cheap — we read it for the learn step below anyway. Logging never gates
+            // here is cheap - we read it for the learn step below anyway. Logging never gates
             // delivery: a frame whose source slot doesn't read is still surfaced.
             bool haveSource = TryReadSource(result.RawFrame, out var source);
             LogHeard(LocalPort, haveSource ? source.ToString() : "?", result.From);
@@ -201,7 +201,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
 
             // Learn the SOURCE callsign → sender endpoint as a reply fallback (a configured
             // peer endpoint still wins on send). Best-effort: a body whose source slot
-            // doesn't read is still delivered up — the listener routes by destination.
+            // doesn't read is still delivered up - the listener routes by destination.
             if (haveSource && !peersByCall.ContainsKey(source))
             {
                 learned[source] = result.From;
@@ -213,7 +213,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
     }
 
     // Cutover observability (logging only): emit the "sent to {Call}" Debug the FIRST time we
-    // send to an endpoint, and again if it resumes after a silence — a transition, not a
+    // send to an endpoint, and again if it resumes after a silence - a transition, not a
     // per-frame line on a busy port. The stamp is best-effort under concurrency; a duplicated
     // transition log is harmless and far cheaper than locking the send path.
     private void NoteSendTo(IPEndPoint endpoint, Callsign call, bool broadcast)
@@ -243,7 +243,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
     }
 
     // Read the DESTINATION callsign (the first 7-octet address slot) from an AX.25 frame
-    // body. Modulo-independent — addresses precede the control field — so no session
+    // body. Modulo-independent - addresses precede the control field - so no session
     // context is needed (unlike N(S)/N(R) on an extended link).
     private static bool TryReadDestination(ReadOnlySpan<byte> body, out Callsign destination)
     {
@@ -282,7 +282,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
         }
     }
 
-    // The pseudo-destinations a node UI-broadcasts to — the BPQAXIP BROADCAST set. A frame
+    // The pseudo-destinations a node UI-broadcasts to - the BPQAXIP BROADCAST set. A frame
     // to one of these is not a real station to MAP; it fans out to the broadcast peers.
     private static bool IsBroadcastDestination(Callsign destination)
     {

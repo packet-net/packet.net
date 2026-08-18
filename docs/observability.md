@@ -1,24 +1,24 @@
 # Observability: the Prometheus `/metrics` exporter
 
-The node exposes a Prometheus-compatible scrape endpoint at **`GET /metrics`** ([#457](https://github.com/packet-net/packet.net/issues/457)) so operators can graph and alert on node health, per-port behaviour, and NET/ROM forwarding throughput with standard tooling (Prometheus + Grafana). It complements — it does not replace — the REST/SSE `/api/v1/*` telemetry the web control panel consumes.
+The node exposes a Prometheus-compatible scrape endpoint at **`GET /metrics`** ([#457](https://github.com/packet-net/packet.net/issues/457)) so operators can graph and alert on node health, per-port behaviour, and NET/ROM forwarding throughput with standard tooling (Prometheus + Grafana). It complements - it does not replace - the REST/SSE `/api/v1/*` telemetry the web control panel consumes.
 
 ## Where it lives, and the single source of truth
 
-The exporter is `src/Packet.Node/Api/PdnMetricsApi.cs`. Every value it emits is read from the **same live state** that backs the REST/SSE telemetry — there is no second counter store:
+The exporter is `src/Packet.Node/Api/PdnMetricsApi.cs`. Every value it emits is read from the **same live state** that backs the REST/SSE telemetry - there is no second counter store:
 
-- **`NodeTelemetry`** (the frame-trace tap) — per-port frame totals and per-(port, peer) byte / REJ / SREJ rollups. The same source `GET /api/v1/links` and `GET /api/v1/ports` project from.
-- **The live `Ax25Session` timer state** — current retry counter (RC), pending I-frame queue depth, and outstanding (sent-but-unacked) I-frames, summed over a port's sessions. The same monitor-v2 source `/api/v1/links` reads `SmoothedRttMs` / `Retries` from.
-- **`NetRomService.ForwardingStats`** — the L3 transit-forwarding counters (frames/bytes forwarded + drops by reason), bumped on the same `ForwardDatagram` path that does the routing.
-- **`PdnReadApi.BuildStatus` / `BuildPorts`** — node identity, version, uptime, ports up/total, session count, NET/ROM neighbour/destination counts. Literally the same projection helpers the `/api/v1/status` and `/api/v1/ports` endpoints call.
+- **`NodeTelemetry`** (the frame-trace tap) - per-port frame totals and per-(port, peer) byte / REJ / SREJ rollups. The same source `GET /api/v1/links` and `GET /api/v1/ports` project from.
+- **The live `Ax25Session` timer state** - current retry counter (RC), pending I-frame queue depth, and outstanding (sent-but-unacked) I-frames, summed over a port's sessions. The same monitor-v2 source `/api/v1/links` reads `SmoothedRttMs` / `Retries` from.
+- **`NetRomService.ForwardingStats`** - the L3 transit-forwarding counters (frames/bytes forwarded + drops by reason), bumped on the same `ForwardDatagram` path that does the routing.
+- **`PdnReadApi.BuildStatus` / `BuildPorts`** - node identity, version, uptime, ports up/total, session count, NET/ROM neighbour/destination counts. Literally the same projection helpers the `/api/v1/status` and `/api/v1/ports` endpoints call.
 
 So a number on `/metrics` and the corresponding number in the JSON API can never diverge: they are computed from one set of counters.
 
 ## Exposure / auth posture
 
-`/metrics` is mapped on the **same Kestrel listener** as the REST API (simplest; no second port to bind or firewall) and is **always anonymous** — `.AllowAnonymous()`, regardless of `management.auth.enabled`. Concretely:
+`/metrics` is mapped on the **same Kestrel listener** as the REST API (simplest; no second port to bind or firewall) and is **always anonymous** - `.AllowAnonymous()`, regardless of `management.auth.enabled`. Concretely:
 
-- A stock node (auth **on**, bind `0.0.0.0` — the defaults since 2026-08-03) is scrapeable with no credentials. That is deliberate: a Prometheus agent carries a static config, not a login, and the node's access tokens live 60 minutes, so gating the endpoint would have made scraping impossible on a default install rather than merely inconvenient. Tom's call — metrics are public.
-- The trade is exposure. The exposition carries **heard callsigns**, per-peer SNR, per-port and radio health, traffic counters, and the running version — read as public on whatever interface `management.http.bind` reaches. An operator who does not want that binds the panel to `127.0.0.1` and scrapes locally, keeps the node tailnet-only, or fronts it with a reverse proxy that authenticates.
+- A stock node (auth **on**, bind `0.0.0.0` - the defaults since 2026-08-03) is scrapeable with no credentials. That is deliberate: a Prometheus agent carries a static config, not a login, and the node's access tokens live 60 minutes, so gating the endpoint would have made scraping impossible on a default install rather than merely inconvenient. Tom's call - metrics are public.
+- The trade is exposure. The exposition carries **heard callsigns**, per-peer SNR, per-port and radio health, traffic counters, and the running version - read as public on whatever interface `management.http.bind` reaches. An operator who does not want that binds the panel to `127.0.0.1` and scrapes locally, keeps the node tailnet-only, or fronts it with a reverse proxy that authenticates.
 
 The endpoint is read-only and has no side effects. The response content type is `text/plain; version=0.0.4; charset=utf-8` (the Prometheus text exposition content type).
 
@@ -26,7 +26,7 @@ The endpoint is read-only and has no side effects. The response content type is 
 
 In-process, **no Prometheus client dependency**. A hand-rolled `PrometheusTextWriter` (~70 lines, in the same file) emits `# HELP` / `# TYPE` headers and value samples, escaping label values per the exposition format. A new package for a read-only scrape surface wasn't worth the dependency footprint.
 
-## Label cardinality — bounded by design
+## Label cardinality - bounded by design
 
 The primary label is **`port`** (one value per *configured* port, a closed set the operator controls). Every other label is bounded too: **`instance`** on the head-end fleet series (the operator's configured head-ends, closed the same way as `port`), a 3-value **`reason`** on the forward-drops series, and the constant `version` / `callsign` / `alias` on the single-series `pdn_build_info`. A per-(port, peer) link is keyed by the *remote* callsign, so the **byte / REJ / SREJ / queue-depth / retry** counters are **aggregated up to the port** before export; a busy or hostile channel can never blow up those series' count. Per-peer detail for those stays on the bounded-by-request `GET /api/v1/links` JSON surface, where the client asks for it explicitly.
 
@@ -38,7 +38,7 @@ The rationale is a judgement call about the real world (Tom's call): **amateur p
 
 So `pdn_link_snr_db` is emitted for **every** station the node has heard *with a measured SNR*, and `pdn_link_predata_carrier_ms` for every station with a *measured rolling-median carrier lead*: no bounding to configured neighbours or active links, no top-N cap. A station heard on a port with no radio attached (or heard before the reading could be attributed) simply has no reading and contributes no series, so both buckets are absent on a node with no radio telemetry. Both values come from the same MHeard log (`GET /api/v1/heard`, `lastSnrDb` / the rolling pre-data-carrier median) that `GET /api/v1/links` and the panel read; there is no second source of truth.
 
-If a specific deployment ever did prove this wrong (a node parked on an unusually busy channel hearing thousands of distinct calls), the fix is a Prometheus-side `metric_relabel_configs` drop/keep on the `peer` label, or reintroducing a node-side cap — but that is explicitly not built today.
+If a specific deployment ever did prove this wrong (a node parked on an unusually busy channel hearing thousands of distinct calls), the fix is a Prometheus-side `metric_relabel_configs` drop/keep on the `peer` label, or reintroducing a node-side cap - but that is explicitly not built today.
 
 ## The metric set
 
@@ -49,18 +49,18 @@ All metrics use the `pdn_` namespace. Counters are monotonic over the process li
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
 | `pdn_build_info` | gauge | `version`, `callsign`, `alias` | Constant `1`; the build/version + node identity live in the labels (the conventional info-gauge pattern). |
-| `pdn_uptime_seconds` | gauge | — | Node process uptime in seconds. |
-| `pdn_ports_total` | gauge | — | Number of configured radio ports. |
-| `pdn_ports_up` | gauge | — | Number of configured ports currently up. |
-| `pdn_sessions` | gauge | — | Active connected-mode sessions across all ports. |
-| `pdn_netrom_neighbours` | gauge | — | Directly-heard NET/ROM neighbours. |
-| `pdn_netrom_destinations` | gauge | — | Known NET/ROM destinations in the routing table. |
-| `pdn_process_resident_memory_bytes` | gauge | — | Working-set memory of the node process. |
-| `pdn_process_cpu_seconds_total` | counter | — | Total CPU time consumed by the node process. |
-| `pdn_process_threads` | gauge | — | OS threads in the node process. |
-| `pdn_process_start_time_seconds` | gauge | — | Process start time as Unix epoch seconds. |
-| `pdn_dotnet_gc_heap_bytes` | gauge | — | Managed GC heap size. |
-| `pdn_traffic_log_dropped_frames_total` | counter | — | Frames the persistent traffic-log writer dropped (writer behind — never the radio path's loss). |
+| `pdn_uptime_seconds` | gauge | - | Node process uptime in seconds. |
+| `pdn_ports_total` | gauge | - | Number of configured radio ports. |
+| `pdn_ports_up` | gauge | - | Number of configured ports currently up. |
+| `pdn_sessions` | gauge | - | Active connected-mode sessions across all ports. |
+| `pdn_netrom_neighbours` | gauge | - | Directly-heard NET/ROM neighbours. |
+| `pdn_netrom_destinations` | gauge | - | Known NET/ROM destinations in the routing table. |
+| `pdn_process_resident_memory_bytes` | gauge | - | Working-set memory of the node process. |
+| `pdn_process_cpu_seconds_total` | counter | - | Total CPU time consumed by the node process. |
+| `pdn_process_threads` | gauge | - | OS threads in the node process. |
+| `pdn_process_start_time_seconds` | gauge | - | Process start time as Unix epoch seconds. |
+| `pdn_dotnet_gc_heap_bytes` | gauge | - | Managed GC heap size. |
+| `pdn_traffic_log_dropped_frames_total` | counter | - | Frames the persistent traffic-log writer dropped (writer behind - never the radio path's loss). |
 
 ### Per-port / per-link (aggregated to the port)
 
@@ -99,8 +99,8 @@ These are an honest *byte*-error floor, deliberately **not** a bit-error rate: a
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
-| `pdn_netrom_forwarded_frames_total` | counter | — | NET/ROM transit datagrams forwarded toward their destination. |
-| `pdn_netrom_forwarded_bytes_total` | counter | — | NET/ROM transit datagram bytes forwarded. |
+| `pdn_netrom_forwarded_frames_total` | counter | - | NET/ROM transit datagrams forwarded toward their destination. |
+| `pdn_netrom_forwarded_bytes_total` | counter | - | NET/ROM transit datagram bytes forwarded. |
 | `pdn_netrom_forward_drops_total` | counter | `reason` (`ttl_expired` \| `looped` \| `no_route`) | Transit datagrams dropped on the forward path, by reason. |
 
 The forwarding bucket is all-zero on an endpoint-only or NET/ROM-disabled node (nothing is ever forwarded).
@@ -117,7 +117,7 @@ Read straight off the live `MqttFrameEmitter` (no second counter store). Emitted
 
 ### Per-port radio control (radio-attached ports only)
 
-Emitted **only** for a port whose radio the node currently has open and is polling — the same live `RadioStatus` / `RadioHealth` projection `GET /api/v1/radios` and `GET /api/v1/ports/{id}/radio` serve (no second source of truth). A configured-but-not-attached radio (port down, or a failed open that degraded the port) contributes nothing, so **the whole bucket is absent on a node with no radios** — identical output to before it existed. Each `gauge` below omits a port whose radio hasn't produced that reading yet: a null renders as an *absent sample*, never a misleading `0` (0 dBm RSSI, 0 °C, "channel idle" are all wrong-but-plausible).
+Emitted **only** for a port whose radio the node currently has open and is polling - the same live `RadioStatus` / `RadioHealth` projection `GET /api/v1/radios` and `GET /api/v1/ports/{id}/radio` serve (no second source of truth). A configured-but-not-attached radio (port down, or a failed open that degraded the port) contributes nothing, so **the whole bucket is absent on a node with no radios** - identical output to before it existed. Each `gauge` below omits a port whose radio hasn't produced that reading yet: a null renders as an *absent sample*, never a misleading `0` (0 dBm RSSI, 0 °C, "channel idle" are all wrong-but-plausible).
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
@@ -128,9 +128,9 @@ Emitted **only** for a port whose radio the node currently has open and is polli
 | `pdn_radio_pa_temperature_celsius` | gauge | `port` | Power-amplifier temperature, in °C (null on radios that report only an ADC value, e.g. TM8200). |
 | `pdn_radio_forward_trend_millivolts` | gauge | `port` | Offset-corrected forward-power detector reading, in mV. A per-station **trend** on transmit, **not** a power measurement. |
 | `pdn_radio_reverse_trend_millivolts` | gauge | `port` | Offset-corrected reverse-power detector reading, in mV. A **trend**, not a power measurement. |
-| `pdn_radio_reverse_forward_ratio` | gauge | `port` | Offset-corrected reverse/forward detector ratio. A per-station **trend, never VSWR** — the detectors are uncalibrated + √P-scaled; alert on *change*, never the absolute value. |
+| `pdn_radio_reverse_forward_ratio` | gauge | `port` | Offset-corrected reverse/forward detector ratio. A per-station **trend, never VSWR** - the detectors are uncalibrated + √P-scaled; alert on *change*, never the absolute value. |
 
-**Why no per-port `pdn_radio_snr_db` / `pdn_radio_noise_floor_dbm`.** SNR and noise-floor are *per-frame* concepts (the RSSI-tagging transport tracks an idle-channel noise-floor EMA and derives each frame's SNR from it). The radio's own *health* telemetry — what `RadioHealth` carries and what this bucket reads — samples averaged RSSI, PA temperature and the TX power-detector trends, and does **not** carry a port-level SNR or noise floor. Rather than fabricate a port-level number the API doesn't have, SNR is surfaced **per link partner** below, where the per-frame metadata genuinely provides it.
+**Why no per-port `pdn_radio_snr_db` / `pdn_radio_noise_floor_dbm`.** SNR and noise-floor are *per-frame* concepts (the RSSI-tagging transport tracks an idle-channel noise-floor EMA and derives each frame's SNR from it). The radio's own *health* telemetry - what `RadioHealth` carries and what this bucket reads - samples averaged RSSI, PA temperature and the TX power-detector trends, and does **not** carry a port-level SNR or noise floor. Rather than fabricate a port-level number the API doesn't have, SNR is surfaced **per link partner** below, where the per-frame metadata genuinely provides it.
 
 ### Per-partner SNR and pre-data carrier (the peer-labelled series)
 
@@ -143,11 +143,11 @@ Both are absent entirely on a node with no radio telemetry (no partner has a mea
 
 ### Head-end fleet (split-station nodes only)
 
-Read from the `HeadEndHealthMonitor`'s rolling snapshot — a background ~30 s poll of each
+Read from the `HeadEndHealthMonitor`'s rolling snapshot - a background ~30 s poll of each
 configured/referenced head-end's HTTP control plane (`GET /statusz`, falling back to `GET /healthz`
-on a pre-0.1.4 daemon; #583) — the same data the `GET /api/v1/radios/headends` `reachableNow` /
+on a pre-0.1.4 daemon; #583) - the same data the `GET /api/v1/radios/headends` `reachableNow` /
 `lastSeen` enrichment serves, never probed on the scrape path. The `instance` label is the
-head-end's stable instance id — a closed, operator-controlled set, so cardinality stays bounded
+head-end's stable instance id - a closed, operator-controlled set, so cardinality stays bounded
 like `port`. (Note: a Prometheus scrape also attaches its own target-level `instance` label; with
 the default `honor_labels: false` this series label lands as `exported_instance` on ingest.) The
 whole bucket is **absent on a node with no head-ends** (or before the monitor's first cycle).
@@ -155,7 +155,7 @@ whole bucket is **absent on a node with no head-ends** (or before the monitor's 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
 | `pdn_headend_reachable` | gauge | `instance` | The head-end's control plane answered the most recent health poll (`1`) or not (`0`). |
-| `pdn_headend_devices` | gauge | `instance` | Devices (serial bridges) the head-end currently exposes. Omitted while unreachable, and on an older daemon that only answers `/healthz` — an absent sample, never a stale count. |
+| `pdn_headend_devices` | gauge | `instance` | Devices (serial bridges) the head-end currently exposes. Omitted while unreachable, and on an older daemon that only answers `/healthz` - an absent sample, never a stale count. |
 | `pdn_headend_poll_failures_total` | counter | `instance` | Failed health polls since the node started tracking the instance. Always emitted (from `0`) for every monitored instance, so `rate()` works from the first scrape. |
 
 ## Example scrape

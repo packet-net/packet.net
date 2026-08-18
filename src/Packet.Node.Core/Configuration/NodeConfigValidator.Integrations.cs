@@ -26,8 +26,8 @@ public sealed class TrafficConfigValidator : AbstractValidator<TrafficConfig>
 
 /// <summary>
 /// Validates the OARC network-map reporting block (<see cref="OarcConfig"/>). The shape constraints
-/// (an absolute http(s) base URL, positive intervals) are checked <b>always</b> — even when
-/// disabled — so a disabled-but-edited block can't hold junk that would 500 the day it is enabled.
+/// (an absolute http(s) base URL, positive intervals) are checked <b>always</b> - even when
+/// disabled - so a disabled-but-edited block can't hold junk that would 500 the day it is enabled.
 /// The locator precondition (a node can't report without a valid Maidenhead grid) is a runtime
 /// concern surfaced by the reporter + UI, not a hard config error: a node may legitimately enable
 /// reporting before its grid is set.
@@ -55,7 +55,7 @@ public sealed class OarcConfigValidator : AbstractValidator<OarcConfig>
 
 /// <summary>
 /// Validates the kissproxy MQTT emission block (<see cref="MqttConfig"/>). The shape constraints
-/// (a valid broker port, a QoS in 0..2) are checked <b>always</b> — even when disabled — so a
+/// (a valid broker port, a QoS in 0..2) are checked <b>always</b> - even when disabled - so a
 /// disabled-but-edited block can't hold junk that would fail the day it is enabled. The one
 /// enabled-only rule is the broker host: an enabled emitter with no host has nowhere to publish.
 /// (<see cref="MqttConfig.Password"/> is a secret carried here but never validated for content;

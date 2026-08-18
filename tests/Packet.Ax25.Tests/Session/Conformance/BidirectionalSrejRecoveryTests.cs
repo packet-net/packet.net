@@ -7,7 +7,7 @@ using Packet.Ax25.Session;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// SIMULTANEOUS bidirectional SREJ recovery — the residual defects surfaced when
+/// SIMULTANEOUS bidirectional SREJ recovery - the residual defects surfaced when
 /// porting the #285 mod-8 ring-wrap fix to <c>packet-net/ax25-ts</c> (#35). #285 fixed
 /// the UNIDIRECTIONAL ring-wrap duplicate (the sender replaying acked I-frames);
 /// these are distinct cases that only appear when BOTH stations are concurrently a
@@ -15,14 +15,14 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>R1 — figc4.5 Timer-Recovery stored-frame drain decremented V(R)
+/// <b>R1 - figc4.5 Timer-Recovery stored-frame drain decremented V(R)
 /// (packethacking/ax25spec#47).</b> figc4.5's in-sequence <c>I_received</c> stored-frame
 /// drain loop body drew <c>V(r) := V(r) - 1</c> where the structurally-identical
 /// figc4.4 (Connected) handler uses <c>V(r) := V(r) + 1</c>. The drain delivers
 /// each consecutively-stored (SREJ-gap-filled) frame and must <i>advance</i> V(R)
 /// past it; the decrement made V(R) net-stationary the moment one stored frame was
 /// drained, so a station recovering in Timer Recovery delivered the gap-filled
-/// frames but left V(R) pointing at an already-delivered sequence number — and the
+/// frames but left V(R) pointing at an already-delivered sequence number - and the
 /// peer's next genuine (still-unacknowledged) window retransmit was then taken for
 /// new data and <b>re-delivered</b>. Reproduced identically on this C# reference
 /// and on ax25-ts at the merged #285 commit. Fixed by
@@ -31,14 +31,14 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// mirrored to ax25-ts.
 /// </para>
 /// <para>
-/// <b>R2 — simultaneous-bidirectional ring-wrap recovers via selective replay.</b>
+/// <b>R2 - simultaneous-bidirectional ring-wrap recovers via selective replay.</b>
 /// On a simultaneous bidirectional wrapping burst (each station bursts k+2 frames
 /// so both rings wrap) under a small drop budget, this C# reference recovers the
 /// whole exchange through SREJ selective retransmission while the link is still in
-/// <c>Connected</c> — it never falls through to the Timer-Recovery go-back-N
+/// <c>Connected</c> - it never falls through to the Timer-Recovery go-back-N
 /// (<c>Invoke_Retransmission</c>) path, and never needs a T1 timeout. (ax25-ts on
 /// the same deterministic seeds diverged into go-back-N, which cannot disambiguate
-/// at a wrapped receive window — that divergence is being aligned to this C#
+/// at a wrapped receive window - that divergence is being aligned to this C#
 /// reference behaviour, which the seeds below pin.)
 /// </para>
 /// </remarks>
@@ -79,7 +79,7 @@ public class BidirectionalSrejRecoveryTests
 
     /// <summary>Submit <paramref name="payloadsA"/> from A and
     /// <paramref name="payloadsB"/> from B interleaved, before any settle, so both
-    /// transfers (and their recoveries) are in flight together on the shared clock —
+    /// transfers (and their recoveries) are in flight together on the shared clock -
     /// the simultaneous-bidirectional regime neither <see cref="TwoStationHarness.Submit"/>
     /// (pumps after each frame) nor <see cref="TwoStationHarness.SubmitBurst"/>
     /// (one direction) reaches.</summary>
@@ -133,7 +133,7 @@ public class BidirectionalSrejRecoveryTests
     /// <summary>Quirk-isolation tripwire: with <i>only</i>
     /// <see cref="Ax25SessionQuirks.Ax25Spec47TimerRecoveryDrainAdvancesVR"/> turned
     /// off (every other correction still on), the same scenario reproduces the
-    /// figc4.5-drain defect exactly — A delivers B's stream twice and the link does
+    /// figc4.5-drain defect exactly - A delivers B's stream twice and the link does
     /// not converge. This proves the figc4.5 decrement is the sole cause of R1 (not
     /// some other quirk) and that the default-on quirk is what closes it. If this
     /// stops reproducing, the figure has likely been corrected upstream and the quirk
@@ -166,7 +166,7 @@ public class BidirectionalSrejRecoveryTests
     /// submit 1..k frames at once under a finite LCG drop budget, then the channel
     /// clears. Both directions must recover to exactly-once in-order delivery and
     /// converge. This is the two-way analogue of #285's
-    /// <c>A_finite_bidirectional_loss_burst_recovers</c> (which submits from A only) —
+    /// <c>A_finite_bidirectional_loss_burst_recovers</c> (which submits from A only) -
     /// the gap that hid R1.</summary>
     [Property(MaxTest = 400)]
     public bool Simultaneous_bidirectional_lowN_srej_recovers(

@@ -13,7 +13,7 @@ namespace Packet.Node.Api;
 /// The browser-facing node command console API: a privileged surface that opens the node's own
 /// sysop command console (the telnet-equivalent shell where you type <c>ports</c>, <c>nodes</c>,
 /// <c>connect</c>, etc.) over an in-process bridge and streams it to an xterm.js terminal in the
-/// SPA. This is NOT the per-AX.25-session console the Sessions screen exposes — it is the node's
+/// SPA. This is NOT the per-AX.25-session console the Sessions screen exposes - it is the node's
 /// own command processor (<see cref="NodeCommandService"/>), the same one the telnet listener runs.
 /// </summary>
 /// <remarks>
@@ -24,22 +24,22 @@ namespace Packet.Node.Api;
 /// adopt the user-end into the <see cref="SysopConsoleManager"/>. Reusing the manager means this
 /// API needs no SSE/input plumbing of its own: <c>GET .../stream</c> and <c>POST .../input</c> drive
 /// the exact same fan-out + write path the Sessions console drawer already uses. The minted id is
-/// <c>console:&lt;guid&gt;</c> — distinct from the <c>{portId}:{peer}</c> ids the AX.25 connect-out
+/// <c>console:&lt;guid&gt;</c> - distinct from the <c>{portId}:{peer}</c> ids the AX.25 connect-out
 /// sessions carry, so the two share the manager without colliding.
 /// </para>
 /// <para>
 /// <b>Line discipline.</b> The console's <c>LineAssembler</c> splits inbound bytes on CR / LF / CR-LF,
 /// so input is line-oriented, not raw keystrokes. The terminal sends a bare CR when the user presses
-/// Enter (xterm's convention), which we forward verbatim — the assembler treats it as a complete line
+/// Enter (xterm's convention), which we forward verbatim - the assembler treats it as a complete line
 /// and the command runs. Intermediate keystrokes are forwarded as typed; the loopback transport is
 /// <see cref="NodeTransportKind.Telnet"/>, so the console echoes/line-edits locally and emits CR-LF.
 /// </para>
 /// <para>
-/// <b>Auth + audit.</b> The whole group is admin-gated (<see cref="PdnAuthPolicies.Admin"/>) — the
+/// <b>Auth + audit.</b> The whole group is admin-gated (<see cref="PdnAuthPolicies.Admin"/>) - the
 /// node command console is the node's most privileged surface (it reaches the sysop verbs and
 /// connect-out). The open is audited (an operator opened a privileged shell), matching the
 /// MCP-token / session-connect audit pattern; the per-keystroke input is NOT audited (it would
-/// drown the log and may carry secrets — e.g. a SYSOP code typed at the prompt).
+/// drown the log and may carry secrets - e.g. a SYSOP code typed at the prompt).
 /// </para>
 /// <para>
 /// <b>Lifecycle.</b> A closed/abandoned console must not leak a running <see cref="NodeCommandService"/>.
@@ -60,7 +60,7 @@ public static class PdnConsoleApi
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        // The node command console is the node's most privileged surface — admin only. The gate is
+        // The node command console is the node's most privileged surface - admin only. The gate is
         // a no-op when management.auth.enabled is off (ScopeRequirementHandler passes through).
         var v1 = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Admin);
 

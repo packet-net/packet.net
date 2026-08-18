@@ -16,7 +16,7 @@ namespace Packet.Node.Tests.Metrics;
 /// synthetic <see cref="RadioStatus"/> records, the same read model <c>/api/v1/radios</c> serves) and
 /// the per-partner <c>pdn_link_snr_db{port,peer}</c> gauge (driven over a seeded <see cref="HeardLog"/>).
 /// They pin: attached-only emission, the connection-state gauge encoding, null-reading omission, and
-/// the deliberate per-callsign SNR label (one series per heard partner with a measured SNR — no cap).
+/// the deliberate per-callsign SNR label (one series per heard partner with a measured SNR - no cap).
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class RadioMetricsExporterTests
@@ -138,9 +138,9 @@ public sealed class RadioMetricsExporterTests
         var log = new HeardLog(store: null);
         log.Record("vhf", "G0ABC-1", T0, rssiDbm: -80f, snrDb: 20f);
         log.Record("vhf", "G7XYZ-2", T0.AddSeconds(1), rssiDbm: -95f, snrDb: 6.5f);
-        // Heard, but only an RSSI reading (no SNR) — must NOT appear in the SNR gauge.
+        // Heard, but only an RSSI reading (no SNR) - must NOT appear in the SNR gauge.
         log.Record("vhf", "M7RSS-3", T0.AddSeconds(2), rssiDbm: -70f, snrDb: null);
-        // Heard on a radio-less port (neither reading) — must NOT appear.
+        // Heard on a radio-less port (neither reading) - must NOT appear.
         log.Record("hf", "M7NIL-4", T0.AddSeconds(3));
 
         var body = RenderLinkSnr(log);
@@ -150,7 +150,7 @@ public sealed class RadioMetricsExporterTests
         s["pdn_link_snr_db{port=\"vhf\",peer=\"G0ABC-1\"}"].Should().Be(20);
         s["pdn_link_snr_db{port=\"vhf\",peer=\"G7XYZ-2\"}"].Should().Be(6.5);
 
-        // Exactly the two SNR-bearing partners — the rssi-only and no-radio partners are excluded.
+        // Exactly the two SNR-bearing partners - the rssi-only and no-radio partners are excluded.
         s.Keys.Where(k => k.StartsWith("pdn_link_snr_db", StringComparison.Ordinal)).Should().HaveCount(2);
         body.Should().NotContain("M7RSS-3");
         body.Should().NotContain("M7NIL-4");
@@ -160,7 +160,7 @@ public sealed class RadioMetricsExporterTests
     public void Link_snr_is_not_capped_one_series_per_heard_partner()
     {
         // The deliberate scope decision: a per-callsign SNR label is emitted for EVERY heard partner
-        // with a measured SNR (amateur-packet station counts are naturally small — no top-N cap).
+        // with a measured SNR (amateur-packet station counts are naturally small - no top-N cap).
         var log = new HeardLog(store: null);
         for (int i = 0; i < 50; i++)
         {
@@ -192,7 +192,7 @@ public sealed class RadioMetricsExporterTests
         log.Record("vhf", "GB7XXX", T0, preDataCarrierMs: 400f);
         log.Record("vhf", "GB7XXX", T0.AddMinutes(1), preDataCarrierMs: 420f);
         log.Record("vhf", "M0LTE-1", T0.AddSeconds(2), preDataCarrierMs: 150f);
-        // Heard, but only an SNR reading (no pre-data) — must NOT appear in this gauge.
+        // Heard, but only an SNR reading (no pre-data) - must NOT appear in this gauge.
         log.Record("vhf", "M7NIL-3", T0.AddSeconds(3), snrDb: 12f);
 
         var body = RenderLinkPreData(log);

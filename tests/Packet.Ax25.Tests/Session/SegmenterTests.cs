@@ -11,9 +11,9 @@ namespace Packet.Ax25.Tests.Session;
 /// </summary>
 /// <remarks>
 /// The <see cref="Segmenter"/>/<see cref="Reassembler"/> support two formats:
-/// the figure-literal one (no inner-PID octet — pass <c>innerPid: null</c> /
+/// the figure-literal one (no inner-PID octet - pass <c>innerPid: null</c> /
 /// construct <c>new Reassembler()</c>) and Dire Wolf's de-facto one (the first
-/// segment carries the original L3 PID after the F/X byte — pass an
+/// segment carries the original L3 PID after the F/X byte - pass an
 /// <c>innerPid</c> / construct <c>new Reassembler(expectInnerPid: true)</c>). The
 /// session picks between them via
 /// <c>Ax25SessionQuirks.SegmentFirstCarriesL3Pid</c> (default on); these tests
@@ -30,7 +30,7 @@ public class SegmenterTests
     [InlineData(256)]     // overflows into a 2nd segment by 1 byte
     [InlineData(1500)]    // Phase 2 exit criterion size
     [InlineData(16320)]   // 64 segments at N1=256 (mid-range)
-    [InlineData(32640)]   // exactly MaxSegments (128) × (N1-1=255) bytes at N1=256 — the 7-bit boundary
+    [InlineData(32640)]   // exactly MaxSegments (128) × (N1-1=255) bytes at N1=256 - the 7-bit boundary
     public void Roundtrip_Figure_Literal_Recovers_Original(int payloadSize)
     {
         var payload = new byte[payloadSize];
@@ -150,7 +150,7 @@ public class SegmenterTests
     public void Segment_InnerPid_Throws_If_MaxInfoFieldBytes_Below_3()
     {
         // The inner-PID first segment needs room for the F/X octet, the inner-PID
-        // octet, and at least one data byte — so N1 must be at least 3.
+        // octet, and at least one data byte - so N1 must be at least 3.
         var act = () => Segmenter.Segment(new byte[10], maxInfoFieldBytes: 2, innerPid: 0xF0);
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
@@ -185,7 +185,7 @@ public class SegmenterTests
         // Start a 6-segment series.
         reassembler.Push(new byte[] { 0x80 | 5, 1, 2 });
         reassembler.Push(new byte[] { 4, 3, 4 });
-        // Receive a fresh "First" instead of continuing — the spec's
+        // Receive a fresh "First" instead of continuing - the spec's
         // implicit behaviour is to restart the reassembly buffer.
         // Verify by completing the fresh series and checking we got
         // only the fresh bytes, not the prior partials.

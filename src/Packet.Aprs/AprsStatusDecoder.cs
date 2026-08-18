@@ -14,7 +14,7 @@ namespace Packet.Aprs;
 /// </code>
 /// Per spec §16, status timestamps are restricted to DHM-zulu format
 /// (7 bytes ending in <c>z</c>). DHM-local (<c>/</c>) and HMS
-/// (<c>h</c>) are NOT valid in status reports — those formats appear
+/// (<c>h</c>) are NOT valid in status reports - those formats appear
 /// in position and object reports but not here.
 /// </para>
 /// <para>
@@ -41,7 +41,7 @@ public static class AprsStatusDecoder
     /// <param name="options">Strict-vs-lenient parser knobs.</param>
     /// <param name="status">On success, the decoded status.</param>
     /// <remarks>
-    /// Strict mode rejects any byte outside printable ASCII (32–126,
+    /// Strict mode rejects any byte outside printable ASCII (32-126,
     /// minus <c>|</c> and <c>~</c> per §16) anywhere in the status
     /// text. Trailing CR / LF / space are still tolerated since they
     /// get trimmed before the value is exposed.
@@ -70,7 +70,7 @@ public static class AprsStatusDecoder
             info = info[7..];
         }
 
-        // Strict §16 check: each byte must be printable ASCII (32–126),
+        // Strict §16 check: each byte must be printable ASCII (32-126),
         // not | (124) or ~ (126). CR / LF tolerated as they get trimmed.
         if (!options.AllowNonAsciiStatusText)
         {

@@ -10,7 +10,7 @@ namespace Packet.Node.Tests.Applications;
 /// <summary>
 /// The cross-language proof of the socket rung: the C# <see cref="SocketApplication"/> bridge
 /// driving the <b>actual shipped</b> Python LOBBY daemon (<c>examples/lobby/lobby.py</c>) over a
-/// Unix socket, with <b>two</b> bridged sessions at once — and a message one user broadcasts
+/// Unix socket, with <b>two</b> bridged sessions at once - and a message one user broadcasts
 /// reaches the other. That shared-in-memory-state-across-users behaviour is the entire reason the
 /// rung exists (the spawn-per-connect floor can't do it). Linux + python3 only (CI is Linux).
 /// </summary>
@@ -53,7 +53,7 @@ public sealed class LobbyAppIntegrationTests : IDisposable
             new ApplicationConfig { Id = "lobby", Command = "LOBBY", Kind = ApplicationKind.Socket, SocketPath = socketPath },
             NullLogger.Instance);
 
-        // Two users connect — two separate Unix-socket connections to the one daemon.
+        // Two users connect - two separate Unix-socket connections to the one daemon.
         var alice = new DriveableConnection("M0LTE-7", NodeTransportKind.Ax25);
         var bob = new DriveableConnection("G0ABC-1", NodeTransportKind.Ax25);
         var runAlice = App().RunAsync(alice, Ctx("M0LTE-7"));
@@ -61,7 +61,7 @@ public sealed class LobbyAppIntegrationTests : IDisposable
 
         await Wait.ForAsync(() => alice.Output.Contains("LOBBY") && bob.Output.Contains("LOBBY"), "both got the banner");
 
-        // Alice broadcasts; Bob — a *different* session/connection — receives it. Only possible
+        // Alice broadcasts; Bob - a *different* session/connection - receives it. Only possible
         // because the daemon holds both connections and shares state across them.
         alice.Inject("SAY hello from alice\r");
         await Wait.ForAsync(() => bob.Output.Contains("hello from alice"), "bob received alice's broadcast");

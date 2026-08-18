@@ -5,7 +5,7 @@ using Packet.Core;
 namespace Packet.Axudp;
 
 /// <summary>
-/// A multipoint AXUDP endpoint — the BPQ <c>BPQAXIP</c> analog. ONE UDP socket
+/// A multipoint AXUDP endpoint - the BPQ <c>BPQAXIP</c> analog. ONE UDP socket
 /// reaches MANY partners, each addressed by an <see cref="IPEndPoint"/> the caller
 /// resolves from a callsign→ip:port map; inbound datagrams are accepted from any
 /// sender on the bound port.
@@ -13,21 +13,21 @@ namespace Packet.Axudp;
 /// <remarks>
 /// <para>
 /// This is the multi-partner counterpart to the point-to-point <see cref="AxudpSocket"/>.
-/// The wire format is identical — the UDP payload is the AX.25 frame body followed by
+/// The wire format is identical - the UDP payload is the AX.25 frame body followed by
 /// the mandatory 2-octet AX.25 FCS (CRC-16-CCITT / X.25, low byte first), the RFC-1226
 /// AXIP/AXUDP form every real peer (LinBPQ's BPQAXIP, XRouter, ax25ipd, JNOS) requires.
 /// The only difference is the addressing model: where <see cref="AxudpSocket"/> binds
 /// one socket per peer, this binds <em>one socket for all peers</em> and the caller
 /// chooses the destination endpoint per datagram (BPQ's <c>MAP &lt;call&gt; &lt;ip&gt; UDP
-/// &lt;port&gt;</c>). Routing the AX.25 frame to the right peer's endpoint — by destination
-/// callsign, with a broadcast fan-out — is the responsibility of the
+/// &lt;port&gt;</c>). Routing the AX.25 frame to the right peer's endpoint - by destination
+/// callsign, with a broadcast fan-out - is the responsibility of the
 /// <c>Packet.Node.Core</c> adapter that drives this socket; this type is the pure UDP
 /// pump (send to an endpoint, receive from anyone).
 /// </para>
 /// <para>
 /// <b>FCS handling is identical to <see cref="AxudpSocket"/>:</b> <see cref="SendAsync"/>
 /// always appends the 2-octet FCS, and <see cref="ReceiveAsync"/> always strips +
-/// validates it, dropping any datagram whose FCS doesn't check — see the
+/// validates it, dropping any datagram whose FCS doesn't check - see the
 /// <see cref="AxudpSocket"/> remarks for the citation survey establishing the FCS as
 /// the de-facto, mandatory wire form.
 /// </para>
@@ -71,7 +71,7 @@ public sealed class AxudpMultipointSocket : IDisposable
     /// <summary>
     /// Wait for the next valid datagram from any sender. The trailing 2-octet AX.25
     /// FCS is stripped + validated; a datagram too short to carry an FCS, or whose
-    /// FCS doesn't check, is dropped (and the wait continues) — exactly as every real
+    /// FCS doesn't check, is dropped (and the wait continues) - exactly as every real
     /// AXIP/AXUDP peer drops a bad-CRC datagram. Returns the sender endpoint and the
     /// bare AX.25 frame body (FCS removed). The caller routes the frame up by its
     /// AX.25 address; the sender endpoint is a learned-reply fallback.
@@ -83,7 +83,7 @@ public sealed class AxudpMultipointSocket : IDisposable
             var result = await udp.ReceiveAsync(cancellationToken).ConfigureAwait(false);
             if (!TryStripFcs(result.Buffer, out var body))
             {
-                continue;   // too short, or FCS mismatch — drop, as real peers do
+                continue;   // too short, or FCS mismatch - drop, as real peers do
             }
             return new AxudpMultipointReceiveResult(result.RemoteEndPoint, body);
         }
@@ -120,6 +120,6 @@ public sealed class AxudpMultipointSocket : IDisposable
 /// </summary>
 /// <param name="From">The remote endpoint that sent the datagram (a learned-reply
 /// fallback; the adapter prefers a configured peer endpoint when one matches).</param>
-/// <param name="RawFrame">The AX.25 frame body — the datagram payload with the 2-octet
+/// <param name="RawFrame">The AX.25 frame body - the datagram payload with the 2-octet
 /// FCS removed (what the AX.25 parser / listener consumes).</param>
 public readonly record struct AxudpMultipointReceiveResult(IPEndPoint From, byte[] RawFrame);

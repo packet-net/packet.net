@@ -10,7 +10,7 @@ namespace Packet.Node.Api;
 /// <summary>
 /// The port-management side of the pdn node control API (Slice 3, step 3). Maps the
 /// <c>/api/v1/ports</c> CRUD + lifecycle family the web Ports screen uses to add,
-/// edit, remove, and enable/disable a port — every mutation expressed as a candidate
+/// edit, remove, and enable/disable a port - every mutation expressed as a candidate
 /// <see cref="NodeConfig"/> persisted through the <b>same</b>
 /// <see cref="IWritableConfigProvider"/> write seam the config editor uses (validate →
 /// <see cref="ReconcilePreview"/> → <c>TryApply</c>, which advances <c>Current</c> +
@@ -23,7 +23,7 @@ namespace Packet.Node.Api;
 /// The four mutating routes (<c>POST /ports</c>, <c>PUT /ports/{id}</c>,
 /// <c>DELETE /ports/{id}</c>, and the <c>up</c>/<c>down</c> arms of
 /// <c>POST /ports/{id}/lifecycle</c>) all reduce to "build the new <c>Ports</c> list,
-/// then run the shared validate→preview→apply" — the same three steps as
+/// then run the shared validate→preview→apply" - the same three steps as
 /// <see cref="PdnConfigApi"/>, factored into <see cref="ApplyCandidate"/>. Add/edit/delete
 /// return a <see cref="ReconcileResult"/> (or 422 <see cref="ValidationProblem"/> on a
 /// rejected candidate, 404 when the id is unknown); lifecycle up/down apply and then
@@ -31,7 +31,7 @@ namespace Packet.Node.Api;
 /// </para>
 /// <para>
 /// A duplicate-id add is rejected by the validator (its <c>HaveUniqueIds</c> rule), so it
-/// surfaces naturally as a 422 — no separate guard needed. The polymorphic
+/// surfaces naturally as a 422 - no separate guard needed. The polymorphic
 /// <c>transport</c> union in a <see cref="PortConfig"/> body binds via the
 /// <c>TransportConfigJsonConverter</c> registered globally in <c>Program.cs</c>, exactly
 /// as the <c>PUT /config</c> body does.
@@ -42,7 +42,7 @@ namespace Packet.Node.Api;
 /// port, with no config change) under the host's exclusive gate
 /// (<c>NodeHostedService.RunExclusiveAsync</c>), so it can never race a config reconcile.
 /// An unknown id is caught by the config-existence check (404); a disabled port can't be
-/// restarted (409 — bring it up first). Reconcile is asynchronous (the <c>OnChange</c>
+/// restarted (409 - bring it up first). Reconcile is asynchronous (the <c>OnChange</c>
 /// handler hands off to a serialized worker), so the <see cref="PortStatus"/> returned
 /// right after an up/down apply is best-effort: the port may still read <c>configured</c> or
 /// <c>starting</c> for an instant before the worker brings it up. That is honest, not a bug -
@@ -59,7 +59,7 @@ namespace Packet.Node.Api;
 /// as before. See <see cref="ConfigCas"/>.
 /// </para>
 /// <para>
-/// Auth is a later step — like the read API, the SSE feed, and the config write API,
+/// Auth is a later step - like the read API, the SSE feed, and the config write API,
 /// these are unauthenticated and the node binds 127.0.0.1 by default. No wall-clock here
 /// (repo rule §2.7): the config path needs no clock at all.
 /// </para>

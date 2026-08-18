@@ -7,13 +7,13 @@ namespace Packet.Ax25.Session;
 /// </summary>
 public enum SupervisoryFrameType
 {
-    /// <summary>Receive Ready — RR.</summary>
+    /// <summary>Receive Ready - RR.</summary>
     Rr,
-    /// <summary>Receive Not Ready — RNR.</summary>
+    /// <summary>Receive Not Ready - RNR.</summary>
     Rnr,
-    /// <summary>Reject — REJ.</summary>
+    /// <summary>Reject - REJ.</summary>
     Rej,
-    /// <summary>Selective Reject — SREJ.</summary>
+    /// <summary>Selective Reject - SREJ.</summary>
     Srej,
 }
 

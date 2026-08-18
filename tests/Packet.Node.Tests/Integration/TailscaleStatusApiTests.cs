@@ -14,7 +14,7 @@ namespace Packet.Node.Tests.Integration;
 /// <see cref="ITailscaleStatus"/> snapshot in the camelCase shape the web panel consumes
 /// (<c>enabled / state / fqdn / authUrl / funnel</c>), is read-gated (401 without a token when
 /// auth is on), and reports the default disabled status when nothing has run. The status holder
-/// is seeded with a known snapshot AFTER the host has started — the default config is disabled,
+/// is seeded with a known snapshot AFTER the host has started - the default config is disabled,
 /// so the real sidecar never launches; seeding post-start avoids racing the supervisor's
 /// startup reconcile (which legitimately sets a disabled-config status to "disabled").
 /// </summary>

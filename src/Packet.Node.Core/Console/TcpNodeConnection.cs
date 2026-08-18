@@ -4,14 +4,14 @@ using System.Net.Sockets;
 namespace Packet.Node.Core.Console;
 
 /// <summary>
-/// Wraps an accepted TCP socket as a line-based <see cref="INodeConnection"/> —
+/// Wraps an accepted TCP socket as a line-based <see cref="INodeConnection"/> -
 /// the local telnet dial-in. <c>telnet &lt;host&gt; &lt;port&gt;</c> lands
 /// straight on the prompt: no callsign, no KISS, no AX.25.
 /// </summary>
 /// <remarks>
 /// Telnet line discipline: on connect we send <c>WILL ECHO</c> +
 /// <c>WILL SUPPRESS-GO-AHEAD</c> (<see cref="NegotiateAsync"/>) and echo received
-/// input ourselves, so typing is visible on every client — including raw ones
+/// input ourselves, so typing is visible on every client - including raw ones
 /// (<c>plink -raw</c>, <c>nc</c>) that do no local echo of their own. Inbound IAC
 /// (0xFF) command sequences are stripped so a client's option negotiation never
 /// leaks control bytes into the command stream.
@@ -62,8 +62,8 @@ public sealed class TcpNodeConnection : INodeConnection
     public Task Completion => completion.Task;
 
     /// <summary>
-    /// Send our telnet option negotiation — <c>WILL ECHO</c> + <c>WILL
-    /// SUPPRESS-GO-AHEAD</c> — which puts a compliant client into
+    /// Send our telnet option negotiation - <c>WILL ECHO</c> + <c>WILL
+    /// SUPPRESS-GO-AHEAD</c> - which puts a compliant client into
     /// character-at-a-time mode with its local echo off (we echo instead). Call
     /// once, before the banner. Raw clients ignore these few bytes and still get
     /// our echo.
@@ -102,22 +102,22 @@ public sealed class TcpNodeConnection : INodeConnection
                 await EchoAsync(filtered, cancellationToken).ConfigureAwait(false);
                 return filtered;
             }
-            // The chunk was pure telnet negotiation — read again.
+            // The chunk was pure telnet negotiation - read again.
         }
     }
 
     /// <inheritdoc/>
     /// <remarks>
     /// Terminal output is newline-normalised (see <see cref="TelnetOutputNewlines"/>):
-    /// a bare CR or lone LF is completed to CR-LF so relayed AX.25 content — a
-    /// connected node's banner ends a line with a lone CR — advances the terminal
+    /// a bare CR or lone LF is completed to CR-LF so relayed AX.25 content - a
+    /// connected node's banner ends a line with a lone CR - advances the terminal
     /// instead of overtyping it. Idempotent on CR-LF; a prompt with no terminator
     /// is left untouched.
     /// </remarks>
     public ValueTask WriteAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
         => WriteInternalAsync(bytes, normalizeNewlines: true, cancellationToken);
 
-    // Write verbatim, no newline translation — for telnet control sequences (IAC
+    // Write verbatim, no newline translation - for telnet control sequences (IAC
     // negotiation) and the server-side echo, which BuildEcho already CR-LF-ifies.
     private ValueTask WriteRawAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
         => WriteInternalAsync(bytes, normalizeNewlines: false, cancellationToken);
@@ -163,7 +163,7 @@ public sealed class TcpNodeConnection : INodeConnection
     // Echo received input back to the client. Printable bytes echo as-is; CR (or
     // a lone LF) becomes CR-LF; backspace / DEL erases the last echoed character
     // (only when there is one on the current line, so it can't chew into the
-    // prompt). Best-effort — an echo write failure is swallowed by WriteAsync.
+    // prompt). Best-effort - an echo write failure is swallowed by WriteAsync.
     private async ValueTask EchoAsync(ReadOnlyMemory<byte> input, CancellationToken ct)
     {
         var echo = BuildEcho(input.Span);
@@ -262,11 +262,11 @@ public sealed class TcpNodeConnection : INodeConnection
                     case Sb:
                         inSubneg = true;
                         break;
-                    case >= 251 and <= 254:   // WILL/WONT/DO/DONT — one option byte follows
+                    case >= 251 and <= 254:   // WILL/WONT/DO/DONT - one option byte follows
                         iacCommandBytesRemaining = 1;
                         break;
                     default:
-                        // Other 2-byte IAC commands (NOP, etc.) — nothing follows.
+                        // Other 2-byte IAC commands (NOP, etc.) - nothing follows.
                         break;
                 }
                 continue;

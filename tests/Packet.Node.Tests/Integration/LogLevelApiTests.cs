@@ -13,8 +13,8 @@ namespace Packet.Node.Tests.Integration;
 /// The runtime log-level control API: <c>GET /api/v1/system/loglevel</c> (effective default +
 /// active overrides, read scope) and <c>PUT /api/v1/system/loglevel</c> (set/clear an override,
 /// admin scope, validated). Proves the endpoint round-trips through the real host's logging
-/// pipeline — a set override actually changes <see cref="ILogger.IsEnabled"/> on the host's own
-/// logger factory — and that bad input is a 400.
+/// pipeline - a set override actually changes <see cref="ILogger.IsEnabled"/> on the host's own
+/// logger factory - and that bad input is a 400.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class LogLevelApiTests : IDisposable
@@ -58,7 +58,7 @@ public sealed class LogLevelApiTests : IDisposable
         await using var factory = Factory();
         using var client = factory.CreateClient();
 
-        // A logger from the HOST's own factory, created before the override — proves the live effect.
+        // A logger from the HOST's own factory, created before the override - proves the live effect.
         var hostFactory = factory.Services.GetRequiredService<ILoggerFactory>();
         var log = hostFactory.CreateLogger("Packet.Ax25.Session");
         log.IsEnabled(LogLevel.Debug).Should().BeFalse();
@@ -70,7 +70,7 @@ public sealed class LogLevelApiTests : IDisposable
         putBody.GetProperty("action").GetString().Should().Be("set");
         putBody.GetProperty("level").GetString().Should().Be("Debug");
 
-        // The already-created host logger now logs Debug — live, no restart.
+        // The already-created host logger now logs Debug - live, no restart.
         log.IsEnabled(LogLevel.Debug).Should().BeTrue();
 
         var get = await client.GetAsync("/api/v1/system/loglevel");

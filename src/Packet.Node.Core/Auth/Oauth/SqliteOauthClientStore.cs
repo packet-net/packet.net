@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Auth.Oauth;
 
 /// <summary>
 /// SQLite-backed <see cref="IOauthClientStore"/> on the consolidated <c>pdn.db</c>. Raw SQL
-/// via Dapper, WAL, a fresh pooled connection per call, resilient on fault — the same
+/// via Dapper, WAL, a fresh pooled connection per call, resilient on fault - the same
 /// discipline as <c>SqliteAuditLog</c> / <c>SqliteUserStore</c>. Redirect URIs are stored as
 /// a JSON array in one column (a client has a small fixed set).
 /// </summary>
@@ -147,7 +147,7 @@ public sealed partial class SqliteOauthClientStore : IOauthClientStore
         }
     }
 
-    // URL-safe base64 without padding (RFC 4648 §5) — for the client id token.
+    // URL-safe base64 without padding (RFC 4648 §5) - for the client id token.
     private static string Base64UrlEncode(byte[] bytes) =>
         Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 

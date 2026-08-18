@@ -9,10 +9,10 @@ namespace Packet.Node.Tests.HeadEnd;
 /// <summary>
 /// Single-flight for the head-end probe actions (#581): a fleet scan and a keyup pairing serialise
 /// on the shared <see cref="Packet.Node.Core.Radios.HeadEndRadioScanner"/>/<c>HeadEndKeyupPairer</c>
-/// probe gate — a scan racing an in-flight pairing would re-clock the UART under the pairer's PTT
+/// probe gate - a scan racing an in-flight pairing would re-clock the UART under the pairer's PTT
 /// watcher (wrongly-unpaired radios) while its own probes queue in the head-end's accept backlog
 /// (devices misclassified Unknown). Waiters wait rather than fail. Driven entirely with in-memory
-/// fakes — nothing transmits, no socket opens.
+/// fakes - nothing transmits, no socket opens.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class HeadEndProbeSingleFlightTests
@@ -87,7 +87,7 @@ public sealed class HeadEndProbeSingleFlightTests
         {
             await probe.Entered.Task.WaitAsync(Timeout);
 
-            // A concurrent scan must queue behind the pairing — its discovery step (inside the
+            // A concurrent scan must queue behind the pairing - its discovery step (inside the
             // gate) must not have started while the keyup is mid-flight.
             discovery.Release.TrySetResult();   // the scan itself is free-running once it enters
             scanTask = ScannerOver(discovery).ScanAsync(EmptyConfig());
@@ -98,7 +98,7 @@ public sealed class HeadEndProbeSingleFlightTests
         }
         finally
         {
-            // Always unblock the pairing — a mid-test assertion failure must not leave the
+            // Always unblock the pairing - a mid-test assertion failure must not leave the
             // process-wide probe gate held (it would cascade into unrelated 60 s timeouts).
             probe.Release.TrySetResult();
         }
@@ -140,7 +140,7 @@ public sealed class HeadEndProbeSingleFlightTests
         }
         finally
         {
-            // Always unblock the scan — a mid-test assertion failure must not leave the
+            // Always unblock the scan - a mid-test assertion failure must not leave the
             // process-wide probe gate held (it would cascade into unrelated 60 s timeouts).
             discovery.Release.TrySetResult();
         }

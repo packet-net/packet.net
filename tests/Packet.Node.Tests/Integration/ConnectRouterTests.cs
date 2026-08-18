@@ -15,7 +15,7 @@ namespace Packet.Node.Tests.Integration;
 /// an in-memory loopback (no RF), an explicit 1-indexed port dials that port directly, a plain
 /// <c>C &lt;call&gt;</c> falls back to the session's default connector. Plus the keystone
 /// end-to-end: a caller at the node prompt issuing <c>C &lt;app-ssid&gt;</c> lands inside the app
-/// — the same place an over-the-air connect straight to that SSID would (NET/ROM out of scope).
+/// - the same place an over-the-air connect straight to that SSID would (NET/ROM out of scope).
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class ConnectRouterTests
@@ -164,7 +164,7 @@ public sealed class ConnectRouterTests
             "the caller's line reached the app through the prompt crossconnect");
     }
 
-    // A connector that records nothing but its label — used as a stand-in default.
+    // A connector that records nothing but its label - used as a stand-in default.
     private sealed class RecordingConnector(string portId) : IOutboundConnector
     {
         public string PortId => portId;

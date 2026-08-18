@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Packet.NetRom.Wire;
 
 /// <summary>
-/// The NET/ROM L4 transport header — 5 octets immediately following the
+/// The NET/ROM L4 transport header - 5 octets immediately following the
 /// <see cref="NetRomNetworkHeader"/> in an inter-node datagram. It identifies the
 /// circuit, carries the sliding-window sequence numbers, and names the message
 /// type + flow-control flags.
@@ -11,8 +11,8 @@ namespace Packet.NetRom.Wire;
 /// <remarks>
 /// <para>Layout (canonical NET/ROM appendix), 5 octets:</para>
 /// <code>
-///   [1] circuit index      (slot in the far end's circuit table — "your" index)
-///   [1] circuit ID         (serial qualifying the index — "your" id)
+///   [1] circuit index      (slot in the far end's circuit table - "your" index)
+///   [1] circuit ID         (serial qualifying the index - "your" id)
 ///   [1] TX sequence number (this message's send-sequence; 8-bit, mod 256)
 ///   [1] RX sequence number (the next send-sequence we expect; the piggybacked ack)
 ///   [1] opcode &amp; flags     (low nibble = NetRomOpcode; high bits = NetRomTransportFlags)
@@ -20,7 +20,7 @@ namespace Packet.NetRom.Wire;
 /// <para>
 /// The index/ID pair are <em>the receiver's</em> identifiers (the values it gave
 /// us in its Connect (Acknowledge)) so it can demultiplex the datagram to the
-/// right circuit without parsing the callsigns — which is why on a Connect
+/// right circuit without parsing the callsigns - which is why on a Connect
 /// Request the index/ID name the <em>sender's</em> own circuit (the receiver
 /// learns them and echoes them back).
 /// </para>
@@ -51,7 +51,7 @@ public sealed record NetRomTransportHeader
     /// <summary>This message's send sequence (8-bit, wraps mod 256).</summary>
     public required byte TxSequence { get; init; }
 
-    /// <summary>The next send sequence we expect from the peer — the piggybacked ack.</summary>
+    /// <summary>The next send sequence we expect from the peer - the piggybacked ack.</summary>
     public required byte RxSequence { get; init; }
 
     /// <summary>The message type (low nibble of the opcode-and-flags byte).</summary>
@@ -61,7 +61,7 @@ public sealed record NetRomTransportHeader
     public required NetRomTransportFlags Flags { get; init; }
 
     /// <summary>True if the choke flag (bit 7) is set. On a Connect Acknowledge
-    /// this instead signals refusal — see <see cref="NetRomTransportFlags.Choke"/>.</summary>
+    /// this instead signals refusal - see <see cref="NetRomTransportFlags.Choke"/>.</summary>
     public bool Choke => (Flags & NetRomTransportFlags.Choke) != 0;
 
     /// <summary>True if the NAK flag (bit 6) is set (selective-retransmit request).</summary>
@@ -70,7 +70,7 @@ public sealed record NetRomTransportHeader
     /// <summary>True if the more-follows flag (bit 5) is set (a non-final fragment).</summary>
     public bool MoreFollows => (Flags & NetRomTransportFlags.MoreFollows) != 0;
 
-    /// <summary>True if the BPQ compressed flag (bit 4) is set — the Information
+    /// <summary>True if the BPQ compressed flag (bit 4) is set - the Information
     /// payload is a zlib stream (only on a compression-negotiated circuit). See
     /// <see cref="NetRomTransportFlags.Compressed"/>.</summary>
     public bool Compressed => (Flags & NetRomTransportFlags.Compressed) != 0;
@@ -104,7 +104,7 @@ public sealed record NetRomTransportHeader
     /// <summary>
     /// Try to decode a 5-octet transport header from the front of
     /// <paramref name="source"/>. Returns <c>false</c> only if the span is too
-    /// short — any opcode-nibble value parses (an unknown opcode is surfaced as
+    /// short - any opcode-nibble value parses (an unknown opcode is surfaced as
     /// its raw <see cref="NetRomOpcode"/> value for the circuit layer to reject).
     /// </summary>
     public static bool TryParse(ReadOnlySpan<byte> source, [NotNullWhen(true)] out NetRomTransportHeader? header)

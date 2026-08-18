@@ -18,7 +18,7 @@ namespace Packet.Node.Core.Radios;
 /// </remarks>
 public interface IRadioStatusMonitor : IAsyncDisposable
 {
-    /// <summary>Project the radio's current status. Non-blocking — reads captured state only.</summary>
+    /// <summary>Project the radio's current status. Non-blocking - reads captured state only.</summary>
     RadioStatus Snapshot();
 }
 
@@ -32,7 +32,7 @@ public static class RadioStatusMonitors
     /// carrier-sense only). A <see cref="ReconnectingRadioControl"/> facade (head-end-bound radios,
     /// #576) gets a swap-following monitor that rebuilds the concrete monitor against each fresh
     /// inner driver, so health sampling and connection state survive a reconnect. Never returns
-    /// null — an attached radio always has a status.
+    /// null - an attached radio always has a status.
     /// </summary>
     public static IRadioStatusMonitor Create(
         string portId, PortRadioConfig config, IRadioControl radio, TimeProvider? timeProvider = null)
@@ -46,7 +46,7 @@ public static class RadioStatusMonitors
             : CreateForDriver(portId, config, radio, timeProvider);
     }
 
-    /// <summary>The concrete (non-facade) monitor for a driver — also what the swap-following
+    /// <summary>The concrete (non-facade) monitor for a driver - also what the swap-following
     /// monitor rebuilds per reconnect.</summary>
     internal static IRadioStatusMonitor CreateForDriver(
         string portId, PortRadioConfig config, IRadioControl radio, TimeProvider? timeProvider) =>
@@ -111,7 +111,7 @@ internal sealed class SwappingRadioStatusMonitor : IRadioStatusMonitor
         }
         catch
         {
-            // best-effort — the monitor's driver is already gone
+            // best-effort - the monitor's driver is already gone
         }
     }
 

@@ -64,7 +64,7 @@ public sealed class CircuitManagerTests
     {
         // Drop B's first Connect Acknowledge so A retransmits its Connect Request.
         // The retransmit's header names A's circuit (not B's), so it can't match B's
-        // local-key table — B must dedup it by the peer identity and re-ack, NOT mint
+        // local-key table - B must dedup it by the peer identity and re-ack, NOT mint
         // a second inbound circuit.
         //
         // B holds a DECOY outbound circuit to a third node, opened first so it owns the

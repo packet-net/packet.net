@@ -73,7 +73,7 @@ public class TimerSchedulerTests
         // AX.25's timer model is "expiry → event → dispatcher decides".
         // The dispatcher might re-arm a timer in response to an expiry,
         // but the re-arm happens *outside* the original callback. This
-        // test exercises that contract — we don't depend on re-arming
+        // test exercises that contract - we don't depend on re-arming
         // mid-callback being supported.
         var time = new FakeTimeProvider();
         using var sched = new SystemTimerScheduler(time);
@@ -134,7 +134,7 @@ public class TimerSchedulerTests
         time.Advance(TimeSpan.FromMilliseconds(1000));
 
         // Caller must read TimeRemaining BEFORE cancelling to get the
-        // actual round-trip sample — this is the contract that
+        // actual round-trip sample - this is the contract that
         // ActionDispatcher's stop_T1 case relies on.
         var sampled = sched.TimeRemaining("T1");
         sched.Cancel("T1");

@@ -14,7 +14,7 @@ public interface ISubroutineRegistry
     /// <summary>
     /// Invoke the subroutine identified by <paramref name="name"/> in
     /// the supplied transition context. Implementations decide how to
-    /// handle unknown names — the default registry throws, so a
+    /// handle unknown names - the default registry throws, so a
     /// transcription typo doesn't silently no-op.
     /// </summary>
     void Invoke(string name, TransitionContext tx);
@@ -43,7 +43,7 @@ public interface ISubroutineRegistry
 /// To override a subroutine for testing, use <see cref="Register"/>:
 /// <code>
 /// var registry = new DefaultSubroutineRegistry();
-/// registry.Wire(dispatcher, guards);   // optional — without this, subroutines no-op
+/// registry.Wire(dispatcher, guards);   // optional - without this, subroutines no-op
 /// registry.Register("Establish_Data_Link", tx => { /* record */ });
 /// </code>
 /// </para>
@@ -57,7 +57,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     private GuardEvaluator? wiredGuards;
 
     /// <summary>
-    /// Legacy subroutine names — pure name rewrites where the alias walks
+    /// Legacy subroutine names - pure name rewrites where the alias walks
     /// the canonical body unchanged. Used when a YAML page calls a
     /// subroutine under a name that the redrawn figc4.7 doesn't emit
     /// directly.
@@ -82,7 +82,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         };
 
     /// <summary>
-    /// Context-binding aliases — alias names that mutate the trigger
+    /// Context-binding aliases - alias names that mutate the trigger
     /// context before walking the canonical body. Used where the SDL
     /// figure's call-site annotation on a subroutine implies an
     /// out-of-band binding that the canonical body alone doesn't
@@ -101,7 +101,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     /// by setting the response (final) bit in the appropriate frame"*, so
     /// every response taking this code path must go out with F=1. The
     /// canonical encoding of the annotation in the yaml DSL is the open
-    /// question — tracked at
+    /// question - tracked at
     /// <see href="https://github.com/packet-net/ax25sdl/issues/45">packet-net/ax25sdl#45</see>.
     /// </para>
     /// <para>
@@ -160,14 +160,14 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
             subroutines[spec.Name] = _ => { /* no-op until Wire() is called */ };
         }
         // Legacy aliases (e.g. Select_T1_Value, Check_Need_For_Response with
-        // capital F) — referenced by older transcriptions or by paths that
+        // capital F) - referenced by older transcriptions or by paths that
         // called the longer historic name; resolved to the same body as
         // their canonical target once Wire() runs.
         foreach (var alias in LegacyAliases.Keys)
         {
             subroutines[alias] = _ => { /* no-op until Wire() is called */ };
         }
-        // Context-binding aliases (e.g. Enquiry_Response_F_0/F_1) — resolved
+        // Context-binding aliases (e.g. Enquiry_Response_F_0/F_1) - resolved
         // to the canonical body, but with a context-mutation applied first
         // so the body's frame-emission verbs see the right Pending state.
         foreach (var alias in ContextBindingAliases.Keys)
@@ -225,7 +225,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
             subroutines[alias] = tx => WalkSubroutine(captured, tx);
         }
         // Each context-binding alias mutates the trigger context then walks
-        // the canonical body — see ContextBindingAliases doc for why the
+        // the canonical body - see ContextBindingAliases doc for why the
         // mutation is needed and the open encoding question at
         // packet-net/ax25sdl#45.
         foreach (var (alias, (canonicalName, bind)) in ContextBindingAliases)
@@ -254,7 +254,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     /// Register a custom implementation for the named subroutine. Replaces
     /// any existing entry (including the default walker if Wire has been
     /// called) so tests can observe / mock subroutine calls. The override
-    /// is "sticky" — a subsequent <see cref="Wire"/> call will NOT
+    /// is "sticky" - a subsequent <see cref="Wire"/> call will NOT
     /// re-replace this name with a walker.
     /// </summary>
     public void Register(string name, Action<TransitionContext> implementation)
@@ -281,7 +281,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     private void WalkSubroutine(SubroutineSpec spec, TransitionContext tx)
     {
         // Wire() must have run before walker fires. If a name still has its
-        // no-op stub, the user never called Wire — the call no-ops silently,
+        // no-op stub, the user never called Wire - the call no-ops silently,
         // matching the pre-figc4.7-codegen behaviour.
         if (wiredDispatcher is null || wiredGuards is null)
         {
@@ -299,7 +299,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
             {
                 // Predicate isn't bound yet (frame-aware bindings are item 5
                 // of the interop arc and lag behind figc4.7's path
-                // requirements). Treat this path as not-matching — the
+                // requirements). Treat this path as not-matching - the
                 // subroutine call degrades to no-op rather than crash the
                 // calling state-machine transition. When the predicate is
                 // bound, the walker starts following the path automatically.
@@ -313,7 +313,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
             SdlLoopExecutor.Execute(path.Actions, path.Loops, wiredDispatcher, wiredGuards, tx);
             return;
         }
-        // No matching path — silently no-op.
+        // No matching path - silently no-op.
     }
 
 }

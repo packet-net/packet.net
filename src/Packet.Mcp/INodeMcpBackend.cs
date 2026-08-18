@@ -4,10 +4,10 @@ namespace Packet.Mcp;
 /// The seam between the transport-agnostic MCP tool surface and a concrete
 /// source of live node state. Two implementations exist (see docs/mcp-design.md):
 /// <list type="bullet">
-/// <item><c>LiveNodeMcpBackend</c> (in the node host) — reads
+/// <item><c>LiveNodeMcpBackend</c> (in the node host) - reads
 /// <c>NodeHostedService</c> directly; this is what the in-process SSE transport
 /// serves.</item>
-/// <item><c>RestNodeMcpBackend</c> (in the <c>pdn mcp</c> stdio entrypoint) — an
+/// <item><c>RestNodeMcpBackend</c> (in the <c>pdn mcp</c> stdio entrypoint) - an
 /// HTTP client of the running node's loopback REST API, bridging stdio to the
 /// live node across the process boundary.</item>
 /// </list>
@@ -35,7 +35,7 @@ public interface INodeMcpBackend
 
     /// <summary>Rig-control (CAT) attachment status: every rig-configured port when
     /// <paramref name="portId"/> is null, else just that port's (empty when the port id is
-    /// unknown — the REST 404 equivalent).</summary>
+    /// unknown - the REST 404 equivalent).</summary>
     Task<IReadOnlyList<McpRigStatus>> RigStatusAsync(string? portId = null, CancellationToken ct = default);
 
     // ---- write (operate-gated, audited by the host) ----

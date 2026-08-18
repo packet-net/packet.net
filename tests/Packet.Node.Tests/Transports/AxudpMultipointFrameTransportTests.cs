@@ -105,7 +105,7 @@ public sealed class AxudpMultipointFrameTransportTests
     [Fact]
     public async Task Accepts_inbound_from_many_senders_and_surfaces_each_as_a_neutral_frame()
     {
-        // No peers configured for inbound — the listener routes by callsign; the transport just
+        // No peers configured for inbound - the listener routes by callsign; the transport just
         // accepts from anyone on the one socket and yields the bare body.
         await using var transport = new AxudpMultipointFrameTransport([], localPort: 0);
         using var senderA = new AxudpMultipointSocket(localPort: 0);
@@ -200,7 +200,7 @@ public sealed class AxudpMultipointFrameTransportTests
     public async Task Logs_a_first_contact_outbound_transition_per_peer_not_per_frame()
     {
         // Cutover observability: the FIRST send to a peer renders a Debug "sent to" line; a
-        // SECOND send to the same peer (no silence) does NOT — it is a transition log, so a
+        // SECOND send to the same peer (no silence) does NOT - it is a transition log, so a
         // busy port stays quiet after first contact.
         using var peer = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         var port = ((IPEndPoint)peer.Client.LocalEndPoint!).Port;
@@ -216,7 +216,7 @@ public sealed class AxudpMultipointFrameTransportTests
         var recv = peer.ReceiveAsync(cts.Token);
         await transport.SendAsync(frame, cts.Token);
         await recv;
-        await transport.SendAsync(frame, cts.Token);   // second send — must NOT re-log
+        await transport.SendAsync(frame, cts.Token);   // second send - must NOT re-log
 
         log.Render(LogLevel.Debug).Should().ContainSingle(
             m => m.Contains("sent to GB7NDH", StringComparison.Ordinal) && m.Contains("broadcast=False", StringComparison.Ordinal),
@@ -228,7 +228,7 @@ public sealed class AxudpMultipointFrameTransportTests
     {
         // Cutover observability: every inbound datagram renders a Trace "heard {Source}" line;
         // the FIRST datagram from a new source endpoint also renders a Debug "learned peer
-        // endpoint" line (a transition — a second datagram from the same endpoint does not).
+        // endpoint" line (a transition - a second datagram from the same endpoint does not).
         var log = new CapturingLogger<AxudpMultipointFrameTransport>();
         await using var transport = new AxudpMultipointFrameTransport([], localPort: 0, logger: log);
         using var sender = new AxudpMultipointSocket(localPort: 0);

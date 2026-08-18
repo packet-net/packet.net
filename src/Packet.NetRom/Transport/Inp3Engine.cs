@@ -11,14 +11,14 @@ namespace Packet.NetRom.Transport;
 /// reflects a peer's probes back verbatim, learns INP3 capability from the
 /// <c>$N</c> / <c>$IX</c> flags, and raises <see cref="NeighbourDown"/> when a
 /// previously-capable neighbour stops reflecting for the reset window (default
-/// 180 s). This is INP3 slice I-2 — link timing only; it produces the SNTT value
+/// 180 s). This is INP3 slice I-2 - link timing only; it produces the SNTT value
 /// the route layer (I-3) consumes but does not itself touch the routing table
 /// beyond signalling a down neighbour.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Host-free.</b> Like <see cref="CircuitManager"/>, the engine has no AX.25 /
-/// node-host / routing-table dependency — it speaks only <see cref="Callsign"/> +
+/// node-host / routing-table dependency - it speaks only <see cref="Callsign"/> +
 /// <see cref="Inp3L3RttFrame"/> / <see cref="NetRomPacket"/> in and out. The host
 /// supplies a <see cref="SendL3Rtt"/> sink (wrap the frame in a PID-0xCF I-frame on
 /// the neighbour's interlink session) and subscribes <see cref="NeighbourDown"/>
@@ -29,7 +29,7 @@ namespace Packet.NetRom.Transport;
 /// <c>GetUtcNow</c> for circuit timers), the INP3 engine is RTT-centric, so it uses
 /// the injected <see cref="System.TimeProvider"/>'s <em>monotonic</em> source
 /// (<see cref="TimeProvider.GetTimestamp"/> / <see cref="TimeProvider.GetElapsedTime(long)"/>)
-/// converted to milliseconds — never wall-clock — so an NTP / DST step cannot
+/// converted to milliseconds - never wall-clock - so an NTP / DST step cannot
 /// corrupt an RTT or fire / suppress the 180 s reset. This is the one intentional
 /// divergence from the <see cref="CircuitManager"/> clock pattern (design §2.1,
 /// AMBIGUITY-I2-5).
@@ -44,7 +44,7 @@ namespace Packet.NetRom.Transport;
 public sealed class Inp3Engine : IDisposable
 {
     /// <summary>Sentinel for <see cref="Inp3NeighbourState.LastL3RttSentMs"/> meaning
-    /// "no probe ever sent" — distinct from the monotonic clock's legitimate <c>0</c>
+    /// "no probe ever sent" - distinct from the monotonic clock's legitimate <c>0</c>
     /// at engine start (a probe genuinely sent at <c>t=0</c> must not read as
     /// never-sent, or the cadence gate re-fires it every tick).</summary>
     private const long NeverProbed = long.MinValue;
@@ -88,7 +88,7 @@ public sealed class Inp3Engine : IDisposable
     /// <c>FakeTimeProvider</c> (the deterministic-test path). Identical to
     /// <see cref="CircuitManager"/>'s <c>tickInterval</c> semantics.
     /// </summary>
-    /// <param name="localNode">Our own L3 callsign — the origin we stamp into probes
+    /// <param name="localNode">Our own L3 callsign - the origin we stamp into probes
     /// and the <see cref="Inp3L3RttFrame.IsReflectionOf"/> self-test target.
     /// Settable later via <see cref="SetLocalNode"/>.</param>
     /// <param name="options">Cadence, reset window, SNTT gain, advertised
@@ -151,7 +151,7 @@ public sealed class Inp3Engine : IDisposable
     /// <summary>
     /// Drop a neighbour the host knows is gone (interlink torn down for non-INP3
     /// reasons). Removes its INP3 state; <see cref="NeighbourDown"/> is <em>not</em>
-    /// raised (the host already knows). Idempotent — dropping an unknown neighbour
+    /// raised (the host already knows). Idempotent - dropping an unknown neighbour
     /// is a no-op, so a re-entrant call from a <see cref="NeighbourDown"/> handler
     /// is safe.
     /// </summary>
@@ -167,7 +167,7 @@ public sealed class Inp3Engine : IDisposable
     /// Advance the engine by one tick: (a) for each neighbour due a probe
     /// (capability-permitted, not awaiting a reflection, and cadence elapsed since
     /// the last send) emit a <see cref="SendL3Rtt"/> and stamp the send; (b) for
-    /// each neighbour silent past the reset window, reset it — raising
+    /// each neighbour silent past the reset window, reset it - raising
     /// <see cref="NeighbourDown"/> only if it was INP3-capable (the AMBIGUITY-I2-3
     /// guard: a never-capable vanilla neighbour is dropped from probing silently,
     /// never routing-torn-down). Sends and callbacks are invoked <em>after</em> the
@@ -180,7 +180,7 @@ public sealed class Inp3Engine : IDisposable
         long now = NowMs();
 
         // Collected under the lock, invoked after release (the snapshot-then-act
-        // pattern of CircuitManager.Tick — a re-entrant host handler cannot deadlock).
+        // pattern of CircuitManager.Tick - a re-entrant host handler cannot deadlock).
         List<(Callsign Neighbour, Inp3L3RttFrame Frame)>? toSend = null;
         List<Inp3NeighbourDownEventArgs>? toRaise = null;
 
@@ -200,9 +200,9 @@ public sealed class Inp3Engine : IDisposable
                         (toRaise ??= new()).Add(new Inp3NeighbourDownEventArgs(call, now - n.LastReflectionMs));
                     }
                     // else: a never-capable neighbour that never reflected our
-                    // optimistic probes — drop it silently, NO NeighbourDown (the
+                    // optimistic probes - drop it silently, NO NeighbourDown (the
                     // guard: a vanilla peer is reachable by NODES, it just doesn't
-                    // speak L3RTT — we must not feed its silence into routing).
+                    // speak L3RTT - we must not feed its silence into routing).
                     continue;
                 }
 
@@ -281,10 +281,10 @@ public sealed class Inp3Engine : IDisposable
                 n.LastReflectionMs = now;
 
                 // A negative / stale RTT (clock went backwards, or a 0-stamp edge)
-                // updates liveness but contributes NO sample — never feed the filter
+                // updates liveness but contributes NO sample - never feed the filter
                 // a negative value (design §2.4). A non-negative sample (= RTT/2) is
                 // clamped to the INP3 horizon and seeded / smoothed inside Smooth
-                // (design §0.2–0.3).
+                // (design §0.2-0.3).
                 if (rtt >= 0)
                 {
                     // Clamp on the long before narrowing: a pathological RTT whose
@@ -298,7 +298,7 @@ public sealed class Inp3Engine : IDisposable
             else
             {
                 // A peer's probe to us (origin != us, or we weren't awaiting a
-                // reflection — an unsolicited / duplicate reflection is treated as a
+                // reflection - an unsolicited / duplicate reflection is treated as a
                 // peer probe, never as a metric sample). Reflect it verbatim
                 // (i1-wire-spec §1.4 locked byte-for-byte echo).
                 reflectFrame = frame;
@@ -388,7 +388,7 @@ public sealed class Inp3Engine : IDisposable
 
     // ─── Internals ──────────────────────────────────────────────────────
 
-    /// <summary>Monotonic milliseconds since construction (not wall-clock — design §2.1).</summary>
+    /// <summary>Monotonic milliseconds since construction (not wall-clock - design §2.1).</summary>
     private long NowMs() => (long)time.GetElapsedTime(startTimestamp).TotalMilliseconds;
 
     /// <summary>
@@ -439,7 +439,7 @@ public sealed class Inp3Engine : IDisposable
         public byte? IpAccept;
 
         /// <summary>A probe is outstanding (sent, not yet reflected). At most one in
-        /// flight per neighbour — bounds state and makes "is this reflection ours?"
+        /// flight per neighbour - bounds state and makes "is this reflection ours?"
         /// unambiguous.</summary>
         public bool AwaitingReflection;
 

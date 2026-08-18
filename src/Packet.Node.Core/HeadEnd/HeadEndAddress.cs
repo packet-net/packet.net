@@ -2,7 +2,7 @@ namespace Packet.Node.Core.HeadEnd;
 
 /// <summary>
 /// Parses the manual <c>host:port</c> address of a head-end's HTTP control plane (the
-/// <see cref="Configuration.HeadEndConfig.Address"/> operators type in Stage 3a — mDNS
+/// <see cref="Configuration.HeadEndConfig.Address"/> operators type in Stage 3a - mDNS
 /// resolution of an instance id → current address lands in Stage 3b). Shared by the config
 /// validator (reject a malformed address at apply time) and <see cref="HeadEndClient"/> (build
 /// the base <see cref="Uri"/> the inventory / line verbs hang off).
@@ -33,7 +33,7 @@ public static class HeadEndAddress
             return false;
         }
 
-        // Require an explicit port — the head-end API port (e.g. 7300) is never the scheme default.
+        // Require an explicit port - the head-end API port (e.g. 7300) is never the scheme default.
         if (!HasExplicitPort(uri))
         {
             return false;

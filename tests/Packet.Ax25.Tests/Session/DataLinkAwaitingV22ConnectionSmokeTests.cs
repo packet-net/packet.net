@@ -3,7 +3,7 @@ using Packet.Ax25.Sdl;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// End-to-end smoke test for figc4.6 (Awaiting V2.2 Connection — the SABME
+/// End-to-end smoke test for figc4.6 (Awaiting V2.2 Connection - the SABME
 /// handshake variant): drives every committed transition in
 /// <see cref="DataLink_AwaitingV22Connection"/> through <see cref="Ax25Session"/>
 /// with a recording dispatcher and stubbed decision predicates, asserting each

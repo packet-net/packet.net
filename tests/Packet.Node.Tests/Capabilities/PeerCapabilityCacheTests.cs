@@ -5,8 +5,8 @@ namespace Packet.Node.Tests.Capabilities;
 
 /// <summary>
 /// The capability cache decision + learning logic on a <see cref="FakeTimeProvider"/> (no
-/// wall-clock, repo rule §2.7). Asserts the <see cref="PeerCapabilityCache.PlanDial"/> table —
-/// miss ⇒ policy default, fresh positive honoured, fresh negative skipped, stale re-probed — and
+/// wall-clock, repo rule §2.7). Asserts the <see cref="PeerCapabilityCache.PlanDial"/> table -
+/// miss ⇒ policy default, fresh positive honoured, fresh negative skipped, stale re-probed - and
 /// the plan-aware <see cref="PeerCapabilityCache.RecordOutcome"/> learning that is the correctness
 /// hinge: a dimension is only learned when the dial actually probed it.
 /// </summary>
@@ -161,7 +161,7 @@ public sealed class PeerCapabilityCacheTests
         cache.RecordOutcome(Port, Peer, dialedExtended: true, observedIsExtended: true,
             dialedPreConnectXid: false, observedSrejEnabled: false);
 
-        // A later mod-8 dial (dialedExtended:false) must NOT overwrite the learned extended bit —
+        // A later mod-8 dial (dialedExtended:false) must NOT overwrite the learned extended bit -
         // a mod-8 dial proves nothing about extended capability.
         clock.Advance(TimeSpan.FromMinutes(5));
         cache.RecordOutcome(Port, Peer, dialedExtended: false, observedIsExtended: false,

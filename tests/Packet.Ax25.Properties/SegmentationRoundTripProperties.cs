@@ -59,7 +59,7 @@ public class SegmentationRoundTripProperties
 
     /// <summary>
     /// Inner-PID (Dire Wolf): any payload at any valid N1 (≥3) reassembles to the
-    /// identical bytes AND the original L3 PID is recovered — so segmentation
+    /// identical bytes AND the original L3 PID is recovered - so segmentation
     /// under the default quirk no longer loses the Layer-3 PID. The PID is drawn
     /// from FsCheck so it isn't accidentally the figure-literal default.
     /// </summary>
@@ -124,7 +124,7 @@ public class SegmentationRoundTripProperties
     /// (send side) produces a sequence of PID-0x08 DL-DATA requests that, fed
     /// back through a receiving <see cref="SegmentationLayer.OnDataIndication"/>
     /// (receive side), deliver a single reassembled indication identical to the
-    /// original payload — with the original L3 PID under the default quirk, or
+    /// original payload - with the original L3 PID under the default quirk, or
     /// 0xF0 under StrictlyFaithful. Both peers must agree on the format (as they
     /// would after XID negotiation).
     /// </summary>
@@ -132,10 +132,10 @@ public class SegmentationRoundTripProperties
     public void SegmentationLayer_Send_Then_Receive_Round_Trips(byte[] payload, byte n1Raw, byte pidRaw, bool quirkOn)
     {
         payload ??= [];
-        // The application's L3 PID must not be 0x08 — that value is reserved for
+        // The application's L3 PID must not be 0x08 - that value is reserved for
         // the segment marker (§6.6), so a real upper layer never hands it down as
         // its protocol id. (Feeding 0x08 here would make the un-segmented
-        // pass-through indistinguishable from a segment on the receive side — a
+        // pass-through indistinguishable from a segment on the receive side - a
         // distinct hostile-input concern covered by the *_Never_Crash_Throws_*
         // properties, not the valid round-trip under test here.)
         byte pid = pidRaw == Ax25Frame.PidSegmented ? Ax25Frame.PidNoLayer3 : pidRaw;
@@ -166,7 +166,7 @@ public class SegmentationRoundTripProperties
 
         if (capped.Length <= n1)
         {
-            // Fits — pass-through, single request with the original PID.
+            // Fits - pass-through, single request with the original PID.
             requests.Should().ContainSingle();
             deliveries.Should().Be(1);
             delivered!.Info.ToArray().Should().Equal(capped);
@@ -174,7 +174,7 @@ public class SegmentationRoundTripProperties
         }
         else
         {
-            // Segmented — every request is a 0x08 segment; exactly one delivery
+            // Segmented - every request is a 0x08 segment; exactly one delivery
             // on the last segment, identical to the original payload.
             requests.Should().OnlyContain(r => r.Pid == Ax25Frame.PidSegmented);
             deliveries.Should().Be(1, "exactly one reassembled indication on the final segment");
@@ -218,7 +218,7 @@ public class SegmentationRoundTripProperties
 
     /// <summary>
     /// Same hostile-sequence crash-proofing, but through the on-the-wire
-    /// <see cref="SegmentationLayer.OnDataIndication"/> seam — the path
+    /// <see cref="SegmentationLayer.OnDataIndication"/> seam - the path
     /// <see cref="Ax25Listener"/> actually drives. Each arbitrary buffer is
     /// delivered as a PID-0x08 indication; only the reassembler's documented
     /// throws are tolerated.

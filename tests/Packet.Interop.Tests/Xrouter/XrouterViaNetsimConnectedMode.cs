@@ -22,7 +22,7 @@ namespace Packet.Interop.Tests.Xrouter;
 /// <remarks>
 /// <para>
 /// Mirrors <c>LinbpqViaNetsimConnectedMode.Connect_Then_Disconnect_Against_Linbpq_Across_Netsim</c>
-/// — minimum useful assertion (SABM/UA connect, DISC/UA disconnect) against
+/// - minimum useful assertion (SABM/UA connect, DISC/UA disconnect) against
 /// a second third-party AX.25 stack as the remote peer. Data-path / I-frame
 /// round-trip is deferred to a follow-up once we've confirmed XRouter accepts
 /// connects on its NODECALL without further node-prompt configuration.
@@ -31,7 +31,7 @@ namespace Packet.Interop.Tests.Xrouter;
 /// Topology gotcha: XRouter splits the KISS-TCP attach into two directives
 /// (INTERFACE TYPE=TCP PROTOCOL=KISS … + PORT INTERFACENUM=N CHANNEL=B …)
 /// whereas LinBPQ uses a single PORT block. Wire-level is plain KISS over
-/// TCP for both — only the config syntax differs.
+/// TCP for both - only the config syntax differs.
 /// </para>
 /// <para>
 /// Bring the stack up with
@@ -56,7 +56,7 @@ public class XrouterViaNetsimConnectedMode
     // collision_mode: silence (docker/netsim/network.yaml). Shorten our
     // ack timer so our RR-acks turn the channel around quickly, reducing
     // the window where our TX overlaps XRouter's and both get silenced.
-    // T1/T3 keep spec defaults — retransmit recovery is unchanged. See the
+    // T1/T3 keep spec defaults - retransmit recovery is unchanged. See the
     // longer note in NetsimConnectedModeScenarios.
     private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
 
@@ -71,7 +71,7 @@ public class XrouterViaNetsimConnectedMode
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         // Brief settle so net-sim's per-port TX queue is ready before
@@ -108,7 +108,7 @@ public class XrouterViaNetsimConnectedMode
     /// <remarks>
     /// <para>
     /// Unlike LinBPQ, XRouter does NOT emit a welcome banner on connects
-    /// to its NODECALL — its CTEXT block is documented as "sent to
+    /// to its NODECALL - its CTEXT block is documented as "sent to
     /// anyone connecting to the node alias" (see /data/XROUTER.CFG.example
     /// in the container image), so NODECALL connects engage the node
     /// prompt silently. We therefore skip the banner-wait step here and
@@ -116,9 +116,9 @@ public class XrouterViaNetsimConnectedMode
     /// lets the post-handshake RR exchange flow before the queue drain.
     /// </para>
     /// <para>
-    /// Assertion is intentionally tolerant of XRouter's exact wording —
+    /// Assertion is intentionally tolerant of XRouter's exact wording -
     /// only "non-empty payload from XRouter" is checked, not specific
-    /// text — so the test survives XRouter upstream wording changes. Pid
+    /// text - so the test survives XRouter upstream wording changes. Pid
     /// is asserted as 0xF0 (no layer 3) which is what XRouter's node
     /// prompt uses; any other pid would surface a real protocol mismatch
     /// worth investigating.
@@ -140,7 +140,7 @@ public class XrouterViaNetsimConnectedMode
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         await Task.Delay(500, cts.Token);
@@ -152,11 +152,11 @@ public class XrouterViaNetsimConnectedMode
 
         // ─── Settle ─────────────────────────────────────────────────
         // Unlike LinBPQ, XRouter's NODECALL connect path does not emit a
-        // CTEXT welcome banner (CTEXT is alias-only — see XROUTER.CFG
+        // CTEXT welcome banner (CTEXT is alias-only - see XROUTER.CFG
         // and /data/XROUTER.CFG.example: "Connection text, sent to anyone
         // connecting to the node alias"). The node prompt is engaged for
         // NODECALL connects, but it's silent until the first command
-        // arrives — there's no banner to gate on. Instead of a fixed sleep,
+        // arrives - there's no banner to gate on. Instead of a fixed sleep,
         // wait for our own link to go quiescent (the post-UA RR exchange
         // settled: V(s) == V(a), no ack pending) so the channel is idle
         // before we drive the command round-trip.
@@ -164,7 +164,7 @@ public class XrouterViaNetsimConnectedMode
         DrainIndications(rig.Signals);
 
         // ─── Outbound command ───────────────────────────────────────
-        // "?\r" is the help-summary command at XRouter's node prompt —
+        // "?\r" is the help-summary command at XRouter's node prompt -
         // short, deterministically non-empty response, no side effects
         // on XRouter's state.
         rig.Session.PostEvent(new DlDataRequest(System.Text.Encoding.ASCII.GetBytes("?\r"), Ax25Frame.PidNoLayer3));
@@ -236,7 +236,7 @@ public class XrouterViaNetsimConnectedMode
             sendInternal: _ => { },
             subroutines: subroutines)
         {
-            // Faster RR-ack turnaround on the shared half-duplex channel —
+            // Faster RR-ack turnaround on the shared half-duplex channel -
             // see AckTimer remarks. T1/T3 keep spec defaults.
             T2Duration = AckTimer,
         };
@@ -325,8 +325,8 @@ public class XrouterViaNetsimConnectedMode
     }
 
     /// <summary>
-    /// Wait until our connected-mode link is quiescent — every I-frame we
-    /// sent is acknowledged (V(s) == V(a)) and we owe no pending ack — so
+    /// Wait until our connected-mode link is quiescent - every I-frame we
+    /// sent is acknowledged (V(s) == V(a)) and we owe no pending ack - so
     /// the shared half-duplex channel is idle before we transmit next.
     /// Lock-free, eventually-consistent reads against the inbound pump
     /// thread; a stale read just costs one extra poll iteration.

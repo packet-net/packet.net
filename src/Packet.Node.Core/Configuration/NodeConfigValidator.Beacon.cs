@@ -5,7 +5,7 @@ namespace Packet.Node.Core.Configuration;
 /// <summary>
 /// Validates the system-default beacon (<see cref="BeaconConfig"/>). The interval
 /// must be at least one minute, and an <em>enabled</em> beacon must carry non-empty
-/// text (a blank ID frame is meaningless). A disabled beacon is unconstrained — the
+/// text (a blank ID frame is meaningless). A disabled beacon is unconstrained - the
 /// text/interval are inert until the operator turns it on.
 /// </summary>
 public sealed class BeaconConfigValidator : AbstractValidator<BeaconConfig>

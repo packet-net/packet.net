@@ -12,7 +12,7 @@ namespace Packet.Node.Tests.Configuration;
 /// </summary>
 /// <remarks>
 /// The dispatch-mechanism tests drive it with SYNTHETIC registries and explicit from/to versions
-/// (the test-only 4-arg <c>Migrate</c> overload) to prove the mechanism itself — ordered chaining,
+/// (the test-only 4-arg <c>Migrate</c> overload) to prove the mechanism itself - ordered chaining,
 /// idempotency, the version stamp, the future-schema fail-safe, and a real older-shape blob
 /// migrating to a loadable <see cref="NodeConfig"/>. The production-registry tests at the end
 /// exercise the real v1→v2 alias-unification migration.

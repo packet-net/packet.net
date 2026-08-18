@@ -9,7 +9,7 @@ using Packet.Node.Core.NetRom;
 namespace Packet.Node.Tests.NetRom;
 
 /// <summary>
-/// INP3 slice I-5 — the our-fleet <b>end-to-end</b> proof: two (and three) real
+/// INP3 slice I-5 - the our-fleet <b>end-to-end</b> proof: two (and three) real
 /// <see cref="NetRomService"/> instances with the overlay on, cross-wired in-process over a
 /// deterministic message "wire" on one <see cref="FakeTimeProvider"/>, exchanging real L3RTT
 /// probes / reflections and periodic RIFs. Where <see cref="NetRomServiceInp3Tests"/> drives a
@@ -33,7 +33,7 @@ public sealed class NetRomServiceInp3EndToEndTests
     private static readonly DateTimeOffset T0 = new(2026, 6, 8, 12, 0, 0, TimeSpan.Zero);
 
     // A short periodic RIF (5 s) so a periodic fan-out fires well inside the 180 s reflection-reset
-    // window we keep alive by re-probing — the same FastRif trick as NetRomServiceInp3Tests.
+    // window we keep alive by re-probing - the same FastRif trick as NetRomServiceInp3Tests.
     private static NetRomConfig Config() => new()
     {
         Enabled = true,
@@ -113,7 +113,7 @@ public sealed class NetRomServiceInp3EndToEndTests
         public void ClearWire() => wire.Clear();
 
         /// <summary>Bootstrap mutual awareness: each peer hears the other's first probe (the interlink
-        /// coming up), so the next tick probes it. Faithful to the real path — a node only probes a
+        /// coming up), so the next tick probes it. Faithful to the real path - a node only probes a
         /// neighbour it has observed 0xCF from. Reflections land on the wire; cleared by the caller.</summary>
         public void Observe(Callsign x, Callsign y)
         {
@@ -138,7 +138,7 @@ public sealed class NetRomServiceInp3EndToEndTests
         f.DeliverRound();     // probes arrive; peers reflect (reflections queued at the same instant)
         f.Advance(TimeSpan.FromMilliseconds(rttMs));
         f.DeliverRound();     // reflections arrive → RTT measured, SNTT folded
-        f.ClearWire();        // drop anything left (e.g. a coincident periodic RIF) — measured state is set
+        f.ClearWire();        // drop anything left (e.g. a coincident periodic RIF) - measured state is set
     }
 
     [Fact]
@@ -198,7 +198,7 @@ public sealed class NetRomServiceInp3EndToEndTests
         MeasureRound(f, rttMs: 100);
 
         // First periodic round: A learns B (via B). Clear the wire, then drive a SECOND periodic round
-        // and capture A's RIF toward B — B is reachable only via B, so it must be poison-reversed.
+        // and capture A's RIF toward B - B is reachable only via B, so it must be poison-reversed.
         f.Advance(TimeSpan.FromSeconds(6));
         f.TickAll();
         f.Quiesce();
@@ -221,8 +221,8 @@ public sealed class NetRomServiceInp3EndToEndTests
     [Fact]
     public void A_three_node_line_propagates_a_time_route_two_hops_with_accumulated_target_time()
     {
-        // A — B — C (a line; A has no direct link to C). After convergence + two periodic rounds,
-        // A learns C via B with the target time accumulated across both hops — the real multi-hop
+        // A - B - C (a line; A has no direct link to C). After convergence + two periodic rounds,
+        // A learns C via B with the target time accumulated across both hops - the real multi-hop
         // INP3 propagation (the RIP for C rides B's RIF to A one periodic round after B learns C).
         using var f = new Fleet();
         f.Add(A);
@@ -234,7 +234,7 @@ public sealed class NetRomServiceInp3EndToEndTests
 
         MeasureRound(f, rttMs: 100);   // SNTT = 50 on both links (A↔B, B↔C)
 
-        // Two periodic rounds: round 1 — B learns C (via C's source RIP); round 2 — B's RIF to A now
+        // Two periodic rounds: round 1 - B learns C (via C's source RIP); round 2 - B's RIF to A now
         // carries C, so A learns C via B.
         for (int round = 0; round < 2; round++)
         {
@@ -251,7 +251,7 @@ public sealed class NetRomServiceInp3EndToEndTests
         route.Inp3!.TargetTimeMs.Should().Be(120, "accumulated Σ-SNTT + per-hop across both links");
         route.Inp3.HopCount.Should().Be(2, "two hops A→B→C");
 
-        // A reaches C only through B (no direct link) — its only route's next hop is B.
+        // A reaches C only through B (no direct link) - its only route's next hop is B.
         aToC.Routes.Should().OnlyContain(r => r.Neighbour == B);
     }
 
@@ -261,11 +261,11 @@ public sealed class NetRomServiceInp3EndToEndTests
         // The end-to-end failover-by-time proof. A reaches C two ways, of UNEQUAL hop length, so the
         // accumulated INP3 target time differs even though every link measures the same single RTT:
         //
-        //   short:  A — B — C        (2 hops)   →  via B, target 120 ms
-        //   long:   A — D — E — C    (3 hops)   →  via D, target 180 ms
+        //   short:  A - B - C        (2 hops)   →  via B, target 120 ms
+        //   long:   A - D - E - C    (3 hops)   →  via D, target 180 ms
         //
         // After convergence A holds C with BOTH next hops, each carrying its measured target time, and
-        // the Inp3RouteSelector — given the preferInp3Routes knob — picks the via-B (lower-time) route:
+        // the Inp3RouteSelector - given the preferInp3Routes knob - picks the via-B (lower-time) route:
         // having learned two real multi-hop time-routes, the node selects the faster. With the knob off
         // it falls back to best quality (today's behaviour).
         using var f = new Fleet();
@@ -289,7 +289,7 @@ public sealed class NetRomServiceInp3EndToEndTests
 
         // The long path needs an extra periodic round to propagate C all the way (C→E, E→D, D→A); three
         // rounds cover both arms (the short path converges in two). Each round is a full RIF fan-out at a
-        // fresh 6 s tick (well inside the 180 s reflection-reset window — at ~18 s total nothing resets).
+        // fresh 6 s tick (well inside the 180 s reflection-reset window - at ~18 s total nothing resets).
         for (int round = 0; round < 3; round++)
         {
             f.Advance(TimeSpan.FromSeconds(6));
@@ -320,7 +320,7 @@ public sealed class NetRomServiceInp3EndToEndTests
         viaD.Inp3.HopCount.Should().Be(3, "A→D→E→C is three hops");
 
         // Failover-by-time: with the INP3 knob on, the selector returns the via-B (lower-target-time)
-        // route — proving end-to-end that, holding two real multi-hop time-routes, the node selects the
+        // route - proving end-to-end that, holding two real multi-hop time-routes, the node selects the
         // faster path.
         var active = Inp3RouteSelector.SelectActiveRoute(aToC, preferInp3Routes: true);
         active.Should().NotBeNull();
@@ -328,7 +328,7 @@ public sealed class NetRomServiceInp3EndToEndTests
         active.Inp3!.TargetTimeMs.Should().Be(120);
 
         // Contrast (today's behaviour): with the knob off the selector ignores the time metric entirely
-        // and returns the best-QUALITY route (Routes[0], the quality-first head) — the dual-metric
+        // and returns the best-QUALITY route (Routes[0], the quality-first head) - the dual-metric
         // coexistence, with INP3 changing the result only when explicitly preferred.
         var qualityActive = Inp3RouteSelector.SelectActiveRoute(aToC, preferInp3Routes: false);
         qualityActive.Should().Be(aToC.BestRoute, "knob off ⇒ quality fallback, byte-for-byte today's path");

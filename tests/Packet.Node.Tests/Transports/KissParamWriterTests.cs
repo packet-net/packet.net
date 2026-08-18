@@ -6,7 +6,7 @@ using Packet.Node.Core.Transports;
 namespace Packet.Node.Tests.Transports;
 
 /// <summary>
-/// <see cref="KissParamWriter"/> — the MCP <c>set_kiss_param</c> write path. It owns
+/// <see cref="KissParamWriter"/> - the MCP <c>set_kiss_param</c> write path. It owns
 /// the settable-param set + range validation and dispatches to the matching
 /// <see cref="ICsmaChannelParams"/> setter so the value reaches the transport. These tests
 /// prove each settable param is dispatched (not a no-op), and that bad input is rejected
@@ -83,7 +83,7 @@ public sealed class KissParamWriterTests
     }
 
     [Theory]
-    [InlineData("fullduplex")] // a real KISS knob, but not on the ICsmaChannelParams surface — not settable here
+    [InlineData("fullduplex")] // a real KISS knob, but not on the ICsmaChannelParams surface - not settable here
     [InlineData("sethardware")]
     [InlineData("bogus")]
     public async Task Unknown_param_is_rejected_with_the_settable_set_listed(string param)

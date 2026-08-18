@@ -6,7 +6,7 @@ namespace Packet.Node.Core.Configuration;
 /// <summary>
 /// Validates the optional NET/ROM knobs. Qualities are 0..255 (the NET/ROM quality
 /// range); OBSINIT/OBSMIN, the sweep interval, the L4 window/timeout/retries, and
-/// the TTL are positive (TTL ≤ 255 — a 1-octet header field). Broadcast/connect
+/// the TTL are positive (TTL ≤ 255 - a 1-octet header field). Broadcast/connect
 /// require the service enabled. A typo'd value is rejected here rather than
 /// silently clamped, matching the per-port tuning discipline. The nested INP3
 /// overlay's ranges are delegated to <see cref="NetRomInp3Options.Validate"/>
@@ -48,14 +48,14 @@ public sealed class NetRomValidator : AbstractValidator<NetRomConfig>
         RuleFor(c => c)
             .Must(c => !(c.Broadcast && !c.Enabled))
             .WithMessage("netrom.broadcast requires netrom.enabled.");
-        // A routing role that opens interlinks (endpoint/transit — resolved from the new
+        // A routing role that opens interlinks (endpoint/transit - resolved from the new
         // routing knob or the legacy connect/forward keys) requires the service enabled.
         RuleFor(c => c)
             .Must(c => !(c.EffectiveRouting != NetRomRouting.None && !c.Enabled))
             .WithMessage("netrom.routing (endpoint/transit) requires netrom.enabled.");
 
         // INP3 overlay: delegate the range + cross-field checks to the record's own
-        // Validate() (one source of truth for the knob ranges — the same "one
+        // Validate() (one source of truth for the knob ranges - the same "one
         // validation authority" discipline the callsign rule uses by round-tripping
         // through Callsign.TryParse), surfaced as a FluentValidation failure so a bad
         // nested inp3: block rejects the whole candidate config atomically.
@@ -64,18 +64,18 @@ public sealed class NetRomValidator : AbstractValidator<NetRomConfig>
             .Must(BeValidInp3Options)
             .WithMessage(c => $"netrom.inp3 is invalid: {DescribeInp3Fault(c.Inp3)}");
 
-        // inp3.enabled requires netrom.enabled — a routing overlay on a deaf node is
+        // inp3.enabled requires netrom.enabled - a routing overlay on a deaf node is
         // meaningless (mirrors the broadcast/connect-require-enabled guards above).
         RuleFor(c => c)
             .Must(c => !(c.Inp3.Enabled && !c.Enabled))
             .WithMessage("netrom.inp3.enabled requires netrom.enabled.");
 
-        // inp3.enabled requires an interlink-opening routing role — INP3 rides on the
+        // inp3.enabled requires an interlink-opening routing role - INP3 rides on the
         // connected-mode interlink machinery (L3RTT / RIF are 0xCF I-frames on the same
         // sessions L4 uses), so the host constructs the overlay only when interlinks are
         // enabled (routing endpoint/transit, resolved from the new knob or the legacy
         // connect/forward keys). Without this rule, inp3.enabled + routing:none would pass
-        // validation and then silently no-op (the overlay never built) — reject it
+        // validation and then silently no-op (the overlay never built) - reject it
         // explicitly rather than accept-then-ignore (the named-flag discipline).
         RuleFor(c => c)
             .Must(c => !(c.Inp3.Enabled && c.EffectiveRouting == NetRomRouting.None))

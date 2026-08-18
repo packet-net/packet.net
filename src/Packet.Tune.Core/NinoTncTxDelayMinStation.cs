@@ -17,7 +17,7 @@ public sealed record NinoTncTxDelayMinStationOptions
     public TimeSpan UnkeyGap { get; init; } = TimeSpan.FromMilliseconds(750);
 
     /// <summary>TX-completion echo timeout for the settle frame (its echo is
-    /// sporadically absent — the frame still keys, so a timeout is tolerated).
+    /// sporadically absent - the frame still keys, so a timeout is tolerated).
     /// Default 8 s.</summary>
     public TimeSpan SettleTxTimeout { get; init; } = TimeSpan.FromSeconds(8);
 
@@ -25,7 +25,7 @@ public sealed record NinoTncTxDelayMinStationOptions
     /// max TXDELAY + airtime at 300 baud).</summary>
     public TimeSpan ProbeTxTimeout { get; init; } = TimeSpan.FromSeconds(20);
 
-    /// <summary>Plausibility window for a measured pre-data carrier reading — a probe
+    /// <summary>Plausibility window for a measured pre-data carrier reading - a probe
     /// whose computed lead falls outside (0, this] is discarded rather than skewing the
     /// median (a missed carrier edge or a stale window produces wild values).
     /// Default 10 s.</summary>
@@ -45,17 +45,17 @@ public sealed record NinoTncTxDelayMinStationOptions
 ///     <see cref="SetTxDelayAsync"/> always transmits and discards a settle frame, then
 ///     lets the transmitter unkey, before returning.</item>
 ///   <item><b>Separate keyings</b>: <see cref="TransmitProbesAsync"/> gaps every probe
-///     by <see cref="NinoTncTxDelayMinStationOptions.UnkeyGap"/> — chained sends share
+///     by <see cref="NinoTncTxDelayMinStationOptions.UnkeyGap"/> - chained sends share
 ///     one preamble and would measure nothing.</item>
 ///   <item><b>Channel-access pinning</b>: persistence 255 / slottime 0 for the
 ///     measurement (the default p-persistence adds random ~100 ms slot deferrals);
-///     restore is the conventional 63 / 10 — KISS has no read-back. Both mirror
+///     restore is the conventional 63 / 10 - KISS has no read-back. Both mirror
 ///     <see cref="TxDelayControlCheck"/>.</item>
 ///   <item><b>Pre-data measurement</b> (meter side): the counter tracks the radio's
 ///     hardware carrier-sense rises and, per decoded probe, computes
-///     (arrival − airtime) − carrier-rise — the same attribution
+///     (arrival − airtime) − carrier-rise - the same attribution
 ///     <c>RssiTaggingTransport</c> performs, carrying the same constant decode+serial
-///     overhead (~40–75 ms at 1200 Bd). Enable PROGRESS messages on the radio or no
+///     overhead (~40-75 ms at 1200 Bd). Enable PROGRESS messages on the radio or no
 ///     edges arrive.</item>
 /// </list>
 /// </remarks>
@@ -71,7 +71,7 @@ public sealed class NinoTncTxDelayMinStation : ITxDelayMinStation
     /// meter's pre-data measurement). Lifetimes stay the caller's.</summary>
     /// <param name="tnc">The NinoTNC whose TXDELAY is under control (also carries the probes).</param>
     /// <param name="source">Source callsign for settle/probe frames.</param>
-    /// <param name="radio">The paired radio's control channel, when one is attached —
+    /// <param name="radio">The paired radio's control channel, when one is attached -
     /// only its carrier-sense events are used, and only by the meter-side counter.</param>
     /// <param name="options">Timing knobs; null = bench defaults.</param>
     /// <param name="timeProvider">Time source for the unkey gaps, the probe TX-latency
@@ -136,7 +136,7 @@ public sealed class NinoTncTxDelayMinStation : ITxDelayMinStation
         }
 
         // Settle frame: the changed TXDELAY applies from the SECOND frame after the
-        // command — this keying (which still pays the OLD preamble) absorbs that. Its
+        // command - this keying (which still pays the OLD preamble) absorbs that. Its
         // ACKMODE echo is sporadically absent (bench-observed); the frame still keys,
         // so a missing echo is logged and tolerated.
         byte[] settle = TxDelayProbe.BuildSettleFrame(source, txDelayMs).ToBytes();
@@ -151,7 +151,7 @@ public sealed class NinoTncTxDelayMinStation : ITxDelayMinStation
                 $"station: settle frame TX-completion not echoed within {options.SettleTxTimeout.TotalSeconds:0} s (continuing)"));
         }
 
-        // Let the transmitter unkey — the next send must be its own keying.
+        // Let the transmitter unkey - the next send must be its own keying.
         await Task.Delay(options.UnkeyGap, clock, cancellationToken).ConfigureAwait(false);
     }
 
@@ -180,7 +180,7 @@ public sealed class NinoTncTxDelayMinStation : ITxDelayMinStation
             }
             catch (TimeoutException)
             {
-                // No TX-completion echo — the frame may still have keyed (bench-observed
+                // No TX-completion echo - the frame may still have keyed (bench-observed
                 // sporadic echo absence). The meter's decode count is the verdict.
                 Log?.Invoke(string.Create(CultureInfo.InvariantCulture,
                     $"station: probe {i}/{count} TX-completion not echoed within {options.ProbeTxTimeout.TotalSeconds:0} s"));
@@ -283,7 +283,7 @@ public sealed class NinoTncTxDelayMinStation : ITxDelayMinStation
                 {
                     return;
                 }
-                // Wire bytes + FCS(2) + one flag, ignoring bit-stuffing — the same
+                // Wire bytes + FCS(2) + one flag, ignoring bit-stuffing - the same
                 // approximation RssiTaggingTransport uses.
                 double airtimeMs = (frame.Payload.Length + 3) * 8.0 * 1000.0 / rate;
                 double leadMs = (clock.GetUtcNow() - rise).TotalMilliseconds - airtimeMs;

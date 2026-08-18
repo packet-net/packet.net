@@ -7,17 +7,17 @@ namespace Packet.Axudp;
 
 /// <summary>
 /// A bidirectional AXUDP endpoint. AXUDP is UDP encapsulation of AX.25 frames
-/// per the RFC-1226 "AX.25 over IP" convention — the UDP payload is the AX.25
+/// per the RFC-1226 "AX.25 over IP" convention - the UDP payload is the AX.25
 /// frame body (no opening / closing HDLC flag, no bit-stuffing) followed by the
 /// 2-octet AX.25 FCS. Each peer maintains its own UDP socket and addresses
 /// remotes by <see cref="IPEndPoint"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>AXUDP unconditionally carries the 2-octet AX.25 FCS — there is no FCS-less
+/// <b>AXUDP unconditionally carries the 2-octet AX.25 FCS - there is no FCS-less
 /// form.</b> The FCS is part of the wire format: <see cref="SendAsync"/> always
 /// appends it (CRC-16-CCITT / X.25, low byte first) and <see cref="ReceiveAsync"/>
-/// always strips + validates it, dropping any datagram whose FCS doesn't check —
+/// always strips + validates it, dropping any datagram whose FCS doesn't check -
 /// exactly as every real peer does.
 /// </para>
 /// <para>
@@ -25,7 +25,7 @@ namespace Packet.Axudp;
 /// (see <c>docs/strict-vs-pragmatic-audit.md</c> § "AXUDP / AXIP-over-IP FCS framing"):
 /// <list type="bullet">
 ///   <item><b>RFC 1226</b> (and the modern <c>rfc1226-bis</c> draft), the AX.25-over-IP
-///   standard: "The 16-bit CRC-CCITT frame check sequence … is included" — mandatory,
+///   standard: "The 16-bit CRC-CCITT frame check sequence … is included" - mandatory,
 ///   with no FCS-less option.</item>
 ///   <item><b>ax25ipd</b> (the classic Linux AXIP daemon, <c>ax25-apps</c>): appends the
 ///   FCS unconditionally on transmit (<c>process.c</c> <c>add_crc</c>) and drops any
@@ -37,10 +37,10 @@ namespace Packet.Axudp;
 ///   isn't <c>0xf0b8</c> ("BPQAXIP Invalid CRC"); its send path appends the 2-octet FCS.
 ///   There is no per-MAP "no CRC" knob.</item>
 ///   <item><b>XRouter's AXUDP likewise requires the FCS</b> (it counts FCS-less bodies
-///   as "non-AXUDP ignored" — verified on the wire).</item>
+///   as "non-AXUDP ignored" - verified on the wire).</item>
 /// </list>
 /// All compute the identical CRC (poly 0x1021, init 0xffff, ^0xffff, low byte
-/// first, good residue 0xf0b8) — byte-for-byte our <see cref="Packet.Core.Crc16Ccitt"/>.
+/// first, good residue 0xf0b8) - byte-for-byte our <see cref="Packet.Core.Crc16Ccitt"/>.
 /// A pdn-only FCS-less form once existed as a "pdn↔pdn opt-out"; it interoperated
 /// with no real implementation and was removed.
 /// </para>
@@ -70,7 +70,7 @@ public sealed class AxudpSocket : IDisposable
 
     /// <summary>
     /// Send a serialised AX.25 frame to <paramref name="remote"/>, with the
-    /// 2-octet AX.25 FCS (CRC-16-CCITT / X.25, low byte first) appended — the
+    /// 2-octet AX.25 FCS (CRC-16-CCITT / X.25, low byte first) appended - the
     /// RFC-1226 AXIP/AXUDP wire form that every real peer (LinBPQ's BPQAXIP,
     /// XRouter, ax25ipd, JNOS) requires. The FCS is unconditional; there is no
     /// FCS-less form.
@@ -87,7 +87,7 @@ public sealed class AxudpSocket : IDisposable
 
     /// <summary>
     /// Send raw bytes to <paramref name="remote"/>. Caller is responsible for
-    /// constructing a well-formed AX.25 frame body — useful for replaying
+    /// constructing a well-formed AX.25 frame body - useful for replaying
     /// captures or forwarding unparsed frames.
     /// </summary>
     public async Task<int> SendRawAsync(IPEndPoint remote, ReadOnlyMemory<byte> rawFrame, CancellationToken cancellationToken = default)
@@ -98,7 +98,7 @@ public sealed class AxudpSocket : IDisposable
     /// <summary>
     /// Wait for the next valid datagram. The trailing 2-octet AX.25 FCS is
     /// stripped + validated; a datagram that is too short to carry an FCS, or
-    /// whose FCS doesn't check, is dropped (and the wait continues) — exactly as
+    /// whose FCS doesn't check, is dropped (and the wait continues) - exactly as
     /// every real AXIP/AXUDP peer drops a bad-CRC datagram. Returns the sender
     /// endpoint, the bare AX.25 frame body (FCS removed), and an attempted decode
     /// (null if the body isn't a parseable AX.25 frame).
@@ -106,7 +106,7 @@ public sealed class AxudpSocket : IDisposable
     /// <remarks>
     /// The decode is best-effort at modulo-8: this transport layer has no
     /// session context, so it can't know whether the link is extended
-    /// (modulo-128) — and an extended I/S frame's control-field width isn't
+    /// (modulo-128) - and an extended I/S frame's control-field width isn't
     /// derivable from the octets alone. The bare body is returned alongside,
     /// so a session-aware consumer must re-parse at the link's negotiated
     /// modulo (see <c>Ax25Frame.TryParse(…, extended, …)</c>) before trusting
@@ -123,7 +123,7 @@ public sealed class AxudpSocket : IDisposable
             var result = await udp.ReceiveAsync(cancellationToken).ConfigureAwait(false);
             if (!TryStripFcs(result.Buffer, out var body))
             {
-                continue;   // too short, or FCS mismatch — drop, as real peers do
+                continue;   // too short, or FCS mismatch - drop, as real peers do
             }
             Ax25Frame? decoded = Ax25Frame.TryParse(body, out var frame) ? frame : null;
             return new AxudpReceiveResult(result.RemoteEndPoint, body, decoded);
@@ -160,7 +160,7 @@ public sealed class AxudpSocket : IDisposable
 /// validated.
 /// </summary>
 /// <param name="From">The remote endpoint that sent the datagram.</param>
-/// <param name="RawFrame">The AX.25 frame body — the datagram payload with the
+/// <param name="RawFrame">The AX.25 frame body - the datagram payload with the
 /// 2-octet FCS removed (what the AX.25 parser consumes).</param>
 /// <param name="DecodedFrame">
 /// The parsed frame, or <c>null</c> if the body did not decode as a valid

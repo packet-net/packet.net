@@ -11,7 +11,7 @@ namespace Packet.Node.Tests.Applications;
 /// The <c>pdn-app/1</c> socket rung (<see cref="SocketApplication"/>). A stub Unix-domain socket
 /// server stands in for a long-running app daemon: it echoes whatever the node writes (the
 /// connect header, then each assembled user line) straight back, so we can assert the header
-/// format, the newline translation, and teardown without a bespoke daemon — the socket analogue
+/// format, the newline translation, and teardown without a bespoke daemon - the socket analogue
 /// of the <c>/bin/cat</c> process-bridge test. Linux-only (Unix sockets; CI is Linux).
 /// </summary>
 [Trait("Category", "Node")]

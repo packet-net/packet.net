@@ -44,9 +44,9 @@ public sealed class NetRomServiceInp3Tests
 
     // A tuned overlay for the fan-out tests: a SHORT periodic RIF interval (5 s) so a periodic
     // fan-out fires BEFORE the 180 s reflection-timeout would reset a neighbour we keep alive by
-    // reflecting its probe — production keeps neighbours alive with the 60 s probe cadence; the
+    // reflecting its probe - production keeps neighbours alive with the 60 s probe cadence; the
     // test compresses the periodic cadence to do the same deterministically. (Validate only
-    // constrains PositiveDebounce < RifInterval and resetWindow > probeInterval — both hold.)
+    // constrains PositiveDebounce < RifInterval and resetWindow > probeInterval - both hold.)
     private static NetRomInp3Options FastRif => new()
     {
         Enabled = true,
@@ -84,7 +84,7 @@ public sealed class NetRomServiceInp3Tests
             {
                 if (!InterlinkUp)
                 {
-                    return false;   // cold interlink — drop, don't dial (the engine just won't probe)
+                    return false;   // cold interlink - drop, don't dial (the engine just won't probe)
                 }
                 Sent.Add(new Sent(neighbour, bytes));
                 return true;
@@ -231,7 +231,7 @@ public sealed class NetRomServiceInp3Tests
         MeasureLink(h, NbrA, rttMs: 100);
         h.Sent.Clear();   // drop the probe we sent while measuring
 
-        // A RIF to a destination that is NOT us must be peeled off as INP3 — never forwarded.
+        // A RIF to a destination that is NOT us must be peeled off as INP3 - never forwarded.
         h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
 
         h.Sent.Should().NotContain(s => !s.IsRif && !s.IsL3Rtt,
@@ -254,8 +254,8 @@ public sealed class NetRomServiceInp3Tests
         // Learn SOT via NbrA (160 ms local target time).
         h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
 
-        // Advance past the (compressed 5 s) periodic RIF interval — but under the 180 s reset
-        // window, so the neighbours stay alive — and tick → a Periodic fan-out emits one full RIF
+        // Advance past the (compressed 5 s) periodic RIF interval - but under the 180 s reset
+        // window, so the neighbours stay alive - and tick → a Periodic fan-out emits one full RIF
         // per capable neighbour. (The capable set is reconciled from the engine.)
         h.Clock.Advance(TimeSpan.FromSeconds(6));
         h.Service.Inp3TickForTest();
@@ -285,8 +285,8 @@ public sealed class NetRomServiceInp3Tests
     public void An_inbound_rif_withdrawal_fans_out_to_every_neighbour_then_clears()
     {
         // The NEGATIVE (withdrawal) path is the correctness-critical one (design §6.5). Drive it via
-        // an explicit horizon RIP from NbrA (a peer withdrawing SOT) — deterministic, no clock
-        // juggling — and assert it reaches EVERY capable neighbour's RIF, then clears after the round.
+        // an explicit horizon RIP from NbrA (a peer withdrawing SOT) - deterministic, no clock
+        // juggling - and assert it reaches EVERY capable neighbour's RIF, then clears after the round.
         using var h = new Harness(inp3Enabled: true, overlay: FastRif);
         MeasureLink(h, NbrA, rttMs: 100);
         MeasureLink(h, NbrB, rttMs: 60);
@@ -332,7 +332,7 @@ public sealed class NetRomServiceInp3Tests
         // The accumulate-then-drain model (the host-thread race fix): the host no longer escalates
         // per-ingest; a withdrawal lands in the table's recently-withdrawn set and the NEXT TickOnce
         // DRAINS the set atomically. Two destinations withdrawn by separate ingests with NO tick
-        // between them must therefore BOTH fan out on the single following tick — proving the drain
+        // between them must therefore BOTH fan out on the single following tick - proving the drain
         // is the one round boundary and an ingest that arrives between rounds is captured, not lost.
         using var h = new Harness(inp3Enabled: true, overlay: FastRif);
         MeasureLink(h, NbrA, rttMs: 100);
@@ -347,7 +347,7 @@ public sealed class NetRomServiceInp3Tests
             .And.Contain(d => d.Destination == DestMnc, "both learned via NbrA");
         h.Sent.Clear();
 
-        // Withdraw BOTH via two separate ingests, with NO tick in between — they accumulate in the
+        // Withdraw BOTH via two separate ingests, with NO tick in between - they accumulate in the
         // recently-withdrawn set.
         h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: Inp3Rip.HorizonMs));
         h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestMnc, hop: 1, targetTimeMs: Inp3Rip.HorizonMs));
@@ -375,7 +375,7 @@ public sealed class NetRomServiceInp3Tests
     private static void MeasureLink(Harness h, Callsign neighbour, int rttMs)
     {
         // Observe the neighbour (a peer probe TO us both observes it and marks it capable via $N,
-        // and is reflected by the engine — but we want OUR probe out so we can reflect it for the
+        // and is reflected by the engine - but we want OUR probe out so we can reflect it for the
         // RTT sample). Send a peer probe so the neighbour becomes capable, then drive our probe.
         var peerProbe = Inp3L3RttFrame.Build(neighbour).ToBytes();   // origin = neighbour → a peer probe to us
         h.Service.IngestInterlinkForTest(Port, neighbour, peerProbe);      // observes + learns $N capability + reflects

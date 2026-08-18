@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Heard;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> — the meta-less approach the
+/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> - the meta-less approach the
 /// refresh-token / capability stores use, so it doesn't fight the routing store over
 /// <c>PRAGMA user_version</c>. One table, <c>heard_log</c>, keyed by the (port, callsign) pair.
 /// </para>
@@ -21,7 +21,7 @@ namespace Packet.Node.Core.Heard;
 /// <b>Resilient.</b> Every operation is wrapped: a schema/open failure logs and leaves the node
 /// running (the log just stays in-memory); a read returns empty on fault, a write is swallowed, a
 /// delete returns false / 0. Persistence can never take the node down. WAL mode, a fresh pooled
-/// connection per call — the same discipline as the capability store — so it is safe to share
+/// connection per call - the same discipline as the capability store - so it is safe to share
 /// across threads.
 /// </para>
 /// </remarks>
@@ -45,7 +45,7 @@ public sealed partial class SqliteHeardStore : IHeardStore
     private readonly ILogger<SqliteHeardStore> logger;
 
     /// <summary>Open (creating if absent) the heard store at <paramref name="dbPath"/> and ensure
-    /// its schema. A schema/open failure is logged, not thrown — the node still boots, just without
+    /// its schema. A schema/open failure is logged, not thrown - the node still boots, just without
     /// heard-log persistence.</summary>
     public SqliteHeardStore(string dbPath, ILogger<SqliteHeardStore>? logger = null)
     {
@@ -72,7 +72,7 @@ public sealed partial class SqliteHeardStore : IHeardStore
 
             // Additive migration for a heard_log created before last-heard RSSI / SNR existed: this
             // store is meta-less (no PRAGMA user_version), so an existing table needs each nullable
-            // column added explicitly — the same pattern as SqliteRefreshTokenStore. New databases get
+            // column added explicitly - the same pattern as SqliteRefreshTokenStore. New databases get
             // them from SchemaSql above; each ADD then finds the column already present and is skipped.
             var columns = conn.Query<string>("SELECT name FROM pragma_table_info('heard_log');")
                 .ToHashSet(StringComparer.Ordinal);

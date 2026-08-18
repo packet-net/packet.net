@@ -7,7 +7,7 @@ namespace Packet.Agw.Tests;
 
 /// <summary>
 /// End-to-end behaviour of <see cref="AgwClient"/> against an
-/// in-memory paired-pipe stub server. Tests run without TCP — the
+/// in-memory paired-pipe stub server. Tests run without TCP - the
 /// stub plays the role of LinBPQ / direwolf at the protocol level
 /// (read frames, emit canned responses).
 /// </summary>

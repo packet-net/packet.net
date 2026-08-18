@@ -10,7 +10,7 @@ namespace Packet.Node.Tests.Support;
 
 /// <summary>
 /// A test <see cref="ITransportFactory"/> that hands out pre-supplied in-memory
-/// transports instead of opening real hardware/sockets — so the
+/// transports instead of opening real hardware/sockets - so the
 /// <see cref="Packet.Node.Core.Hosting.PortSupervisor"/> can bring up real
 /// <c>Ax25Listener</c>s over the in-memory radio. Transports are registered per port
 /// id; each port-id can be given a sequence of transports so a restart (tear down +
@@ -48,7 +48,7 @@ public sealed class FakeTransportFactory : ITransportFactory
         return this;
     }
 
-    /// <summary>Stop faulting an endpoint (models the head-end coming back up — the bring-up
+    /// <summary>Stop faulting an endpoint (models the head-end coming back up - the bring-up
     /// retry loop's recovery case, #576). Pair with <see cref="Provide"/> for the next open.</summary>
     public FakeTransportFactory ClearFault(string endpoint)
     {

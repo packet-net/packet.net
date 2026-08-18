@@ -40,7 +40,7 @@ public class NetRomQualityTests
     {
         // A hop can only attenuate: for any path quality < 255 (i.e. not a perfect
         // link), combining reduces the advertised quality. This is the loop-safety
-        // invariant — quality decreases per hop.
+        // invariant - quality decreases per hop.
         for (int bq = 1; bq <= 255; bq++)
         {
             for (int pq = 1; pq < 255; pq++)

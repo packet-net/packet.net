@@ -10,15 +10,15 @@ namespace Packet.Interop.Tests.Linbpq;
 
 /// <summary>
 /// Lightweight AXUDP smoke checks against the LinBPQ container's BPQAXIP (AXUDP)
-/// listener. The real connected-mode AXUDP interop — a full SABM/UA + I-frame
-/// session in both directions through the node host — lives in
+/// listener. The real connected-mode AXUDP interop - a full SABM/UA + I-frame
+/// session in both directions through the node host - lives in
 /// <see cref="LinbpqViaAxudpConnectedMode"/>; this class just confirms the
 /// container is up and that an AXUDP datagram in BPQ's required form is accepted.
 /// </summary>
 /// <remarks>
 /// <para>
-/// LinBPQ does NOT host a native KISS-TCP listener — that needs an external
-/// softmodem (Direwolf / UZ7HO) bridged in — so KISS-TCP interop runs against
+/// LinBPQ does NOT host a native KISS-TCP listener - that needs an external
+/// softmodem (Direwolf / UZ7HO) bridged in - so KISS-TCP interop runs against
 /// net-sim, which DOES expose KISS-TCP. BPQ's AX.25-over-IP path is the BPQAXIP
 /// (AXIP / AXUDP) driver, exercised here and (for connected mode) in
 /// <see cref="LinbpqViaAxudpConnectedMode"/>.
@@ -28,7 +28,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// see <see cref="LinbpqViaAxudpConnectedMode"/> for the detail and the on-the-
 /// wire regression guard). AXUDP always carries it, so the UI-frame smoke below
 /// sends the FCS-bearing form. An FCS-less datagram would be silently dropped
-/// by BPQ as "Invalid CRC" — sending one and asserting "no client-side
+/// by BPQ as "Invalid CRC" - sending one and asserting "no client-side
 /// exception" (what a pre-#299 revision did) proved nothing, because the drop is
 /// invisible to the sender. UDP is fire-and-forget, so this remains a framing /
 /// liveness smoke; the connected-mode test is where acceptance is actually
@@ -60,7 +60,7 @@ public class LinbpqAxudpSmoke
     [SkippableFact]
     public async Task Sends_An_Fcs_Bearing_UI_Frame_Via_AXUDP_To_LinBPQ_Without_Error()
     {
-        // The HTTP port serves as a liveness check — if it answers, LinBPQ is up
+        // The HTTP port serves as a liveness check - if it answers, LinBPQ is up
         // and the BPQAXIP driver is bound on its UDP port too (same daemon).
         Skip.IfNot(await IsTcpPortReachable(Host, HttpPort),
             $"LinBPQ not running (HTTP {Host}:{HttpPort} unreachable). Bring up the interop stack: 'docker compose -f docker/compose.interop.yml up -d --wait linbpq'.");
@@ -73,7 +73,7 @@ public class LinbpqAxudpSmoke
             source: new Callsign("PN0TST", 9),
             info: "Packet.NET v0 hello (AXUDP)"u8);
 
-        // AXUDP always appends the 2-octet FCS — the form BPQAXIP/UDP requires (it
+        // AXUDP always appends the 2-octet FCS - the form BPQAXIP/UDP requires (it
         // drops FCS-less datagrams as "Invalid CRC"). UDP is fire-and-forget; this is
         // a framing smoke. Real acceptance (UA / I-frame replies) is asserted in
         // LinbpqViaAxudpConnectedMode.

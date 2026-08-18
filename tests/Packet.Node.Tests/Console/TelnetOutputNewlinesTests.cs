@@ -4,7 +4,7 @@ using Packet.Node.Core.Console;
 namespace Packet.Node.Tests.Console;
 
 /// <summary>
-/// Outbound newline normalisation for the telnet connection — the companion to
+/// Outbound newline normalisation for the telnet connection - the companion to
 /// <see cref="LineAssemblerTests"/> on the inbound side. A bare CR (the AX.25
 /// line ending) renders as CR-LF so relayed node/BBS output advances the terminal
 /// instead of overtyping it; existing CR-LF is left alone (idempotent); and

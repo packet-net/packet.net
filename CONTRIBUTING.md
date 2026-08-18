@@ -1,6 +1,6 @@
 # Contributing to Packet.NET
 
-Thanks for the interest — Packet.NET is a fresh codebase and contributions are
+Thanks for the interest - Packet.NET is a fresh codebase and contributions are
 welcome. Please read this short guide before opening a PR.
 
 **Before anything else, read [`docs/plan.md`](docs/plan.md).** It is the
@@ -83,7 +83,7 @@ Avoid messages like "fix bug" or "wip".
 - Read the SDL YAML against the spec figure for SDL transcription PRs.
 - For protocol changes, verify against the LinBPQ interop harness output
   (CI artifact).
-- Question new dependencies — Packet.NET aims for a small dependency surface.
+- Question new dependencies - Packet.NET aims for a small dependency surface.
 
 ## Security
 
@@ -95,7 +95,7 @@ opening a public issue. See `SECURITY.md` (once it exists).
 `docs/plan.md` is the project's authoritative living document. Every PR that
 materially changes direction, scope, locked decisions, working agreements,
 risks, dependencies, or completes a phase exit criterion **must** update
-`docs/plan.md` in the same PR — including an entry in §17 Amendment log. See
+`docs/plan.md` in the same PR - including an entry in §17 Amendment log. See
 §18 of the plan for the discipline.
 
 If your PR ships without a plan update and the change is plan-relevant, the

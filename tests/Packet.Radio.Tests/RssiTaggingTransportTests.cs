@@ -35,7 +35,7 @@ public class RssiTaggingTransportTests
         await radio.WaitForReadsAsync(1);
 
         // Carrier rises; the channel now reads -90. (Nudge the clock so the rise instant is
-        // strictly after the last idle sample — inclusive window boundaries.)
+        // strictly after the last idle sample - inclusive window boundaries.)
         time.Advance(TimeSpan.FromMilliseconds(1));
         var rise = time.GetUtcNow();
         radio.RssiDbm = -90f;

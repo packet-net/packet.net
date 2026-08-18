@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Capabilities;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> — the same meta-less
+/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> - the same meta-less
 /// approach the refresh-token store uses, so it doesn't fight the routing store over
 /// <c>PRAGMA user_version</c>. One table, <c>peer_capability</c>, keyed by the
 /// (port, peer) pair, because capability is per-link.
@@ -22,8 +22,8 @@ namespace Packet.Node.Core.Capabilities;
 /// <b>Resilient.</b> Every operation is wrapped: a schema/open failure logs and leaves
 /// the node running (the cache just stays in-memory); a lookup returns null / empty on
 /// fault, a write is swallowed, a delete returns false / 0. Persistence can never take
-/// the node down. WAL mode, a fresh pooled connection per call — the same discipline as
-/// the refresh-token store — so the store is safe to share across threads.
+/// the node down. WAL mode, a fresh pooled connection per call - the same discipline as
+/// the refresh-token store - so the store is safe to share across threads.
 /// </para>
 /// </remarks>
 public sealed partial class SqlitePeerCapabilityStore : IPeerCapabilityStore
@@ -43,7 +43,7 @@ public sealed partial class SqlitePeerCapabilityStore : IPeerCapabilityStore
     private readonly ILogger<SqlitePeerCapabilityStore> logger;
 
     /// <summary>Open (creating if absent) the capability store at <paramref name="dbPath"/>
-    /// and ensure its schema. A schema/open failure is logged, not thrown — the node still
+    /// and ensure its schema. A schema/open failure is logged, not thrown - the node still
     /// boots, just without capability persistence.</summary>
     public SqlitePeerCapabilityStore(string dbPath, ILogger<SqlitePeerCapabilityStore>? logger = null)
     {

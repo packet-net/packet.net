@@ -1,8 +1,8 @@
 # Building packet-radio tooling with the packet.net engine
 
 This guide is for **.NET developers who want to build their own packet-radio
-software** — a connect client, a channel monitor, an automatic station, or a
-full NET/ROM node — directly on top of the packet.net libraries.
+software** - a connect client, a channel monitor, an automatic station, or a
+full NET/ROM node - directly on top of the packet.net libraries.
 
 packet.net ships a node host of its own (`Packet.Node`), but you do **not** need
 it. The node host is just one consumer of the same public libraries documented
@@ -17,9 +17,9 @@ You should be comfortable with:
 - C# and `async`/`await`, `IAsyncEnumerable<T>`, `ReadOnlyMemory<byte>`/`Span<byte>`.
 - The basic idea of AX.25 (callsigns, frames, connected vs. connectionless), at
   the "I have read the front matter of the spec" level. You do not need to know
-  the state machine — the engine owns that.
-- Having a TNC — a hardware modem like the NinoTNC, or a software modem like
-  Dire Wolf or QtSoundModem — or an AGW/AXUDP endpoint you can talk to. Most
+  the state machine - the engine owns that.
+- Having a TNC - a hardware modem like the NinoTNC, or a software modem like
+  Dire Wolf or QtSoundModem - or an AGW/AXUDP endpoint you can talk to. Most
   examples can also be exercised against a loopback or the interop stack without
   hardware.
 
@@ -50,18 +50,18 @@ NuGet package; you reference only the layers you need. They compose upward:
 
 Two interfaces are the load-bearing seams you will design against:
 
-- **`IAx25Transport`** (`Packet.Ax25.Transport`) — "a thing that sends and
+- **`IAx25Transport`** (`Packet.Ax25.Transport`) - "a thing that sends and
   receives AX.25 frames as bytes." Every frame transport implements it, so the
   layers above never care whether you are on a USB TNC, a TCP KISS socket, or an
   AXUDP tunnel. **KISS is one implementation behind this seam, never a property
   of it.**
-- **`Ax25Listener`** (`Packet.Ax25.Session`) — "a station." It owns one
+- **`Ax25Listener`** (`Packet.Ax25.Session`) - "a station." It owns one
   `IAx25Transport`, runs the AX.25 state machine per peer, accepts inbound
   connections, dials outbound ones, and traces every frame. Almost everything
   node-shaped goes through it.
 
 One more pair of seams sits *beside* the cake rather than in it: `IRadioControl`
-(`Packet.Radio`) and `IRigControl` (`Packet.Rig`) — the **radio behind the
+(`Packet.Radio`) and `IRigControl` (`Packet.Rig`) - the **radio behind the
 modem**, for stations whose radio has a serial control channel (RSSI, hardware
 carrier-sense, CAT). They're optional and covered last, in
 [chapter 9](09-radios-and-rigs.md).
@@ -73,14 +73,14 @@ order; later chapters assume the vocabulary of earlier ones.
 
 | # | Chapter | You build | New API |
 |---|---------|-----------|---------|
-| 1 | [Architecture & the two seams](01-architecture.md) | — | the mental model |
+| 1 | [Architecture & the two seams](01-architecture.md) | - | the mental model |
 | 2 | [Transports: talking to a TNC](02-transports.md) | a raw frame dumper | `IAx25Transport`, `Ax25InboundFrame`, `KissTcpClient`, `KissSerialModem`, `NinoTncSerialPort` |
-| 3 | [Frames & callsigns](03-frames-and-callsigns.md) | **`axbeacon`** — a UI/beacon sender | `Callsign`, `Ax25Frame`, the factories, `Ax25ParseOptions` |
+| 3 | [Frames & callsigns](03-frames-and-callsigns.md) | **`axbeacon`** - a UI/beacon sender | `Callsign`, `Ax25Frame`, the factories, `Ax25ParseOptions` |
 | 4 | [Listen: a channel monitor](04-listen.md) | **`axlisten`** | `Ax25Frame.TryParse`, frame inspection |
 | 5 | [Call: a connected-mode client](05-axcall.md) | **`axcall`** | `Ax25Listener.ConnectAsync`, `Ax25Session`, DL primitives |
 | 6 | [Building a node](06-building-a-node.md) | a connectable command server | `SessionAccepted`, command loops, multi-port, aliases |
 | 7 | [NET/ROM: routing & circuits](07-netrom.md) | a NODES-aware node | `NodesBroadcast`, `NetRomRoutingTable`, `NetRomForwarding`, `CircuitManager` |
-| 8 | [Beyond](08-beyond.md) | — | segmentation, XID, quirks, observability, and where `Packet.Node.Core` takes over |
+| 8 | [Beyond](08-beyond.md) | - | segmentation, XID, quirks, observability, and where `Packet.Node.Core` takes over |
 | 9 | [Radios & rigs](09-radios-and-rigs.md) | a signal-aware monitor | `IRigControl`, `RigctldRig`, `IRadioControl`, `RssiTaggingTransport`, `RadioCarrierSense`, `RigRadioControl` |
 
 ## Installing the packages

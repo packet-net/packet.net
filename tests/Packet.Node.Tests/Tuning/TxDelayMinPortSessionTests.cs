@@ -8,7 +8,7 @@ namespace Packet.Node.Tests.Tuning;
 /// The node-side TXDELAY-minimisation session wrapper (<see cref="TxDelayMinPortSession"/>): the
 /// sweep steps project into the same <see cref="Packet.Node.Core.Api.TuningEvent"/> feed the
 /// deviation sessions use, an <c>ended</c> carries the recommendation, an apply persists only when
-/// verified — and, above all, the port-restore callback fires <b>exactly once on every exit path</b>.
+/// verified - and, above all, the port-restore callback fires <b>exactly once on every exit path</b>.
 /// Driven over an in-memory link pair against the real <see cref="TxDelayMinResponder"/> meter loop
 /// plus a fake station, so the wire protocol runs end to end with no hardware.
 /// </summary>

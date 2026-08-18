@@ -19,7 +19,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// <para>
 /// A run is a pure function of the scenario (the sequence of <see cref="Submit"/>
 /// / <see cref="Connect"/> / <see cref="AdvanceT1"/> calls) and the channel
-/// policy (<see cref="Channel.Drop"/> and friends) — fully deterministic,
+/// policy (<see cref="Channel.Drop"/> and friends) - fully deterministic,
 /// reproducible, and replayable. No wall-clock anywhere.
 /// </para>
 /// <para>
@@ -47,14 +47,14 @@ public sealed class TwoStationHarness
     private readonly HashSet<(string From, string Id)> fired = new();
 
     /// <summary>Every <c>(state, transition-id)</c> that has fired on either
-    /// station's real dispatcher over this harness's lifetime — the substrate for
+    /// station's real dispatcher over this harness's lifetime - the substrate for
     /// behavioural transition-coverage measurement (see
     /// <c>TransitionCoverageTests</c>). Populated from each session's
     /// <see cref="Ax25Session.TransitionFired"/> event.</summary>
     public IReadOnlyCollection<(string From, string Id)> FiredTransitions => fired;
 
     /// <summary>When false, the drive methods skip the post-step invariant
-    /// check — used by adversarial scenarios that assert on the converged state
+    /// check - used by adversarial scenarios that assert on the converged state
     /// only. Defaults true (oracle runs after every step).</summary>
     public bool CheckAfterEachStep { get; set; } = true;
 
@@ -104,7 +104,7 @@ public sealed class TwoStationHarness
     }
 
     /// <summary>Build a harness whose sessions run the SDL figures exactly as
-    /// drawn — every <see cref="Ax25SessionQuirks"/> off. Used to pin a figure
+    /// drawn - every <see cref="Ax25SessionQuirks"/> off. Used to pin a figure
     /// defect's faithful (uncorrected) behaviour alongside the corrected default.</summary>
     public static TwoStationHarness BuildStrictlyFaithful(
         bool srej = false, int k = 4, int t1Ms = DefaultT1Ms, int n2 = DefaultN2, int t2Ms = 40,
@@ -211,8 +211,8 @@ public sealed class TwoStationHarness
         // The MDL driver shares this endpoint's scheduler + wire sink. Built
         // before the data-link dispatcher so sendInternal can route the
         // MDL-NEGOTIATE-request poke (raised by figc4.6 after the UA on a v2.2
-        // connect) straight into it. Negotiated parameters mutate ctx — the same
-        // context the data-link session runs on — which is the whole point.
+        // connect) straight into it. Negotiated parameters mutate ctx - the same
+        // context the data-link session runs on - which is the whole point.
         var mdl = new Ax25ManagementDataLink(ctx, scheduler, SendBytes, offered: xidOffer);
         mdl.MdlSignalEmitted += (_, sig) => mdlSignals.Enqueue(sig);
 
@@ -222,7 +222,7 @@ public sealed class TwoStationHarness
             sendUFrame: spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
             sendUiFrame: spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
             sendIFrame: spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
-            // Receive-side segmentation seam — mirrors Ax25Listener.SendUpward:
+            // Receive-side segmentation seam - mirrors Ax25Listener.SendUpward:
             // a 0x08-PID DL-DATA indication is fed to the reassembler and only
             // surfaced (as one reassembled indication) when the series completes;
             // a non-segment indication passes through unchanged; non-DATA signals
@@ -246,7 +246,7 @@ public sealed class TwoStationHarness
             // Model a contention-free medium: grant LM-SEIZE immediately so the
             // figc4.4 delayed-ack (Set Ack Pending + LM-SEIZE Request → flush the
             // RR on LM-SEIZE-confirm) actually flushes. Without this the link can
-            // only ack via T1 polls — which is why the legacy rigs (all of which
+            // only ack via T1 polls - which is why the legacy rigs (all of which
             // stub sendLinkMux) never exercised autonomous delayed-ack.
             sendLinkMux: signal => { if (signal is LinkMultiplexerSeizeRequest) { inbound.Enqueue(new LmSeizeConfirm()); } },
             sendInternal: sig => { if (sig is MdlNegotiateRequestSignal) { mdl.Negotiate(); } },
@@ -290,7 +290,7 @@ public sealed class TwoStationHarness
         }
     }
 
-    /// <summary>Mark <paramref name="e"/> busy (DL-FLOW-OFF) — it sends RNR and
+    /// <summary>Mark <paramref name="e"/> busy (DL-FLOW-OFF) - it sends RNR and
     /// the peer must stop sending I-frames.</summary>
     public void SetBusy(Endpoint e)
     {
@@ -302,7 +302,7 @@ public sealed class TwoStationHarness
         }
     }
 
-    /// <summary>Clear <paramref name="e"/>'s busy condition (DL-FLOW-ON) — it
+    /// <summary>Clear <paramref name="e"/>'s busy condition (DL-FLOW-ON) - it
     /// sends RR and the peer may resume.</summary>
     public void ClearBusy(Endpoint e)
     {
@@ -331,7 +331,7 @@ public sealed class TwoStationHarness
     /// <paramref name="from"/> for its peer, settling only once at the end so every
     /// frame is in flight together (V(S) advances across the whole burst before any
     /// ack returns). This is the regime the per-frame <see cref="Submit"/> never
-    /// reaches — it pumps to quiescence after each frame, serialising the transfer —
+    /// reaches - it pumps to quiescence after each frame, serialising the transfer -
     /// and it is what surfaces the mod-8 SREJ sequence-ring-wrap bug: only when ≥ k
     /// frames fly together does N(S) wrap mid-recovery and a stale retransmit alias
     /// an already-delivered number. Each payload is recorded as its own logical
@@ -389,7 +389,7 @@ public sealed class TwoStationHarness
     /// <summary>Inject a received-frame event straight into
     /// <paramref name="target"/>'s session, then pump + check. Models a frame
     /// arriving on <paramref name="target"/>'s radio that the *peer session*
-    /// would never emit on its own — so it reaches received-frame transitions the
+    /// would never emit on its own - so it reaches received-frame transitions the
     /// two well-behaved sessions can't drive between them (a FRMR, an unsolicited
     /// DM, a malformed frame). Bypasses the channel's drop/duplicate/address
     /// filters: the frame is, by construction, "already at the receiver".</summary>
@@ -422,11 +422,11 @@ public sealed class TwoStationHarness
         Inject(target, Ax25FrameClassifier.Classify(parsed));
     }
 
-    /// <summary>Advance the clock past one T1 interval and pump to quiescence —
+    /// <summary>Advance the clock past one T1 interval and pump to quiescence -
     /// fires any due timers and lets the resulting cascade settle.</summary>
     public void AdvanceT1(int extraMs = 20)
     {
-        // Advance past whichever endpoint's *live* T1V is largest — T1V can grow
+        // Advance past whichever endpoint's *live* T1V is largest - T1V can grow
         // (figc4.7 SRT backoff), and a fixed advance would stop firing an armed
         // T1 once it grew past it, stalling recovery (and masking real bugs).
         var t1 = A.Context.T1V > B.Context.T1V ? A.Context.T1V : B.Context.T1V;
@@ -453,7 +453,7 @@ public sealed class TwoStationHarness
     }
 
     /// <summary>Advance the clock past one TM201 interval (the MDL management
-    /// retry timer) and pump — fires a due TM201 retry / give-up and lets the
+    /// retry timer) and pump - fires a due TM201 retry / give-up and lets the
     /// cascade settle. TM201 defaults to 3000 ms in the MDL driver; advance past
     /// the larger of that and the live T1V so the timer fires regardless of
     /// whether the data-link has (re)set T1V.</summary>
@@ -472,7 +472,7 @@ public sealed class TwoStationHarness
 
     /// <summary>Advance just past the delayed-ack timer T2 (but well short of
     /// T1), so a receiver's pending RR flushes and the sender's V(a) / window
-    /// catches up — without provoking a spurious T1 retransmit. Use after a
+    /// catches up - without provoking a spurious T1 retransmit. Use after a
     /// burst of <see cref="Submit"/> to settle a one-directional transfer's acks.</summary>
     public void FlushAcks()
     {
@@ -495,7 +495,7 @@ public sealed class TwoStationHarness
         }
     }
 
-    /// <summary>Process exactly the events already queued on both endpoints —
+    /// <summary>Process exactly the events already queued on both endpoints -
     /// one pass, no pump-to-quiescence. Models a single T1-spaced round (used by
     /// the paced recovery scenarios). Frames emitted in response land in the
     /// peer's queue but are not processed until the next drain/advance.</summary>
@@ -538,7 +538,7 @@ public sealed class TwoStationHarness
             while (A.Inbound.TryDequeue(out var evt)) { A.Session.PostEvent(evt); progress = true; }
             while (B.Inbound.TryDequeue(out var evt)) { B.Session.PostEvent(evt); progress = true; }
             // Deferred MDL work (XID command/response/FRMR routed to the MDL
-            // machine) — drained after the data-link events so a just-sent XID
+            // machine) - drained after the data-link events so a just-sent XID
             // command's MDL transition has committed before its reply is handled.
             while (A.MdlWork.TryDequeue(out var work)) { work(); progress = true; }
             while (B.MdlWork.TryDequeue(out var work)) { work(); progress = true; }
@@ -586,7 +586,7 @@ public sealed class TwoStationHarness
 
         public bool ShouldDrop(Ax25Frame f) => Drop?.Invoke(f) == true;
 
-        /// <summary>Return true to deliver the frame to the peer a second time —
+        /// <summary>Return true to deliver the frame to the peer a second time -
         /// the medium duplicated it (a digipeater echo, or a retransmit arriving
         /// alongside the original it was meant to replace). The receiver must
         /// discard the duplicate and never deliver its payload twice. Null = no
@@ -612,7 +612,7 @@ public sealed class TwoStationHarness
         /// Confirm / MDL-ERROR Indicate), in order.</summary>
         public ConcurrentQueue<MdlSignal> MdlSignals { get; }
 
-        /// <summary>This station's §6.6 segmentation-reassembly shim — used by
+        /// <summary>This station's §6.6 segmentation-reassembly shim - used by
         /// <see cref="TwoStationHarness.SubmitLarge"/> on the send side and wired
         /// into the dispatcher's upward-signal fan-out on the receive side.</summary>
         public SegmentationLayer Segmentation { get; }
@@ -640,7 +640,7 @@ public sealed class TwoStationHarness
 
         public string State => Session.CurrentState;
 
-        /// <summary>The MDL machine's current state — <c>Ready</c> or <c>Negotiating</c>.</summary>
+        /// <summary>The MDL machine's current state - <c>Ready</c> or <c>Negotiating</c>.</summary>
         public string MdlState => Mdl.State;
 
         /// <summary>Payloads this station delivered upward (DL-DATA-indication),
@@ -649,7 +649,7 @@ public sealed class TwoStationHarness
             Signals.OfType<DataLinkDataIndication>().Select(s => s.Info.ToArray()).ToList();
 
         /// <summary>Layer-3 PIDs this station delivered upward (DL-DATA-indication),
-        /// in order — paired one-to-one with <see cref="Delivered"/>. For a
+        /// in order - paired one-to-one with <see cref="Delivered"/>. For a
         /// reassembled series this reflects the §6.6 reassembly's recovered PID
         /// (the original L3 PID under the default inner-PID format; PidNoLayer3
         /// under the figure-literal StrictlyFaithful format).</summary>
@@ -666,7 +666,7 @@ public sealed class TwoStationHarness
         /// <summary>Accessor for the peer endpoint's MDL driver (a thunk because
         /// the peer is built after this wiring object is constructed). Lets the
         /// delivery path route an inbound XID/FRMR to the peer's MDL while it is
-        /// negotiating — mirroring <see cref="Ax25Listener"/>.</summary>
+        /// negotiating - mirroring <see cref="Ax25Listener"/>.</summary>
         public Func<Ax25ManagementDataLink?>? Mdl { get; set; }
 
         /// <summary>The peer endpoint's deferred MDL-work queue. Frame deliveries

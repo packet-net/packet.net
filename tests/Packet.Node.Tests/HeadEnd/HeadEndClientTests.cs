@@ -66,7 +66,7 @@ public sealed class HeadEndClientTests
     public void An_inventory_without_the_id_stability_fields_reads_as_unknown_not_stable()
     {
         // A head-end < v0.1.3 doesn't emit idSource/idStable. Absent must deserialize to NULL
-        // (unknown) — deliberately NOT assumed stable, so old head-ends neither warn nor reassure.
+        // (unknown) - deliberately NOT assumed stable, so old head-ends neither warn nor reassure.
         const string json = """
             {"instanceId":"old-pi","ports":[{"id":"usb-0","devPath":"/dev/ttyUSB0","tcpPort":8001,"baud":57600,"dataBits":8,"parity":"none","stopBits":1}]}
             """;

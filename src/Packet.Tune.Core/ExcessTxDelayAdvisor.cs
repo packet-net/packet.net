@@ -6,9 +6,9 @@ namespace Packet.Tune.Core;
 /// A bounded rolling window of pre-data carrier samples for one heard station: the last
 /// <see cref="Capacity"/> measured carrier-rise→first-data leads (ms), with a median.
 /// This is the passive, zero-RF aggregation of
-/// <c>RadioMetadata.PreDataCarrier</c> — every received burst-opening frame contributes
+/// <c>RadioMetadata.PreDataCarrier</c> - every received burst-opening frame contributes
 /// one sample, and the median tracks the PEER's effective TXDELAY (+ a small constant
-/// rig overhead, measured ~40–75 ms at 1200 Bd). NOT thread-safe: callers synchronise
+/// rig overhead, measured ~40-75 ms at 1200 Bd). NOT thread-safe: callers synchronise
 /// (the heard log adds under its per-entry lock).
 /// </summary>
 public sealed class PreDataCarrierWindow
@@ -26,15 +26,15 @@ public sealed class PreDataCarrierWindow
         samples = new Queue<double>(capacity);
     }
 
-    /// <summary>The window size — the oldest sample beyond it is dropped.</summary>
+    /// <summary>The window size - the oldest sample beyond it is dropped.</summary>
     public int Capacity { get; }
 
-    /// <summary>Samples currently in the window (≤ <see cref="Capacity"/>) — a
+    /// <summary>Samples currently in the window (≤ <see cref="Capacity"/>) - a
     /// confidence signal for the median.</summary>
     public int Count => samples.Count;
 
     /// <summary>Add one measured pre-data carrier sample (ms). Non-finite or negative
-    /// readings are discarded — a mis-attributed carrier window produces wild values
+    /// readings are discarded - a mis-attributed carrier window produces wild values
     /// that must not skew the median.</summary>
     public void Add(double preDataCarrierMs)
     {
@@ -70,11 +70,11 @@ public sealed record ExcessTxDelayAdvisorOptions
 {
     /// <summary>Median pre-data carrier above which a peer is flagged. The default is
     /// deliberately generous: ~150 ms decodes cleanly on a healthy 1200 Bd link and the
-    /// measurement carries a ~40–75 ms constant rig overhead, so 250 ms of measured
+    /// measurement carries a ~40-75 ms constant rig overhead, so 250 ms of measured
     /// lead means real wasted airtime, not measurement noise. Default 250 ms.</summary>
     public double ThresholdMs { get; init; } = 250;
 
-    /// <summary>Minimum samples in the window before advising — one long keying (a
+    /// <summary>Minimum samples in the window before advising - one long keying (a
     /// station's first-after-power-on transmission, a manual test) must not flag a
     /// peer. Default 4.</summary>
     public int MinSamples { get; init; } = 4;
@@ -102,11 +102,11 @@ public sealed record ExcessTxDelayAdvice(
 }
 
 /// <summary>
-/// The passive excess-TXDELAY detector (layer 1 of the TXDELAY optimisation feature —
+/// The passive excess-TXDELAY detector (layer 1 of the TXDELAY optimisation feature -
 /// see <c>docs/research/txdelay-optimisation.md</c>): given a peer's rolling median
 /// measured pre-data carrier (from <see cref="PreDataCarrierWindow"/>, fed by
 /// <c>RadioMetadata.PreDataCarrier</c>), flag the peers that burn excess preamble.
-/// Zero RF — it only ever reads what the station already received. Shared by the node's
+/// Zero RF - it only ever reads what the station already received. Shared by the node's
 /// heard/tuning surfaces and the <c>packet-tune</c> CLI. The active counterpart (fixing
 /// our OWN TXDELAY) is <see cref="TxDelayMinimizer"/>.
 /// </summary>

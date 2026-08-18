@@ -25,7 +25,7 @@ public readonly record struct NinoTncCandidatePort(string PortName, string? Reso
 /// </summary>
 /// <remarks>
 /// <para>
-/// On Linux we prefer <c>/dev/serial/by-id/</c> entries — those are stable
+/// On Linux we prefer <c>/dev/serial/by-id/</c> entries - those are stable
 /// across reboots and across re-plug ordering. We then fall back to raw
 /// <c>/dev/ttyACM*</c>. On Windows / macOS we return <see cref="SerialPort.GetPortNames"/>
 /// unchanged; further USB VID/PID filtering is left to a future revision
@@ -34,7 +34,7 @@ public readonly record struct NinoTncCandidatePort(string PortName, string? Reso
 /// USB-CDC ACM, shared with many other hardware projects).
 /// </para>
 /// <para>
-/// This is a discovery helper, not a probe — it does not open the port or
+/// This is a discovery helper, not a probe - it does not open the port or
 /// attempt protocol negotiation. Callers wanting "is this *really* a NinoTNC"
 /// should open the candidate, optionally <c>SETHW</c> a known mode, and
 /// invite the operator to press the TX-Test button to elicit a TX-Test
@@ -47,7 +47,7 @@ public static class NinoTncPortDiscovery
     /// Environment variable consulted before platform enumeration. Set it to
     /// a comma-separated list of port names (e.g. <c>"COM6,COM8"</c> on
     /// Windows or <c>"/dev/ttyACM0,/dev/ttyACM1"</c> on Linux) to bypass
-    /// auto-discovery — useful on dev boxes where unrelated USB-CDC devices
+    /// auto-discovery - useful on dev boxes where unrelated USB-CDC devices
     /// (modem cards, virtual COM ports) look indistinguishable from a
     /// NinoTNC at the VID/PID-less enumeration layer.
     /// </summary>
@@ -56,7 +56,7 @@ public static class NinoTncPortDiscovery
     /// <summary>
     /// USB VID/PID pairs the NinoTNC has been observed to present as. The
     /// stock firmware uses Microchip's USB-CDC reference (04D8:00DD) which
-    /// is shared with many small Microchip-based projects — match is
+    /// is shared with many small Microchip-based projects - match is
     /// best-effort, not exclusive. The TX-Test diagnostic frame is the
     /// authoritative "this is definitely a NinoTNC" probe.
     /// </summary>
@@ -66,7 +66,7 @@ public static class NinoTncPortDiscovery
     /// <summary>
     /// Return every serial port the host believes could be a NinoTNC. If the
     /// <see cref="PortsEnvVar"/> environment variable is set, its comma-
-    /// separated entries win — auto-discovery is skipped.
+    /// separated entries win - auto-discovery is skipped.
     /// </summary>
     public static IReadOnlyList<NinoTncCandidatePort> EnumerateCandidates()
     {
@@ -143,7 +143,7 @@ public static class NinoTncPortDiscovery
     /// value. Returns the corresponding COM port names.
     /// </summary>
     /// <remarks>
-    /// No <c>System.Management</c> / WMI dependency — uses
+    /// No <c>System.Management</c> / WMI dependency - uses
     /// <see cref="Microsoft.Win32.Registry"/> from the BCL. Failures
     /// (locked-down hosts, missing branches) fall back to the generic
     /// enumeration via the caller.
@@ -194,7 +194,7 @@ public static class NinoTncPortDiscovery
         }
         catch (UnauthorizedAccessException)
         {
-            // Same — registry node visible but read-denied.
+            // Same - registry node visible but read-denied.
         }
 
         // Filter against currently-present serial ports. The registry
@@ -202,7 +202,7 @@ public static class NinoTncPortDiscovery
         // ever been plugged in on this host, so a stale COM5 from a
         // previous NinoTNC can outlive the physical hardware and
         // leak into the candidate list. SerialPort.GetPortNames()
-        // returns what the OS currently exposes — i.e. what the
+        // returns what the OS currently exposes - i.e. what the
         // caller can actually open. Without this filter,
         // EnumerateCandidates() handed a non-existent port to
         // NinoTncSerialPort.Open() and threw FileNotFoundException.

@@ -9,12 +9,12 @@ namespace Packet.NetRom.Tests.Routing;
 
 /// <summary>
 /// Tests for INP3 RIF <b>emission</b>
-/// (<see cref="NetRomRoutingTable.BuildRif"/>) — the
+/// (<see cref="NetRomRoutingTable.BuildRif"/>) - the
 /// poison-reversed, per-target-neighbour RIF the node advertises (the time-space analogue
 /// of <see cref="NetRomRoutingTable.BuildAdvertisement(int)"/>). The locked emission rules
 /// are <c>docs/netrom-inp3-i4-design.md</c> §1 (content) / §2 (poison-reverse): own node
 /// at 0/0 first and never poisoned; a destination is advertised iff we HOLD an INP3
-/// time-route for it (at our best held target time — independent of the local forwarding
+/// time-route for it (at our best held target time - independent of the local forwarding
 /// preference); but a destination reached through the target neighbour via <em>any</em> kept
 /// route is advertised back at the 600 s horizon (the poison), covering the whole multi-route
 /// forwarding set so a two-hop loop can never form; alias TLVs gated off.
@@ -124,7 +124,7 @@ public sealed class Inp3BuildRifTests
     public void A_quality_only_destination_is_not_in_the_rif()
     {
         var table = NewTable();
-        // A NODES quality route only — no INP3 time-route — must not appear in the RIF.
+        // A NODES quality route only - no INP3 time-route - must not appear in the RIF.
         table.Ingest(NbrA, Me, "vhf", Nodes("RDG", (DestSot, "SOT", NbrA, 200)));
 
         var rif = table.BuildRif(Me, NbrB);
@@ -184,7 +184,7 @@ public sealed class Inp3BuildRifTests
     {
         var table = NewTable();
         // SOT reachable via BOTH neighbours. The shipped multi-route LB forwards SOT traffic
-        // over BOTH, so advertising SOT back at a finite metric to EITHER seeds a loop — both
+        // over BOTH, so advertising SOT back at a finite metric to EITHER seeds a loop - both
         // must be poisoned, not just the faster/best one.
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 200, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));   // 310 via NbrA
         table.IngestRif(NbrB, Port, Me, neighbourSnttMs: 20, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));    // 130 via NbrB
@@ -205,7 +205,7 @@ public sealed class Inp3BuildRifTests
     {
         // A spread of destinations, each selected via one of two neighbours. For EVERY
         // neighbour N and EVERY destination D whose selected next hop is N, the RIF toward N
-        // must carry D at the horizon — the operational restatement of invariant (P).
+        // must carry D at the horizon - the operational restatement of invariant (P).
         var table = NewTable();
         var n1 = new Callsign("GB7AAA", 0);
         var n2 = new Callsign("GB7BBB", 0);
@@ -229,7 +229,7 @@ public sealed class Inp3BuildRifTests
                 }
 
                 // Assert the (D reached via toward through ANY kept route) ⟹ horizon
-                // implication holds on emitter output — split-horizon over the full
+                // implication holds on emitter output - split-horizon over the full
                 // forwarding next-hop set, not just the best route.
                 var dest = table.Snapshot().Destinations.Single(x => x.Destination == rip.Destination);
                 if (dest.Routes.Any(r => r.Neighbour.Equals(toward)))
@@ -253,7 +253,7 @@ public sealed class Inp3BuildRifTests
     {
         var table = NewTable();
         // Emission advertises every destination we HOLD an INP3 time-route for, so neighbours
-        // learn the time topology — even on a node that forwards by quality. preferInp3Routes is
+        // learn the time topology - even on a node that forwards by quality. preferInp3Routes is
         // a local *forwarding* preference (Inp3RouteSelector / I-3), not an advertisement gate.
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));   // 160 via NbrA
 

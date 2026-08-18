@@ -3,7 +3,7 @@ namespace Packet.Ax25.Transport;
 /// <summary>
 /// Optional capability: the CSMA channel-access knobs of a shared, half-duplex radio channel
 /// (the KISS TXDELAY/PERSIST/SLOTTIME/TXTAIL parameters). A facet, not core, because they are
-/// meaningful ONLY on a CSMA radio channel — AXUDP, AGW (the server owns the radio), and VARA
+/// meaningful ONLY on a CSMA radio channel - AXUDP, AGW (the server owns the radio), and VARA
 /// have nothing to set, so they simply don't implement this and stop pretending with no-ops.
 /// </summary>
 /// <remarks>
@@ -15,13 +15,13 @@ namespace Packet.Ax25.Transport;
 /// </remarks>
 public interface ICsmaChannelParams
 {
-    /// <summary>TXDELAY (KISS 0x01), units of 10 ms — keyup-to-data delay.</summary>
+    /// <summary>TXDELAY (KISS 0x01), units of 10 ms - keyup-to-data delay.</summary>
     Task SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken = default);
 
-    /// <summary>PERSIST (KISS 0x02), 0..255 — the p-persistent CSMA probability.</summary>
+    /// <summary>PERSIST (KISS 0x02), 0..255 - the p-persistent CSMA probability.</summary>
     Task SetPersistenceAsync(byte value, CancellationToken cancellationToken = default);
 
-    /// <summary>SLOTTIME (KISS 0x03), units of 10 ms — the CSMA slot interval.</summary>
+    /// <summary>SLOTTIME (KISS 0x03), units of 10 ms - the CSMA slot interval.</summary>
     Task SetSlotTimeAsync(byte tenMsUnits, CancellationToken cancellationToken = default);
 
     /// <summary>

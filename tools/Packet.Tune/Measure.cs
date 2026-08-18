@@ -6,8 +6,8 @@ namespace Packet.Tune;
 
 /// <summary>
 /// <c>measure</c>: one-shot level survey. From the NinoTNC: GETVER and a
-/// GETRSSI baseline (n=5 — the TNC's RX-audio RMS level in dB; firmware
-/// 3.41 only, removed in 3.44 — reported as n/a there). With a CCDI port:
+/// GETRSSI baseline (n=5 - the TNC's RX-audio RMS level in dB; firmware
+/// 3.41 only, removed in 3.44 - reported as n/a there). With a CCDI port:
 /// the attached Tait radio's averaged + raw RSSI, which on an idle channel
 /// is the RF noise floor.
 /// </summary>

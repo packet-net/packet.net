@@ -11,7 +11,7 @@ namespace Packet.Radio;
 /// with <see cref="Ax25InboundFrame.Radio"/> populated: RSSI (median/min/max/sample-count of the
 /// samples taken while its carrier was up), SNR against the tracked noise floor, the carrier
 /// rise instant, the frame's index within its burst (AX.25 allows several frames in one
-/// continuous transmission), an estimated airtime, and — for the first frame of a burst — the
+/// continuous transmission), an estimated airtime, and - for the first frame of a burst - the
 /// measured pre-data carrier time (the transmitting station's effective TXDELAY, the input to an
 /// excess-TXDELAY detector). This is the layer standard KISS cannot provide: the modem never
 /// sees signal strength or carrier edges; the radio's control channel does.
@@ -20,7 +20,7 @@ namespace Packet.Radio;
 /// <para>
 /// Attribution is timestamp-correlation, not wire-level tagging. With a carrier-sense-capable
 /// radio, a frame is attributed to the transmission window that contains its arrival (delivery
-/// trails end-of-RF by the modem's decode+serial latency — windows stay open for
+/// trails end-of-RF by the modem's decode+serial latency - windows stay open for
 /// <see cref="RssiTaggingOptions.WindowAttributionSlack"/> past carrier-fall to absorb that).
 /// The next station keying inside that slack does not steal the frame: where the just-closed
 /// and the freshly-opened window are both eligible, the frame's estimated airtime decides, and
@@ -33,7 +33,7 @@ namespace Packet.Radio;
 /// Bench-measured context for the derived timing fields (Tait CCDI at 28800 Bd, 1200 Bd AFSK
 /// link): RSSI poll round trip 14.4 ms median (p95 15.2 ms); carrier-edge report latency ~27 ms
 /// with under ±2 ms jitter; <see cref="RadioMetadata.PreDataCarrier"/> tracked the transmitting
-/// TNC's configured TXDELAY within a ~40–75 ms constant overhead.
+/// TNC's configured TXDELAY within a ~40-75 ms constant overhead.
 /// </para>
 /// </remarks>
 public sealed class RssiTaggingTransport : IAx25Transport, IAsyncDisposable
@@ -365,14 +365,14 @@ public sealed class RssiTaggingTransport : IAx25Transport, IAsyncDisposable
 }
 
 /// <summary>Tuning knobs for <see cref="RssiTaggingTransport"/>. The defaults suit a CCDI-class
-/// control channel (measured 14.4 ms median poll round trip at 28 800 baud) under 1200–9600 Bd
+/// control channel (measured 14.4 ms median poll round trip at 28 800 baud) under 1200-9600 Bd
 /// packet traffic.</summary>
 public sealed record RssiTaggingOptions
 {
     /// <summary>Poll cadence while the channel is busy (or busy-state is unknown).</summary>
     public TimeSpan BusySamplePeriod { get; init; } = TimeSpan.FromMilliseconds(40);
 
-    /// <summary>Poll cadence while the channel is idle — these samples track the noise floor.</summary>
+    /// <summary>Poll cadence while the channel is idle - these samples track the noise floor.</summary>
     public TimeSpan IdleSamplePeriod { get; init; } = TimeSpan.FromMilliseconds(400);
 
     /// <summary>How far back from a frame's arrival instant samples may be attributed to it in
@@ -381,15 +381,15 @@ public sealed record RssiTaggingOptions
     public TimeSpan AttributionLookback { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>How long past carrier-fall a delivered frame may still be attributed to that
-    /// window — covers the modem's end-of-frame decode + serial delivery latency (measured
-    /// 34–115 ms at 1200 Bd / 57600 serial).</summary>
+    /// window - covers the modem's end-of-frame decode + serial delivery latency (measured
+    /// 34-115 ms at 1200 Bd / 57600 serial).</summary>
     public TimeSpan WindowAttributionSlack { get; init; } = TimeSpan.FromMilliseconds(500);
 
     /// <summary>How far above the noise floor a sample must sit to count as signal (dB) in the
     /// no-carrier-sense fallback.</summary>
     public float SignalThresholdDb { get; init; } = 6f;
 
-    /// <summary>EMA coefficient (0–1) for the idle-sample noise-floor tracker.</summary>
+    /// <summary>EMA coefficient (0-1) for the idle-sample noise-floor tracker.</summary>
     public float NoiseFloorSmoothing { get; init; } = 0.2f;
 
     /// <summary>

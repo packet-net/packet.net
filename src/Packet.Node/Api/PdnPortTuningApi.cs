@@ -17,7 +17,7 @@ namespace Packet.Node.Api;
 public sealed record TuningStartRequest(string? Role, string? PeerSdmId, int? BurstFrames);
 
 /// <summary>Request body for <c>POST /api/v1/ports/{id}/tuning/txdelay-min</c>.</summary>
-/// <param name="Role">This port's role: <c>coordinator</c> (sweeps its OWN TXDELAY down — this end
+/// <param name="Role">This port's role: <c>coordinator</c> (sweeps its OWN TXDELAY down - this end
 /// transmits) or <c>meter</c> (purely passive decode counting for a remote coordinator).</param>
 /// <param name="PeerSdmId">The peer radio's 8-character SDM data identity.</param>
 /// <param name="StartMs">Coordinator: the TXDELAY to sweep down from, in ms (optional; default =
@@ -35,7 +35,7 @@ public sealed record TxDelayMinStartRequest(
 /// recommendation).</param>
 /// <param name="Probes">Verify probes (optional; 1..20, default 5).</param>
 /// <param name="Persist">Persist a verified value into the port's <c>kiss.txDelay</c> config
-/// (optional; default <c>true</c> — on the node the session-ending port rebuild re-applies the
+/// (optional; default <c>true</c> - on the node the session-ending port rebuild re-applies the
 /// configured KISS params, so an unpersisted apply is deliberately transient).</param>
 /// <param name="FallbackMs">The TXDELAY restored when the verify fails, in ms (optional; default =
 /// the port's configured <c>kiss.txDelay</c>, else 500).</param>
@@ -54,19 +54,19 @@ public static class TxDelayMinCaveat
 }
 
 /// <summary>
-/// The guided deviation-tuning surface of the pdn node API — an operator-initiated, transmitting,
+/// The guided deviation-tuning surface of the pdn node API - an operator-initiated, transmitting,
 /// two-ended procedure coordinated over the radios' SDM side channel. Because a session KEYS THE
 /// RADIO and pauses the port's normal AX.25 traffic, the mutating verbs are <b>admin</b>-scoped and
 /// <b>audited</b> (mirroring the doctor's interrupt POST and the port-lifecycle endpoints); the live
 /// event feed is <b>read</b>-scoped, pure observation.
 /// <list type="bullet">
-///   <item><c>POST   /api/v1/ports/{id}/tuning/session</c> — arm a session (404 unknown/not-running
+///   <item><c>POST   /api/v1/ports/{id}/tuning/session</c> - arm a session (404 unknown/not-running
 ///     port · 400 not a NinoTNC / no Tait radio / bad role or peer id / SDM disabled · 409 a session
 ///     is already active).</item>
-///   <item><c>GET    /api/v1/ports/{id}/tuning/events</c> — SSE feed of rounds + lifecycle.</item>
-///   <item><c>POST   /api/v1/ports/{id}/tuning/next</c> — the tuned operator's "I've adjusted the pot"
+///   <item><c>GET    /api/v1/ports/{id}/tuning/events</c> - SSE feed of rounds + lifecycle.</item>
+///   <item><c>POST   /api/v1/ports/{id}/tuning/next</c> - the tuned operator's "I've adjusted the pot"
 ///     signal (409 when no round is awaiting / meter role).</item>
-///   <item><c>POST   /api/v1/ports/{id}/tuning/stop</c> and <c>DELETE .../tuning/session</c> — stop
+///   <item><c>POST   /api/v1/ports/{id}/tuning/stop</c> and <c>DELETE .../tuning/session</c> - stop
 ///     the session and restore the port.</item>
 /// </list>
 /// The port is <b>always restored</b> on session end, error, stop, or node shutdown.

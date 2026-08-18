@@ -5,7 +5,7 @@ namespace Packet.Node.Tests.Applications.Packages;
 /// <summary>
 /// The <see cref="NodeConfigValidator"/> rules for the <c>apps:</c> package-override list and
 /// <c>appPackageRoots:</c>. Whether an apps: id matches a discovered package is deliberately
-/// NOT validated here — the validator has no filesystem access, and per the contract an
+/// NOT validated here - the validator has no filesystem access, and per the contract an
 /// unmatched entry is tolerated (the package may be installed later).
 /// </summary>
 public class NodeConfigValidatorAppsTests

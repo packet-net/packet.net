@@ -12,7 +12,7 @@ namespace Packet.Node.Core.NetRom;
 /// host-free <see cref="Inp3Engine"/> + <see cref="Inp3UpdateScheduler"/> and glues their
 /// sinks/events to the interlink send path + routing table, and the deterministic test seams.
 /// All of it is dead code when <c>config.Inp3.Enabled</c> is false (the <c>inp3</c> field is
-/// null) — the node is byte-for-byte today. Design: <c>docs/netrom-inp3-host-integration-design.md</c>.
+/// null) - the node is byte-for-byte today. Design: <c>docs/netrom-inp3-host-integration-design.md</c>.
 /// </summary>
 /// <remarks>
 /// <b>Scope: AWARENESS ONLY.</b> The node <em>learns and tells</em> the time-space (probe /
@@ -29,10 +29,10 @@ public sealed partial class NetRomService
     /// is on. Peels a RIF or an L3RTT off the 0xCF interlink stream BEFORE the L4 path so it
     /// can never reach circuits/forwarding. Precedence (a correctness property):
     /// <list type="number">
-    /// <item>(A) RIF first — signature-gated on the raw info (one byte). A 0xFF-led frame is
+    /// <item>(A) RIF first - signature-gated on the raw info (one byte). A 0xFF-led frame is
     /// a RIF, never an L4 datagram or an L3RTT; it is consumed regardless of whether it parses
-    /// (a malformed 0xFF-led frame is a malformed RIF, dropped — not retried as L4).</item>
-    /// <item>(B) L3RTT next — parse as a NetRomPacket, classify by dest/opcode. An L3RTT is
+    /// (a malformed 0xFF-led frame is a malformed RIF, dropped - not retried as L4).</item>
+    /// <item>(B) L3RTT next - parse as a NetRomPacket, classify by dest/opcode. An L3RTT is
     /// consumed (timed/reflected via the engine); any other NetRomPacket falls through to the
     /// existing L4 dispatch, returned via <paramref name="l4Packet"/> so it is not re-parsed.</item>
     /// </list>
@@ -61,7 +61,7 @@ public sealed partial class NetRomService
         var host = inp3;
         if (host is null)
         {
-            return false;   // overlay off — never reached (caller guards), but keep total.
+            return false;   // overlay off - never reached (caller guards), but keep total.
         }
 
         // The selected-link rule. A null selection means we have no basis to prefer another link
@@ -81,7 +81,7 @@ public sealed partial class NetRomService
 
         var span = info.Span;
 
-        // (A) RIF? — the 0xFF signature is a single-byte, total, unambiguous discriminator.
+        // (A) RIF? - the 0xFF signature is a single-byte, total, unambiguous discriminator.
         if (span.Length >= 1 && span[0] == Inp3Rif.Signature)
         {
             if (!onSelectedLink)
@@ -95,11 +95,11 @@ public sealed partial class NetRomService
                 host.IngestRif(fromNeighbour, portId, rif);
             }
             // Consumed either way: a 0xFF-led-but-unparseable frame is a malformed RIF, dropped
-            // — NEVER retried as an L4 datagram (the "never mis-fed" guarantee made total).
+            // - NEVER retried as an L4 datagram (the "never mis-fed" guarantee made total).
             return true;
         }
 
-        // (B) L3RTT? — an L3RTT is a well-formed NetRomPacket to L3RTT-0; classify by dest/opcode.
+        // (B) L3RTT? - an L3RTT is a well-formed NetRomPacket to L3RTT-0; classify by dest/opcode.
         if (NetRomPacket.TryParse(span, out var packet))
         {
             if (Inp3L3RttFrame.IsL3Rtt(packet!))
@@ -113,7 +113,7 @@ public sealed partial class NetRomService
                 host.OnL3Rtt(fromNeighbour, packet!);   // times our reflection, or reflects a peer probe
                 return true;
             }
-            // A normal L4 datagram — hand the already-parsed packet back to the caller for L4.
+            // A normal L4 datagram - hand the already-parsed packet back to the caller for L4.
             // NOT gated by the selected-link rule: L4 rides whichever link it arrived on.
             l4Packet = packet;
             return false;
@@ -172,15 +172,15 @@ public sealed partial class NetRomService
     /// <summary>True when the INP3 overlay is constructed (config.Inp3.Enabled on a connect node).</summary>
     internal bool Inp3Enabled => inp3 is not null;
 
-    /// <summary>The live INP3 engine (null when the overlay is off) — for a test to read SNTT /
+    /// <summary>The live INP3 engine (null when the overlay is off) - for a test to read SNTT /
     /// the capable-neighbour set after driving a probe/reflection deterministically.</summary>
     internal Inp3Engine? Inp3EngineForTest => inp3?.Engine;
 
-    /// <summary>The live INP3 scheduler (null when off) — for a test to inspect pending dirty state.</summary>
+    /// <summary>The live INP3 scheduler (null when off) - for a test to inspect pending dirty state.</summary>
     internal Inp3UpdateScheduler? Inp3SchedulerForTest => inp3?.Scheduler;
 
     /// <summary>Feed an inbound interlink 0xCF info field as if it arrived from
-    /// <paramref name="fromNeighbour"/> — the session-free path the deterministic node tests use
+    /// <paramref name="fromNeighbour"/> - the session-free path the deterministic node tests use
     /// to exercise <see cref="OnInterlinkData"/>'s dispatch (RIF/L3RTT peel + L4 fallthrough)
     /// without a real Ax25Session. Behaves exactly as the live tap: INP3 on ⇒ DispatchInp3 then
     /// L4; INP3 off ⇒ today's parse-then-DispatchL4. <paramref name="portId"/> is the arrival
@@ -217,7 +217,7 @@ public sealed partial class NetRomService
     /// in the locked order (design §6.4), for a FakeTimeProvider-based node test. No-op when off.</summary>
     internal void Inp3TickForTest() => inp3?.TickOnce();
 
-    /// <summary>Register the node callsign for the INP3 engine without standing up a port — the
+    /// <summary>Register the node callsign for the INP3 engine without standing up a port - the
     /// test analogue of AttachPort's circuits?.SetLocalNode + the INP3 engine's SetLocalNode. The
     /// production node sets this from AttachPort (see SetNodeCallForInp3). No-op when off.</summary>
     internal void SetInp3LocalNodeForTest(Callsign node)
@@ -234,17 +234,17 @@ public sealed partial class NetRomService
     /// Owns the host-free <see cref="Inp3Engine"/> + <see cref="Inp3UpdateScheduler"/> and the glue
     /// that wires their sinks/events to the enclosing <see cref="NetRomService"/>'s interlink send
     /// path + shared routing table. Constructed only when the overlay is on (one field, one
-    /// construction site — design §7.1), so when <c>inp3</c> is null none of this exists. Drives a
+    /// construction site - design §7.1), so when <c>inp3</c> is null none of this exists. Drives a
     /// single 1 s <see cref="TimeProvider"/> timer that ticks engine → drain-recently-withdrawn →
     /// scheduler → refresh-capable in that order, giving the recently-withdrawn set an explicit,
     /// deterministic, atomic round boundary (design §6.4). Does NOT own the routing table
-    /// (shared with the vanilla L3/L4 paths — INP3 is a second metric space on the same table) nor
+    /// (shared with the vanilla L3/L4 paths - INP3 is a second metric space on the same table) nor
     /// the interlinks map (it calls back into the owner to send).
     /// </summary>
     private sealed class Inp3Host : IDisposable
     {
-        // The locked host tick cadence (design §5/§6.4): 1 s — the same cadence CircuitManager
-        // uses — checks the 60 s probe / 180 s reset with ≤ 1 s slack and resolves the 5 s
+        // The locked host tick cadence (design §5/§6.4): 1 s - the same cadence CircuitManager
+        // uses - checks the 60 s probe / 180 s reset with ≤ 1 s slack and resolves the 5 s
         // positive debounce within 1 s of its deadline.
         private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
@@ -275,7 +275,7 @@ public sealed partial class NetRomService
             this.owner = owner;
             this.options = options;
 
-            // The engine + scheduler are constructed with tickInterval: null — the host owns the
+            // The engine + scheduler are constructed with tickInterval: null - the host owns the
             // single 1 s timer and drives both Ticks in the locked order so the recently-withdrawn
             // clear lands AFTER the scheduler's whole fan-out round (design §6.4 option (a)).
             engine = new Inp3Engine(owner.nodeCall, options, time, tickInterval: null);
@@ -283,7 +283,7 @@ public sealed partial class NetRomService
 
             // L3RTT send: ship the frame's bytes over the neighbour's interlink (0xCF). The engine
             // raises this both to send our probe (on Tick) and to reflect a peer's probe verbatim
-            // (on OnL3Rtt) — identical handling. Cold-interlink policy: drop, don't dial (§4.1) —
+            // (on OnL3Rtt) - identical handling. Cold-interlink policy: drop, don't dial (§4.1) -
             // TrySendOverInterlinkBytes returns false when no link is up; we just don't probe.
             engine.SendL3Rtt = (neighbour, frame) =>
             {
@@ -306,7 +306,7 @@ public sealed partial class NetRomService
                 // raises it outside its lock), so RemoveNeighbour here is an idempotent belt-and-
                 // braces. table.MarkNeighbourDown above populated the recently-withdrawn set; this
                 // handler is raised synchronously inside engine.Tick() (the engine self-drives no
-                // timer — tickInterval:null), so the very same TickOnce that called engine.Tick
+                // timer - tickInterval:null), so the very same TickOnce that called engine.Tick
                 // drains those withdrawals right after and fans them out this round.
                 engine.RemoveNeighbour(e.Neighbour);
                 RefreshCapableNeighbours();
@@ -314,7 +314,7 @@ public sealed partial class NetRomService
 
             // RIF advertise: turn each per-neighbour intent into a full poison-reversed RIF and
             // send it over that neighbour's interlink (0xFF-led 0xCF I-frame). The withdrawn
-            // snapshot is the one TickOnce DRAINED for this round (currentRoundWithdrawn) — passed
+            // snapshot is the one TickOnce DRAINED for this round (currentRoundWithdrawn) - passed
             // to BuildRif so every neighbour's RIF carries the same one-shot horizon withdrawals
             // and a concurrent mid-round withdrawal is deferred to the next round (the race fix,
             // design §6.4). Cold-interlink: drop, don't dial (§4.2).
@@ -342,12 +342,12 @@ public sealed partial class NetRomService
         /// <b>(port, neighbour)</b> key it arrived on, supplying the engine's measured SNTT for
         /// the carrying link. Any destination that lost its last INP3
         /// route during ingest (a horizon RIP withdrew it) lands in the table's recently-withdrawn
-        /// set; it is NOT escalated here — the next <see cref="TickOnce"/> (≤ 1 s) DRAINS the set,
+        /// set; it is NOT escalated here - the next <see cref="TickOnce"/> (≤ 1 s) DRAINS the set,
         /// marks each NEGATIVE, and fans it out, so this pump-thread path never touches the scheduler
         /// concurrently with a fan-out round (the race fix, design §6.4). An un-probed link
-        /// (SNTT Unset) learns nothing and withdraws nothing — IngestRif's documented skip. Positives
+        /// (SNTT Unset) learns nothing and withdraws nothing - IngestRif's documented skip. Positives
         /// ride the periodic RIF this slice (IngestRif returns void, so the host cannot classify
-        /// new/improved per-destination — design §6.5 flagged gap; the correctness-critical
+        /// new/improved per-destination - design §6.5 flagged gap; the correctness-critical
         /// NEGATIVE/withdrawal path IS wired, via the drain).</summary>
         public void IngestRif(Callsign from, string portId, Inp3Rif rif)
         {
@@ -356,7 +356,7 @@ public sealed partial class NetRomService
 
         /// <summary>Feed an inbound L3RTT frame to the engine (it reflects a peer probe via the
         /// SendL3Rtt sink, or times our own reflection and folds the RTT/2 into SNTT). A new
-        /// reflection may reveal a newly-capable peer — refresh the fan-out set.</summary>
+        /// reflection may reveal a newly-capable peer - refresh the fan-out set.</summary>
         public void OnL3Rtt(Callsign from, NetRomPacket packet)
         {
             engine.OnL3Rtt(from, packet);
@@ -375,7 +375,7 @@ public sealed partial class NetRomService
 
         /// <summary>Driven from the coarse NODESINTERVAL sweep: the sweep may have aged out the last
         /// INP3 route to a destination (table.Sweep populates recentlyWithdrawn). One host tick
-        /// drains those, marks them NEGATIVE, and fans them out — without waiting for the next 1 s
+        /// drains those, marks them NEGATIVE, and fans them out - without waiting for the next 1 s
         /// timer firing. (TickOnce serialises against the 1 s timer via tickGate.)</summary>
         public void OnNodesInterval() => TickOnce();
 
@@ -404,7 +404,7 @@ public sealed partial class NetRomService
                     // Drain AFTER engine.Tick so a 180 s-reset withdrawal raised during this tick is
                     // included; mark each NEGATIVE so the scheduler fans out THIS round (rule 1 beats
                     // any pending positive debounce). The same snapshot feeds every BuildRif via
-                    // currentRoundWithdrawn — set just before scheduler.Tick (which invokes Advertise
+                    // currentRoundWithdrawn - set just before scheduler.Tick (which invokes Advertise
                     // synchronously on this thread) and reset after, so it belongs to exactly one round.
                     var withdrawn = owner.table.DrainRecentlyWithdrawn();
                     foreach (var dest in withdrawn)
@@ -431,7 +431,7 @@ public sealed partial class NetRomService
 
         // Reconcile the scheduler's fan-out target set from the engine's INP3-capable neighbours.
         // SetTargetNeighbours takes a defensive distinct+ordered copy, so a 1 s reconcile of a
-        // handful of neighbours is free (simplicity over event plumbing — design §5).
+        // handful of neighbours is free (simplicity over event plumbing - design §5).
         private void RefreshCapableNeighbours()
         {
             var capable = engine.Neighbours

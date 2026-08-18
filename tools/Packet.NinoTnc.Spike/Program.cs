@@ -12,12 +12,12 @@ using Packet.Kiss.NinoTnc;
 // are wired to each other.
 //
 // Goal: prove we can SETHW both into a compatible mode (mode 6, 1200 AFSK
-// AX.25 — the most lenient over an audio link) and pass an AX.25 UI frame
+// AX.25 - the most lenient over an audio link) and pass an AX.25 UI frame
 // from one to the other, in both directions. SETHW uses the +16 "RAM only"
 // offset to avoid hammering flash during dev.
 
 const int BaudRate = 57600;
-const byte Mode = 6;                 // 1200 AFSK AX.25 — robust on a plain audio link.
+const byte Mode = 6;                 // 1200 AFSK AX.25 - robust on a plain audio link.
 const bool PersistToFlash = false;   // RAM-only, do not burn the flash.
 
 string portA = args.Length > 0 ? args[0] : "COM6";
@@ -84,7 +84,7 @@ Console.WriteLine($"NinoTNC spike — A={portA}, B={portB}, baud={BaudRate}, mod
 using var a = OpenPort(portA);
 using var b = OpenPort(portB);
 
-// SETHW on both — instruct the TNC to switch operating mode without writing
+// SETHW on both - instruct the TNC to switch operating mode without writing
 // it to flash. Drain any boot chatter first.
 Drain(a);
 Drain(b);

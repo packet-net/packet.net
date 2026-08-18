@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Traffic;
 
 /// <summary>
 /// The SQLite-backed traffic log: one row per AX.25 frame the node sends or
-/// receives, persisted to its own database file — deliberately <b>separate</b>
+/// receives, persisted to its own database file - deliberately <b>separate</b>
 /// from <c>pdn.db</c>, so a huge or corrupt frame log can never threaten node
 /// state. Raw SQL via Dapper, mirroring <see cref="Auth.SqliteUserStore"/> /
 /// <see cref="NetRom.SqliteNetRomRoutingStore"/>.
@@ -22,7 +22,7 @@ namespace Packet.Node.Core.Traffic;
 /// so the size-cap prune (<see cref="PruneToSize"/>) actually returns freed pages
 /// and <see cref="DatabaseSizeBytes"/> is an enforceable bound rather than a
 /// high-water mark. Timestamps are persisted as UTC-normalised ISO-8601 strings
-/// (<c>"o"</c>), the house store convention — fixed-width and lexicographically
+/// (<c>"o"</c>), the house store convention - fixed-width and lexicographically
 /// chronological, so the range queries and the age prune compare correctly.
 /// </para>
 /// <para>
@@ -64,7 +64,7 @@ public sealed partial class SqliteTrafficStore
 
     // Additive nullable radio-signal columns, added to a traffic table created before they existed.
     // The store is meta-less (CREATE TABLE IF NOT EXISTS, no PRAGMA user_version), so an existing db
-    // needs each column added explicitly — the SqliteRefreshTokenStore pattern. A fresh db already
+    // needs each column added explicitly - the SqliteRefreshTokenStore pattern. A fresh db already
     // has them from SchemaSql, so the ADD is skipped.
     private static readonly string[] RadioColumns = ["rssi_dbm", "snr_db", "noise_floor_dbm"];
 
@@ -78,7 +78,7 @@ public sealed partial class SqliteTrafficStore
     private readonly ILogger<SqliteTrafficStore> logger;
 
     /// <summary>Open (creating if absent) the traffic log at <paramref name="dbPath"/>
-    /// and ensure its schema. A schema/open failure is logged, not thrown — the node
+    /// and ensure its schema. A schema/open failure is logged, not thrown - the node
     /// still boots, just without a persisted traffic log.</summary>
     public SqliteTrafficStore(string dbPath, ILogger<SqliteTrafficStore>? logger = null)
     {
@@ -124,7 +124,7 @@ public sealed partial class SqliteTrafficStore
     }
 
     /// <summary>Insert a batch of frames in one transaction. Returns false (logged)
-    /// on fault — the batch is then lost, never retried: the log is a diagnostic
+    /// on fault - the batch is then lost, never retried: the log is a diagnostic
     /// aid and must stay fire-and-forget.</summary>
     public bool Append(IReadOnlyList<TrafficRecord> batch)
     {
@@ -247,7 +247,7 @@ public sealed partial class SqliteTrafficStore
                 long count = conn.ExecuteScalar<long>("SELECT COUNT(*) FROM traffic;");
                 if (count == 0)
                 {
-                    break;  // nothing left to delete — the empty schema is as small as it gets.
+                    break;  // nothing left to delete - the empty schema is as small as it gets.
                 }
                 // Estimate how many oldest rows must go from the average row weight.
                 // size/count overestimates per-row (it includes schema overhead), so
@@ -274,7 +274,7 @@ public sealed partial class SqliteTrafficStore
         }
     }
 
-    /// <summary>The database's logical size in bytes (page_count × page_size) — the
+    /// <summary>The database's logical size in bytes (page_count × page_size) - the
     /// quantity <see cref="PruneToSize"/> bounds. 0 on fault (logged).</summary>
     public long DatabaseSizeBytes()
     {
@@ -374,7 +374,7 @@ public sealed partial class SqliteTrafficStore
 }
 
 /// <summary>
-/// One frame as inserted into the traffic log — the persistence projection of a
+/// One frame as inserted into the traffic log - the persistence projection of a
 /// <see cref="MonitorEvent"/> (see <see cref="From"/>).
 /// </summary>
 public sealed record TrafficRecord(
@@ -441,7 +441,7 @@ public sealed record TrafficRecord(
 }
 
 /// <summary>
-/// One frame as read back from the traffic log — the <c>GET /api/v1/traffic</c>
+/// One frame as read back from the traffic log - the <c>GET /api/v1/traffic</c>
 /// row shape (System.Text.Json's web defaults camel-case the properties). Like
 /// <see cref="MonitorEvent"/>, <see cref="Raw"/> is widened to ints so the bytes
 /// reach the wire as a JSON number array.

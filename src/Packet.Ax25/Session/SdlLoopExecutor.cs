@@ -7,7 +7,7 @@ namespace Packet.Ax25.Session;
 /// (<see cref="LoopRange"/>, from Packet.Ax25.Sdl 0.7.0+). Shared by the
 /// state-machine transition path (<see cref="Ax25Session"/>) and the
 /// subroutine path (<see cref="ISubroutineRegistry"/>) so loop semantics are
-/// identical wherever a loop appears — including
+/// identical wherever a loop appears - including
 /// <c>Invoke_Retransmission</c>, which is a subroutine.
 /// </summary>
 /// <remarks>

@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Configuration;
 /// Pins the value-equality contract on the config records that carry a collection
 /// member. A C# record compares a collection member by <b>reference</b>, so two
 /// configs with equal-but-distinct lists/dicts (exactly what a YAML serialise→parse
-/// round-trip yields) would be unequal — breaking change-detection identity. Each
+/// round-trip yields) would be unequal - breaking change-detection identity. Each
 /// such record hand-rolls <c>Equals</c>/<c>GetHashCode</c> over its collection via
 /// <c>ConfigEquality</c>; these tests assert (a) equal-but-distinct collections
 /// compare equal, (b) differing collection content compares unequal, and (c) every
@@ -45,7 +45,7 @@ public class ConfigCollectionEqualityTests
     public void ApplicationConfig_with_equal_but_distinct_collections_is_equal()
     {
         var a = SampleApp();
-        // Fresh list instances, identical content — the round-trip scenario.
+        // Fresh list instances, identical content - the round-trip scenario.
         var b = a with { Args = ["script.py", "--flag"], Capabilities = ["session", "network"] };
 
         b.Should().Be(a);

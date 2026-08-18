@@ -27,7 +27,7 @@ public class DataEncodingTests
     [Fact]
     public void Each_byte_maps_to_exactly_one_char()
     {
-        // The Latin-1 property the whole scheme rests on — and why the
+        // The Latin-1 property the whole scheme rests on - and why the
         // 16-bit frame limit can be reasoned about in payload bytes.
         var bytes = new byte[] { 0x80, 0xA9, 0xFF };
         RhpDataEncoding.ToWireString(bytes).Length.Should().Be(bytes.Length);
@@ -57,7 +57,7 @@ public class DataEncodingTests
     public void Control_characters_are_json_escaped_on_the_wire()
     {
         // The spec's "control characters JSON-escaped" requirement is
-        // discharged by the serializer, not by RhpDataEncoding — pin that
+        // discharged by the serializer, not by RhpDataEncoding - pin that
         // a CR really leaves as the two-character \r escape.
         var msg = new SendMessage { Handle = 1, Data = RhpDataEncoding.ToWireString([(byte)'i', 0x0D]) };
         var json = Encoding.UTF8.GetString(RhpJson.Serialize(msg));

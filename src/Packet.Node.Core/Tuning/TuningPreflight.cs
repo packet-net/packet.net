@@ -41,7 +41,7 @@ public enum TuningSessionState
 }
 
 /// <summary>
-/// Pure, hardware-free preconditions for arming a tuning session on a port — the fail-fast checks
+/// Pure, hardware-free preconditions for arming a tuning session on a port - the fail-fast checks
 /// the API runs before pausing the port or keying anything. Kept a separate pure function so the
 /// validation messages are unit-testable without a live <c>RunningPort</c>. The <b>SDM-enabled</b>
 /// check (does the radio's programming allow short data messages) is <em>not</em> here: the only
@@ -92,14 +92,14 @@ public static class TuningPreflight
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "unknown tuning state"),
     };
 
-    /// <summary>Whether a state is terminal (the session has finished — no further events).</summary>
+    /// <summary>Whether a state is terminal (the session has finished - no further events).</summary>
     public static bool IsTerminal(TuningSessionState state) =>
         state is TuningSessionState.Ended or TuningSessionState.Error or TuningSessionState.Stopped;
 
     /// <summary>
     /// Check the hardware-shape preconditions for a session on a port.
     /// </summary>
-    /// <param name="hasNinoTnc">Whether the port's modem is a NinoTNC (it must be — the bursts and
+    /// <param name="hasNinoTnc">Whether the port's modem is a NinoTNC (it must be - the bursts and
     /// metering are NinoTNC operations).</param>
     /// <param name="hasTaitRadio">Whether the port has a Tait CCDI radio attached (the SDM
     /// coordination link rides its modem).</param>

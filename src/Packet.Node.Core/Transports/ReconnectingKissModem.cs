@@ -7,8 +7,8 @@ namespace Packet.Node.Core.Transports;
 
 /// <summary>
 /// Wraps a KISS modem (in practice a kiss-tcp client) so a node port survives the
-/// far end bouncing: when the inbound frame stream ends — the TNC / softmodem /
-/// net-sim dropped the connection — this transparently re-establishes a fresh
+/// far end bouncing: when the inbound frame stream ends - the TNC / softmodem /
+/// net-sim dropped the connection - this transparently re-establishes a fresh
 /// inner modem with capped exponential backoff and resumes, instead of the port
 /// silently going dead until the process is restarted. The configured KISS
 /// hardware parameters (TXDELAY etc.) are remembered and replayed on every
@@ -18,16 +18,16 @@ namespace Packet.Node.Core.Transports;
 /// <para>
 /// The <em>initial</em> connection is made eagerly by the caller (the
 /// <see cref="Hosting.PortSupervisor"/>), so a first-connect failure still faults
-/// the port and is skipped — per-port fault isolation is unchanged. This wrapper
+/// the port and is skipped - per-port fault isolation is unchanged. This wrapper
 /// only handles re-connection after an established link drops. The reconnect path
 /// retries through the endpoint being briefly unavailable (e.g. the peer
 /// restarting), which is the actual bounce case.
 /// </para>
 /// <para>
 /// A drop is detected two ways, both surfacing as the inner stream ending: a
-/// graceful close (the peer sent a FIN — <c>KissTcpClient</c> reads 0 bytes and
-/// throws) and — the case that actually requires operator intervention without
-/// this (#464) — a <em>half-open</em> connection where the peer vanished with no
+/// graceful close (the peer sent a FIN - <c>KissTcpClient</c> reads 0 bytes and
+/// throws) and - the case that actually requires operator intervention without
+/// this (#464) - a <em>half-open</em> connection where the peer vanished with no
 /// FIN (rebooted TNC, net-sim restart, cable yank). The latter is caught by
 /// <c>KissTcpClient</c>'s read-idle liveness timeout (and OS TCP keepalive on a
 /// real socket): a stalled read past the idle budget is treated as a dead link
@@ -37,13 +37,13 @@ namespace Packet.Node.Core.Transports;
 /// <para>
 /// In-flight AX.25 sessions on this port do NOT survive the bounce, and that is
 /// correct: the listener (and its accept loop) is built once over this wrapper
-/// and is never torn down across a reconnect — <see cref="ReadFramesAsync"/>
-/// loops internally and never yields end-of-stream during a re-dial — so the
+/// and is never torn down across a reconnect - <see cref="ReadFramesAsync"/>
+/// loops internally and never yields end-of-stream during a re-dial - so the
 /// port stays in a working, listening state. But the far end (the TNC and the RF
 /// peer beyond it) is gone, so any connected-mode session keyed to it will see
 /// no acks, exhaust AX.25 T1/N2 retransmission, and disconnect by the normal
 /// state-machine path. The node recovers to "ready to accept/originate new
-/// connections," not "resumes the old session" — there is no AX.25 facility to
+/// connections," not "resumes the old session" - there is no AX.25 facility to
 /// resume a session across a transport identity change, and attempting to would
 /// leave a wedged half-open session. New connects work as soon as the link is
 /// back and the KISS params are replayed.
@@ -51,7 +51,7 @@ namespace Packet.Node.Core.Transports;
 /// <para>
 /// Reads pump the current inner and reconnect on end-of-stream; sends and
 /// parameter-sets target the current inner and are dropped best-effort while the
-/// link is down — AX.25 T1 retransmits any lost I-frame once the link is back.
+/// link is down - AX.25 T1 retransmits any lost I-frame once the link is back.
 /// TX-completion sends delegate straight to the current inner: the inner KissTcpClient
 /// intercepts its own TX-completion echoes on the same RX pump this wrapper
 /// already delegates to (<see cref="ReceiveAsync"/> drives the inner's
@@ -215,7 +215,7 @@ internal sealed partial class ReconnectingKissModem
         }
         catch (Exception ex) when (IsTransient(ex))
         {
-            // Link down (mid-reconnect); drop — AX.25 T1 will retransmit once back.
+            // Link down (mid-reconnect); drop - AX.25 T1 will retransmit once back.
             LogSendDropped(endpoint);
         }
     }
@@ -229,7 +229,7 @@ internal sealed partial class ReconnectingKissModem
     /// faults the waiter (TimeoutException / ObjectDisposedException) and AX.25
     /// T1 retransmits once the link is back, exactly like a plain send.
     /// Throws <see cref="NotSupportedException"/> if the live inner is not
-    /// TX-completion-capable — but a port only wraps in this decorator over a
+    /// TX-completion-capable - but a port only wraps in this decorator over a
     /// transport that is (the kiss-tcp path), matching the pre-migration behaviour
     /// where the inner always exposed <c>SendAwaitingCompletionAsync</c>.
     /// </remarks>
@@ -355,7 +355,7 @@ internal sealed partial class ReconnectingKissModem
         }
         catch
         {
-            // best-effort — we're discarding this transport anyway
+            // best-effort - we're discarding this transport anyway
         }
     }
 

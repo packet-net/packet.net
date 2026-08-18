@@ -18,7 +18,7 @@ namespace Packet.Ax25.Session;
 /// V(S), V(A), and V(R) are <see cref="byte"/>s because they hold mod-128
 /// values; mod-8 use only the low 3 bits and is just <see cref="IsExtended"/>
 /// = false. The dispatcher applies the right modulus when comparing /
-/// incrementing — the field stores the underlying 0-127 value.
+/// incrementing - the field stores the underlying 0-127 value.
 /// </para>
 /// </remarks>
 public sealed class Ax25SessionContext
@@ -34,16 +34,16 @@ public sealed class Ax25SessionContext
 
     // ─── Sequence variables (§4.2.2) ────────────────────────────────────
 
-    /// <summary>Send state variable — sequence number of the next I-frame to send.</summary>
+    /// <summary>Send state variable - sequence number of the next I-frame to send.</summary>
     public byte VS { get; set; }
 
-    /// <summary>Acknowledge state variable — last acknowledged sent I-frame.</summary>
+    /// <summary>Acknowledge state variable - last acknowledged sent I-frame.</summary>
     public byte VA { get; set; }
 
-    /// <summary>Receive state variable — sequence number of next I-frame expected to receive.</summary>
+    /// <summary>Receive state variable - sequence number of next I-frame expected to receive.</summary>
     public byte VR { get; set; }
 
-    /// <summary>Retry counter — how many retransmissions of the current outstanding poll.</summary>
+    /// <summary>Retry counter - how many retransmissions of the current outstanding poll.</summary>
     public int RC { get; set; }
 
     // ─── Flags (§C4.3) ──────────────────────────────────────────────────
@@ -76,18 +76,18 @@ public sealed class Ax25SessionContext
     public bool Layer3Initiated { get; set; }
 
     /// <summary>
-    /// Node-policy flag — when <c>true</c> (the default), the session
+    /// Node-policy flag - when <c>true</c> (the default), the session
     /// accepts inbound SABM/SABME frames and runs the figc4.1 t14 /
     /// figc4.1 t13 acceptance path. When <c>false</c>, figc4.1's
     /// <c>able_to_establish?</c> decision falls through to the No branch
     /// (t15) which emits DM and stays Disconnected. Per-session because
     /// in deployments with multiple sessions on one modem the policy
-    /// genuinely differs per peer — a node that has already accepted
+    /// genuinely differs per peer - a node that has already accepted
     /// one connection still wants the catalogue's existing default
     /// behaviour for unrelated peer sessions. The cleanest binding is a
     /// context field; callers can still override the
     /// <c>able_to_establish</c> binding for richer policies (callsign
-    /// allow-lists, channel load, etc.) — the default just reads this
+    /// allow-lists, channel load, etc.) - the default just reads this
     /// flag.
     /// </summary>
     public bool AcceptIncoming { get; set; } = true;
@@ -134,7 +134,7 @@ public sealed class Ax25SessionContext
     /// <summary>
     /// The window (k) the engine actually enforces for BOTH the send side
     /// (max outstanding I-frames) and the receive side (the in-window acceptance
-    /// bound for storing out-of-sequence frames) — <see cref="K"/>, but capped
+    /// bound for storing out-of-sequence frames) - <see cref="K"/>, but capped
     /// at <c>Modulus/2</c> while Selective Repeat (<see cref="SrejEnabled"/>) is in
     /// effect, per the Selective-Repeat window-wrap invariant (ax25spec#13). Above
     /// that cap, two in-flight frames could share an N(S) and SREJ recovery can
@@ -178,7 +178,7 @@ public sealed class Ax25SessionContext
 
     /// <summary>
     /// True if the segmenter/reassembler has been negotiated via XID (the
-    /// HDLC Optional Functions segmenter bit, §4.3.3.7) — a v2.2-only
+    /// HDLC Optional Functions segmenter bit, §4.3.3.7) - a v2.2-only
     /// capability (§1621) enabled only when both peers advertise it. The MDL
     /// negotiation sets this; the DL-DATA segment/reassemble path (arc V4)
     /// gates on it. Forced off on the version-2.0 fallback.
@@ -215,7 +215,7 @@ public sealed class Ax25SessionContext
     public TimeSpan Srt { get; set; } = TimeSpan.FromMilliseconds(3000);
 
     /// <summary>
-    /// T1 timeout value per §6.7.1.3 — the actual duration the
+    /// T1 timeout value per §6.7.1.3 - the actual duration the
     /// acknowledgement timer is armed for. Recomputed as 2 × SRT
     /// after each round-trip; figc4.1 t03 / figc4.2 t21 / figc4.4 etc.
     /// initialise this via <c>T1V := 2 * SRT</c> on (re)connection.
@@ -251,7 +251,7 @@ public sealed class Ax25SessionContext
     public Dictionary<byte, (ReadOnlyMemory<byte> Data, byte Pid)> SentIFrames { get; } = new();
 
     /// <summary>
-    /// Out-of-sequence received I-frames awaiting their turn — keyed by
+    /// Out-of-sequence received I-frames awaiting their turn - keyed by
     /// the frame's N(S). When <see cref="VR"/> advances to a stored
     /// seqno, the figc4.4 <c>retrieve_stored_V_r_I_frame</c> action
     /// dequeues from here and delivers upward.
@@ -260,14 +260,14 @@ public sealed class Ax25SessionContext
 
     /// <summary>
     /// N(S) values that have already been selectively retransmitted (in response
-    /// to an SREJ) since V(a) last advanced — i.e. within the current recovery
+    /// to an SREJ) since V(a) last advanced - i.e. within the current recovery
     /// cycle. A burst of redundant SREJs for the same still-outstanding gap (the
     /// figc4.4 over-SREJ: one SREJ per out-of-sequence frame) must not spawn one
-    /// wire copy each — the surplus copies become stale once the receiver's V(R)
+    /// wire copy each - the surplus copies become stale once the receiver's V(R)
     /// wraps past them and get mis-delivered as new (the mod-8 SREJ ring-wrap
     /// duplicate). Cleared on every V(a) advance (genuine progress = new cycle, see
     /// <see cref="PruneAcknowledgedSentIFrames"/>) and per-N(S) when a fresh I-frame
-    /// is emitted at that N(S). A genuinely lost retransmit is still recovered — via
+    /// is emitted at that N(S). A genuinely lost retransmit is still recovered - via
     /// the T1/TimerRecovery <c>Invoke_Retransmission</c> path, which does not consult
     /// this set. direwolf reaches the same effect by deleting acknowledged
     /// <c>txdata_by_ns[ns]</c> + de-duplicating SREJ requests (ax25_link.c).
@@ -287,7 +287,7 @@ public sealed class Ax25SessionContext
 
     /// <summary>
     /// True if <paramref name="ns"/> is an <em>outstanding</em> (sent-but-not-yet-
-    /// acknowledged) send sequence number — i.e. it lies in the half-open window
+    /// acknowledged) send sequence number - i.e. it lies in the half-open window
     /// <c>[V(a), V(s))</c> in mod-<see cref="Modulus"/> arithmetic. A frame whose
     /// N(S) is outside this window has already been acknowledged (behind V(a)) or
     /// was never sent (at/after V(s)); replaying it during recovery would put a
@@ -303,7 +303,7 @@ public sealed class Ax25SessionContext
 
     /// <summary>
     /// Drop every entry in <see cref="SentIFrames"/> whose N(S) is no longer
-    /// outstanding (i.e. has been acknowledged — it now lies behind V(a) per
+    /// outstanding (i.e. has been acknowledged - it now lies behind V(a) per
     /// <see cref="IsOutstanding"/>). Called whenever V(a) advances so a stale or
     /// duplicate REJ/SREJ cannot make the recovery path replay an already-acked
     /// frame. Mirrors direwolf's <c>cdata_delete(txdata_by_ns[...])</c> on

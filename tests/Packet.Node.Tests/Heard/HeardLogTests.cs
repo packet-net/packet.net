@@ -106,7 +106,7 @@ public sealed class HeardLogTests : IDisposable
         log1.Dispose();
 
         // Second run: a brand-new log over a brand-new store on the SAME db file hydrates the
-        // persisted state — survival across node restart AND port teardown (no AttachPort needed).
+        // persisted state - survival across node restart AND port teardown (no AttachPort needed).
         var store2 = new SqliteHeardStore(dbPath);
         using var log2 = new HeardLog(store2, clock);
 

@@ -260,7 +260,7 @@ public class KissSerialModemPumpTests
         {
             if (!steps.TryTake(out var step, System.Threading.Timeout.Infinite))
             {
-                // Completed and empty — the handle is closed (dispose path).
+                // Completed and empty - the handle is closed (dispose path).
                 throw new IOException("port closed");
             }
 

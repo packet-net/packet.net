@@ -8,7 +8,7 @@ namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
 /// End-to-end integration tests against the real figc4.2 (Awaiting
-/// Connection) transition table — same shape as
+/// Connection) transition table - same shape as
 /// <see cref="DataLinkDisconnectedEndToEndTests"/>.
 /// </summary>
 public class DataLinkAwaitingConnectionEndToEndTests
@@ -72,13 +72,13 @@ public class DataLinkAwaitingConnectionEndToEndTests
             [Ax25Guard.VsEqVa] = () => vsEqVa,
             [Ax25Guard.RCEqN2] = () => rcEqN2,
             // `layer_3_initiated` and several others are bound via the default
-            // table to the ctx flag — but the figc4.2 decisions intentionally
+            // table to the ctx flag - but the figc4.2 decisions intentionally
             // distinguish "the layer_3_initiated branch of UA decision" vs
-            // "the data_layer_3_initiated branch" — both have the same
+            // "the data_layer_3_initiated branch" - both have the same
             // canonical predicate name. Override to make them controllable.
         };
         // The default bindings expose `layer_3_initiated` reading from
-        // ctx.Layer3Initiated — set the context flag and the bindings see it.
+        // ctx.Layer3Initiated - set the context flag and the bindings see it.
         ctx.Layer3Initiated = layer3Initiated;
         // `data_layer_3_initiated` decision id uses the same predicate
         // (layer_3_initiated) but figc4.2 has two distinct paths; the YAML's

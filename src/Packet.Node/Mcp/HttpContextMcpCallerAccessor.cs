@@ -9,7 +9,7 @@ namespace Packet.Node.Mcp;
 /// <summary>
 /// The <see cref="IMcpCallerAccessor"/> for the in-process SSE transport: derives
 /// the <see cref="McpCaller"/> from the authenticated request principal. Mirrors
-/// the REST surface's auth behaviour — when <c>management.auth.enabled</c> is off
+/// the REST surface's auth behaviour - when <c>management.auth.enabled</c> is off
 /// the caller is granted every scope (pass-through), and when it's on the caller's
 /// scopes are expanded from its single <c>scope</c> claim under the hierarchical
 /// admin ⊃ operate ⊃ read model.

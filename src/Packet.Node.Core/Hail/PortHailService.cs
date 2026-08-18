@@ -61,20 +61,20 @@ public sealed class HailException : Exception
 /// The node's <b>SDM station-hail</b> service: two capabilities on a radio-attached port.
 /// <list type="bullet">
 ///   <item><b>Hail</b> (<c>POST /api/v1/ports/{id}/hail</c>): send a hail to a peer and return the
-///     peer's <see cref="PortHailStatus"/> — its callsign, current NinoTNC mode/bitrate, channel and
+///     peer's <see cref="PortHailStatus"/> - its callsign, current NinoTNC mode/bitrate, channel and
 ///     capabilities. Because the hail rides the radio's own FFSK modem, it works (and reports the
 ///     peer's mode) even when the packet path is broken by a mode mismatch.</item>
 ///   <item><b>Resident responder</b> (opt-in per port via <see cref="PortRadioConfig.HailResponder"/>):
 ///     listen for a configured neighbour's hails and auto-reply with this node's status.</item>
 /// </list>
-/// A DI singleton and a hosted service — its background loop reconciles the resident responders
+/// A DI singleton and a hosted service - its background loop reconciles the resident responders
 /// against the running ports + config; disposing it tears every responder down.
 /// </summary>
 /// <remarks>
 /// <para><b>One radio, one SDM buffer.</b> A radio's SDM receive buffer is one-deep, so a port has a
 /// single side-channel consumer at a time. When a resident responder is armed it owns a shared
 /// <see cref="FanOutTuningLink"/> (bound to its configured neighbour), and an on-demand hail borrows
-/// that shared link — but only to the same peer (v1 is point-to-point; hailing a different peer
+/// that shared link - but only to the same peer (v1 is point-to-point; hailing a different peer
 /// while a responder is bound is refused). With no resident responder, a hail opens a transient link
 /// to the requested peer for the duration of the call.</para>
 /// <para>The SDM-enabled fail-fast preflight (the capability doctor's wildcard-SDM probe) runs on the
@@ -223,7 +223,7 @@ public sealed partial class PortHailService : BackgroundService
 
     /// <summary>
     /// Test seam (InternalsVisibleTo <c>Packet.Node.Tests</c>): run a hail over an already-built link
-    /// and project the reply — the hail → <see cref="PortHailStatus"/> / <see cref="HailException"/>
+    /// and project the reply - the hail → <see cref="PortHailStatus"/> / <see cref="HailException"/>
     /// mapping, without a live port or radio.
     /// </summary>
     internal static async Task<PortHailStatus> HailOverLinkAsync(
@@ -274,9 +274,9 @@ public sealed partial class PortHailService : BackgroundService
             }
         }
 
-        // Stop responders no longer wanted — port gone / disabled, peer changed, or the radio handle
-        // was replaced (a port restart reopens the radio — and a head-end-bound radio's reconnect
-        // facade swaps its inner driver on a fault (#576) — so a same-peer resident bound to the OLD
+        // Stop responders no longer wanted - port gone / disabled, peer changed, or the radio handle
+        // was replaced (a port restart reopens the radio - and a head-end-bound radio's reconnect
+        // facade swaps its inner driver on a fault (#576) - so a same-peer resident bound to the OLD
         // handle is now dead and must be rebuilt against the new one). Compare against the LIVE
         // driver behind the stable facade, not the facade itself.
         foreach (var (portId, resident) in residents.ToArray())
@@ -321,7 +321,7 @@ public sealed partial class PortHailService : BackgroundService
         var gate = portLocks.GetOrAdd(portId, _ => new SemaphoreSlim(1, 1));
         if (!await gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
-            return; // busy (a hail is in flight) — try again next cycle
+            return; // busy (a hail is in flight) - try again next cycle
         }
         try
         {
@@ -453,7 +453,7 @@ public sealed partial class PortHailService : BackgroundService
         }
         else if (!await gate.WaitAsync(0).ConfigureAwait(false))
         {
-            return; // a hail is in flight on this port — leave the responder; retry next cycle
+            return; // a hail is in flight on this port - leave the responder; retry next cycle
         }
         try
         {
@@ -503,7 +503,7 @@ public sealed partial class PortHailService : BackgroundService
     {
         public string Peer { get; } = peer;
 
-        /// <summary>The radio handle this responder is bound to — compared on reconcile so a port
+        /// <summary>The radio handle this responder is bound to - compared on reconcile so a port
         /// restart (which reopens the radio) rebuilds the responder against the fresh handle.</summary>
         public TaitCcdiRadio Radio { get; } = radio;
 

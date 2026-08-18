@@ -12,7 +12,7 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// Forwarded-headers trust scoping (network-access.md S1). pdn enables
 /// <c>UseForwardedHeaders</c> so that behind the loopback TLS edge (the embedded
-/// Tailscale tsnet sidecar) it sees the PUBLIC https scheme/host — making the
+/// Tailscale tsnet sidecar) it sees the PUBLIC https scheme/host - making the
 /// app-gateway's <c>pdn_at</c> cookie Secure flag and any request-derived WebAuthn
 /// origin correct. The trust is scoped to a LOOPBACK proxy only (anti-spoof): a
 /// request carrying <c>X-Forwarded-Proto: https</c> from a non-loopback peer must NOT
@@ -97,7 +97,7 @@ public sealed class ForwardedHeadersTests
         var resp = await client.SendAsync(req);
         var body = await resp.Content.ReadAsStringAsync();
 
-        // The spoofed scheme/host are ignored — the request stays plain http (anti-spoof).
+        // The spoofed scheme/host are ignored - the request stays plain http (anti-spoof).
         body.Should().Contain("\"scheme\":\"http\"", "a non-loopback client must not be trusted to set the scheme");
         body.Should().Contain("\"isHttps\":false");
         body.Should().NotContain("evil.example", "a non-loopback client must not be trusted to set the host");
@@ -110,7 +110,7 @@ public sealed class ForwardedHeadersTests
         using var client = server.CreateClient();
 
         // With no proxy/headers (the default LAN deployment), enabling the middleware
-        // changes nothing — the request is plain http.
+        // changes nothing - the request is plain http.
         var req = new HttpRequestMessage(HttpMethod.Get, "/echo");
         req.Headers.Add("X-Test-RemoteIp", "127.0.0.1");
 

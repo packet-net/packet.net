@@ -21,7 +21,7 @@ internal static class SoundModemFlexDevice
 
     /// <summary>
     /// Opens the FlexRadio slice as a runtime exposing <c>Input</c>/<c>Output</c>/<c>Ptt</c> at the
-    /// DSP rate. The returned <see cref="FlexRuntime"/> owns those seams — dispose it (not them).
+    /// DSP rate. The returned <see cref="FlexRuntime"/> owns those seams - dispose it (not them).
     /// </summary>
     public static Task<FlexRuntime> OpenAsync(
         string device,
@@ -32,7 +32,7 @@ internal static class SoundModemFlexDevice
         FlexDevice.OpenAsync(device, dspRate, packetBuffer, ToFlexTuning(tuning), cancellationToken);
 
     /// <summary>Maps the node's <see cref="SoundModemFlexConfig"/> to the library's tuning record
-    /// (defaults when none is configured — headless 14.100 MHz / ANT1 / DIGU / DAX 1).</summary>
+    /// (defaults when none is configured - headless 14.100 MHz / ANT1 / DIGU / DAX 1).</summary>
     public static FlexTuning ToFlexTuning(SoundModemFlexConfig? flex) => flex is null
         ? new FlexTuning()
         : new FlexTuning

@@ -13,8 +13,8 @@ public class AppCapabilitiesTests
     [InlineData("network", "packet")]
     [InlineData("Network", "packet")]   // case-insensitive
     [InlineData("NETWORK", "packet")]
-    [InlineData("packet", "packet")]    // already the new spelling — unchanged
-    [InlineData("web", "web")]          // unrelated capability — unchanged
+    [InlineData("packet", "packet")]    // already the new spelling - unchanged
+    [InlineData("web", "web")]          // unrelated capability - unchanged
     [InlineData("session", "session")]
     public void Normalize_relabels_network_as_packet_and_leaves_others_alone(string input, string expected)
     {

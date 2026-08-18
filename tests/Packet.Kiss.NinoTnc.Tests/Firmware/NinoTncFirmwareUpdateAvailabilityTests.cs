@@ -83,7 +83,7 @@ public class NinoTncFirmwareUpdateAvailabilityTests
     {
         // A pre-2.90 firmware (e.g. 2.71) has Unknown chip variant by
         // our heuristic. The catalogue shouldn't recommend anything in
-        // that case — the operator should figure out the chip manually.
+        // that case - the operator should figure out the chip manually.
         var current = new NinoTncFirmwareVersion(2, 71);
         INinoTncFirmwareCatalogue catalogue = new FakeCatalogue
         {
@@ -107,7 +107,7 @@ public class NinoTncFirmwareUpdateAvailabilityTests
         // Defensive case: the catalogue somehow surfaces a release older
         // than what the modem is running (e.g. somebody downgraded the
         // upstream tip of master while a host was already on a newer
-        // version). UpdateAvailable should be false — never recommend
+        // version). UpdateAvailable should be false - never recommend
         // a downgrade.
         var current = new NinoTncFirmwareVersion(3, 44);
         INinoTncFirmwareCatalogue catalogue = new FakeCatalogue

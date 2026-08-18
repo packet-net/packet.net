@@ -5,7 +5,7 @@ using Packet.Node.Core.Hosting;
 namespace Packet.Node.Core.Radios;
 
 /// <summary>
-/// Projects the live node's radio-control attachments into <see cref="RadioStatus"/> read models —
+/// Projects the live node's radio-control attachments into <see cref="RadioStatus"/> read models -
 /// the shared logic behind <c>GET /api/v1/radios</c> and <c>GET /api/v1/ports/{id}/radio</c>. Kept in
 /// <c>Packet.Node.Core</c> (not the web layer) so it can be exercised directly against a live
 /// <see cref="PortSupervisor"/> without booting an HTTP host.
@@ -39,7 +39,7 @@ public static class RadioReadModels
     /// <summary>
     /// The radio status for one port. Returns <c>null</c> when <paramref name="portId"/> names no
     /// configured port (the endpoint maps that to 404). A configured port with no <c>radio:</c> block
-    /// yields an <c>attached: false</c> status with an empty kind — an honest "this port has no radio",
+    /// yields an <c>attached: false</c> status with an empty kind - an honest "this port has no radio",
     /// distinct from "no such port".
     /// </summary>
     public static RadioStatus? ForPort(PortSupervisor? supervisor, NodeConfig config, string portId)

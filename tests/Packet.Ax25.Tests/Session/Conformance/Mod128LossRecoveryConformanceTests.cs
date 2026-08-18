@@ -5,14 +5,14 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// v2.2 arc V4a — REJ and SREJ loss recovery in the mod-128 (extended)
+/// v2.2 arc V4a - REJ and SREJ loss recovery in the mod-128 (extended)
 /// sequence space. These mirror the mod-8 recovery tests
 /// (<see cref="Packet.Ax25.Tests.Session.DataLinkConnectedRetransmitTests"/>,
 /// <see cref="Packet.Ax25.Tests.Session.DataLinkSrejUnderLossTests"/>,
 /// <see cref="LossRecoveryProperties"/>) but drive an extended link
 /// (<c>TwoStationHarness.Build(extended: true)</c>) so the 7-bit N(S)/N(R)
-/// arithmetic is exercised end-to-end — including window-wrap across the
-/// 0–127 boundary.
+/// arithmetic is exercised end-to-end - including window-wrap across the
+/// 0-127 boundary.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -134,7 +134,7 @@ public class Mod128LossRecoveryConformanceTests
         h.AssertConverged();
     }
 
-    // A multi-frame SREJ burst at mod-128 — the same shape as the mod-8
+    // A multi-frame SREJ burst at mod-128 - the same shape as the mod-8
     // Srej_heavy_bidirectional_loss_burst_recovers regression (needs all three
     // figc4.x SREJ quirks), but in the extended sequence space.
     [Fact]
@@ -161,7 +161,7 @@ public class Mod128LossRecoveryConformanceTests
 
     // The headline mod-128 property: a window that WRAPS the 0→127 boundary.
     // Pre-advance both sequence variables close to the top of the 7-bit space
-    // (V(S)=V(A)=V(R)=124 on both ends — a valid "freshly connected at offset
+    // (V(S)=V(A)=V(R)=124 on both ends - a valid "freshly connected at offset
     // 124" state), then transfer a burst that wraps past 127→0 with a single
     // drop. If any computation were not mod-128-aware (e.g. a stray `% 8`, or a
     // window check that didn't wrap), recovery would diverge here.
@@ -174,7 +174,7 @@ public class Mod128LossRecoveryConformanceTests
         h.Connect();
 
         // Seed both ends near the wrap. Both sides agree, so the link is
-        // consistent — V(S)=V(A) (nothing outstanding), V(R) matches the peer's
+        // consistent - V(S)=V(A) (nothing outstanding), V(R) matches the peer's
         // V(S). This is indistinguishable from having already sent 124 frames.
         const byte seed = 124;
         h.A.Context.VS = h.A.Context.VA = seed; h.A.Context.VR = seed;
@@ -202,14 +202,14 @@ public class Mod128LossRecoveryConformanceTests
 
             if (f.Ns != 0)
             {
-                return false;            // N(S)=0 — the frame straddling the wrap
+                return false;            // N(S)=0 - the frame straddling the wrap
             }
 
             dropped = true;
             return true;
         };
 
-        // Eight frames from seed: N(S) = 124,125,126,127,0,1,2,3 — wraps the ring.
+        // Eight frames from seed: N(S) = 124,125,126,127,0,1,2,3 - wraps the ring.
         for (byte i = 0; i < 8; i++)
         {
             h.Submit(h.A, (byte)(0x40 + i));

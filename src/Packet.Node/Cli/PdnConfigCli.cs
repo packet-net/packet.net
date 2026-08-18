@@ -8,10 +8,10 @@ namespace Packet.Node.Cli;
 /// config-in-DB (#473). Config now lives in <c>pdn.db</c>, not a hand-editable file, so an
 /// operator with shell access needs a way to round-trip it as text:
 /// <list type="bullet">
-/// <item><c>pdn config export [--out &lt;path&gt;]</c> — boot the provider, read
+/// <item><c>pdn config export [--out &lt;path&gt;]</c> - boot the provider, read
 /// <see cref="IConfigProvider.Current"/>, write <see cref="NodeConfigYaml"/> to stdout (or
 /// a file). The export-edit-import workflow's first leg + a backup path.</item>
-/// <item><c>pdn config import &lt;path&gt;</c> — parse + validate + apply a YAML file
+/// <item><c>pdn config import &lt;path&gt;</c> - parse + validate + apply a YAML file
 /// through the SAME write seam (<see cref="IWritableConfigProvider.TryApply"/>) the web API
 /// uses, persisting to the DB. The explicit apply that replaces the old hot file-watch.</item>
 /// </list>

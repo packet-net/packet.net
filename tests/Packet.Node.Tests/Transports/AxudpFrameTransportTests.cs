@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Transports;
 /// <see cref="AxudpSocket"/> as a native <see cref="IAx25Transport"/>. Send puts the AX.25
 /// frame body + the 2-octet FCS into a datagram; receive (via <see cref="AxudpSocket"/>) strips
 /// + validates the FCS and surfaces each datagram directly as an <see cref="Ax25InboundFrame"/>
-/// — no KISS object is ever constructed. AXUDP always carries the FCS — there is no FCS-less form.
+/// - no KISS object is ever constructed. AXUDP always carries the FCS - there is no FCS-less form.
 /// </summary>
 public sealed class AxudpFrameTransportTests
 {
@@ -26,7 +26,7 @@ public sealed class AxudpFrameTransportTests
     public async Task Send_always_appends_the_two_octet_fcs_low_byte_first()
     {
         // AXUDP unconditionally carries the FCS, so the transport must put the 2-octet
-        // FCS on the wire — that is how it talks to LinBPQ BPQAXIP / XRouter / ax25ipd out
+        // FCS on the wire - that is how it talks to LinBPQ BPQAXIP / XRouter / ax25ipd out
         // of the box. Observe the raw wire with a plain UdpClient (AxudpSocket would strip
         // the FCS on receive).
         using var rawPeer = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));

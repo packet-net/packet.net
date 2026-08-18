@@ -10,7 +10,7 @@ namespace Packet.Node.Tests.Applications;
 /// The <c>pdn-app/1</c> stdio bridge (<see cref="ExternalProcessApplication"/>). Uses
 /// <c>/bin/cat</c> as a stand-in app: cat echoes its stdin to stdout, so whatever the bridge
 /// writes to the child (the connect header, then each assembled user line) comes straight back
-/// through the forward pump — letting us assert the header format, the newline translation, and
+/// through the forward pump - letting us assert the header format, the newline translation, and
 /// the teardown without a bespoke fixture. Linux-only (CI is Linux; cat is the echo oracle).
 /// </summary>
 [Trait("Category", "Node")]
@@ -44,7 +44,7 @@ public sealed class ExternalProcessApplicationTests
         await Wait.ForAsync(() => conn.Output.Contains("args: last 5"), "args header line present");
 
         // A user line is assembled, fed to the app as \n-terminated, echoed back, and forwarded
-        // to us with the AX.25 newline (a bare CR — never the \n the app emitted).
+        // to us with the AX.25 newline (a bare CR - never the \n the app emitted).
         conn.Inject("hello world\r");
         await Wait.ForAsync(() => conn.Output.Contains("hello world"), "user line echoed back");
 
@@ -79,7 +79,7 @@ public sealed class ExternalProcessApplicationTests
     {
         Skip.IfNot(OperatingSystem.IsLinux(), "the app fixture relies on /bin/cat");
 
-        // /bin/echo writes a line then exits immediately — stdout EOF — even though the session
+        // /bin/echo writes a line then exits immediately - stdout EOF - even though the session
         // stays open. RunAsync must return (the user is dropped back to the node prompt).
         var conn = new DriveableConnection("M0LTE-7", NodeTransportKind.Ax25);
         var app = new ExternalProcessApplication(

@@ -11,7 +11,7 @@ namespace Packet.Node.Core.Mqtt;
 /// the first non-loopback NIC MAC (sorted by interface name so the pick is deterministic across
 /// reboots); failing that, warn and return a fixed literal. The value source is domain-tagged before
 /// hashing (<c>machine-id:</c> / <c>mac:</c>) so a machine-id can never collide with a MAC.
-/// Deterministic across reboots yet distinct across image-cloned machines — two Pis flashed from one
+/// Deterministic across reboots yet distinct across image-cloned machines - two Pis flashed from one
 /// image (both hostname <c>raspberrypi</c>) carry different machine-ids, so they don't collide.
 /// </summary>
 public static class MachineSuffix
@@ -21,7 +21,7 @@ public static class MachineSuffix
     internal static readonly string[] MachineIdFiles = ["/etc/machine-id", "/var/lib/dbus/machine-id"];
 
     /// <summary>The last-resort token when neither a machine-id file nor a NIC MAC is available.
-    /// Deliberately NOT unique — reaching it is a (warned) signal that the operator should pin an
+    /// Deliberately NOT unique - reaching it is a (warned) signal that the operator should pin an
     /// explicit identity. Mirrors the head-end's <c>fallbackMachineToken</c>.</summary>
     internal const string FallbackToken = "nomachineid";
 
@@ -63,7 +63,7 @@ public static class MachineSuffix
         return FallbackToken;
     }
 
-    /// <summary>The first 8 hex chars (the leading 4 bytes) of SHA-256(<paramref name="s"/>) —
+    /// <summary>The first 8 hex chars (the leading 4 bytes) of SHA-256(<paramref name="s"/>) -
     /// byte-for-byte the head-end's <c>shortHash</c>.</summary>
     internal static string ShortHash(string s)
         => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(s)))[..8];

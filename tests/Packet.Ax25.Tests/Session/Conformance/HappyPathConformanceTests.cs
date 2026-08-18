@@ -4,7 +4,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// Phase H — happy-path conformance. Drives the real two-station stack through
+/// Phase H - happy-path conformance. Drives the real two-station stack through
 /// its normal operating envelope (no channel disruption) and asserts the
 /// <see cref="InvariantChecker"/> oracle holds after every step + the link
 /// fully converges. Proves both the stack and the oracle on known-answer
@@ -81,7 +81,7 @@ public class HappyPathConformanceTests
         var h = TwoStationHarness.Build(k: 4);
         h.Connect();
 
-        // 12 frames > the mod-8 window — V(s) must wrap 7→0. Flush acks each
+        // 12 frames > the mod-8 window - V(s) must wrap 7→0. Flush acks each
         // window so the send window keeps reopening.
         for (byte i = 0; i < 12; i++)
         {
@@ -105,7 +105,7 @@ public class HappyPathConformanceTests
         var h = TwoStationHarness.Build(k: 1);
         h.Connect();
 
-        // k=1: at most one unacked frame outstanding — each must be acked
+        // k=1: at most one unacked frame outstanding - each must be acked
         // before the next can go, the tightest window edge.
         for (byte i = 0; i < 5; i++)
         {

@@ -14,7 +14,7 @@ namespace Packet.Ax25.Tests.Session;
 /// Deterministic reproduction of the issue #292 connected-mode stall over a
 /// <b>two-station half-duplex</b> channel: a "node" accepts a connect, sends its
 /// banner + prompt, and a "peer" sends a console command (an I-frame) that must
-/// reach the node. No network, no live box, no wall-clock — two real
+/// reach the node. No network, no live box, no wall-clock - two real
 /// <see cref="Ax25Session"/>s over a synchronous, turn-based half-duplex medium
 /// driven by a shared <see cref="FakeTimeProvider"/>.
 /// </summary>
@@ -24,13 +24,13 @@ namespace Packet.Ax25.Tests.Session;
 /// inside one pump turn is "its transmission for that turn." If <em>both</em>
 /// stations transmit in the same turn, both rigs were keyed at once → both are
 /// deaf → <b>both frames are lost</b> (there is no third listener, so capture is
-/// irrelevant — exactly the issue's regime). A station also never hears its own
+/// irrelevant - exactly the issue's regime). A station also never hears its own
 /// transmission. Otherwise the lone transmitter's frames are delivered to the
 /// peer's inbound queue for the next turn.
 /// </para>
 /// <para>
 /// <b>Why this reproduces the bug.</b> #292's key lead is that the per-port
-/// <c>t1Ms</c> lever did nothing — the node sat at the same spec-default T1 (6 s)
+/// <c>t1Ms</c> lever did nothing - the node sat at the same spec-default T1 (6 s)
 /// as the peer. Two equal, phase-locked T1 timers fire together every period, so
 /// both rigs key up at once and every transmission collides; the peer's command
 /// never lands and the link times out to DM. Once the configured T1 is actually
@@ -80,7 +80,7 @@ public sealed class HalfDuplexContentionTests
         // reaches its T1 timer (it no longer gets reset to 6 s on connect), the
         // node's poll cadence drifts relative to the peer's 3 s timer. They fall in
         // and out of phase, so transmissions find clear air and the exchange
-        // converges — the node hears `info`, the peer hears the banner, both windows
+        // converges - the node hears `info`, the peer hears the banner, both windows
         // drain.
         var link = new HalfDuplexLink(t1Ms: 10000, peerT1Ms: 3000);
         link.Connect();
@@ -157,7 +157,7 @@ public sealed class HalfDuplexContentionTests
         /// <summary>Advance virtual time in FINE steps (settling the medium after
         /// each), so each station's T1 fires at its <em>own</em> cadence rather than
         /// both firing together on a coarse jump. This is what lets two different
-        /// T1 values drift in and out of phase — the realistic regime in which a
+        /// T1 values drift in and out of phase - the realistic regime in which a
         /// quiet (long-T1) node eventually leaves clear air for the peer. The total
         /// span is <paramref name="rounds"/> × the smaller T1 (plenty of retries).</summary>
         public void RunRounds(int rounds)
@@ -290,7 +290,7 @@ public sealed class HalfDuplexContentionTests
                 sendIFrame: s => SendBytes(s.ToAx25Frame(Context).ToBytes()),
                 sendUpward: SendUpward,
                 // Contention-free LM is the spec's autonomous-ack path; the node
-                // listener stubs it (see Ax25Listener), so model it the same way —
+                // listener stubs it (see Ax25Listener), so model it the same way -
                 // acks ride piggyback or the T1 poll, never an LM-SEIZE flush.
                 sendLinkMux: _ => { },
                 sendInternal: _ => { },

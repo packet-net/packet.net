@@ -2,7 +2,7 @@ namespace Packet.Tune.Core.Tests;
 
 /// <summary>
 /// The refactored capability-doctor probe core (<see cref="TuningDoctor.RunProbesAsync"/>) that
-/// runs against already-open handles — the seam the PDN node reuses. The null-handle paths do
+/// runs against already-open handles - the seam the PDN node reuses. The null-handle paths do
 /// zero serial I/O, so these exercise the degradation + gating structure without hardware (the
 /// live-handle probe bodies are covered by the hardware-loop suite).
 /// </summary>

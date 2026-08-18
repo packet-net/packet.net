@@ -26,19 +26,19 @@ namespace Packet.Node.Api;
 /// left-joins the former onto the latter.
 /// </para>
 /// <para>
-/// <b>Scopes.</b> Listing the catalog is <c>read</c>; installing is <c>admin</c> and audited —
+/// <b>Scopes.</b> Listing the catalog is <c>read</c>; installing is <c>admin</c> and audited -
 /// fetching+staging an app's bytes is a privileged action, the same gate enable carries. A
 /// <i>fresh</i> install still lands a <i>disabled</i> package: install ≠ enable, the owner's
 /// separate enable grant is what first runs the code. An <i>update</i> of an app the owner has
 /// already enabled is different: the installer re-lays the payload but the supervisor only
-/// restarts on a changed spawn fingerprint (command/args/cwd/env) — a version bump changes none
+/// restarts on a changed spawn fingerprint (command/args/cwd/env) - a version bump changes none
 /// of those, so the new binary would not run until a manual restart. So after a successful
 /// install of an already-enabled, pdn-managed, error-free package this endpoint drives
 /// <see cref="IAppServiceSupervisor.RestartAsync"/> so the freshly-laid binary takes over (a
 /// best-effort step: a restart failure never demotes a committed install to a failure).
 /// </para>
 /// <para>
-/// <b>Total at the client edge.</b> The installer never throws to the caller — failures come back
+/// <b>Total at the client edge.</b> The installer never throws to the caller - failures come back
 /// as an <see cref="InstallOutcome"/> with <c>Ok=false</c> and a reason, which this API maps to a
 /// 422. An unknown id is 404, a not-installable entry (no artifact for this box's runtime) is 409.
 /// </para>
@@ -123,14 +123,14 @@ public static class PdnAvailableAppsApi
     /// <b>enabled</b>, <b>pdn-managed</b> (<see cref="AppServiceManaged.Pdn"/>), and
     /// <b>error-free</b> — drive the supervisor's <see cref="IAppServiceSupervisor.RestartAsync"/>
     /// so the freshly-laid binary replaces the still-running old one. (A version bump leaves the
-    /// spawn fingerprint unchanged, so a plain reconcile would never swap the process — the
+    /// spawn fingerprint unchanged, so a plain reconcile would never swap the process - the
     /// restart is the only thing that picks up the new bits.) Returns whether the service was
     /// restarted.
     /// </summary>
     /// <remarks>
     /// Total and best-effort by design: the payload is already committed before this runs, so a
     /// missing supervisor, a disabled/unmanaged/broken package, or any restart failure must NOT
-    /// turn a successful install into a failure — each just yields <c>false</c> and an audit line.
+    /// turn a successful install into a failure - each just yields <c>false</c> and an audit line.
     /// Synchronous within the request so the response reflects the final state (the UI shows a
     /// spinner during install, so the extra couple of seconds is acceptable).
     /// </remarks>
@@ -199,7 +199,7 @@ public static class PdnAvailableAppsApi
             installedVersion = installer.GetInstalled(entry.Id)?.Version ?? package!.Manifest?.Version;
         }
 
-        // An update is offered ONLY when the catalog pin is a genuine UPGRADE — a strictly-greater
+        // An update is offered ONLY when the catalog pin is a genuine UPGRADE - a strictly-greater
         // numeric version (see IsUpgrade). This guards against a backwards "update vX → vY" when the
         // catalog version is OLDER than what's installed (an out-of-band install, or a catalog
         // rollback), and against the naive Ordinal string compare that mis-orders "0.2.10" vs

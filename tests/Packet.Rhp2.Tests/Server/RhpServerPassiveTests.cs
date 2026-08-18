@@ -7,8 +7,8 @@ namespace Packet.Rhp2.Tests.Server;
 
 /// <summary>
 /// The passive half of the RHPv2 server (R-3): the BSD-style <c>socket</c> → <c>bind</c> →
-/// <c>listen</c> lifecycle, the async <c>accept</c> push (child handle, string <c>port</c> —
-/// the XRouter wire shape), child-handle traffic, and the close/teardown semantics — driven
+/// <c>listen</c> lifecycle, the async <c>accept</c> push (child handle, string <c>port</c> -
+/// the XRouter wire shape), child-handle traffic, and the close/teardown semantics - driven
 /// over real TCP with the recording <see cref="RhpServerTests.FakeGateway"/>, mirroring the
 /// exact sequence DAPPS's inbound service sends (bind with a NULL port = all ports).
 /// </summary>
@@ -79,7 +79,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         var client = await ConnectAsync(server);
         var listener = await ListenAsync(client, gateway);
 
-        // A station connects to the bound callsign on port "2" — drive the engine callback.
+        // A station connects to the bound callsign on port "2" - drive the engine callback.
         await gateway.AcceptHandler!(gateway.Connection, "2");
 
         var accept = await client.ExpectAsync<AcceptMessage>();
@@ -115,7 +115,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
     public async Task A_second_listen_on_the_same_socket_is_idempotent_ok()
     {
         // Observed live XRouter behaviour (the R-4 wire-diff oracle): re-listen on the SAME
-        // already-listening socket answers Ok, not 9 — and must not double-register.
+        // already-listening socket answers Ok, not 9 - and must not double-register.
         var (server, gateway) = await StartServerAsync();
         var client = await ConnectAsync(server);
         var handle = await ListenAsync(client, gateway);
@@ -253,7 +253,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
     public async Task Send_on_a_listening_socket_is_operation_not_supported_16()
     {
         // RHPTEST (the author's harness, against XRouter v505d): listener sockets reject
-        // everything but accept/close with 16 — distinct from 17 "Not connected" for a
+        // everything but accept/close with 16 - distinct from 17 "Not connected" for a
         // non-listening stream. (Deviation D9: the pinned live 505c container still
         // answers 17 here; pdn implements the v505d intent.)
         var (server, gateway) = await StartServerAsync();
@@ -270,7 +270,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
     public async Task Send_on_a_non_listening_socket_handle_stays_not_connected_17()
     {
         // The other half of the 16/17 split: a plain (or bound-but-not-listening) socket
-        // handle has no link and is not a listener — the wire's 17 (pinned R-2 behaviour,
+        // handle has no link and is not a listener - the wire's 17 (pinned R-2 behaviour,
         // verified against the live container).
         var (server, _) = await StartServerAsync();
         var client = await ConnectAsync(server);
@@ -306,7 +306,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
     [Fact]
     public async Task Bind_port_string_zero_is_a_synonym_for_all_ports()
     {
-        // XRouter convention (rhp2lib field notes §12): port "0" — like null/absent —
+        // XRouter convention (rhp2lib field notes §12): port "0" - like null/absent -
         // means "all ports". The engine registration must see the same null it would
         // for DAPPS's null-port bind.
         var (server, gateway) = await StartServerAsync();
@@ -354,7 +354,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         closed.ErrCode.Should().Be(RhpErrorCode.Ok);
         gateway.Disposals.Should().Be(1);             // the engine registration is gone
 
-        // The accepted child is an independent handle — still live.
+        // The accepted child is an independent handle - still live.
         await client.SendAsync(new SendMessage { Id = 6, Handle = accept.Child, Data = "x" });
         var sendReply = await client.ExpectAsync<SendReplyMessage>();
         sendReply.ErrCode.Should().Be(RhpErrorCode.Ok);
@@ -369,7 +369,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
 
         await client.DisposeAsync();   // the RHP TCP connection drops
 
-        // All sockets/handles die with their connection (PWP-0222) — the registration too.
+        // All sockets/handles die with their connection (PWP-0222) - the registration too.
         var deadline = DateTime.UtcNow + Timeout;
         while (gateway.Disposals == 0 && DateTime.UtcNow < deadline)
         {

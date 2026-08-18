@@ -21,14 +21,14 @@ namespace Packet.AprsIs.Spike;
 ///   parsing the callsign but record the bit.
 /// - APRS-IS injects <c>qAR</c>/<c>qAS</c>/<c>qAo</c>/<c>qAC</c> Q-construct
 ///   pseudo-digipeaters before the gateway callsign. These are NOT real
-///   on-air digipeater hops — they're routing metadata. We preserve them
+///   on-air digipeater hops - they're routing metadata. We preserve them
 ///   in the digipeater list so the consumer can decide to filter them
 ///   out.
 /// - Tactical callsigns (e.g. <c>WX1ABC</c>, <c>WIDE1-1</c>) generally fit
 ///   the AX.25 6-char alphanumeric rule, but some real frames have weirder
 ///   addresses (long bases, lowercase, punctuation). Those will fail
 ///   <see cref="Packet.Core.Callsign.TryParse(string?, out Packet.Core.Callsign)"/>
-///   downstream — by design, since they're the interesting failures.
+///   downstream - by design, since they're the interesting failures.
 /// </remarks>
 public static class Tnc2Parser
 {
@@ -63,7 +63,7 @@ public static class Tnc2Parser
             return false;
         }
 
-        // Header lines from APRS-IS start with '#' — comments / server keepalives.
+        // Header lines from APRS-IS start with '#' - comments / server keepalives.
         if (line[0] == '#')
         {
             return false;
@@ -175,7 +175,7 @@ public static class Tnc2Parser
             }
             else
             {
-                // Unparseable — leave as-is and let direwolf decide.
+                // Unparseable - leave as-is and let direwolf decide.
                 sb.Append(d.Callsign);
             }
             if (d.HasBeenRepeated)

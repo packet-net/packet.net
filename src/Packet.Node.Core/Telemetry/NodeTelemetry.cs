@@ -17,7 +17,7 @@ namespace Packet.Node.Core.Telemetry;
 /// <remarks>
 /// <para>
 /// <b>Concurrency.</b> <see cref="Observe"/> runs on listener <em>pump threads</em>
-/// — several at once when multiple ports are up — so every counter mutation uses
+/// - several at once when multiple ports are up - so every counter mutation uses
 /// <see cref="Interlocked"/> over fields on a per-key counter object held in a
 /// <see cref="ConcurrentDictionary{TKey,TValue}"/>. The SSE subscriber set is a
 /// concurrent dictionary of bounded channel writers; a slow consumer drops its
@@ -31,7 +31,7 @@ namespace Packet.Node.Core.Telemetry;
 /// </para>
 /// <para>
 /// <b>Lifecycle.</b> <see cref="AttachPort"/> / <see cref="DetachPort"/> mirror the
-/// NET/ROM service's attach lifecycle — the supervisor calls them as ports come up
+/// NET/ROM service's attach lifecycle - the supervisor calls them as ports come up
 /// and go down, so the tap is subscribed for exactly the lifetime of the port and a
 /// torn-down port's counters are dropped.
 /// </para>
@@ -49,7 +49,7 @@ public sealed partial class NodeTelemetry
     // unsubscribe exactly what AttachPort added.
     private readonly ConcurrentDictionary<string, Attachment> attachments = new(StringComparer.Ordinal);
 
-    // SSE subscribers — each /events connection registers a bounded channel writer.
+    // SSE subscribers - each /events connection registers a bounded channel writer.
     private readonly ConcurrentDictionary<Guid, ChannelWriter<MonitorEvent>> subscribers = new();
 
     // Monotonic frame sequence across the whole node (matches the UI's seq semantics).
@@ -65,13 +65,13 @@ public sealed partial class NodeTelemetry
     // A bounded ring of the most recent decoded frames so a freshly-opened web
     // monitor bootstraps with recent history (GET /api/v1/monitor/recent) instead of
     // an empty table that only fills as new frames arrive. Guarded by its own lock
-    // (the per-pump-thread Observe appends; a request thread snapshots) — kept off the
+    // (the per-pump-thread Observe appends; a request thread snapshots) - kept off the
     // Interlocked counter path so it doesn't touch that hot loop.
     private const int HistoryCapacity = 250;
     private readonly object historyLock = new();
     private readonly Queue<MonitorEvent> history = new(HistoryCapacity);
 
-    // The MHeard log (#454) — an optional collaborator fed from this very tap so the heard log is a
+    // The MHeard log (#454) - an optional collaborator fed from this very tap so the heard log is a
     // derivation of the same frame-trace stream, not a parallel tap. Null ⇒ no heard log on this
     // node (older tests / an embedder that didn't register one); Observe then behaves exactly as
     // before. Every RECEIVED frame's source callsign is recorded as a hearing on its port.
@@ -88,7 +88,7 @@ public sealed partial class NodeTelemetry
     /// <summary>Begin tapping a port's frame trace. No-op if already attached.
     /// <paramref name="radioSource"/> is the port's node-owned per-frame radio metadata read (the
     /// <see cref="InboundRadioTap"/> on a radio-attached port), or <c>null</c> when the port has no
-    /// radio — it stamps RSSI/SNR onto received frames without the AX.25 listener contract carrying
+    /// radio - it stamps RSSI/SNR onto received frames without the AX.25 listener contract carrying
     /// any of it.</summary>
     public void AttachPort(string portId, Ax25Listener listener, IInboundRadioSource? radioSource = null)
     {
@@ -104,7 +104,7 @@ public sealed partial class NodeTelemetry
         listener.FrameTraced += Tap;
     }
 
-    /// <summary>Stop tapping a port and drop its counters (the port is gone — a
+    /// <summary>Stop tapping a port and drop its counters (the port is gone - a
     /// fresh bring-up of the same id starts counting from zero, which is honest:
     /// the port bounced). A live KISS/AX.25 re-tune does not detach, so counters
     /// survive a hot reconfigure.</summary>
@@ -130,7 +130,7 @@ public sealed partial class NodeTelemetry
     /// <summary>
     /// Record one traced frame: bump the per-port + per-link counters and broadcast
     /// the decoded <see cref="MonitorEvent"/> to every SSE subscriber. Never throws
-    /// — a fault is logged and swallowed so telemetry can't disturb the pump thread.
+    /// - a fault is logged and swallowed so telemetry can't disturb the pump thread.
     /// </summary>
     public void Observe(string portId, Ax25FrameEventArgs e, IInboundRadioSource? radioSource = null)
     {
@@ -140,7 +140,7 @@ public sealed partial class NodeTelemetry
 
             // Per-frame radio metadata is a received-frame concept only, and safe to read here:
             // Observe runs synchronously on the listener's single inbound-pump thread for an RX
-            // frame, right after the tap yielded it — so LatestInboundRadio is still this frame's
+            // frame, right after the tap yielded it - so LatestInboundRadio is still this frame's
             // (see InboundRadioTap). A TX frame has no inbound radio, so never read it for one.
             var radio = rx ? radioSource?.LatestInboundRadio : null;
 
@@ -186,7 +186,7 @@ public sealed partial class NodeTelemetry
             // MHeard (#454): a RECEIVED frame means we heard its SOURCE station on this port. The
             // heard log owns persistence + survival-across-teardown; this is just the feed. TX
             // frames are ours, so they are never a "hearing". PreDataCarrier (the burst-opening
-            // frame's measured carrier-rise→data lead — the peer's effective TXDELAY as heard)
+            // frame's measured carrier-rise→data lead - the peer's effective TXDELAY as heard)
             // rides along into the log's rolling per-station median, feeding the passive
             // excess-TXDELAY advisory (docs/research/txdelay-optimisation.md).
             if (rx)
@@ -247,7 +247,7 @@ public sealed partial class NodeTelemetry
     /// <summary>
     /// Open a live frame subscription. Returns a reader the SSE endpoint drains; the
     /// returned <see cref="IDisposable"/> unsubscribes (and completes the channel) on
-    /// client disconnect. The channel is bounded — a consumer that falls behind drops
+    /// client disconnect. The channel is bounded - a consumer that falls behind drops
     /// its oldest buffered frames rather than back-pressuring the pump threads.
     /// </summary>
     public IDisposable Subscribe(out ChannelReader<MonitorEvent> reader)

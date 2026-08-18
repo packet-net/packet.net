@@ -5,7 +5,7 @@ using System.Text;
 namespace Packet.Node.Core.Auth;
 
 /// <summary>
-/// RFC 6238 TOTP — the rolling one-time code a sysop presents to elevate a session
+/// RFC 6238 TOTP - the rolling one-time code a sysop presents to elevate a session
 /// <em>over the air</em>, where AX.25 has no authentication and the channel is
 /// eavesdroppable and replayable. A static password would be captured and replayed off
 /// the air; a time-based code that is accepted <b>at most once</b> cannot be.
@@ -13,10 +13,10 @@ namespace Packet.Node.Core.Auth;
 /// <remarks>
 /// <para>
 /// <b>Self-contained, no new dependency.</b> RFC 6238 is HMAC-SHA1 over a 30-second time
-/// step with a dynamic-truncation reduction to N digits — small and well-specified, so it
+/// step with a dynamic-truncation reduction to N digits - small and well-specified, so it
 /// is implemented here and validated against the RFC 6238 Appendix-B test vectors rather
 /// than pulling a package. Web-free (lives in <c>Packet.Node.Core</c>); all time rides the
-/// injected <see cref="TimeProvider"/> (repo rule §2.7 — no wall-clock), so drift and the
+/// injected <see cref="TimeProvider"/> (repo rule §2.7 - no wall-clock), so drift and the
 /// replay window are deterministically testable on <c>FakeTimeProvider</c>.
 /// </para>
 /// <para>
@@ -56,7 +56,7 @@ public sealed class TotpService
 
     private readonly TimeProvider clock;
 
-    /// <summary>Construct over the injected clock (no wall-clock — testable on
+    /// <summary>Construct over the injected clock (no wall-clock - testable on
     /// <c>FakeTimeProvider</c>).</summary>
     public TotpService(TimeProvider clock)
     {
@@ -75,7 +75,7 @@ public sealed class TotpService
 
     /// <summary>
     /// Mint a fresh random shared secret and return it base32-encoded (RFC 4648, no
-    /// padding — the form an <c>otpauth://</c> URI and every authenticator app use).
+    /// padding - the form an <c>otpauth://</c> URI and every authenticator app use).
     /// </summary>
     public static string GenerateSecret(int bytes = DefaultSecretBytes)
     {
@@ -166,7 +166,7 @@ public sealed class TotpService
     /// name="driftSteps"/> of "now" AND that counter is <b>strictly greater than</b>
     /// <paramref name="lastAcceptedCounter"/> (so a code is usable at most once, and no
     /// already-consumed window can be reopened). On success, <paramref
-    /// name="acceptedCounter"/> is the counter that matched — the caller MUST persist it as
+    /// name="acceptedCounter"/> is the counter that matched - the caller MUST persist it as
     /// the new high-water mark.
     /// </summary>
     /// <param name="base32Secret">The user's stored base32 secret.</param>
@@ -190,7 +190,7 @@ public sealed class TotpService
         }
 
         // Normalise the typed code: strip spaces an operator may have inserted. A code that
-        // isn't all-digits of the right length can never match — but we still walk the
+        // isn't all-digits of the right length can never match - but we still walk the
         // window so timing doesn't distinguish "wrong shape" from "wrong value".
         var presented = code.Replace(" ", string.Empty, StringComparison.Ordinal);
 
@@ -215,7 +215,7 @@ public sealed class TotpService
             long candidate = now + delta;
             if (candidate <= lastAcceptedCounter)
             {
-                continue; // already consumed (or older) — the single-use guard
+                continue; // already consumed (or older) - the single-use guard
             }
             string expected = ComputeCode(key, candidate, DefaultDigits);
             if (FixedTimeStringEquals(expected, presented) && !matched)
@@ -246,7 +246,7 @@ public sealed class TotpService
     }
 
     // ---- Base32 (RFC 4648, no padding) -------------------------------------------------
-    // The on-the-wire form for TOTP secrets: A–Z, 2–7, case-insensitive, '=' padding
+    // The on-the-wire form for TOTP secrets: A-Z, 2-7, case-insensitive, '=' padding
     // stripped. Small enough to hand-roll rather than depend on a package.
 
     private const string Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";

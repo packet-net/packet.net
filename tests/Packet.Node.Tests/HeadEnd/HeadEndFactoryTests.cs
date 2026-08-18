@@ -15,7 +15,7 @@ namespace Packet.Node.Tests.HeadEnd;
 /// <summary>
 /// The head-end (split-station) branches of the real <see cref="RadioControlFactory"/> and
 /// <see cref="TransportFactory"/>: resolve a device via a stub inventory server, dial the raw TCP
-/// pipe (a loopback listener), and — for the Tait radio — route <c>setBaud</c> to the head-end's
+/// pipe (a loopback listener), and - for the Tait radio - route <c>setBaud</c> to the head-end's
 /// <c>POST /ports/{id}/line</c> verb. Plus the resolution-failure paths.
 /// </summary>
 [Trait("Category", "Node")]
@@ -39,7 +39,7 @@ public sealed class HeadEndFactoryTests
         using var pipe = new LoopbackRawPipe();
         var responder = pipe.RespondCcdiPromptsAsync();   // answer the progress-enable with a prompt
 
-        // The head-end's CURRENT line rate is stale (its bridge reopened at the 9600 default —
+        // The head-end's CURRENT line rate is stale (its bridge reopened at the 9600 default -
         // e.g. after a head-end restart); the radio itself is programmed for the configured 28800.
         var handler = new StubHeadEndHandler(new HeadEndInventory
         {
@@ -71,7 +71,7 @@ public sealed class HeadEndFactoryTests
     public async Task Head_end_nino_tnc_tcp_resolves_the_inventory_and_opens_the_full_control_pipe()
     {
         using var pipe = new LoopbackRawPipe();
-        // The TNC on the far end answers GETALL with "running mode 6" — bring-up SETHWs mode 6 and,
+        // The TNC on the far end answers GETALL with "running mode 6" - bring-up SETHWs mode 6 and,
         // since #633, verifies it took through that readback rather than trusting the unacknowledged
         // SETHW (a node silently left in the wrong mode is deaf and mute, for no visible reason).
         var responder = pipe.RespondNinoTncGetAllAsync(runningMode: 6);
@@ -94,7 +94,7 @@ public sealed class HeadEndFactoryTests
         }
         await responder;
 
-        // #567: a NinoTNC's KISS baud is a fixed 57600 — bring-up clocks the head-end line to it before
+        // #567: a NinoTNC's KISS baud is a fixed 57600 - bring-up clocks the head-end line to it before
         // opening the pipe (the raw socket cannot carry line rate).
         handler.LineCalls.Should().ContainSingle();
         handler.LineCalls[0].DeviceId.Should().Be("nino0");
@@ -132,7 +132,7 @@ public sealed class HeadEndFactoryTests
 
             // The Command↔Transparent runtime re-clock rides the head-end line verb (#585): the
             // data socket is a pure binary pipe, so (1) open clocks the CONFIGURED CCDI command
-            // baud (#576's configured-baud convention — never the inventory's stale rate), then
+            // baud (#576's configured-baud convention - never the inventory's stale rate), then
             // (2) entering Transparent re-clocks to the transparent terminal rate.
             handler.LineCalls.Should().HaveCount(2);
             handler.LineCalls.Should().OnlyContain(c => c.DeviceId == "tait0");
@@ -141,7 +141,7 @@ public sealed class HeadEndFactoryTests
         }
 
         // (3) Teardown escapes Transparent (the ~4 s §1.7.2 dance) and restores the command baud
-        // — the exit leg of the runtime re-clock, also through the line verb.
+        // - the exit leg of the runtime re-clock, also through the line verb.
         handler.LineCalls.Should().HaveCount(3);
         handler.LineCalls[2].RawBody.Should().Contain("\"baud\":28800");
 
@@ -162,7 +162,7 @@ public sealed class HeadEndFactoryTests
     public async Task A_dropped_transparent_pipe_reconnects_through_a_fresh_resolve_and_resumes_receiving()
     {
         // The supervision story (#585): the transparent transport IS the port's transport, so a
-        // head-end bounce is handled by the same ReconnectingKissModem wrap as nino-tnc-tcp — the
+        // head-end bounce is handled by the same ReconnectingKissModem wrap as nino-tnc-tcp - the
         // dead pipe faults the radio, ReceiveAsync ENDS, and the wrapper re-runs the factory arm
         // (fresh inventory resolve, so a moved raw-pipe TCP port is found) and resumes the stream.
         using var pipeA = new LoopbackRawPipe();
@@ -198,7 +198,7 @@ public sealed class HeadEndFactoryTests
         pipeA.Kill();
 
         // Once the reconnect has dialled pipe B and re-entered Transparent, push one SLIP frame
-        // from the head-end side — it must surface on the SAME (never-torn-down) stream.
+        // from the head-end side - it must surface on the SAME (never-torn-down) stream.
         _ = await pipeB.Accepted.WaitAsync(cts.Token);
         while (true)   // wait for the reconnect's Transparent entry command to reach pipe B
         {

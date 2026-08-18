@@ -22,21 +22,21 @@ public sealed class Inp3L3RttTests
         0x00, 0x00, 0x00, 0x00, 0x02,               // transport: opcode 0x02, no flags
     ];
 
-    // Vector L3RTT-A — probe advertising plain INP3 ("$N      "), length 28.
+    // Vector L3RTT-A - probe advertising plain INP3 ("$N      "), length 28.
     private static readonly byte[] VectorA =
     [
         .. HeaderPrefix,
         0x24, 0x4E, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,   // "$N" + 6 spaces
     ];
 
-    // Vector L3RTT-B — probe advertising INP3 + IPv4 ("$N$I4   "), length 28.
+    // Vector L3RTT-B - probe advertising INP3 + IPv4 ("$N$I4   "), length 28.
     private static readonly byte[] VectorB =
     [
         .. HeaderPrefix,
         0x24, 0x4E, 0x24, 0x49, 0x34, 0x20, 0x20, 0x20,   // "$N$I4" + 3 spaces
     ];
 
-    // Vector L3RTT-C — reflection: byte-identical echo of Vector A.
+    // Vector L3RTT-C - reflection: byte-identical echo of Vector A.
     private static readonly byte[] VectorC = VectorA;
 
     [Fact]
@@ -167,7 +167,7 @@ public sealed class Inp3L3RttTests
     [Fact]
     public void A_packet_without_dollar_N_is_l3rtt_but_not_inp3_capable()
     {
-        // Absence of $N means fall back to vanilla NODES (§1.3) — still an L3RTT
+        // Absence of $N means fall back to vanilla NODES (§1.3) - still an L3RTT
         // frame by destination+opcode, just not advertising INP3.
         var packet = new NetRomPacket
         {
@@ -199,7 +199,7 @@ public sealed class Inp3L3RttTests
     public void Non_l3rtt_destination_is_not_recognised()
     {
         // A real Connect Acknowledge (opcode 0x02) to a normal node must NOT be
-        // mistaken for L3RTT — the destination is the discriminator, not the opcode.
+        // mistaken for L3RTT - the destination is the discriminator, not the opcode.
         var connectAck = new NetRomPacket
         {
             Network = new NetRomNetworkHeader
@@ -257,7 +257,7 @@ public sealed class Inp3L3RttTests
         Inp3L3RttFrame.TryParse(new byte[20], out _).Should()
             .BeFalse("an all-zero callsign slot is not a decodable callsign, so the packet itself fails to parse");
 
-        // Truncate Vector A at every length below full — none should throw or
+        // Truncate Vector A at every length below full - none should throw or
         // succeed past the point the header decodes to a valid L3RTT packet.
         for (int len = 0; len < VectorA.Length; len++)
         {

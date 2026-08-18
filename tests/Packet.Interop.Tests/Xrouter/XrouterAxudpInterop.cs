@@ -15,14 +15,14 @@ namespace Packet.Interop.Tests.Xrouter;
 /// <para>
 /// XRouter's AXUDP is a peer-pair link, not a generic listener. The
 /// docker/xrouter/XROUTER.CFG configures the local UDP listener on
-/// :8095 with a peer expected at 172.30.0.1:8094 — that's the docker
+/// :8095 with a peer expected at 172.30.0.1:8094 - that's the docker
 /// bridge gateway from inside the container, which is where
 /// host-originated UDP traffic appears to come from.
 /// </para>
 /// <para>
 /// Our test peer binds locally to UDP 8094 so its source endpoint
 /// matches the configured peer, and sends AXUDP frames WITH FCS
-/// (XRouter rejects FCS-less frames as "non-AXUDP" — verified during
+/// (XRouter rejects FCS-less frames as "non-AXUDP" - verified during
 /// the interop spike).
 /// </para>
 /// </remarks>
@@ -70,7 +70,7 @@ public class XrouterAxudpInterop
         await socket.SendAsync(new IPEndPoint(IPAddress.Loopback, AxudpPort), frame, cts.Token);
 
         // XRouter's stats counter takes a moment to tick, and the latency
-        // varies under load — poll until it increments rather than betting
+        // varies under load - poll until it increments rather than betting
         // on a single fixed delay being long enough.
         var after = before;
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);

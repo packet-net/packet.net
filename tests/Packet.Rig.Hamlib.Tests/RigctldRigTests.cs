@@ -345,7 +345,7 @@ public class RigctldRigTests
         var pending = rig.GetFrequencyAsync().AsTask();
 
         // Let the command reach the fake (which swallows it), then advance virtual time past
-        // the budget — no real-time waiting.
+        // the budget - no real-time waiting.
         await WaitUntilAsync(() => fake.ReceivedCommands.Contains("+f"));
         time.Advance(TimeSpan.FromSeconds(6));
 
@@ -403,7 +403,7 @@ public class RigctldRigTests
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
-        // Bounded poll for cross-task visibility — not a timing dependency: the condition is
+        // Bounded poll for cross-task visibility - not a timing dependency: the condition is
         // ordinarily already true on the first check.
         for (var i = 0; i < 500 && !condition(); i++)
         {

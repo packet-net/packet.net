@@ -10,7 +10,7 @@ namespace Packet.Ax25.Xid;
 /// </summary>
 /// <remarks>
 /// The outbound construction path (<see cref="XidInfoField.Encode"/>) has no
-/// equivalent — it is unconditionally strict and never emits a malformed field.
+/// equivalent - it is unconditionally strict and never emits a malformed field.
 /// </remarks>
 public sealed record XidParseOptions
 {
@@ -25,7 +25,7 @@ public sealed record XidParseOptions
     /// <summary>
     /// Accept a PI/PL whose PV runs past the end of the parameter field (a
     /// trailing PI with no PL octet, or a PL larger than the remaining bytes),
-    /// by taking only the bytes that remain. Strict spec rejects this — a
+    /// by taking only the bytes that remain. Strict spec rejects this - a
     /// well-formed parameter field is an exact run of complete PI/PL/PV
     /// triples. Default <c>false</c>.
     /// </summary>

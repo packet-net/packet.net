@@ -122,7 +122,7 @@ public sealed record UOrSFrameLengthError() : Ax25Event("u_or_s_frame_length_err
 
 // ─── Link-multiplexer events ────────────────────────────────────────────
 
-/// <summary>The link multiplexer has confirmed our SEIZE request — we own the medium.</summary>
+/// <summary>The link multiplexer has confirmed our SEIZE request - we own the medium.</summary>
 public sealed record LmSeizeConfirm() : Ax25Event("LM_SEIZE_confirm");
 
 // ─── Timer expiries ─────────────────────────────────────────────────────

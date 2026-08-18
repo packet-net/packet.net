@@ -1,7 +1,7 @@
 namespace Packet.NetRom.Routing;
 
 /// <summary>
-/// The INP3 <b>SNTT</b> (Smoothed Neighbour Transport Time) integer IIR smoother —
+/// The INP3 <b>SNTT</b> (Smoothed Neighbour Transport Time) integer IIR smoother -
 /// the link-timing metric the route layer sums. It is an integer EWMA over
 /// <c>RTT/2</c> raw samples, in milliseconds, with the same round-to-nearest
 /// integer discipline as <see cref="NetRomQuality.Combine"/> (no floating point
@@ -42,25 +42,25 @@ namespace Packet.NetRom.Routing;
 /// </para>
 /// <para>
 /// <b>Overflow / range (LOCKED).</b> Samples are clamped to
-/// <c>[0, <see cref="SampleMaxMs"/>]</c> (the INP3 600 s horizon — a transport
+/// <c>[0, <see cref="SampleMaxMs"/>]</c> (the INP3 600 s horizon - a transport
 /// time at/over the horizon is "unreachable," and the 180 s link reset tears the
 /// link down long before a real RTT reaches 600 s anyway). With both inputs
 /// ≤ 600 000, the worst-case accumulator <c>7 × 600 000 + 600 000 + 4 =
 /// 4 800 004</c> sits far under <see cref="int.MaxValue"/>, so a 32-bit
-/// intermediate is safe with &gt; 400× headroom — no widening to 64-bit. The IIR is
+/// intermediate is safe with &gt; 400× headroom - no widening to 64-bit. The IIR is
 /// a convex combination of two values each in <c>[0, 600 000]</c>, so the result
 /// stays in <c>[0, 600 000]</c>.
 /// </para>
 /// <para>
 /// <b>Gain is interop-tuning, NOT wire-compat.</b> Two nodes never exchange their
-/// smoothing gain — only the resulting SNTT-derived target times in RIPs, and even
+/// smoothing gain - only the resulting SNTT-derived target times in RIPs, and even
 /// those are advisory. The gain only affects how twitchy vs. sluggish our own link
 /// metric is. The default 1/8 is exposed as <see cref="DefaultGainShift"/> and is
 /// configurable per-call; cross-stack parity is "identical given identical config,"
 /// so all three stacks must use the same configured value.
 /// </para>
 /// <para>
-/// This is a pure value type — it carries only the smoothed value and the seeded
+/// This is a pure value type - it carries only the smoothed value and the seeded
 /// flag, holds no clock, and performs no I/O. The host-free
 /// <c>Inp3Engine</c> owns the RTT measurement loop and feeds <c>RTT/2</c> samples
 /// here.
@@ -88,14 +88,14 @@ public readonly struct Inp3Sntt : IEquatable<Inp3Sntt>
     public const int MaxGainShift = 8;
 
     /// <summary>
-    /// The upper clamp on a raw sample, in milliseconds — the INP3 600 s
+    /// The upper clamp on a raw sample, in milliseconds - the INP3 600 s
     /// "unreachable" horizon (i1-wire-spec §2.4). A sample at/over this is clamped;
     /// the smoothed result therefore also stays within <c>[0, SampleMaxMs]</c>.
     /// </summary>
     public const uint SampleMaxMs = 600_000;
 
     /// <summary>
-    /// The "no measurement yet" sentinel for <see cref="Ms"/> — distinct from a
+    /// The "no measurement yet" sentinel for <see cref="Ms"/> - distinct from a
     /// real <c>0 ms</c>. <see cref="Initialised"/> is the canonical test; this value
     /// is exposed so callers that store the raw <c>uint</c> (the per-neighbour state
     /// field) can recognise the un-seeded state.
@@ -107,7 +107,7 @@ public readonly struct Inp3Sntt : IEquatable<Inp3Sntt>
     private Inp3Sntt(uint ms) => _ms = ms;
 
     /// <summary>
-    /// A fresh, un-seeded smoother — no measurement yet. The first
+    /// A fresh, un-seeded smoother - no measurement yet. The first
     /// <see cref="Update(uint,int)"/> seeds it directly from the sample.
     /// </summary>
     public static Inp3Sntt Fresh => new(Unset);
@@ -191,7 +191,7 @@ public readonly struct Inp3Sntt : IEquatable<Inp3Sntt>
         //
         // Accumulator headroom: with SNTT ≤ 600_000 and sample ≤ 600_000 and the
         // largest denom (256), the worst case is 255*600_000 + 600_000 + 128 =
-        // 153_600_128 — far under int.MaxValue (2.1e9). int intermediate is safe.
+        // 153_600_128 - far under int.MaxValue (2.1e9). int intermediate is safe.
         int denom = 1 << gainShift;
         int accumulator = (denom - 1) * (int)_ms + (int)sample + (denom >> 1);
         uint smoothed = (uint)(accumulator >> gainShift);
@@ -213,7 +213,7 @@ public readonly struct Inp3Sntt : IEquatable<Inp3Sntt>
     public const uint SnttUnset = Unset;
 
     /// <summary>
-    /// Fold a <c>RTT/2</c> sample into a raw-<c>uint</c> smoothed value — the
+    /// Fold a <c>RTT/2</c> sample into a raw-<c>uint</c> smoothed value - the
     /// per-neighbour-state form of <see cref="Update(uint,int)"/>.
     /// <paramref name="currentMs"/> is <see cref="SnttUnset"/> for an un-seeded
     /// neighbour (the sample then seeds directly) or a prior smoothed value (the IIR

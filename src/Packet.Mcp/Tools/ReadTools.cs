@@ -4,7 +4,7 @@ using ModelContextProtocol.Server;
 namespace Packet.Mcp.Tools;
 
 /// <summary>
-/// The read-side MCP tools — ops/diagnostics/network-exploration over live node
+/// The read-side MCP tools - ops/diagnostics/network-exploration over live node
 /// state. All gated <c>read</c> by the host (pass-through when auth is off, like
 /// the REST read API). Backed by <see cref="INodeMcpBackend"/>, so the same tool
 /// surface serves the in-process (live) and stdio (loopback-REST) backends.

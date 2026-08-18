@@ -48,7 +48,7 @@ public class Ax25AddressTests
     public void Ssid_Byte_Layout_Per_Spec()
     {
         // C/H bit: bit 7
-        // Reserved bits: bits 6, 5 — default "11" on write
+        // Reserved bits: bits 6, 5 - default "11" on write
         // SSID: bits 4..1
         // E bit: bit 0
         var addr = new Ax25Address(new Callsign("G7XYZ", 7), CrhBit: true, ExtensionBit: true);
@@ -66,7 +66,7 @@ public class Ax25AddressTests
     public void Read_Accepts_All_Space_Address_Slot()
     {
         // Per AX.25 v2.2 §6.1.1 "operation with destination addresses other
-        // than actual amateur call signs is a subject for further study" —
+        // than actual amateur call signs is a subject for further study" -
         // some implementations (BPQ's own ID beacon `>IS`, PD4R-12's QRV
         // broadcast) emit UI frames with an all-space dest or source slot.
         // The receive path accepts this as Callsign with Base="".

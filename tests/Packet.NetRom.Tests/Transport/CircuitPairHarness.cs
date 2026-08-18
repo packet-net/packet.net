@@ -10,7 +10,7 @@ namespace Packet.NetRom.Tests.Transport;
 /// A deterministic two-node NET/ROM L4 harness: two <see cref="CircuitManager"/>s
 /// ("A" and "B") wired back-to-back over an in-process, controllable datagram
 /// channel and a shared <see cref="FakeTimeProvider"/>. The L4 analogue of the
-/// AX.25 conformance <c>TwoStationHarness</c> — a run is a pure function of the
+/// AX.25 conformance <c>TwoStationHarness</c> - a run is a pure function of the
 /// scenario + the channel policy, fully deterministic, no wall-clock.
 /// </summary>
 /// <remarks>

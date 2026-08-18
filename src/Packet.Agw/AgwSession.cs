@@ -10,7 +10,7 @@ namespace Packet.Agw;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Don't construct directly — call <see cref="AgwClient.OpenSessionAsync"/>,
+/// Don't construct directly - call <see cref="AgwClient.OpenSessionAsync"/>,
 /// which sends the SABM ('C') and awaits the connect-ack before
 /// returning the session.
 /// </para>
@@ -68,7 +68,7 @@ public sealed class AgwSession : Stream
     public override bool CanSeek => false;
     public override long Length => throw new NotSupportedException();
     public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-    public override void Flush() { /* no buffer — every Write goes out immediately */ }
+    public override void Flush() { /* no buffer - every Write goes out immediately */ }
     public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
@@ -107,7 +107,7 @@ public sealed class AgwSession : Stream
                 throw streamFault;
             }
 
-            return 0;   // EOF — server sent 'd' (Disconnect).
+            return 0;   // EOF - server sent 'd' (Disconnect).
         }
     }
 
@@ -184,7 +184,7 @@ public sealed class AgwSession : Stream
         finally
         {
             // We complete locally rather than waiting for the server's
-            // 'd' ack — the AGW spec doesn't guarantee a reply, and
+            // 'd' ack - the AGW spec doesn't guarantee a reply, and
             // production servers vary on this. The session is "done"
             // from our side the moment we sent the disconnect command.
             FinalizeDisconnect(streamFault: null);
@@ -241,7 +241,7 @@ public sealed class AgwSession : Stream
             // Synchronous Dispose path: best-effort fire-and-forget
             // disconnect. Real callers should `await DisposeAsync`.
             try { DisconnectAsync().GetAwaiter().GetResult(); }
-            catch { /* swallow — terminating */ }
+            catch { /* swallow - terminating */ }
         }
         base.Dispose(disposing);
     }
@@ -251,7 +251,7 @@ public sealed class AgwSession : Stream
         if (!disconnected.Task.IsCompleted)
         {
             try { await DisconnectAsync().ConfigureAwait(false); }
-            catch { /* swallow — terminating */ }
+            catch { /* swallow - terminating */ }
         }
         await base.DisposeAsync().ConfigureAwait(false);
     }

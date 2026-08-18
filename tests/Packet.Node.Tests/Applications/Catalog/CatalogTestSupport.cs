@@ -74,7 +74,7 @@ internal sealed class TempDir : IDisposable
 internal static class CatalogTestSupport
 {
     /// <summary>Walk up from the test assembly to the repo root (the directory that has
-    /// <c>catalog/apps.yaml</c>) — same approach as the package tests' repo-root walker.</summary>
+    /// <c>catalog/apps.yaml</c>) - same approach as the package tests' repo-root walker.</summary>
     public static string RepoRoot()
     {
         var dir = AppContext.BaseDirectory;

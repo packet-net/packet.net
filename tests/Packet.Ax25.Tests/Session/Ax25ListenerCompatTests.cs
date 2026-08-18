@@ -31,7 +31,7 @@ public class Ax25ListenerCompatTests
 
     /// <summary>
     /// Build the wire bytes of a SABM whose address C-bits mark it a
-    /// <em>response</em> — the AX.25 v1.x-flavoured connect that
+    /// <em>response</em> - the AX.25 v1.x-flavoured connect that
     /// <c>AllowCommandFrameAsResponse</c> (#142) gates. Same bit-twiddle as
     /// <c>Ax25ListenerRejectAndEdgeTests</c>: construct a normal (command)
     /// SABM, clear the destination C-bit, set the source C-bit.
@@ -50,7 +50,7 @@ public class Ax25ListenerCompatTests
     /// <summary>
     /// A Strict port is deaf to a response-direction SABM: dropped at decode,
     /// so no session opens, no UA/DM goes out, and the frame never even
-    /// reaches the monitor trace — exactly as if it had failed CRC.
+    /// reaches the monitor trace - exactly as if it had failed CRC.
     /// </summary>
     /// <remarks>
     /// The negative is anchored on a <em>barrier</em> frame, not on a wait. The
@@ -104,7 +104,7 @@ public class Ax25ListenerCompatTests
     }
 
     /// <summary>
-    /// The paired accept: the same wire bytes on a Lenient port (the default —
+    /// The paired accept: the same wire bytes on a Lenient port (the default -
     /// <c>ParseOptions</c> null) open a session and the UA goes back, the
     /// v1.x-interop behaviour the lenient default exists for.
     /// </summary>
@@ -196,7 +196,7 @@ public class Ax25ListenerCompatTests
     /// <summary>
     /// <see cref="Ax25Listener.UpdateSessionParameters"/> reseeds the parse
     /// options live: the pump reads them per inbound frame, so a port flipped
-    /// to Strict goes deaf to non-spec frames from the very next frame —
+    /// to Strict goes deaf to non-spec frames from the very next frame -
     /// no listener rebuild, existing sessions untouched.
     /// </summary>
     [Fact]

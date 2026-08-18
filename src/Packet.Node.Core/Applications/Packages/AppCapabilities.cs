@@ -6,18 +6,18 @@ namespace Packet.Node.Core.Applications.Packages;
 /// <remarks>
 /// <para>
 /// Capabilities are free-form strings an app declares in its <c>pdn-app.yaml</c> manifest
-/// (<see cref="AppPackageManifest.Capabilities"/>) or a catalog entry — there is no closed
+/// (<see cref="AppPackageManifest.Capabilities"/>) or a catalog entry - there is no closed
 /// enum. They surface to the node owner only as the install/enable <i>trust prompt</i>
 /// ("this app will run with: …"). They are NOT enforced in v1.
 /// </para>
 /// <para>
 /// <b>The <c>network</c> → <c>packet</c> rename.</b> "network" reads as TCP/IP / LAN /
-/// internet, but the capability it names is <i>full packet-radio network access</i> — the app
+/// internet, but the capability it names is <i>full packet-radio network access</i> - the app
 /// binds a callsign and sends/receives over AX.25 / NET-ROM. "packet" is transport-accurate
 /// (RF / KISS-TCP / AXUDP / sim) and unambiguous. We display-normalise <c>network</c> →
 /// <c>packet</c> wherever a capability list is projected to the API, so an app whose manifest
 /// still declares the old spelling shows the new one. <c>network</c> stays a back-compat alias
-/// — accepted on input forever; only the surfaced label changes. (The catalog ships
+/// - accepted on input forever; only the surfaced label changes. (The catalog ships
 /// <c>packet</c> directly; this alias covers third-party app manifests in their own repos that
 /// have not yet renamed.)
 /// </para>
@@ -47,7 +47,7 @@ public static class AppCapabilities
 
     /// <summary>Whether a declared capability list grants packet-radio network access, accepting
     /// both the new <c>packet</c> spelling and the legacy <c>network</c> alias. (No C# code
-    /// semantically gates on this capability in v1 — capabilities are display-only — but any
+    /// semantically gates on this capability in v1 - capabilities are display-only - but any
     /// future check should use this so both spellings match.)</summary>
     public static bool GrantsPacketAccess(IReadOnlyList<string>? capabilities) =>
         capabilities is not null && capabilities.Any(c =>

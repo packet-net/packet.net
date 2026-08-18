@@ -1,4 +1,4 @@
-# packetnet-headend — split-station RF head-end daemon
+# packetnet-headend - split-station RF head-end daemon
 
 A small, static, headless Go daemon for a Raspberry Pi that physically holds the
 NinoTNC modems + Tait radio-control cables. It exposes **every attached serial
@@ -8,7 +8,7 @@ fleet, dial the pipes, and drive the devices with its own drivers.
 
 The head-end is a **dumb, transparent multiplexer**. It does **no device
 identification** (no NinoTNC `GETVER`, no Tait CCDI `MODEL`) and **no protocol
-parsing** — KISS and CCDI are both just bytes on the wire. Identification and the
+parsing** - KISS and CCDI are both just bytes on the wire. Identification and the
 whole AX.25 / radio-control stack live on PDN, reaching *through* the pipe. There
 is no auth, no TLS, no web UI: it runs on a trusted LAN / Tailscale and PDN
 monitors everything upstream.
@@ -20,30 +20,30 @@ Design + rationale: [`docs/research/split-station-rf-headend.md`](../docs/resear
 
 1. **Enumerates** serial devices with **stable, unique IDs** from the physical USB
    topology (`/dev/serial/by-path` → `/dev` basename), so two devices that share a
-   USB serial still get distinct stable ids that can never collide — see
+   USB serial still get distinct stable ids that can never collide - see
    [Device identity & stability](#device-identity--stability). Captures USB
    `VID:PID` (from sysfs) + the by-id/by-path strings as hints for PDN's identify
    step.
 2. **Bridges** each device: opens the serial port and listens on its own TCP
    port, pumping bytes bidirectionally and transparently (no framing, no
-   escaping — `0xC0`/`0xFF` pass straight through). One client at a time per
+   escaping - `0xC0`/`0xFF` pass straight through). One client at a time per
    device; clean re-accept on disconnect. On each new client connection the
-   bridge **flushes stale serial input** — bytes the device emitted while no
-   client was attached — so a fresh KISS/CCDI session never starts mid-garbage
+   bridge **flushes stale serial input** - bytes the device emitted while no
+   client was attached - so a fresh KISS/CCDI session never starts mid-garbage
    (the flush is instantaneous, `tcflush`-style: bytes arriving after the
    connect are untouched).
-3. Serves an **HTTP machine API** (JSON, no UI) — inventory, line-control,
+3. Serves an **HTTP machine API** (JSON, no UI) - inventory, line-control,
    health, status.
 4. **Advertises** over mDNS so PDN can discover the fleet and re-find an instance
    across IP changes.
 5. **Hot-plugs**: a periodic re-enumerate + diff adds a bridge for a device
-   plugged in after startup and tears one down for a device unplugged — without a
+   plugged in after startup and tears one down for a device unplugged - without a
    restart, leaving untouched devices (and their clients) alone. See
    [Hot-plug](#hot-plug).
 
 ## Install
 
-Single static binary — no runtime, no deps.
+Single static binary - no runtime, no deps.
 
 ```sh
 # On the Pi (arm64 shown; use -linux-arm for 32-bit userland):
@@ -62,8 +62,8 @@ once its listeners are up and heartbeats `WATCHDOG=1` every 15 s (a tiny
 hand-rolled `sd_notify(3)` writer, no dependency), so systemd restarts a hung
 daemon. Both are no-ops outside systemd (`NOTIFY_SOCKET` unset). The sandbox's
 `RestrictAddressFamilies` must keep **`AF_NETLINK`** (mDNS registration
-enumerates interfaces via a netlink socket — dropping it silently breaks
-zero-config discovery, [#577]) and **`AF_UNIX`** (the sd_notify datagrams —
+enumerates interfaces via a netlink socket - dropping it silently breaks
+zero-config discovery, [#577]) and **`AF_UNIX`** (the sd_notify datagrams -
 dropping it hangs a `Type=notify` start).
 
 [#577]: https://github.com/packet-net/packet.net/issues/577
@@ -84,7 +84,7 @@ device it finds.
 | Allow globs | `--allow` | `ALLOW` | `allow` | `["*"]` |
 | Deny globs | `--deny` | `DENY` | `deny` | `[]` |
 | Hot-plug rescan interval | `--rescan-interval` | `RESCAN_INTERVAL` | `rescanInterval` | `3s` |
-| Config file path | `--config` | `CONFIG` | — | *(none)* |
+| Config file path | `--config` | `CONFIG` | - | *(none)* |
 
 - **Instance id** is the *stable, unique* identity advertised over mDNS (as both
   the DNS-SD instance label and the TXT `instance=` key) and returned in the
@@ -94,11 +94,11 @@ device it finds.
   [Multiple head-ends / instance identity](#multiple-head-ends--instance-identity)),
   so two Pis imaged from one card don't collide on a shared hostname. **For fixed
   installs, pin an explicit stable id** (e.g. `--instance shack-north`).
-- **Bind address**: the local address every listener binds to — the HTTP API
+- **Bind address**: the local address every listener binds to - the HTTP API
   **and** every raw-serial bridge. Empty (the default) binds **all interfaces**
   (`:port`), exactly as before. Set it to a single address (a Tailscale
   `100.x.y.z`, a `tailscale0` / VPN address, or `127.0.0.1`) to fence the
-  **auth-less-by-design** daemon onto one trusted interface — see
+  **auth-less-by-design** daemon onto one trusted interface - see
   [Restricting the listen interface](#restricting-the-listen-interface).
 - **Base TCP port**: bridge ports are allocated **sequentially** from here in
   inventory order (`7301`, `7302`, …).
@@ -109,7 +109,7 @@ device it finds.
   `/dev` basename **and** its by-id basename. A device is bridged when it matches
   some Allow glob and no Deny glob.
 - **Hot-plug rescan interval**: how often the daemon re-enumerates to pick up a
-  device plugged in (or drop one unplugged) *after* startup — see
+  device plugged in (or drop one unplugged) *after* startup - see
   [Hot-plug](#hot-plug). A Go duration (`3s`, `500ms`); JSON also accepts a bare
   number of seconds. **`0` disables** the rescan → startup-only enumeration
   (today's original behaviour, no re-scan).
@@ -129,36 +129,36 @@ Example JSON config (`/etc/packetnet-headend/config.json`):
 }
 ```
 
-(`bindAddr` shown at its default — an empty string binds all interfaces. Omit it
+(`bindAddr` shown at its default - an empty string binds all interfaces. Omit it
 or leave it empty unless you want to restrict the listen interface, below.)
 
 ## Multiple head-ends / instance identity
 
-Several head-ends (one per Pi) coexist on one LAN — PDN discovers the whole fleet
+Several head-ends (one per Pi) coexist on one LAN - PDN discovers the whole fleet
 over mDNS and keeps them apart by `instanceId`. So **every box must advertise a
 distinct `instanceId`**; a duplicate makes PDN unable to tell two boxes apart.
 
 - **Recommended for production (fixed installs): pin an explicit stable id.**
-  Choose something meaningful and stable, independent of hostname —
+  Choose something meaningful and stable, independent of hostname -
   `--instance shack-north`, `PACKETNET_HEADEND_INSTANCE=garage-pi`, or
   `"instanceId": "shack-north"` in the JSON config. This is the least surprising
   setup: the identity is what *you* chose, survives re-imaging, and reads clearly
   in a browse.
 - **Zero-config default (no override): `{hostname}-{short}`.** `{short}` is an
-  8-hex-char stable per-machine token — the first 8 hex of a SHA-256 of
+  8-hex-char stable per-machine token - the first 8 hex of a SHA-256 of
   `/etc/machine-id` (falling back to `/var/lib/dbus/machine-id`, then to a hash of
-  the first non-loopback NIC MAC, then — last resort — a fixed literal with a
+  the first non-loopback NIC MAC, then - last resort - a fixed literal with a
   logged warning). It is deterministic across reboots yet distinct across
   image-cloned Pis (systemd re-seeds `/etc/machine-id` on a fresh image's first
   boot), so two cards flashed from one image and both named `raspberrypi` come up
   as e.g. `raspberrypi-1a2b3c4d` and `raspberrypi-9f8e7d6c` instead of colliding.
 
 Note that mDNS's own probe-and-rename (RFC 6762 §8.1/§9) only deconflicts the
-DNS-SD label and `.local` hostname — **not** the TXT `instance=` payload PDN keys
-on — and the responder library here doesn't probe anyway. So `instanceId`
+DNS-SD label and `.local` hostname - **not** the TXT `instance=` payload PDN keys
+on - and the responder library here doesn't probe anyway. So `instanceId`
 uniqueness is an **application-level** guarantee: the derived default provides it
 by construction, and an explicit pin is the operator asserting it. PDN is the
-backstop — a duplicate `instance=` surfaces as a loud conflict there, never a
+backstop - a duplicate `instance=` surfaces as a loud conflict there, never a
 silent mis-bind.
 
 ## Device identity & stability
@@ -169,23 +169,23 @@ must be both **stable** (same across reboots/same-port replug) *and* **unique**
 from the **physical USB topology**, with a `/dev` last resort, and de-duplicates
 the result so both guarantees always hold:
 
-1. **`/dev/serial/by-path` basename** — udev's per-**physical-socket** name (the USB
+1. **`/dev/serial/by-path` basename** - udev's per-**physical-socket** name (the USB
    topology). The **primary id for every device**. It is **unique by construction**
    (two devices can't share a socket, so it can never collide) and **stable across
    reboot + same-port replug**. `idSource: "by-path"`, `idStable: true`.
-2. **`/dev` basename** (`ttyUSB0`, …) — **last resort only**, when a device has no
+2. **`/dev` basename** (`ttyUSB0`, …) - **last resort only**, when a device has no
    by-path link (a minimal udev config lacking `60-serial.rules`). The kernel name
    **reorders across reboot/replug**, so this is logged as unstable and surfaced as
    `idSource: "dev"`, `idStable: false`. PDN should warn on it.
 
 The **`/dev/serial/by-id` string is retained** in each port's `byId` field as an
 informational hint (the device serial/model, and the basename the allow/deny
-filter matches on) — but it is **no longer used to derive the `id`**. See
+filter matches on) - but it is **no longer used to derive the `id`**. See
 [Why by-path, not by-id: shared USB serials](#why-by-path-not-by-id-shared-usb-serials).
 
 After deriving, a **dedupe pass** guarantees no two devices share an `id`: on the
 (rare, cross-source) chance two derive the same key (a by-path basename equal to
-another device's `/dev` basename), a unique discriminator is appended — a by-path
+another device's `/dev` basename), a unique discriminator is appended - a by-path
 segment (kept stable) where available, else the `/dev` basename or an enumeration
 index (which downgrades that `id` to `idStable: false`).
 
@@ -196,11 +196,11 @@ index (which downgrades that `id` to `idStable: false`).
 
 ### Why by-path, not by-id: shared USB serials
 
-Some USB-serial chips report a **fixed, non-unique serial** — e.g. the CP2102 in
+Some USB-serial chips report a **fixed, non-unique serial** - e.g. the CP2102 in
 the Tait CCDI cables all report serial `0001`. udev can only create **one**
 `by-id` symlink for a colliding serial, so with two such dongles plugged in only
 one gets a `by-id` link at all. Worse, on a **hot-replug** udev can **flip** that
-single shared `by-id` symlink onto the *returned* dongle — stealing it from the
+single shared `by-id` symlink onto the *returned* dongle - stealing it from the
 still-present sibling, so the returned device enumerates with the **same id** as
 its sibling's live bridge. The rescan diff then sees that id already bridged and
 **fails to re-add** the returned device, and the id→device mapping is ambiguous
@@ -209,7 +209,7 @@ its sibling's live bridge. The rescan diff then sees that id already bridged and
 **by-id is only stable-unique when the serial is unique**, so it can't be the id.
 **by-path names the physical socket**, which is unique by construction and can't
 flip: both CP2102 `0001` dongles get their **distinct by-path ids** (e.g.
-`…-usb-0:1:1.0-port0` vs `…-usb-0:2:1.0-port0`), stable, no flip, no collision —
+`…-usb-0:1:1.0-port0` vs `…-usb-0:2:1.0-port0`), stable, no flip, no collision -
 regardless of which one currently holds the shared `by-id` symlink. (A belt-and-
 suspenders guard in the rescan additionally refuses to bind a new device onto an
 existing bridge's id, disambiguating instead of dropping it.) This supersedes the
@@ -218,13 +218,13 @@ earlier by-id-first chain (#569).
 > udev normally populates `/dev/serial/by-path` for every USB-serial device
 > out of the box. If a minimal image lacks it, install/enable the standard
 > `60-serial.rules` (udev/systemd) so the head-end has the by-path link to reach
-> for — otherwise a device drops to the unstable `/dev` fallback.
+> for - otherwise a device drops to the unstable `/dev` fallback.
 
 [#574]: https://github.com/packet-net/packet.net/issues/574
 
 ## Hot-plug
 
-The head-end picks up devices plugged in — and drops devices unplugged — **at
+The head-end picks up devices plugged in - and drops devices unplugged - **at
 runtime, without a restart**. Every `rescanInterval` (default **3s**) it
 re-enumerates (the same `/dev/serial/by-path → /dev` id derivation and the same
 allow/deny filter as startup) and **diffs** the result against the live bridge
@@ -240,11 +240,11 @@ set, keyed by each device's stable `id` **and** its resolved kernel path:
   handle), **frees its TCP port**, and removes it from the inventory. It logs
   `bridge removed …`.
 - **Unchanged device** (still enumerated, already bridged) → left **completely
-  untouched**. Its bridge and any **connected client keep running undisturbed** —
+  untouched**. Its bridge and any **connected client keep running undisturbed** -
   the rescan only ever acts on the delta. (A device whose `id` shifts but whose
-  kernel path is unchanged — e.g. a late udev by-path link appearing — counts as
+  kernel path is unchanged - e.g. a late udev by-path link appearing - counts as
   unchanged, so it never churns. And a *new* device that would collide on an
-  existing bridge's `id` is disambiguated and added, never dropped or mis-bound —
+  existing bridge's `id` is disambiguated and added, never dropped or mis-bound -
   the [#574] cross-pass guard.)
 
 `GET /inventory` always reflects the **live** set (the rescan and the HTTP API
@@ -253,11 +253,11 @@ share a mutex-guarded registry), so PDN sees adds/removes on its next poll.
 **A re-plugged device may come back on a different TCP port** (its old port may
 have been reused by another device in the meantime). That is fine: PDN
 re-resolves `tcpPort` from `/inventory` at bring-up, so its reconnecting transport
-self-heals — bindings are keyed by `(instanceId, id)`, not by port.
+self-heals - bindings are keyed by `(instanceId, id)`, not by port.
 
 **Disabling it.** Set `rescanInterval` to **`0`** (`--rescan-interval 0` /
 `PACKETNET_HEADEND_RESCAN_INTERVAL=0` / `"rescanInterval": 0`) to turn the poll
-off entirely — the daemon then enumerates **once at startup** and never re-scans,
+off entirely - the daemon then enumerates **once at startup** and never re-scans,
 exactly the original behaviour.
 
 > **Why poll, not udev-netlink?** It keeps the daemon dependency-free and tiny
@@ -268,13 +268,13 @@ exactly the original behaviour.
 
 ## Restricting the listen interface
 
-The head-end is **auth-less and unencrypted by design** — it trusts its network
+The head-end is **auth-less and unencrypted by design** - it trusts its network
 (a LAN, or a Tailscale tailnet). If the box also has an untrusted interface (a
 public NIC, a guest VLAN), pin **`bindAddr`** so PDN can reach it but the wider
 world can't.
 
 `bindAddr` restricts **both** the HTTP machine API **and every raw-serial bridge
-port** to one local address. Empty (the default) binds all interfaces — no
+port** to one local address. Empty (the default) binds all interfaces - no
 behaviour change. Set it to the head-end's address on the trusted network:
 
 ```sh
@@ -298,9 +298,9 @@ Notes:
   itself only reachable there.
 - Pick an address that is **stable** for the trusted interface. A Tailscale
   `100.x` address is stable per node; a DHCP LAN address may not be (PDN keys on
-  the `instanceId`, so a moved address doesn't orphan port configs — but a
+  the `instanceId`, so a moved address doesn't orphan port configs - but a
   `bindAddr` pinned to a stale IP stops the daemon from listening).
-- Binding to `127.0.0.1` makes the head-end reachable only from the same box —
+- Binding to `127.0.0.1` makes the head-end reachable only from the same box -
   useful with an SSH tunnel or a co-located reverse proxy, but not for the normal
   "separate PDN box" split.
 
@@ -333,31 +333,31 @@ Machine API on the HTTP port (default `7300`). JSON, no UI, no auth.
 }
 ```
 
-- `id` — the **stable, unique identity key**. PDN binds `(instanceId, id)`.
+- `id` - the **stable, unique identity key**. PDN binds `(instanceId, id)`.
   Derived from the [physical USB topology](#device-identity--stability) (by-path →
   `/dev` basename) and de-duplicated so no two ports ever share an `id`.
-- `idSource` — which link the `id` came from: `"by-path"` | `"dev"`. `"dev"` is
-  the last-resort, unstable fallback. (`"by-id"` is **not** an id source — see
+- `idSource` - which link the `id` came from: `"by-path"` | `"dev"`. `"dev"` is
+  the last-resort, unstable fallback. (`"by-id"` is **not** an id source - see
   `byId` below.)
-- `idStable` — `false` **only** for the `"dev"` fallback (the kernel name can
+- `idStable` - `false` **only** for the `"dev"` fallback (the kernel name can
   reorder across reboot/replug); `true` for `by-path`. PDN can warn on an unstable
   binding.
-- `devPath` — resolved kernel device; informational.
-- `usbVid` / `usbPid` — lowercase 4-hex USB IDs, or `""` if unavailable. Hints
+- `devPath` - resolved kernel device; informational.
+- `usbVid` / `usbPid` - lowercase 4-hex USB IDs, or `""` if unavailable. Hints
   for PDN's identify step (e.g. NinoTNC `04d8`, CP2102 `10c4`, FTDI `0403`).
-- `byId` — full by-id symlink path, or `""`. **Informational only** (device
-  serial/model hint, and the allow/deny match key) — **not** the id, because a
+- `byId` - full by-id symlink path, or `""`. **Informational only** (device
+  serial/model hint, and the allow/deny match key) - **not** the id, because a
   shared USB serial makes it collide/flip ([#574](#why-by-path-not-by-id-shared-usb-serials)).
-- `byPath` — full by-path symlink path, or `""`. This is the physical-topology
+- `byPath` - full by-path symlink path, or `""`. This is the physical-topology
   link the `id` is derived from.
-- `tcpPort` — the raw byte-pipe port. **Dial this** and speak KISS/CCDI directly.
-- `baud`/`dataBits`/`parity`/`stopBits` — current serial line params.
+- `tcpPort` - the raw byte-pipe port. **Dial this** and speak KISS/CCDI directly.
+- `baud`/`dataBits`/`parity`/`stopBits` - current serial line params.
   `parity` ∈ `none|even|odd`; `stopBits` ∈ `1|2`.
 
 ### `POST /ports/{id}/line`
 
 Reconfigure a port's serial line params (PDN's baud sweep + rare re-clock). The
-data socket stays a pure binary pipe — line params ride here, out-of-band
+data socket stays a pure binary pipe - line params ride here, out-of-band
 (deliberately **not** RFC2217, whose `0xFF` escaping collides with binary
 CCDI/KISS). Partial requests merge onto the current params; `baud` is required.
 
@@ -375,11 +375,11 @@ the effective, normalized params (200):
 ```
 
 Errors: `404` unknown `id`; `400` missing/invalid `baud`, or invalid
-`dataBits` (5–8) / `parity` / `stopBits`. Error body: `{"error":"…"}`.
+`dataBits` (5-8) / `parity` / `stopBits`. Error body: `{"error":"…"}`.
 
 ### `GET /healthz`
 
-`200` with body `ok`. A pure **liveness** probe — the body is pinned to `ok`
+`200` with body `ok`. A pure **liveness** probe - the body is pinned to `ok`
 for backward compatibility (PDN's health check, the install smoke). For state,
 use `/statusz`.
 
@@ -400,10 +400,10 @@ and each bridge's client-connection state.
 }
 ```
 
-- `bridgeCount` — number of live bridges (== `bridges.length`; also equals the
+- `bridgeCount` - number of live bridges (== `bridges.length`; also equals the
   `/inventory` port count).
-- `bridges[]` — one row per live bridge, TCP-port ordered (same order as
-  `/inventory`): the stable `id`, the pipe's `tcpPort`, and `clientConnected` —
+- `bridges[]` - one row per live bridge, TCP-port ordered (same order as
+  `/inventory`): the stable `id`, the pipe's `tcpPort`, and `clientConnected` -
   whether a client (normally PDN) is currently attached to the pipe. An empty
   head-end reports `"bridgeCount": 0, "bridges": []`.
 
@@ -417,12 +417,12 @@ TXT record keys:
 
 | TXT key | Value | Meaning |
 | --- | --- | --- |
-| `instance` | instance id | stable identity — tell instances apart, re-find across IP changes |
+| `instance` | instance id | stable identity - tell instances apart, re-find across IP changes |
 | `httpport` | HTTP port | echo of the SRV port for TXT-only clients |
 | `v` | `1` | advertisement schema version |
 
 mDNS is **best-effort**: on a routed/VLAN/Tailscale LAN where multicast doesn't
-cross, the daemon logs the failure and carries on — PDN falls back to a manual
+cross, the daemon logs the failure and carries on - PDN falls back to a manual
 `host:port` list (PDN-side).
 
 ## Build

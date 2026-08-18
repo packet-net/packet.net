@@ -10,53 +10,53 @@ namespace Packet.Tune.Core;
 /// <see cref="TuningVerb.TxDelay"/> telegram).</summary>
 public enum TxDelayMinAction
 {
-    /// <summary><c>propose|&lt;k&gt;|&lt;startMs&gt;|&lt;stepMs&gt;</c> — coordinator → meter:
+    /// <summary><c>propose|&lt;k&gt;|&lt;startMs&gt;|&lt;stepMs&gt;</c> - coordinator → meter:
     /// let's sweep my TXDELAY down from <c>startMs</c> in <c>stepMs</c> decrements,
     /// <c>k</c> separately-keyed probes per step. Doubles as the session handshake.</summary>
     Propose,
 
-    /// <summary><c>confirm|&lt;k&gt;</c> — meter → coordinator: accepted; counting
+    /// <summary><c>confirm|&lt;k&gt;</c> - meter → coordinator: accepted; counting
     /// begins on each <c>step</c>.</summary>
     Confirm,
 
-    /// <summary><c>reject[|&lt;reason&gt;]</c> — meter → coordinator: refused
+    /// <summary><c>reject[|&lt;reason&gt;]</c> - meter → coordinator: refused
     /// (bad probe count, local policy…). Nothing has changed anywhere.</summary>
     Reject,
 
-    /// <summary><c>step|&lt;ms&gt;|&lt;k&gt;</c> — coordinator → meter: the next sweep step.
+    /// <summary><c>step|&lt;ms&gt;|&lt;k&gt;</c> - coordinator → meter: the next sweep step.
     /// The step telegram's sequence number is the tag every probe keying of this step
     /// carries; the meter opens its counter on receipt.</summary>
     Step,
 
-    /// <summary><c>sent|&lt;ms&gt;|&lt;k&gt;</c> — coordinator → meter: "I have finished the
+    /// <summary><c>sent|&lt;ms&gt;|&lt;k&gt;</c> - coordinator → meter: "I have finished the
     /// step's k separate probe keyings". The meter grace-waits, snapshots its counter
     /// and answers with a <c>report</c>.</summary>
     ProbesSent,
 
-    /// <summary><c>report|&lt;ms&gt;|&lt;decoded&gt;/&lt;k&gt;[|&lt;preMs&gt;]</c> — meter →
+    /// <summary><c>report|&lt;ms&gt;|&lt;decoded&gt;/&lt;k&gt;[|&lt;preMs&gt;]</c> - meter →
     /// coordinator: how many of the step's probes decoded, plus (when the meter has a
-    /// carrier-sensing radio) the median measured pre-data carrier time in whole ms —
+    /// carrier-sensing radio) the median measured pre-data carrier time in whole ms -
     /// the direct as-heard measurement of the coordinator's effective TXDELAY.</summary>
     StepReport,
 
-    /// <summary><c>apply|&lt;ms&gt;|&lt;k&gt;</c> — coordinator → meter: verification pass at
+    /// <summary><c>apply|&lt;ms&gt;|&lt;k&gt;</c> - coordinator → meter: verification pass at
     /// the recommended TXDELAY (the explicit APPLY, separate from the sweep). Handled
     /// exactly like <see cref="Step"/> at the meter: the telegram's sequence tags the
     /// verify probes.</summary>
     Apply,
 
-    /// <summary><c>done[|&lt;recMs&gt;]</c> — coordinator → meter: session over,
+    /// <summary><c>done[|&lt;recMs&gt;]</c> - coordinator → meter: session over,
     /// optionally carrying the recommendation for the meter operator's log.</summary>
     Done,
 
-    /// <summary><c>abort[|&lt;reason&gt;]</c> — either direction: the sweep is being
+    /// <summary><c>abort[|&lt;reason&gt;]</c> - either direction: the sweep is being
     /// abandoned. The coordinator restores its TXDELAY + channel-access params
     /// regardless of whether this telegram was delivered.</summary>
     Abort,
 }
 
 /// <summary>
-/// One TXDELAY-minimisation message — the payload of a <see cref="TuningVerb.TxDelay"/>
+/// One TXDELAY-minimisation message - the payload of a <see cref="TuningVerb.TxDelay"/>
 /// (<c>TXD</c>) telegram. The full wire form is e.g. <c>V1|7|TXD|step|300|5</c>.
 /// Every routine form fits the 32-character plain-SDM budget; a worst-case
 /// <c>report</c> (4-digit ms + 4-digit pre-data) rides an extended SDM exactly like
@@ -64,7 +64,7 @@ public enum TxDelayMinAction
 /// <see cref="TuningTelegram"/>.
 /// </summary>
 /// <remarks>
-/// Only the <b>coordinator's own TXDELAY</b> is under negotiation — unlike mode
+/// Only the <b>coordinator's own TXDELAY</b> is under negotiation - unlike mode
 /// coordination nothing at the meter end ever changes, so there is no commit/revert
 /// choreography: the coordinator pins its channel-access params, steps its TXDELAY
 /// down, and restores on every exit path (see <see cref="TxDelayMinimizer"/>).
@@ -90,7 +90,7 @@ public sealed record TxDelayMinMessage
     public int? StepMs { get; init; }
 
     /// <summary>Median measured pre-data carrier across the step's decoded probes, in
-    /// whole ms (<see cref="TxDelayMinAction.StepReport"/>; optional — needs a
+    /// whole ms (<see cref="TxDelayMinAction.StepReport"/>; optional - needs a
     /// carrier-sensing radio at the meter).</summary>
     public int? MedianPreDataMs { get; init; }
 
@@ -326,7 +326,7 @@ public sealed record TxDelayMinMessage
 
 /// <summary>
 /// The stimulus frames of a TXDELAY-minimisation step: short UI frames, each transmitted
-/// as its own SEPARATE keying (never a multi-frame train — a train shares one preamble
+/// as its own SEPARATE keying (never a multi-frame train - a train shares one preamble
 /// and would measure nothing), tagged with the step (the <c>step</c>/<c>apply</c>
 /// telegram's sequence number) so stale probes from a previous step can never satisfy
 /// the current one. Mirrors <see cref="ModeProbe"/>.
@@ -339,7 +339,7 @@ public static class TxDelayProbe
     /// <summary>The destination address probe frames are sent to.</summary>
     public const string Destination = "TUNE";
 
-    /// <summary>Info-field length — short on purpose (the preamble, not the frame,
+    /// <summary>Info-field length - short on purpose (the preamble, not the frame,
     /// is the thing under test) but long enough to exercise the modem.</summary>
     public const int InfoLength = 40;
 
@@ -358,7 +358,7 @@ public static class TxDelayProbe
     /// <summary>
     /// The TXDELAY-change throwaway frame. The NinoTNC applies a changed KISS parameter
     /// from the <b>SECOND</b> frame after the command (bench-observed), so one of these
-    /// is transmitted — and discarded — after every TXDELAY set, before anything is
+    /// is transmitted - and discarded - after every TXDELAY set, before anything is
     /// probed. Its info text carries no <see cref="Marker"/>, so the meter can never
     /// count it as a probe.
     /// </summary>
@@ -402,11 +402,11 @@ public interface ITxDelayMinStation
 
     /// <summary>Restore polite channel-access defaults (KISS has no read-back, so
     /// "restore" means the conventional persistence 63 / slottime 10). Must be
-    /// best-effort tolerant — it runs on failure paths.</summary>
+    /// best-effort tolerant - it runs on failure paths.</summary>
     Task RestoreChannelAccessAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Set the modem's TXDELAY to <paramref name="txDelayMs"/> <b>including
-    /// whatever settling the modem needs before the value is live</b> — on a NinoTNC a
+    /// whatever settling the modem needs before the value is live</b> - on a NinoTNC a
     /// changed KISS parameter applies from the SECOND frame after the command, so the
     /// implementation transmits and discards a settle frame, then lets the transmitter
     /// unkey, before returning.</summary>
@@ -416,7 +416,7 @@ public interface ITxDelayMinStation
     /// <summary>Transmit <paramref name="count"/> probe frames tagged
     /// <paramref name="stepTag"/> as <paramref name="count"/> SEPARATE keyings with
     /// unkey gaps between them (back-to-back sends chain into ONE keying train with a
-    /// single preamble — which would measure nothing). Returns sender-side TX stats;
+    /// single preamble - which would measure nothing). Returns sender-side TX stats;
     /// individual probe failures are not fatal (the meter's decode count is the
     /// verdict).</summary>
     Task<ModeProbeTxStats> TransmitProbesAsync(int stepTag, int count, CancellationToken cancellationToken = default);
@@ -435,7 +435,7 @@ public interface ITxDelayProbeCount : IDisposable
     int Count { get; }
 
     /// <summary>Median measured carrier-rise→first-data lead across the decoded probes,
-    /// in ms — the direct as-heard measurement of the coordinator's effective TXDELAY
+    /// in ms - the direct as-heard measurement of the coordinator's effective TXDELAY
     /// (plus a small constant rig overhead). <c>null</c> when no carrier-sensing radio
     /// is attached, or no probe could be attributed to a carrier window.</summary>
     double? MedianPreDataCarrierMs { get; }
@@ -469,7 +469,7 @@ public sealed class TxDelayMinException : Exception
 /// <see cref="SdmTuningLink"/>), mirroring <see cref="ModeCoordOptions"/>.</summary>
 public sealed record TxDelayMinOptions
 {
-    /// <summary>The TXDELAY the sweep starts from — the value the modem is believed to
+    /// <summary>The TXDELAY the sweep starts from - the value the modem is believed to
     /// be configured with (KISS has no read-back). Also what every exit path restores.
     /// Default 500 ms.</summary>
     public int StartTxDelayMs { get; init; } = 500;
@@ -477,7 +477,7 @@ public sealed record TxDelayMinOptions
     /// <summary>The sweep decrement. Default 40 ms.</summary>
     public int StepMs { get; init; } = 40;
 
-    /// <summary>The sweep floor — never command below this (a 0 TXDELAY keys data
+    /// <summary>The sweep floor - never command below this (a 0 TXDELAY keys data
     /// straight into the PA's rise time). Default 20 ms.</summary>
     public int MinTxDelayMs { get; init; } = 20;
 
@@ -502,7 +502,7 @@ public sealed record TxDelayMinOptions
 
     /// <summary>Coordinator: how many times to (re)run a request→reply exchange before giving
     /// up. The SDM over-air delivery receipt is unreliable for this close bidirectional traffic
-    /// (the TM8110 auto-ack refractory — see <see cref="SdmTuningLink"/> and
+    /// (the TM8110 auto-ack refractory - see <see cref="SdmTuningLink"/> and
     /// docs/research/tm8110-sdm-autoack-refractory.md), so reliability is <b>reply-driven</b>: a
     /// lost <c>propose</c> or <c>report</c> is recovered by re-running the exchange with a fresh
     /// sequence (a fresh <c>step</c> opens a fresh tagged probe counter on the meter, so re-running
@@ -511,7 +511,7 @@ public sealed record TxDelayMinOptions
 
     /// <summary>Minimum gap between a side-channel telegram exchange and keying the
     /// TNC: the coordination radio may still be sending its SDM auto-ack, and a brief gap
-    /// avoids keying the TNC over it (half-duplex etiquette; see <see cref="SdmTuningLink"/> —
+    /// avoids keying the TNC over it (half-duplex etiquette; see <see cref="SdmTuningLink"/> -
     /// the auto-ack refractory itself is handled by not depending on the receipt). Default 2.5 s.</summary>
     public TimeSpan PreKeyDelay { get; init; } = TimeSpan.FromSeconds(2.5);
 
@@ -520,7 +520,7 @@ public sealed record TxDelayMinOptions
     /// the sender's TX-complete). Default 1.5 s.</summary>
     public TimeSpan ArrivalGrace { get; init; } = TimeSpan.FromSeconds(1.5);
 
-    /// <summary>Meter: exit the loop when nothing has been heard for this long — a
+    /// <summary>Meter: exit the loop when nothing has been heard for this long - a
     /// silent coordinator must never strand the meter process. The meter changes
     /// nothing locally, so this is an exit, not a revert. Default 10 min.</summary>
     public TimeSpan MeterIdleTimeout { get; init; } = TimeSpan.FromMinutes(10);
@@ -533,7 +533,7 @@ public enum TxDelaySweepOutcome
     /// recommendation computed.</summary>
     Complete,
 
-    /// <summary>The very first step (the configured/current TXDELAY) was not solid —
+    /// <summary>The very first step (the configured/current TXDELAY) was not solid -
     /// the link itself is marginal, so no step-down carries information. Fix the link
     /// (deviation, SNR) before minimising TXDELAY.</summary>
     NotSolidAtStart,
@@ -559,7 +559,7 @@ public enum TxDelaySweepOutcome
 /// <param name="MeanTxMs">Sender-side mean send→TX-complete latency in ms, <c>null</c>
 /// when no TX completion was confirmed.</param>
 /// <param name="MedianPreDataCarrierMs">The meter's median measured carrier-rise→data
-/// lead in ms — the as-heard effective TXDELAY (+ constant rig overhead), the sweep's
+/// lead in ms - the as-heard effective TXDELAY (+ constant rig overhead), the sweep's
 /// self-evidencing cross-check. <c>null</c> without a carrier-sensing radio at the
 /// meter.</param>
 public sealed record TxDelaySweepStep(
@@ -595,7 +595,7 @@ public sealed record TxDelaySweepResult
     public int? RecommendedMs { get; init; }
 
     /// <summary>True when the sweep hit <see cref="TxDelayMinOptions.MinTxDelayMs"/>
-    /// still decoding cleanly — the true knee is at or below the floor.</summary>
+    /// still decoding cleanly - the true knee is at or below the floor.</summary>
     public bool FloorReached { get; init; }
 
     /// <summary>Whether the exit path restored the original TXDELAY and channel-access
@@ -618,7 +618,7 @@ public sealed record TxDelaySweepResult
 /// <param name="Probes">Verify probes transmitted.</param>
 /// <param name="MedianPreDataCarrierMs">The meter's as-heard pre-data carrier median
 /// during the verify, in ms (<c>null</c> without a carrier-sensing radio).</param>
-/// <param name="Verified">True when every verify probe decoded — the applied value
+/// <param name="Verified">True when every verify probe decoded - the applied value
 /// stands. False = the modem was restored to the sweep's starting TXDELAY.</param>
 /// <param name="Detail">Free-text detail (why a verify failed / could not run).</param>
 public sealed record TxDelayApplyResult(

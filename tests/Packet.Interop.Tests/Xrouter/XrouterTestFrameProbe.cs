@@ -13,12 +13,12 @@ namespace Packet.Interop.Tests.Xrouter;
 /// Empirical probe: does XRouter answer a connectionless AX.25 TEST command
 /// (§4.3.4.2) with a TEST response? We stand up an <see cref="Ax25Listener"/> on
 /// net-sim node a (KISS-TCP 8100) and axping XRouter's NODECALL (PN0XRT) on node d
-/// (8103) via <see cref="AxPinger"/> — the exact production initiator path. A
+/// (8103) via <see cref="AxPinger"/> - the exact production initiator path. A
 /// spec-compliant responder echoes the info field in a TEST response; a peer that
 /// doesn't implement TEST simply never answers (100% loss).
 /// </summary>
 /// <remarks>
-/// This is a one-shot finding-recorder, not a permanent behavioural contract — it
+/// This is a one-shot finding-recorder, not a permanent behavioural contract - it
 /// asserts nothing about XRouter (whether it answers TEST is XRouter's business,
 /// not ours), it just logs the loss percentage so the result is captured. Tagged
 /// Interop so it only runs against a live docker stack. Bring the stack up with
@@ -63,7 +63,7 @@ public class XrouterTestFrameProbe(ITestOutputHelper output)
             output.WriteLine($"  probe #{reply.Seq}: {(reply.Timeout ? "TIMEOUT" : $"{reply.RttMs} ms")}");
         }
 
-        // No assertion on XRouter's behaviour — the test exists to record the
+        // No assertion on XRouter's behaviour - the test exists to record the
         // finding. We only assert the probe itself ran cleanly (3 probes sent).
         result.Replies.Should().HaveCount(3, "the pinger should have sent all 3 probes");
     }

@@ -18,8 +18,8 @@ internal interface INinoTncBootloaderSerialPort : IDisposable
 
     /// <summary>
     /// Read one byte, blocking up to the port's read timeout. Returns the
-    /// byte (0–255), or <c>-1</c> when the timeout elapsed with nothing
-    /// received — a full read-timeout of line silence.
+    /// byte (0-255), or <c>-1</c> when the timeout elapsed with nothing
+    /// received - a full read-timeout of line silence.
     /// </summary>
     int ReadByte();
 
@@ -33,7 +33,7 @@ internal interface INinoTncBootloaderSerialPort : IDisposable
 /// <summary>
 /// The production <see cref="INinoTncBootloaderSerialPort"/>: a
 /// <see cref="SerialPort"/> opened the way the verified flash protocol
-/// requires — 57 600 8N1, no flow control, finite read timeout. DTR/RTS are
+/// requires - 57 600 8N1, no flow control, finite read timeout. DTR/RTS are
 /// asserted to match pyserial's defaults (upstream <c>flashtnc.py</c> is the
 /// hardware-validated reference) and our own <c>KissSerialModem</c>.
 /// </summary>

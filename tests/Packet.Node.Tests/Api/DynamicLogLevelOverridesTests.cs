@@ -6,7 +6,7 @@ using Packet.Node.Api;
 namespace Packet.Node.Tests.Api;
 
 /// <summary>
-/// Proves the runtime log-level override actually takes effect <b>live</b> — the whole point of
+/// Proves the runtime log-level override actually takes effect <b>live</b> - the whole point of
 /// the capability. The hard requirement is that a logger created at startup (before any override
 /// exists) sees its <see cref="ILogger.IsEnabled"/> change the instant an override is set, with no
 /// restart and no re-creation of the logger. Wired exactly as <c>Program.cs</c> wires it:
@@ -23,7 +23,7 @@ public sealed class DynamicLogLevelOverridesTests
         services.AddLogging(b =>
         {
             b.SetMinimumLevel(LogLevel.Information);
-            // A logging provider must be present for IsEnabled to be meaningful — a factory with
+            // A logging provider must be present for IsEnabled to be meaningful - a factory with
             // zero providers reports IsEnabled=false unconditionally (no sink to enable). The real
             // host always has the console provider; this fake stands in for it.
             b.AddProvider(new CollectingProvider());
@@ -59,7 +59,7 @@ public sealed class DynamicLogLevelOverridesTests
         var (factory, dyn, sp) = BuildPipeline();
         using (sp)
         {
-            // Logger created BEFORE any override — the already-created-logger case.
+            // Logger created BEFORE any override - the already-created-logger case.
             var log = factory.CreateLogger("Packet.Ax25.Session");
             log.IsEnabled(LogLevel.Debug).Should().BeFalse("default min level is Information");
 

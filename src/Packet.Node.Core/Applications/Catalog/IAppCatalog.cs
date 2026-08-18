@@ -1,7 +1,7 @@
 namespace Packet.Node.Core.Applications.Catalog;
 
 /// <summary>
-/// The curated index of <b>available</b> apps — the <c>catalog/apps.yaml</c> file the node
+/// The curated index of <b>available</b> apps - the <c>catalog/apps.yaml</c> file the node
 /// ships (<c>docs/app-catalog.md</c>). This is the menu the owner installs <i>from</i>.
 /// </summary>
 /// <remarks>

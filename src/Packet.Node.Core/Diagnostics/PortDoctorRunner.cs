@@ -14,8 +14,8 @@ namespace Packet.Node.Core.Diagnostics;
 /// implementation backs both forms of <c>/api/v1/ports/{id}/doctor</c>:
 /// <list type="bullet">
 ///   <item>the <b>safe</b> <c>GET</c> form (<paramref name="includeTransmitting"/> = false) runs
-///     only the non-transmitting probes — identity, firmware, DIPs, running mode, radio identity,
-///     GETRSSI availability — and reports the transmitting probes (TXDELAY software-control, the
+///     only the non-transmitting probes - identity, firmware, DIPs, running mode, radio identity,
+///     GETRSSI availability - and reports the transmitting probes (TXDELAY software-control, the
 ///     SDM-enabled check, TNC↔radio pairing) as <c>unknown</c> "requires a brief transmit";</item>
 ///   <item>the <b>interrupt</b> <c>POST ?interrupt=true</c> form
 ///     (<paramref name="includeTransmitting"/> = true) additionally runs those transmitting probes,
@@ -65,7 +65,7 @@ public sealed class PortDoctorRunner : IDisposable
     /// <param name="includeTransmitting">When <c>true</c>, run the transmitting probes too
     /// (the interrupt form). When <c>false</c> (the safe default), nothing is transmitted.</param>
     /// <param name="callsign">Source callsign for the transmitting probes.</param>
-    /// <param name="transportKind">The port's transport kind (e.g. <c>tait-transparent</c>) — a
+    /// <param name="transportKind">The port's transport kind (e.g. <c>tait-transparent</c>) - a
     /// <c>tait-transparent</c> port gets the Transparent-readiness checklist instead of the
     /// TNC/CCDI probes (its radio is a byte pipe while running, not a NinoTNC or a command-mode
     /// CCDI radio). Null / any other kind ⇒ the standard probes.</param>
@@ -132,7 +132,7 @@ public sealed class PortDoctorRunner : IDisposable
 
     /// <summary>
     /// The Transparent-readiness checklist for a running <c>tait-transparent</c> port. A running
-    /// Transparent port's radio is a byte pipe — there is no CCDI control channel to run the
+    /// Transparent port's radio is a byte pipe - there is no CCDI control channel to run the
     /// behavioral enter/escape/baud-clean probes against without tearing the link down and risking
     /// a wedge, so the node reports what the running state proves and points the operator at the
     /// setup-time CLI (<c>packet-tune transparent-doctor</c>) for the disruptive behavioral checks.

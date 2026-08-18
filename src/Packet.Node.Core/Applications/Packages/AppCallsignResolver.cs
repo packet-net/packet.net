@@ -6,7 +6,7 @@ namespace Packet.Node.Core.Applications.Packages;
 /// <summary>
 /// The node is the <b>callsign authority</b> for its apps (<c>docs/app-packages.md</c>
 /// § Application packet identity). This pure helper resolves, deterministically, the on-air L2
-/// callsign every enabled packet-capable app should bind — a pinned <c>callsign</c> when the
+/// callsign every enabled packet-capable app should bind - a pinned <c>callsign</c> when the
 /// owner set one, else an auto-assigned <c>&lt;node-base&gt;-&lt;lowest free SSID&gt;</c>. The
 /// result feeds three consumers from one authority: the supervisor's <c>PDN_APP_CALLSIGN</c>
 /// injection (<see cref="AppServiceSupervisor"/>), the bare command-verb loopback connect
@@ -25,7 +25,7 @@ namespace Packet.Node.Core.Applications.Packages;
 /// <b>What counts as a packet app.</b> An enabled app is resolved a callsign when it grants
 /// packet access (<see cref="AppCapabilities.GrantsPacketAccess"/>) or the owner pinned a
 /// <c>callsign</c> / set a <c>netrom</c> advert for it. A pure session app (e.g. WALL/LOBBY)
-/// with neither stays session-only — it never bound a callsign before and gets no
+/// with neither stays session-only - it never bound a callsign before and gets no
 /// <c>PDN_APP_CALLSIGN</c> (back-compat: such apps reach users over the session attachment, not
 /// a separate L2 identity).
 /// </para>
@@ -63,7 +63,7 @@ public static class AppCallsignResolver
 
         var result = new Dictionary<string, ResolvedAppCallsign>(StringComparer.OrdinalIgnoreCase);
 
-        // The node's own identity — its base anchors auto-assignment, its full callsign (with
+        // The node's own identity - its base anchors auto-assignment, its full callsign (with
         // SSID) is a taken slot an app must never collide with.
         if (!Callsign.TryParse(config.Identity.Callsign, out var node))
         {
@@ -83,7 +83,7 @@ public static class AppCallsignResolver
         // a packet app at all.
         var candidates = CollectCandidates(config, packages);
 
-        // Pass 1 — reserve every pin that parses to a callsign on the node base (or a full
+        // Pass 1 - reserve every pin that parses to a callsign on the node base (or a full
         // callsign whose base matches). A pin off the node base is honoured verbatim and does
         // not consume a node-base SSID slot.
         var pending = new List<Candidate>();
@@ -99,7 +99,7 @@ public static class AppCallsignResolver
             }
             else if (!string.IsNullOrWhiteSpace(c.Pin))
             {
-                // A pin was given but did not parse — skip the app (validation flags it); do not
+                // A pin was given but did not parse - skip the app (validation flags it); do not
                 // auto-assign over an owner's explicit (if broken) intent.
                 continue;
             }
@@ -109,7 +109,7 @@ public static class AppCallsignResolver
             }
         }
 
-        // Pass 2 — auto-assign the lowest free SSID to each remaining packet app, deterministically.
+        // Pass 2 - auto-assign the lowest free SSID to each remaining packet app, deterministically.
         foreach (var c in pending)
         {
             byte? free = null;
@@ -123,7 +123,7 @@ public static class AppCallsignResolver
             }
             if (free is null)
             {
-                continue;   // SSID space exhausted — drop (no identity rather than a duplicate).
+                continue;   // SSID space exhausted - drop (no identity rather than a duplicate).
             }
             taken.Add(free.Value);
             result[c.Id] = new ResolvedAppCallsign(c.Id, new Callsign(nodeBase, free.Value), Pinned: false);
@@ -132,7 +132,7 @@ public static class AppCallsignResolver
         return result;
     }
 
-    /// <summary>The node's own SSID as a slot to reserve when its base matches the app base —
+    /// <summary>The node's own SSID as a slot to reserve when its base matches the app base -
     /// always, since apps are SSIDs of the node base.</summary>
     private static byte? NodeBaseSsid(string nodeBase, Callsign node) =>
         string.Equals(node.Base, nodeBase, StringComparison.Ordinal) ? node.Ssid : null;
@@ -140,7 +140,7 @@ public static class AppCallsignResolver
     private sealed record Candidate(string Id, string? Pin);
 
     /// <summary>The packet apps to resolve, deterministically ordered (inline first, then
-    /// packages by id). A pure session app with no pin and no packet capability is excluded —
+    /// packages by id). A pure session app with no pin and no packet capability is excluded -
     /// it binds no callsign.</summary>
     private static List<Candidate> CollectCandidates(NodeConfig config, IReadOnlyList<DiscoveredAppPackage> packages)
     {
@@ -171,7 +171,7 @@ public static class AppCallsignResolver
             var netrom = pkg.Override?.Netrom;
             // A packet-capable app (or one the owner pinned a callsign / set a netrom alias for)
             // binds a node-resolved callsign. A pure session app (e.g. WALL/LOBBY: it attaches
-            // over the session, not a separate L2 identity) binds none — back-compat, and it
+            // over the session, not a separate L2 identity) binds none - back-compat, and it
             // doesn't consume an SSID slot.
             if (NeedsCallsign(caps, pin, netrom))
             {

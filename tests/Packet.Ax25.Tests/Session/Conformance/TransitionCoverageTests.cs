@@ -13,7 +13,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// <c>(state, transition-id)</c> pairs actually execute. Reports per-state
 /// coverage against the live <c>Packet.Ax25.Sdl</c> tables and asserts that a
 /// curated set of high-value transitions across every state is behaviourally
-/// exercised, plus a floor on the total — so behavioural coverage is measurable
+/// exercised, plus a floor on the total - so behavioural coverage is measurable
 /// and can't silently regress.
 /// </summary>
 /// <remarks>
@@ -22,20 +22,20 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// the scenario suites (happy-path / loss-recovery / error-recovery /
 /// timer-recovery), which assert correctness. Here the question is the orthogonal
 /// one: of the 250 tracked transitions (the six data-link states plus the
-/// management_data_link Ready/Negotiating machine — added in v2.2 arc V5a), which
+/// management_data_link Ready/Negotiating machine - added in v2.2 arc V5a), which
 /// ones does the real runtime actually run when driven through realistic traffic?
-/// The battery runs both mod-8 and mod-128 (extended) scenarios — bidirectional
+/// The battery runs both mod-8 and mod-128 (extended) scenarios - bidirectional
 /// data incl. a 127→0 window-wrap, REJ/SREJ loss recovery, RNR flow, T3 keepalive,
 /// the full Connected / TimerRecovery / establishment / release receive columns by
 /// frame-injection (every command-vs-response × P/F × N(R)-window arm, both moduli),
 /// the figc-input error/catch-all columns by direct event injection, XID
 /// negotiation, and segmentation over a mod-128 link. After the W3 coverage
-/// campaign the battery exercises 238/250 transitions — every one that is reachable
+/// campaign the battery exercises 238/250 transitions - every one that is reachable
 /// end-to-end. The remaining 12 are genuinely unreachable through this runtime and
 /// are documented at the foot of the battery (block 41) with the exact mechanism
 /// for each: the IFramePopsOffQueue branches the queue-drain synthesiser cannot emit
 /// (it only pops in Connected/TimerRecovery, and only when the peer is not busy, the
-/// window is not full, and — in TimerRecovery — T1 is running, which it always is
+/// window is not full, and - in TimerRecovery - T1 is running, which it always is
 /// there) and the layer_3_initiated=No data arms of the initiator-only establishment
 /// states (the responder goes straight Disconnected→Connected on SABM/SABME and
 /// never parks there). The miss-list (written to test output) is the live map of
@@ -86,18 +86,18 @@ public class TransitionCoverageTests
         output.WriteLine($"\nTOTAL {hit}/{total} transitions behaviourally exercised by the battery");
 
         // ── Assert: each reachable state is behaviourally exercised (a curated,
-        // robust must-hit — confirmed-fired ids the battery is built to drive).
+        // robust must-hit - confirmed-fired ids the battery is built to drive).
         // The W3 lift (this PR) walks every REACHABLE receive / primitive /
         // catch-all column across all six data-link states, both moduli, so
         // Disconnected and AwaitingRelease are now fully exercised (17/17, 20/20),
         // AwaitingConnection / AwaitingV22Connection sit at 22/25 (only the
-        // genuinely-unreachable residue left — see block 41), Connected at 64/66
+        // genuinely-unreachable residue left - see block 41), Connected at 64/66
         // and TimerRecovery at 86/90 (each minus the unreachable IFramePopsOffQueue
         // / T1-not-running branches). The MDL (management_data_link) machine is on
         // the ledger too (Ready / Negotiating, both fully exercised). See the
         // report, block 41, and §17. The must-hit below is a representative,
         // deterministically-driven slice across that whole space (it does NOT list
-        // every covered id — the floor below guards the total). ──
+        // every covered id - the floor below guards the total). ──
         (string State, string Id)[] mustHit =
         {
             ("Disconnected",          "t03_dl_connect_request"),    // A initiates a connect
@@ -142,7 +142,7 @@ public class TransitionCoverageTests
             ("TimerRecovery",         "t23_rej_received_yes_yes_yes"), // W3: REJ response F=1 completes recovery
             ("TimerRecovery",         "t13_sabm_received_no"),       // W3: SABM collision (V(s)≠V(a)) → resync to Connected
             ("TimerRecovery",         "t21_t1_expiry_yes_yes_no"),   // W3: idle recovery N2 exhaustion, peer not busy → Disconnected
-            // MDL (management_data_link) — XID negotiation FSM, on the ledger via V5a.
+            // MDL (management_data_link) - XID negotiation FSM, on the ledger via V5a.
             ("Ready",                 "t01_mdl_negotiate_request"),  // XID command sent on a v2.2 connect
             ("Negotiating",           "t01_xid_response_received_yes"), // negotiation completes (F=1)
             ("Negotiating",           "t02_frmr_received"),          // pre-v2.2 peer FRMRs → v2.0 fallback
@@ -157,14 +157,14 @@ public class TransitionCoverageTests
         // ── Assert: a floor on total behavioural coverage (regression guard) ──
         // Raised 45 → 60 (v2.2 arc V2: AwaitingV22Connection 0 → 15, total 64),
         // then 60 → 122 (v2.2 arc V5a: extended-mode data/loss/recovery + the MDL
-        // machine + segmentation folded in lift the battery to 127/250 — Connected
+        // machine + segmentation folded in lift the battery to 127/250 - Connected
         // 21 → 38, TimerRecovery 6 → 40, AwaitingV22Connection 15 → 20, plus the
         // MDL Ready 2/2 + Negotiating 5/5). The denominator grew 243 → 250 when the
         // MDL machine joined the tracked set.
         //
         // Then 122 → 238 (W3 test-coverage campaign, this PR): the battery now
         // drives every REACHABLE receive / primitive / catch-all column across all
-        // six data-link states at both moduli — Disconnected 7 → 17 (full),
+        // six data-link states at both moduli - Disconnected 7 → 17 (full),
         // AwaitingConnection 9 → 22, AwaitingV22Connection 20 → 22, Connected
         // 38 → 64, AwaitingRelease 6 → 20 (full), TimerRecovery 40 → 86. The 12
         // still-uncovered transitions are GENUINELY unreachable end-to-end through
@@ -186,7 +186,7 @@ public class TransitionCoverageTests
         var fired = new HashSet<(string, string)>();
         void Collect(TwoStationHarness h) { foreach (var t in h.FiredTransitions) { fired.Add(t); } }
 
-        // Coverage measurement only — correctness is asserted by the dedicated
+        // Coverage measurement only - correctness is asserted by the dedicated
         // conformance suites, so suspend the per-step oracle (injection scenarios
         // post frames outside the submitted/delivered model).
         TwoStationHarness New(bool srej = false, int k = 4, bool extended = false, int n2 = 12,
@@ -308,7 +308,7 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 10. mod-128 (extended) establishment — the figc4.6 AwaitingV22Connection
+        // 10. mod-128 (extended) establishment - the figc4.6 AwaitingV22Connection
         // column. The Ax25Spec44 redirect (default on) routes a v2.2-preferred
         // connect here instead of figc4.2's mod-8 AwaitingConnection, so this is the
         // battery that lifts AwaitingV22Connection off 0/25. Each block drives a
@@ -376,7 +376,7 @@ public class TransitionCoverageTests
         // Ax25Spec48 OFF now: by default Ax25Spec48DmRejectionDegradesToV20 rewrites
         // a DM to the FRMR-fallback (t14_frmr_received) so a DM-ing peer (XRouter)
         // degrades to v2.0 instead of failing. Turn off ONLY Spec48 (keep Spec44 on
-        // so the connect still reaches AwaitingV22Connection — full StrictlyFaithful
+        // so the connect still reaches AwaitingV22Connection - full StrictlyFaithful
         // would park it in the mod-8 AwaitingConnection state). Fresh rig.
         {
             var h = TwoStationHarness.Build(extended: true,
@@ -410,7 +410,7 @@ public class TransitionCoverageTests
         }
 
         // 10d-ii. DM(F=0) drops to the mod-8 AwaitingConnection state
-        // (t11_dm_received_no → AwaitingConnection). Figure-literal path — with
+        // (t11_dm_received_no → AwaitingConnection). Figure-literal path - with
         // Ax25Spec48 off (by default Ax25Spec48 degrades this to t14 too). Keep
         // Spec44 on so the connect reaches AwaitingV22Connection. Fresh rig.
         {
@@ -460,7 +460,7 @@ public class TransitionCoverageTests
         }
 
         // 11. Disconnected-state receive column: deliver assorted frames to a
-        // station that has no session up (exercises figc4.1's receive handling —
+        // station that has no session up (exercises figc4.1's receive handling -
         // a UI (→ DL-UNIT-DATA indication via UI_Check), DISC→DM, spurious UA, and
         // an info-bearing frame → info_not_permitted).
         {
@@ -529,13 +529,13 @@ public class TransitionCoverageTests
         }
 
         // ──────────────────────────────────────────────────────────────────
-        // v2.2 arc V5a — extended-mode (mod-128) behavioural coverage. Every
+        // v2.2 arc V5a - extended-mode (mod-128) behavioural coverage. Every
         // block below runs on an extended link (`New(extended: true)`), routed
         // through AwaitingV22Connection by the figc4.1 Ax25Spec44 redirect, so
         // the Connected / TimerRecovery N(S)/N(R)/N(R)-window paths execute in
         // the 7-bit sequence space. Logical transition ids are mode-independent,
         // so these lift coverage by reaching receive-column paths the mod-8
-        // battery never drives — and prove they hold at modulo-128.
+        // battery never drives - and prove they hold at modulo-128.
         // ──────────────────────────────────────────────────────────────────
 
         // 14. mod-128 bidirectional data transfer + delayed-ack flush. Both
@@ -550,7 +550,7 @@ public class TransitionCoverageTests
 
         // 15. mod-128 window-full transfer that WRAPS the 127→0 boundary. Seed
         // both ends near the top of the 7-bit ring (a valid "already sent 124
-        // frames" state) and transfer a burst across the wrap — exercises the
+        // frames" state) and transfer a burst across the wrap - exercises the
         // extended send-window/V(S)/V(R) arithmetic over the modulus lap.
         {
             var h = New(extended: true, k: 8); h.Connect();
@@ -608,7 +608,7 @@ public class TransitionCoverageTests
 
         // 18. mod-128 bidirectional loss recovery: both directions carry data
         // AND lose frames, so a station receives peer I-frames / supervisory
-        // frames WHILE itself recovering — the TimerRecovery I-received and
+        // frames WHILE itself recovering - the TimerRecovery I-received and
         // RR/RNR receive columns (the "data both ways under loss" paths).
         {
             var h = New(extended: true, srej: true, k: 8, n2: 40); h.Connect();
@@ -633,11 +633,11 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 18b. mod-128 TimerRecovery receive columns — fold the proven injection
+        // 18b. mod-128 TimerRecovery receive columns - fold the proven injection
         // technique (TimerRecoveryConformanceTests) into the ledger. Drive A into
         // TimerRecovery with N unacked extended I-frames (drop A's I-frames, expire
         // T1), then inject a crafted supervisory / I frame "from B" the well-behaved
-        // peer wouldn't produce on cue — reaching the figc4.5 RR/RNR/REJ/SREJ/I
+        // peer wouldn't produce on cue - reaching the figc4.5 RR/RNR/REJ/SREJ/I
         // receive branches in the 7-bit space. Each fresh rig keeps the V(s)/V(a)
         // state known so a specific branch is hit; the oracle is off (coverage only).
         TwoStationHarness InTimerRecovery128(byte outstanding, bool srej = false)
@@ -716,19 +716,19 @@ public class TransitionCoverageTests
         // DM received while recovering → teardown.
         { var h = InTimerRecovery128(1); h.InjectFrameBytes(h.A, Ax25Frame.Dm(h.A.Context.Local, h.A.Context.Remote, finalBit: true).ToBytes()); Collect(h); }
         // LM-SEIZE-confirm in TimerRecovery, both ACK-pending branches (inject the
-        // signal directly — models the link multiplexer granting the medium).
+        // signal directly - models the link multiplexer granting the medium).
         { var h = InTimerRecovery128(1); h.A.Context.AcknowledgePending = true; h.Inject(h.A, new LmSeizeConfirm()); Collect(h); }
         { var h = InTimerRecovery128(1); h.A.Context.AcknowledgePending = false; h.Inject(h.A, new LmSeizeConfirm()); Collect(h); }
         // REJ command (P=1) variants: in-window-not-complete and a fresh out-of-
-        // window N(R) (the re-establish branch) — the t23 command columns.
+        // window N(R) (the re-establish branch) - the t23 command columns.
         { var h = InTimerRecovery128(2); h.InjectFrameBytes(h.A, RejExt(h.A, nr: 1, isCmd: true, pf: true)); Collect(h); }
         { var h = InTimerRecovery128(1); h.InjectFrameBytes(h.A, RejExt(h.A, nr: 1, isCmd: true, pf: false)); Collect(h); }
         // SREJ command (P=1) → the t24 not-response columns.
         { var h = InTimerRecovery128(2, srej: true); h.InjectFrameBytes(h.A, SrejExt(h.A, nr: 0, isCmd: true, pf: true)); Collect(h); }
-        // RR command (P=1) with TWO outstanding, N(R)=0 (no ack) — the
+        // RR command (P=1) with TWO outstanding, N(R)=0 (no ack) - the
         // not-response/command branch with nothing newly acked.
         { var h = InTimerRecovery128(2); h.InjectFrameBytes(h.A, RrExt(h.A, nr: 0, isCmd: true, pf: true)); Collect(h); }
-        // RNR command (P=1), N(R)=0 — peer busy, no ack.
+        // RNR command (P=1), N(R)=0 - peer busy, no ack.
         { var h = InTimerRecovery128(2); h.InjectFrameBytes(h.A, RnrExt(h.A, nr: 0, isCmd: true, pf: true)); Collect(h); }
         // Out-of-sequence I (no SREJ) → REJ go-back-N branch (not srej_enabled).
         { var h = InTimerRecovery128(1, srej: false); h.InjectFrameBytes(h.A, IExt(h.A, nr: 0, ns: 2, payload: 0xEE, pf: false)); Collect(h); }
@@ -784,7 +784,7 @@ public class TransitionCoverageTests
         // (version_2_2) → re-establish, routed to AwaitingV22Connection.
         { var h = New(extended: true, k: 8); h.Connect(); h.InjectFrameBytes(h.A, FrmrTo(h.A)); Collect(h); }
         // In-sequence I command with P=1 while Connected (the enquiry-response
-        // I-received branch) — inject directly so P=1 is guaranteed.
+        // I-received branch) - inject directly so P=1 is guaranteed.
         { var h = New(extended: true, k: 8); h.Connect(); h.InjectFrameBytes(h.A, IExt(h.A, nr: 0, ns: 0, payload: 0x5A, pf: true)); Collect(h); }
         // LM-SEIZE-confirm in Connected with NO ack pending (t23_lm_seize_confirm_no).
         { var h = New(extended: true, k: 8); h.Connect(); h.A.Context.AcknowledgePending = false; h.Inject(h.A, new LmSeizeConfirm()); Collect(h); }
@@ -805,7 +805,7 @@ public class TransitionCoverageTests
         }
 
         // 19. mod-128 RNR flow control: B goes busy mid-transfer (RNR), A holds,
-        // B resumes (RR) — the peer-busy RNR-received path in Connected and the
+        // B resumes (RR) - the peer-busy RNR-received path in Connected and the
         // own-busy DL-FLOW-ON resume with/without T1 running.
         {
             var h = New(extended: true, k: 8); h.Connect();
@@ -827,7 +827,7 @@ public class TransitionCoverageTests
         // 21. Connected receive-column odds reachable only by injection (mode-
         // independent, but unexercised by the well-behaved battery): a UI frame
         // (P=0 / P=1), and SABM / SABME collisions arriving on an established
-        // link (the peer re-establishing) — each handled in place, link stays up.
+        // link (the peer re-establishing) - each handled in place, link stays up.
         {
             var h = New(extended: true, k: 8); h.Connect();
             var la = h.A.Context.Local; var re = h.A.Context.Remote;
@@ -852,13 +852,13 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 22. AwaitingV22Connection — push past the establishment column. Hold A
+        // 22. AwaitingV22Connection - push past the establishment column. Hold A
         // in the v2.2-pending state (swallow its establishment frames) and drive
         // the catch-all input columns + a control-field error that all keep it
         // parked: t06 (other upper-layer primitive), t18 (other lower-layer
         // primitive), t07 (control-field error). The genuinely-unreachable
         // misses (t08/t09 never-produced error inputs; the not-layer-3-initiated
-        // t04_no/t05/t12_no branches — the responder never parks here, it goes
+        // t04_no/t05/t12_no branches - the responder never parks here, it goes
         // straight Disconnected→Connected on SABME) remain documented misses.
         {
             var h = New(extended: true);
@@ -867,16 +867,16 @@ public class TransitionCoverageTests
             h.Settle();
             if (h.A.State == "AwaitingV22Connection")
             {
-                h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());   // t06 — catch-all upper-layer, stay
+                h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());   // t06 - catch-all upper-layer, stay
                 h.Settle();
-                h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());           // t18 — catch-all lower-layer, stay
-                h.Inject(h.A, new ControlFieldError());                          // t07 — control-field error, stay
+                h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());           // t18 - catch-all lower-layer, stay
+                h.Inject(h.A, new ControlFieldError());                          // t07 - control-field error, stay
             }
             Collect(h);
         }
 
         // ──────────────────────────────────────────────────────────────────
-        // MDL (management_data_link) machine — Ready / Negotiating. The MDL
+        // MDL (management_data_link) machine - Ready / Negotiating. The MDL
         // driver runs its own Ax25Session; the harness forwards its
         // TransitionFired, so these register on the SAME ledger (its Ready /
         // Negotiating state names don't collide with the data-link states).
@@ -890,7 +890,7 @@ public class TransitionCoverageTests
             var h = New(extended: true, srej: true, k: 8); h.Connect(); Collect(h);
         }
 
-        // 24. MDL error B — an unexpected XID response arriving in Ready (no
+        // 24. MDL error B - an unexpected XID response arriving in Ready (no
         // command outstanding). Ready t02_xid_response_received.
         {
             var h = New(extended: true, srej: true, k: 8);
@@ -899,7 +899,7 @@ public class TransitionCoverageTests
             h.Settle(); Collect(h);
         }
 
-        // 25. MDL error D — an XID response without F=1 while Negotiating (stays
+        // 25. MDL error D - an XID response without F=1 while Negotiating (stays
         // Negotiating, TM201 still running). Negotiating t01_xid_response_received_no.
         {
             var h = New(extended: true, srej: true, k: 8);
@@ -914,7 +914,7 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 26. MDL v2.0 fallback — a pre-v2.2 peer FRMRs the XID command (figc5.2
+        // 26. MDL v2.0 fallback - a pre-v2.2 peer FRMRs the XID command (figc5.2
         // t02_frmr_received → full §1436 v2.0 defaults, confirm, → Ready).
         {
             var h = New(extended: true, srej: true, k: 8);
@@ -948,7 +948,7 @@ public class TransitionCoverageTests
         // ──────────────────────────────────────────────────────────────────
 
         // 28. Multi-segment payload over mod-128 with a mid-series drop +
-        // selective (SREJ) recovery — the V4 headline path, folded into the
+        // selective (SREJ) recovery - the V4 headline path, folded into the
         // ledger so the segment I-frame send/receive + SREJ recovery register.
         {
             var h = New(extended: true, srej: true, k: 16, n2: 40, segmenter: true, n1: 64);
@@ -966,7 +966,7 @@ public class TransitionCoverageTests
         }
 
         // ──────────────────────────────────────────────────────────────────
-        // Workstream-3 lift — drive the remaining REACHABLE receive / primitive
+        // Workstream-3 lift - drive the remaining REACHABLE receive / primitive
         // / catch-all columns across every state, by the same injection idiom
         // the blocks above already use (raw-frame injection for receive columns,
         // direct event injection for the figc-input columns the listener/codec
@@ -983,11 +983,11 @@ public class TransitionCoverageTests
             var la = h.A.Context.Local; var re = h.A.Context.Remote;
             h.A.Session.PostEvent(new DlDisconnectRequest());                       // t01 → DL-DISCONNECT confirm
             h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));      // t02 → UI command
-            h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());         // t04 — catch-all upper
+            h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());         // t04 - catch-all upper
             h.Settle();
-            h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());                 // t06 — catch-all lower
-            h.Inject(h.A, new ControlFieldError());                               // t07 — control-field error
-            h.Inject(h.A, new UOrSFrameLengthError());                            // t09 — U/S length error
+            h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());                 // t06 - catch-all lower
+            h.Inject(h.A, new ControlFieldError());                               // t07 - control-field error
+            h.Inject(h.A, new UOrSFrameLengthError());                            // t09 - U/S length error
             h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "p"u8, pollFinal: true).ToBytes()); // t11_ui_received_yes
             // t05 all_other_commands: the listener reclassifies an RR/I/FRMR/… that
             // arrives at a disconnected station into AllOtherCommands → DM.
@@ -1017,14 +1017,14 @@ public class TransitionCoverageTests
             h.Settle();
             if (h.A.State == "AwaitingConnection")
             {
-                h.A.Session.PostEvent(new DlConnectRequest());                     // t07 — redundant connect
-                h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));  // t08 — UI command
-                h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());     // t11 — catch-all upper
+                h.A.Session.PostEvent(new DlConnectRequest());                     // t07 - redundant connect
+                h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));  // t08 - UI command
+                h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());     // t11 - catch-all upper
                 h.Settle();
-                h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());             // t06 — catch-all lower
-                h.Inject(h.A, new ControlFieldError());                           // t13 — control-field error
-                h.Inject(h.A, new InfoNotPermittedInFrame());                     // t14 — info-not-permitted
-                h.Inject(h.A, new UOrSFrameLengthError());                        // t15 — U/S length error
+                h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());             // t06 - catch-all lower
+                h.Inject(h.A, new ControlFieldError());                           // t13 - control-field error
+                h.Inject(h.A, new InfoNotPermittedInFrame());                     // t14 - info-not-permitted
+                h.Inject(h.A, new UOrSFrameLengthError());                        // t15 - U/S length error
                 h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "y"u8).ToBytes());                    // t12_ui_received_no
                 h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "z"u8, pollFinal: true).ToBytes());    // t12_ui_received_yes
                 h.InjectFrameBytes(h.A, Ax25Frame.Ua(la, re, finalBit: false).ToBytes());                 // t04_ua_received_no → DL-ERROR D
@@ -1047,7 +1047,7 @@ public class TransitionCoverageTests
             Collect(h);
         }
         // 30c. SABME arriving while in AwaitingConnection → AwaitingV22Connection
-        // (t17_sabme_received). Fresh rig — this one leaves the state.
+        // (t17_sabme_received). Fresh rig - this one leaves the state.
         {
             var h = New();
             h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && (f.Control & 0xEF) == 0x63;
@@ -1061,7 +1061,7 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 31. AwaitingRelease (figc4.3) full column — extend block 13. Hold A there
+        // 31. AwaitingRelease (figc4.3) full column - extend block 13. Hold A there
         // (drop B's UA to the DISC) and walk the remaining primitive / catch-all /
         // error columns, the SABME / DM(F=0) receives, the UI receives, and the
         // grouped "I, RR, RNR, REJ or SREJ command" column (P=0 and P=1).
@@ -1073,14 +1073,14 @@ public class TransitionCoverageTests
             h.Settle();
             if (h.A.State == "AwaitingRelease")
             {
-                h.A.Session.PostEvent(new DlDisconnectRequest());                  // t01 — redundant disconnect
-                h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));  // t05 — UI command
-                h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());     // t06 — catch-all upper
+                h.A.Session.PostEvent(new DlDisconnectRequest());                  // t01 - redundant disconnect
+                h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));  // t05 - UI command
+                h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());     // t06 - catch-all upper
                 h.Settle();
-                h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());             // t04 — catch-all lower
-                h.Inject(h.A, new ControlFieldError());                           // t07 — control-field error
-                h.Inject(h.A, new InfoNotPermittedInFrame());                     // t08 — info-not-permitted
-                h.Inject(h.A, new UOrSFrameLengthError());                        // t09 — U/S length error
+                h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());             // t04 - catch-all lower
+                h.Inject(h.A, new ControlFieldError());                           // t07 - control-field error
+                h.Inject(h.A, new InfoNotPermittedInFrame());                     // t08 - info-not-permitted
+                h.Inject(h.A, new UOrSFrameLengthError());                        // t09 - U/S length error
                 h.InjectFrameBytes(h.A, Ax25Frame.Sabme(la, re).ToBytes());                              // t11_sabme_received
                 h.InjectFrameBytes(h.A, Ax25Frame.Dm(la, re, finalBit: false).ToBytes());                // t13_dm_received_no
                 h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "y"u8).ToBytes());                    // t14_ui_received_no
@@ -1122,7 +1122,7 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 33. Connected (figc4.4) — the mod-8 (version 2.0) receive columns. The
+        // 33. Connected (figc4.4) - the mod-8 (version 2.0) receive columns. The
         // extended battery routes every connect through AwaitingV22Connection, so
         // the version_2_2=No branches of the receive columns never fire there. A
         // plain mod-8 connect stays version 2.0, so out-of-window supervisory
@@ -1187,7 +1187,7 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 34. Connected mod-128 — the info-not-permitted / U-or-S-length columns'
+        // 34. Connected mod-128 - the info-not-permitted / U-or-S-length columns'
         // version_2_2=Yes arm (t10_info_not_permitted_in_frame_yes,
         // t11_u_or_s_frame_length_error_yes), reachable by direct injection.
         {
@@ -1197,7 +1197,7 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 34b. Connected — the remaining figc4.4 columns the blocks above miss.
+        // 34b. Connected - the remaining figc4.4 columns the blocks above miss.
         // DL-CONNECT on a v2.2 (extended) link → AwaitingV22Connection (t07_yes).
         { var h = New(extended: true, k: 8); h.Connect(); h.A.Session.PostEvent(new DlConnectRequest()); Collect(h); }
         // DL-FLOW-ON while own-busy AND T1 running (an I-frame outstanding) →
@@ -1235,8 +1235,8 @@ public class TransitionCoverageTests
         }
 
         // ──────────────────────────────────────────────────────────────────
-        // 35–38. TimerRecovery (figc4.5) receive columns, both moduli. The mod-128
-        // injection block (18b–18d) already drives many of these; here we fill the
+        // 35-38. TimerRecovery (figc4.5) receive columns, both moduli. The mod-128
+        // injection block (18b-18d) already drives many of these; here we fill the
         // command-vs-response × P/F × N(R)-window matrix the well-behaved peer can't
         // produce on cue, including the mod-8 (version 2.0) re-establish arms.
         // ──────────────────────────────────────────────────────────────────
@@ -1269,7 +1269,7 @@ public class TransitionCoverageTests
             return h;
         }
 
-        // 35. TimerRecovery RR receive column (figc4.5 t18) — the branches the
+        // 35. TimerRecovery RR receive column (figc4.5 t18) - the branches the
         // mod-128 block doesn't reach. N(R)=5 with V(a)=V(s)=0..2 is out of window.
         // bare RR response F=0, N(R) out of window → t18_rr_received_no_no_no.
         { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: false, pf: false, ext: false)); Collect(h); }
@@ -1314,7 +1314,7 @@ public class TransitionCoverageTests
         // REJ response F=1, N(R) in window, V(s)==N(R) (complete) → t23_rej_received_yes_yes_yes.
         { var h = InTimerRecovery(1); h.InjectFrameBytes(h.A, Rej(h.A, nr: 1, isCmd: false, pf: true, ext: false)); Collect(h); }
 
-        // 38. TimerRecovery SREJ receive column (figc4.5 t24) — the branches the
+        // 38. TimerRecovery SREJ receive column (figc4.5 t24) - the branches the
         // mod-128 block doesn't reach.
         // SREJ command (response=No), N(R) in window, P=1, V(s)==N(R) → t24_srej_received_no_yes_yes_yes.
         { var h = InTimerRecovery(1, srej: true); h.InjectFrameBytes(h.A, Srej(h.A, nr: 1, isCmd: true, pf: true, ext: false)); Collect(h); }
@@ -1336,7 +1336,7 @@ public class TransitionCoverageTests
         { var h = IdleInTimerRecovery(srej: true); if (h.A.State == "TimerRecovery") { h.InjectFrameBytes(h.A, Srej(h.A, nr: 0, isCmd: true, pf: false, ext: false)); } Collect(h); }
         { var h = IdleInTimerRecovery(srej: true); if (h.A.State == "TimerRecovery") { h.InjectFrameBytes(h.A, Srej(h.A, nr: 0, isCmd: false, pf: false, ext: false)); } Collect(h); }
 
-        // 39. TimerRecovery I-received column (figc4.5 t22) — the branches the
+        // 39. TimerRecovery I-received column (figc4.5 t22) - the branches the
         // mod-128 block doesn't reach (all driven mod-8 here; ids are mode-independent).
         // I arriving as a RESPONSE (command=No) → t22_i_received_no.
         { var h = InTimerRecovery(1); h.InjectFrameBytes(h.A, IResponse(h.A, nr: 0, ns: 0, payload: 0x22, pf: false, ext: false)); Collect(h); }
@@ -1409,20 +1409,20 @@ public class TransitionCoverageTests
         // ──────────────────────────────────────────────────────────────────
         // 41. GENUINELY-UNREACHABLE residue (documented, not forced). These 13
         // transitions exist in the figc4.x figures but cannot fire end-to-end
-        // through this runtime — driving them would require an artificial poke that
+        // through this runtime - driving them would require an artificial poke that
         // contradicts the runtime's own invariants, so they are deliberately left
         // as documented misses rather than papered over:
         //
         //  • The IFramePopsOffQueue synthesiser (Ax25Session.DrainIFrameQueue) only
         //    emits a pop in Connected / TimerRecovery, and only when the peer is
         //    NOT busy and the send window is NOT full (CanTransmitIFrame). So:
-        //      AwaitingConnection/t10_i_frame_pops_off_queue_yes, _no       — no pop outside Conn/TR
-        //      AwaitingV22Connection/t05_i_frame_pops_off_queue_yes, _no    — ditto
-        //      Connected/t03_i_frame_pops_off_queue_yes                     — peer-busy at pop never synthesised
-        //      Connected/t03_i_frame_pops_off_queue_no_yes                  — window-full at pop never synthesised
-        //      TimerRecovery/t03_i_frame_pops_off_queue_yes                 — peer-busy at pop never synthesised
-        //      TimerRecovery/t03_i_frame_pops_off_queue_no_yes              — window-full at pop never synthesised
-        //      TimerRecovery/t03_i_frame_pops_off_queue_no_no_no           — T1 is always running in TR, so the
+        //      AwaitingConnection/t10_i_frame_pops_off_queue_yes, _no       - no pop outside Conn/TR
+        //      AwaitingV22Connection/t05_i_frame_pops_off_queue_yes, _no    - ditto
+        //      Connected/t03_i_frame_pops_off_queue_yes                     - peer-busy at pop never synthesised
+        //      Connected/t03_i_frame_pops_off_queue_no_yes                  - window-full at pop never synthesised
+        //      TimerRecovery/t03_i_frame_pops_off_queue_yes                 - peer-busy at pop never synthesised
+        //      TimerRecovery/t03_i_frame_pops_off_queue_no_yes              - window-full at pop never synthesised
+        //      TimerRecovery/t03_i_frame_pops_off_queue_no_no_no           - T1 is always running in TR, so the
         //                                                                     T1-not-running pop arm can't fire
         //  • Layer3Initiated is set true by the only transition that ENTERS each of
         //    these initiator-only establishment states (figc4.1/4.2's DL-CONNECT
@@ -1432,7 +1432,7 @@ public class TransitionCoverageTests
         //      AwaitingConnection/t09_dl_data_request_no
         //      AwaitingV22Connection/t04_dl_data_request_no
         //  • TimerRecovery/t06_dl_flow_on_request_yes_no needs own_receiver_busy ∧
-        //    ¬T1_running — but T1 is, by definition, always running while recovering,
+        //    ¬T1_running - but T1 is, by definition, always running while recovering,
         //    so the T1-not-running arm of the flow-on column can't fire there.
         // ──────────────────────────────────────────────────────────────────
 
@@ -1476,7 +1476,7 @@ public class TransitionCoverageTests
     // ─── Mode-parametric supervisory / I frame builders (addressed to the target
     // as if its peer sent them). The TimerRecovery / Connected receive columns
     // split on command-vs-response and P/F as well as N(R)-window, so the ledger
-    // needs to build each variant explicitly — a well-behaved peer never sends a
+    // needs to build each variant explicitly - a well-behaved peer never sends a
     // bare RR-response-F=0, an RR-command-P=1 with N(R) out of window, etc. on
     // cue, but the figc4.4/figc4.5 figures all have a column for it. ──
 
@@ -1494,7 +1494,7 @@ public class TransitionCoverageTests
 
     // An I-frame addressed to the target but encoded as a RESPONSE (C/R bits
     // flipped). §4.3.1 makes I-frames always commands, so the factory hardcodes
-    // command=Yes and a conformant peer never sends an I-response — but figc4.4
+    // command=Yes and a conformant peer never sends an I-response - but figc4.4
     // t26_i_received_no / figc4.5 t22_i_received_no are exactly the "I arrived as
     // a response" (command=No) error column, reachable only by crafting the bytes.
     private static byte[] IResponse(TwoStationHarness.Endpoint t, byte nr, byte ns, byte payload, bool pf, bool ext)

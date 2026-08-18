@@ -10,7 +10,7 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// Boots the real <c>Packet.Node</c> composition root and exercises the auth
 /// foundation: login, the setup probe + bootstrap, and (in a second WAF with the
-/// flag on) the scope gates. Mirrors <see cref="ReadApiTests"/>/<see cref="ConfigWriteApiTests"/> —
+/// flag on) the scope gates. Mirrors <see cref="ReadApiTests"/>/<see cref="ConfigWriteApiTests"/> -
 /// a temp YAML config with telnet disabled (no fixed TCP port under the WAF) and
 /// the db pointed at the same temp dir.
 /// </summary>
@@ -62,7 +62,7 @@ public sealed class AuthApiTests : IDisposable
     // Config now lives in pdn.db (config-in-DB, #473), so flipping auth on between boots is
     // no longer a YAML-file rewrite (the file is read once on first boot, then vestigial). To
     // turn auth ON before a re-boot, persist the auth-on config through the live write seam
-    // (PUT /config/raw is ungated while auth is still off) — the DB then carries it and the
+    // (PUT /config/raw is ungated while auth is still off) - the DB then carries it and the
     // next boot loads it. Replaces the old "rewrite the file + reboot" idiom.
     private static async Task FlipAuthOnViaApi(HttpClient client)
     {
@@ -141,7 +141,7 @@ public sealed class AuthApiTests : IDisposable
     {
         // pdn.db under a directory that does not exist → SQLite cannot open it, so
         // BOTH the routing store and the user store degrade (warn + disable). The
-        // host must still BOOT and serve — not abort at startup. Regression guard:
+        // host must still BOOT and serve - not abort at startup. Regression guard:
         // with no signing key the token service is unregistered, and the login
         // handler's [FromServices] JwtTokenService? must resolve to null (→ 503)
         // rather than failing minimal-API parameter inference and crashing the host.
@@ -230,7 +230,7 @@ public sealed class AuthApiTests : IDisposable
 
         // A near-immediate replay of the just-consumed token is the legitimate client
         // racing itself (two tabs / a retried silent refresh). Within the reuse-leeway
-        // window it is TOLERATED — it rotates again rather than burning the family and
+        // window it is TOLERATED - it rotates again rather than burning the family and
         // logging the user out. (This was the "logged out every ~hour" REUSE-DETECTED
         // bug; the strict-after-leeway theft response is unit-tested in
         // RefreshTokenServiceTests on a controllable clock.)
@@ -238,7 +238,7 @@ public sealed class AuthApiTests : IDisposable
             new { refreshToken }, Web);
         replay.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // The earlier successor was NOT burned by that replay — the session survives and
+        // The earlier successor was NOT burned by that replay - the session survives and
         // it still rotates.
         var successorStillWorks = await client.PostAsJsonAsync("/api/v1/auth/refresh",
             new { refreshToken = rotated }, Web);

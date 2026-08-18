@@ -166,7 +166,7 @@ public sealed class KissDecoder
     private bool TryFinish(out KissFrame frame)
     {
         // Spec requires at least a command byte. Anything shorter is
-        // framing garbage — drop it.
+        // framing garbage - drop it.
         if (currentFrame.Count < 1)
         {
             frame = default;

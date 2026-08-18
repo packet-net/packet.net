@@ -8,14 +8,14 @@ using Packet.Node.Core.Hosting;
 namespace Packet.Node.Api;
 
 /// <summary>
-/// The capability-doctor surface of the pdn node API — an operator's "Check radio setup" for one
+/// The capability-doctor surface of the pdn node API - an operator's "Check radio setup" for one
 /// port. Two forms, two scopes:
 /// <list type="bullet">
-///   <item><c>GET /api/v1/ports/{id}/doctor</c> — <b>safe</b>, <b>read</b>-scoped. Runs only the
+///   <item><c>GET /api/v1/ports/{id}/doctor</c> - <b>safe</b>, <b>read</b>-scoped. Runs only the
 ///     non-transmitting probes (TNC identity/firmware/DIPs/running mode, radio identity, GETRSSI
 ///     availability). The transmitting probes are reported <c>unknown</c> "requires a brief
 ///     transmit". No RF is generated.</item>
-///   <item><c>POST /api/v1/ports/{id}/doctor?interrupt=true</c> — <b>admin</b>-scoped and
+///   <item><c>POST /api/v1/ports/{id}/doctor?interrupt=true</c> - <b>admin</b>-scoped and
 ///     <b>audited</b>. With <c>interrupt=true</c> it additionally runs the transmitting probes
 ///     (TXDELAY software-control, the SDM-enabled check, TNC↔radio pairing), which <b>briefly key
 ///     the transmitter and perturb TXDELAY</b>. Mirrors the other mutating/transmitting endpoints
@@ -79,7 +79,7 @@ public static class PdnPortDoctorApi
                 return Results.NotFound();
             }
 
-            // The interrupt form keys the transmitter — audit who ran the full check on which port.
+            // The interrupt form keys the transmitter - audit who ran the full check on which port.
             audit.RecordRest(ctx, clock, "port_doctor", id, "requested", $"interrupt={interrupt}");
 
             var report = await runner.RunAsync(

@@ -11,8 +11,8 @@ namespace Packet.Node.Tests.Integration;
 /// Boots the real <c>Packet.Node</c> composition root and exercises
 /// <c>GET /api/v1/traffic</c> (the persisted traffic log's read surface) plus the
 /// <c>traffic</c> health block on <c>GET /api/v1/status</c>. Mirrors
-/// <see cref="ReadApiTests"/> — a temp YAML config with telnet disabled, the db
-/// paths pointed at the same temp dir — and pre-seeds the traffic store on disk so
+/// <see cref="ReadApiTests"/> - a temp YAML config with telnet disabled, the db
+/// paths pointed at the same temp dir - and pre-seeds the traffic store on disk so
 /// the endpoint's row shape, ordering, and filters are asserted against real rows.
 /// </summary>
 [Trait("Category", "Node")]
@@ -59,7 +59,7 @@ public sealed class TrafficApiTests : IDisposable
     }
 
     // Recent wall-clock instants (the node's startup prune enforces the 14-day
-    // retention against the real clock — fixed dates would age out of the fixture).
+    // retention against the real clock - fixed dates would age out of the fixture).
     private static readonly DateTimeOffset Base = DateTimeOffset.UtcNow.AddMinutes(-5);
 
     private static DateTimeOffset At(int seconds) => Base.AddSeconds(seconds);

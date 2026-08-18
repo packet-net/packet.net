@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Console;
 /// <summary>
 /// Drives the node console over a single <see cref="INodeConnection"/>: emits the
 /// welcome banner, then loops reading lines, parsing them to typed
-/// <see cref="NodeCommand"/>s, and acting on them — re-prompting after each — until
+/// <see cref="NodeCommand"/>s, and acting on them - re-prompting after each - until
 /// the user types <c>Bye</c> or the connection drops. Identical behaviour over
 /// AX.25 and telnet because it speaks only to <see cref="INodeConnection"/>.
 /// </summary>
@@ -74,13 +74,13 @@ public sealed partial class NodeCommandService : INodeApplication
         // Send the banner AND the first prompt as ONE write (one I-frame), not two
         // back-to-back. On a slow half-duplex channel each extra I-frame is extra
         // air occupancy right when the freshly-connected peer wants to send its
-        // first command — two frames is two chances to collide with it (#292). The
+        // first command - two frames is two chances to collide with it (#292). The
         // per-command prompt below is still its own write (it follows our reply, so
         // it does not contend with an inbound frame the way the connect burst does).
         await WriteBannerAndPromptAsync(connection, cancellationToken).ConfigureAwait(false);
 
         var assembler = new LineAssembler();
-        // Per-connection elevation state — created here so it lives exactly as long as this
+        // Per-connection elevation state - created here so it lives exactly as long as this
         // session and is never shared with another connection.
         var sysop = new SysopSession();
         try
@@ -129,8 +129,8 @@ public sealed partial class NodeCommandService : INodeApplication
 
     /// <summary>
     /// The console <b>is application #0</b>: it satisfies <see cref="INodeApplication"/> so the
-    /// node-prompt session is just "the first app". The launch context is unused — the console
-    /// reads identity / ports / services from its <see cref="NodeConsoleEnvironment"/> — so this
+    /// node-prompt session is just "the first app". The launch context is unused - the console
+    /// reads identity / ports / services from its <see cref="NodeConsoleEnvironment"/> - so this
     /// delegates to the existing prompt loop unchanged.
     /// </summary>
     Task INodeApplication.RunAsync(INodeConnection session, NodeAppContext context, CancellationToken cancellationToken)
@@ -219,7 +219,7 @@ public sealed partial class NodeCommandService : INodeApplication
                 return DispatchOutcome.Continue;
 
             case UnknownCommand unknown:
-                // A verb the console doesn't own may be a registered application — built-in
+                // A verb the console doesn't own may be a registered application - built-in
                 // verbs are matched first (above), so an app can never shadow one. If it
                 // launches, control returns here when the app exits and we re-prompt.
                 if (await TryLaunchAppAsync(connection, unknown, ct).ConfigureAwait(false))
@@ -307,7 +307,7 @@ public sealed partial class NodeCommandService : INodeApplication
         }
     }
 
-    // ─── Application launch (the app platform — console as app #0 launches app N) ─────
+    // ─── Application launch (the app platform - console as app #0 launches app N) ─────
     // An unknown verb that matches a registered application launches it over THIS session via
     // the application host (out-of-process; the node shares no code with the app). The app
     // gets the connecting callsign / transport / arrival port / args; control returns here to
@@ -331,7 +331,7 @@ public sealed partial class NodeCommandService : INodeApplication
         var app = host.Resolve(parts[0]);
         if (app is null)
         {
-            // Not a session app — it may be a SERVICE app's command verb (docs/app-packages.md
+            // Not a session app - it may be a SERVICE app's command verb (docs/app-packages.md
             // § Application packet identity). A service app binds a callsign over RHP; typing its
             // verb at the prompt loopback-connects to that callsign, the same path C <callsign>
             // takes. Resolved against the live config + the node's callsign authority.
@@ -354,7 +354,7 @@ public sealed partial class NodeCommandService : INodeApplication
             Transport = connection.TransportKind,
             PortId = env.OutboundConnector?.PortId,   // the working port (== arrival port for same-port AX.25)
             Args = args,
-            SysopElevated = false,                    // reserved — apps launch from the unelevated prompt in slice 1
+            SysopElevated = false,                    // reserved - apps launch from the unelevated prompt in slice 1
         };
 
         await host.RunAsync(app, connection, context, ct).ConfigureAwait(false);
@@ -371,7 +371,7 @@ public sealed partial class NodeCommandService : INodeApplication
         await connection.WriteAsync(Encoding.UTF8.GetBytes(prompt), ct).ConfigureAwait(false);
     }
 
-    // Banner line + first prompt in a SINGLE write — one I-frame on the air rather
+    // Banner line + first prompt in a SINGLE write - one I-frame on the air rather
     // than two back-to-back at the contended just-connected moment (#292).
     private async Task WriteBannerAndPromptAsync(INodeConnection connection, CancellationToken ct)
     {
@@ -404,7 +404,7 @@ public sealed partial class NodeCommandService : INodeApplication
         return sb.ToString();
     }
 
-    // The radio ports — split out of NODES into its own PORTS command. Read-only; no elevation.
+    // The radio ports - split out of NODES into its own PORTS command. Read-only; no elevation.
     private string PortsText()
     {
         var ports = env.Ports;
@@ -422,7 +422,7 @@ public sealed partial class NodeCommandService : INodeApplication
         var health = env.PortHealth?.Snapshot();
 
         var sb = new StringBuilder();
-        // The leading number is the 1-indexed config-order port number — the same one CONNECT
+        // The leading number is the 1-indexed config-order port number - the same one CONNECT
         // takes to dial out a specific port (C <n> <call>); see PortSupervisor's router
         // (ports[n-1]) and ConnectCommand.Port. Snapshot() is in that same config order.
         sb.Append("Ports:  (the number is for C <n> <call>)");
@@ -498,11 +498,11 @@ public sealed partial class NodeCommandService : INodeApplication
     }
 
     // Right-pad a column to a fixed width (left-aligned), never truncating an over-long value (a
-    // long callsign just pushes the next column — readability over strict alignment).
+    // long callsign just pushes the next column - readability over strict alignment).
     private static string Pad(string value, int width) =>
         value.Length >= width ? value : value + new string(' ', width - value.Length);
 
-    // The per-peer AX.25 capability cache (read-only; no elevation — it leaks no secret, only
+    // The per-peer AX.25 capability cache (read-only; no elevation - it leaks no secret, only
     // which neighbours speak v2.2 / answer an XID). One line per (port, peer):
     //   port:peer  v2.2|v2.0|v2.2?  SREJ|REJ|SREJ?  probed <h:mm:ss>  [refused <h:mm:ss>]
     // A null (never-probed) dimension renders with a trailing "?" (v2.2? / SREJ?); LastRefused is
@@ -544,7 +544,7 @@ public sealed partial class NodeCommandService : INodeApplication
     }
 
     // Format a past instant as a relative "h:mm:ss" ago string (matches the REST/MCP
-    // projections' style — PdnReadApi.RelativeAgo). A future/zero instant clamps to "0:00:00".
+    // projections' style - PdnReadApi.RelativeAgo). A future/zero instant clamps to "0:00:00".
     private static string RelativeAgo(DateTimeOffset now, DateTimeOffset then)
     {
         var ago = now - then;
@@ -600,7 +600,7 @@ public sealed partial class NodeCommandService : INodeApplication
                     sb.Append(" via ").Append(r.Neighbour).Append('/').Append(r.PortId)
                       .Append('(').Append(r.Quality).Append(',').Append(r.Obsolescence).Append(')');
                     // Surface the INP3 measured-time metric when the overlay has learned one for
-                    // this route (a RIF time-route) — the time-space companion to the quality pair.
+                    // this route (a RIF time-route) - the time-space companion to the quality pair.
                     if (r.Inp3 is { } inp3)
                     {
                         sb.Append(" [inp3 ").Append(inp3.TargetTimeMs).Append("ms/")
@@ -673,7 +673,7 @@ public sealed partial class NodeCommandService : INodeApplication
         // callsign, so it is SYSOP <user> <code>.
         UserRecord? user;
         string? code;
-        string subject;   // for the audit line (callsign or username) — never the code
+        string subject;   // for the audit line (callsign or username) - never the code
         if (connection.TransportKind == NodeTransportKind.Telnet)
         {
             if (string.IsNullOrWhiteSpace(cmd.Token1) || string.IsNullOrWhiteSpace(cmd.Token2))
@@ -794,8 +794,8 @@ public sealed partial class NodeCommandService : INodeApplication
         await WriteLineAsync(connection, result.Message, ct).ConfigureAwait(false);
     }
 
-    // CAP CLEAR <port:peer> — forget one cached capability record. Operate-scoped (it mutates
-    // node state — the next dial to that peer re-probes — but persists nothing config-level, so
+    // CAP CLEAR <port:peer> - forget one cached capability record. Operate-scoped (it mutates
+    // node state - the next dial to that peer re-probes - but persists nothing config-level, so
     // operate, not admin, matching KICK). The target is the same port:peer id CAP renders.
     private async Task HandleClearCapabilityAsync(INodeConnection connection, ClearCapabilityCommand clear, SysopSession sysop, CancellationToken ct)
     {
@@ -811,7 +811,7 @@ public sealed partial class NodeCommandService : INodeApplication
             return;
         }
 
-        // Split the id on the LAST ':' — a callsign carries no colon, but a port id could; the
+        // Split the id on the LAST ':' - a callsign carries no colon, but a port id could; the
         // peer is the final component and the port is everything before it.
         int sep = clear.Target.LastIndexOf(':');
         if (sep <= 0 || sep == clear.Target.Length - 1)
@@ -835,7 +835,7 @@ public sealed partial class NodeCommandService : INodeApplication
     }
 
     // The gate every privileged command passes through: the session must be wired for
-    // sysop, currently elevated (TTL not lapsed — checked against the injected clock), and
+    // sysop, currently elevated (TTL not lapsed - checked against the injected clock), and
     // hold a scope that satisfies the required one. Writes the refusal itself and returns
     // false so the caller just returns.
     private async Task<bool> RequireElevatedAsync(INodeConnection connection, SysopSession sysop, string requiredScope, CancellationToken ct)
@@ -901,7 +901,7 @@ public sealed partial class NodeCommandService : INodeApplication
     [LoggerMessage(Level = LogLevel.Warning, Message = "Console session for {PeerId} ended on an error.")]
     private partial void LogConsoleError(Exception ex, string peerId);
 
-    // Sysop audit — subject is the callsign (AX.25) or username (telnet); the code is
+    // Sysop audit - subject is the callsign (AX.25) or username (telnet); the code is
     // NEVER logged. Elevation grants are Information; denials are Warning.
     [LoggerMessage(Level = LogLevel.Information, Message = "Sysop elevation granted to {Subject} (scope {Scope}) over {PeerId}.")]
     private partial void LogSysopElevated(string subject, string scope, string peerId);

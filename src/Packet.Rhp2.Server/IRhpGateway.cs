@@ -6,7 +6,7 @@ namespace Packet.Rhp2.Server;
 /// The seam between the RHPv2 wire server and the node's packet engine: open an outbound
 /// AX.25 connected-mode session on a named port and hand it back as the node's standard
 /// transport-agnostic byte stream. The host (Packet.Node) implements this over the running
-/// <c>PortSupervisor</c>; the server itself never touches AX.25 — it is a JSON-wire ↔
+/// <c>PortSupervisor</c>; the server itself never touches AX.25 - it is a JSON-wire ↔
 /// <see cref="INodeConnection"/> translator (see <c>docs/rhp2-server.md</c>).
 /// </summary>
 public interface IRhpGateway
@@ -16,11 +16,11 @@ public interface IRhpGateway
     /// </summary>
     /// <param name="portLabel">The operator-defined port id (e.g. <c>"vhf-2m"</c>), matched
     /// case-insensitively against the configured ports. Null resolves a locally-registered app
-    /// (loopback) or errors — it does NOT silently default to the first port for an RF dial.</param>
+    /// (loopback) or errors - it does NOT silently default to the first port for an RF dial.</param>
     /// <param name="local">The client-requested local (originating) callsign, or null for the
     /// node's own. R-2 requires this to be the node callsign (see the named limitation).</param>
     /// <param name="remote">The destination callsign text (validated by the gateway).</param>
-    /// <exception cref="RhpGatewayException">On any open failure — carries the RHPv2
+    /// <exception cref="RhpGatewayException">On any open failure - carries the RHPv2
     /// <c>errCode</c>/<c>errText</c> the server should put on the <c>openReply</c>.</exception>
     Task<INodeConnection> OpenAx25StreamAsync(
         string? portLabel, string? local, string remote, CancellationToken cancellationToken = default);
@@ -32,10 +32,10 @@ public interface IRhpGateway
     /// id of the port it arrived on (the <c>accept.port</c> string). Dispose the returned
     /// registration to stop listening (live sessions are unaffected).
     /// </summary>
-    /// <param name="portLabel">Restrict to one port (by id), or null for all ports —
+    /// <param name="portLabel">Restrict to one port (by id), or null for all ports -
     /// the wire's null bind port.</param>
-    /// <exception cref="RhpGatewayException">6 — not a valid callsign; 9 — already
-    /// listening / the node's own callsign; 10 — no such port.</exception>
+    /// <exception cref="RhpGatewayException">6 - not a valid callsign; 9 - already
+    /// listening / the node's own callsign; 10 - no such port.</exception>
     IDisposable RegisterListener(
         string? portLabel, string local, Func<INodeConnection, string, Task> onAccepted);
 
@@ -52,7 +52,7 @@ public interface IRhpGateway
     /// <param name="info">The UI frame's information field.</param>
     /// <param name="pid">The Layer-3 PID (e.g. <c>0xF0</c> no-L3, <c>0xCC</c> IP).</param>
     /// <exception cref="RhpGatewayException">On a bad port (10) or an invalid local (6) /
-    /// remote (7) callsign — the same vocabulary as <see cref="OpenAx25StreamAsync"/>.</exception>
+    /// remote (7) callsign - the same vocabulary as <see cref="OpenAx25StreamAsync"/>.</exception>
     Task SendUiAsync(
         string? portLabel, string local, string remote, ReadOnlyMemory<byte> info, byte pid,
         CancellationToken ct = default);
@@ -61,14 +61,14 @@ public interface IRhpGateway
     /// Register for inbound AX.25 <b>UI datagrams</b> (the wire's DGRAM <c>recv</c> path):
     /// every received UI frame on the scoped port(s) is handed to <paramref name="onReceived"/>
     /// as a <see cref="UiDatagram"/> with the frame's true source / destination / PID / info and
-    /// the arrival port id. This tap is <b>promiscuous</b> — it hears broadcast UI
+    /// the arrival port id. This tap is <b>promiscuous</b> - it hears broadcast UI
     /// (APRS, IP-over-AX.25) regardless of the frame's destination, exactly how the NET/ROM
-    /// service taps NODES — so a bound RHP dgram socket sees all UI on its port and the client
+    /// service taps NODES - so a bound RHP dgram socket sees all UI on its port and the client
     /// filters by <c>recv.local</c>. Dispose the returned registration to stop hearing.
     /// </summary>
-    /// <param name="portLabel">Restrict to one port (by id), or null for all ports —
+    /// <param name="portLabel">Restrict to one port (by id), or null for all ports -
     /// the wire's null bind port.</param>
-    /// <exception cref="RhpGatewayException">10 — no such port.</exception>
+    /// <exception cref="RhpGatewayException">10 - no such port.</exception>
     IDisposable RegisterUiListener(string? portLabel, Func<UiDatagram, Task> onReceived);
 }
 
@@ -95,7 +95,7 @@ public sealed record UiDatagram(
 /// <summary>
 /// An open failure expressed in the wire's own terms: the RHPv2 <c>errCode</c> (see PWP-0222)
 /// plus the human <c>errText</c>. The server copies both onto the failed reply verbatim, so
-/// the gateway — the part that knows *why* (no such port, bad callsign, no route) — owns the
+/// the gateway - the part that knows *why* (no such port, bad callsign, no route) - owns the
 /// error vocabulary and the wire loop stays mechanical.
 /// </summary>
 public sealed class RhpGatewayException : Exception

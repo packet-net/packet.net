@@ -11,7 +11,7 @@ namespace Packet.Node.Tests.Beacons;
 /// <summary>
 /// The ID-beacon scheduler. Driven on a <see cref="FakeTimeProvider"/> through a
 /// synthetic <see cref="IBeaconChannel"/> fake that records each transmit (destination,
-/// PID, info) — no modem, no live <see cref="Packet.Ax25.Session.Ax25Listener"/>, fully
+/// PID, info) - no modem, no live <see cref="Packet.Ax25.Session.Ax25Listener"/>, fully
 /// deterministic. Covers: enabled-arms-and-fires, disabled-is-silent (the no-regression
 /// contract), per-port override beats the default, hot-reload re-arms, attach/detach
 /// stops, and the default-config-transmits-nothing assertion.
@@ -85,7 +85,7 @@ public sealed class BeaconServiceTests
     public async Task Disabled_beacon_transmits_nothing_however_long_the_clock_runs()
     {
         var clock = new FakeTimeProvider();
-        // Default BeaconConfig() is disabled — the no-regression contract.
+        // Default BeaconConfig() is disabled - the no-regression contract.
         var cfg = new TestConfigProvider(Config(new BeaconConfig(), Port("vhf")));
         await using var svc = new BeaconService(cfg, clock);
         var channel = new FakeChannel(Callsign.Parse("M0LTE-1"));
@@ -100,7 +100,7 @@ public sealed class BeaconServiceTests
     [Fact]
     public async Task A_node_with_no_beacon_config_at_all_transmits_nothing()
     {
-        // The default NodeConfig.Beacon (no per-port override) — the as-shipped shape.
+        // The default NodeConfig.Beacon (no per-port override) - the as-shipped shape.
         var clock = new FakeTimeProvider();
         var cfg = new TestConfigProvider(new NodeConfig
         {
@@ -160,7 +160,7 @@ public sealed class BeaconServiceTests
     public async Task Per_port_override_can_silence_a_port_the_default_would_beacon()
     {
         var clock = new FakeTimeProvider();
-        // System default ON; the port override forces it OFF — the flag is authoritative.
+        // System default ON; the port override forces it OFF - the flag is authoritative.
         var cfg = new TestConfigProvider(Config(
             new BeaconConfig { Enabled = true, IntervalMinutes = 5, Text = "default on" },
             Port("vhf", new PortBeaconConfig { Enabled = false })));

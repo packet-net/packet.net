@@ -2,7 +2,7 @@ namespace Packet.Node.Core.Configuration;
 
 /// <summary>
 /// The node's system-default ID beacon: a periodic connectionless AX.25 UI frame
-/// (an "ID"/presence broadcast) transmitted on each port. <b>Default-OFF</b> —
+/// (an "ID"/presence broadcast) transmitted on each port. <b>Default-OFF</b> -
 /// <see cref="Enabled"/> defaults <c>false</c> so a stock node never transmits an
 /// unsolicited beacon until the operator opts in (the no-regression contract). A
 /// port may override this with <see cref="PortConfig.Beacon"/>.
@@ -10,14 +10,14 @@ namespace Packet.Node.Core.Configuration;
 public sealed record BeaconConfig
 {
     /// <summary>Whether the node beacons on its ports by default. Default
-    /// <c>false</c> — a node that has never beaconed must keep not beaconing.</summary>
+    /// <c>false</c> - a node that has never beaconed must keep not beaconing.</summary>
     public bool Enabled { get; init; }
 
     /// <summary>Minutes between beacon transmissions on a port. Default 30.</summary>
     public int IntervalMinutes { get; init; } = 30;
 
     /// <summary>The beacon's information text. <c>{node}</c> (alias else callsign)
-    /// and <c>{call}</c> (the station callsign) placeholders are expanded — exactly
+    /// and <c>{call}</c> (the station callsign) placeholders are expanded - exactly
     /// like the services banner / prompt. Default <c>"{node} pdn node"</c>.</summary>
     public string Text { get; init; } = "{node} pdn node";
 }
@@ -25,11 +25,11 @@ public sealed record BeaconConfig
 /// <summary>
 /// A per-port ID-beacon override. <see cref="Enabled"/> always wins outright; the
 /// nullable <see cref="IntervalMinutes"/> / <see cref="Text"/> fields inherit the
-/// system default (<see cref="BeaconConfig"/>) when left null — a per-field merge.
+/// system default (<see cref="BeaconConfig"/>) when left null - a per-field merge.
 /// </summary>
 public sealed record PortBeaconConfig
 {
-    /// <summary>Whether this port beacons. This flag is authoritative for the port —
+    /// <summary>Whether this port beacons. This flag is authoritative for the port -
     /// it is not merged: a port-override with <c>Enabled = false</c> silences a port
     /// even when the system default is on, and vice-versa.</summary>
     public bool Enabled { get; init; }
@@ -44,7 +44,7 @@ public sealed record PortBeaconConfig
 }
 
 /// <summary>
-/// The fully-resolved beacon for one port — the per-port override (if any) merged
+/// The fully-resolved beacon for one port - the per-port override (if any) merged
 /// over the system default. This is what the <c>BeaconService</c> arms a timer from.
 /// </summary>
 /// <param name="Enabled">Whether to beacon on this port at all.</param>

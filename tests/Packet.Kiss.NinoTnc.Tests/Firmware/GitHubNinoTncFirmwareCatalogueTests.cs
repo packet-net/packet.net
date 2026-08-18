@@ -121,7 +121,7 @@ public class GitHubNinoTncFirmwareCatalogueTests
     [Fact]
     public async Task Files_With_Major_Outside_3_4_Are_Skipped()
     {
-        // Hypothetical N9600A-v5-* — we don't know the chip mapping for
+        // Hypothetical N9600A-v5-* - we don't know the chip mapping for
         // major 5 yet, so we shouldn't guess.
         const string json = """
             [

@@ -36,24 +36,24 @@ public sealed record NinoTncBurstMeterOptions
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-///   <item><b>Decoded frames vs sent</b> — counts inbound
+///   <item><b>Decoded frames vs sent</b> - counts inbound
 ///     <see cref="TuningBurst"/>-marked frames during the window.</item>
-///   <item><b>IL2P FEC-corrected bytes delta</b> (GETALL register 11) — only
+///   <item><b>IL2P FEC-corrected bytes delta</b> (GETALL register 11) - only
 ///     meaningful in IL2P modes (prefer mode 7 for tuning sessions), and
 ///     <c>null</c> when the firmware's GETALL reply doesn't carry the
 ///     register (3.41/3.44 answer the labelled diagnostic, which lacks
 ///     it).</item>
-///   <item><b>Lost-ADC-sample delta</b> (labelled <c>LostADCSmp</c>) —
+///   <item><b>Lost-ADC-sample delta</b> (labelled <c>LostADCSmp</c>) -
 ///     clipping = gross over-deviation.</item>
-///   <item><b>Tait CCDI RSSI</b> — the median of busy-channel polls during
+///   <item><b>Tait CCDI RSSI</b> - the median of busy-channel polls during
 ///     the window; the constant RF-path check (enable PROGRESS messages on
-///     the radio so busy-gating works — without DCD the maximum poll is used
+///     the radio so busy-gating works - without DCD the maximum poll is used
 ///     instead).</item>
-///   <item><b>GETRSSI RX-audio level</b> (<b>firmware 3.41-era only —
+///   <item><b>GETRSSI RX-audio level</b> (<b>firmware 3.41-era only -
 ///     REMOVED in 3.44</b>): the RMS level of the TNC's receive audio
 ///     post-FM-demod in dB. A carrier <em>quiets</em> the audio, so lower =
 ///     more quieting = signal present. Call
-///     <see cref="ProbeAudioLevelMeterAsync"/> once at session start —
+///     <see cref="ProbeAudioLevelMeterAsync"/> once at session start -
 ///     it probes availability (bounded by
 ///     <see cref="NinoTncBurstMeterOptions.AudioLevelProbeTimeout"/>) and
 ///     captures the idle baseline before the first burst; without that call
@@ -106,7 +106,7 @@ public sealed class NinoTncBurstMeter : IBurstMeter
 
     /// <summary>
     /// Probe the TNC's GETRSSI RX-audio level meter once (<b>firmware
-    /// 3.41-era only — REMOVED in 3.44</b>, where the query gets no reply
+    /// 3.41-era only - REMOVED in 3.44</b>, where the query gets no reply
     /// and the probe times out) and, when present, capture the idle-channel
     /// baseline before the first burst. Call at session start on a quiet
     /// channel; subsequent calls return the cached verdict. Without a
@@ -146,7 +146,7 @@ public sealed class NinoTncBurstMeter : IBurstMeter
             }
             catch (TimeoutException)
             {
-                break; // answered at least once — keep what we have
+                break; // answered at least once - keep what we have
             }
         }
 
@@ -250,7 +250,7 @@ public sealed class NinoTncBurstMeter : IBurstMeter
         }
         catch (OperationCanceledException) when (windowToken.IsCancellationRequested)
         {
-            // Window elapsed — normal completion.
+            // Window elapsed - normal completion.
         }
     }
 
@@ -278,7 +278,7 @@ public sealed class NinoTncBurstMeter : IBurstMeter
         {
             return Median(busy);
         }
-        // No DCD gating available (PROGRESS off?) — the strongest poll is the
+        // No DCD gating available (PROGRESS off?) - the strongest poll is the
         // best carrier estimate on an otherwise idle channel.
         return samples.Max(s => s.Dbm);
     }
@@ -294,7 +294,7 @@ public sealed class NinoTncBurstMeter : IBurstMeter
         {
             return Median(busy);
         }
-        // No DCD gating available — a carrier QUIETS the demodulated audio,
+        // No DCD gating available - a carrier QUIETS the demodulated audio,
         // so the max-quieting (minimum) sample is the best "level while
         // signal present" estimate on an otherwise idle channel.
         return samples.Min(s => s.Db);

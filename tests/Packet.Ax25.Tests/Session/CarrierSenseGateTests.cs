@@ -9,7 +9,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <summary>
 /// The native carrier-sense CSMA gate (<see cref="CarrierSenseGate"/>, OQ-012) at the AX.25
 /// link-multiplexer's transmit path: it holds a keyup while the channel is busy and releases
-/// it when the channel clears (or a bounded wait expires — fail-open). The clear / no-source /
+/// it when the channel clears (or a bounded wait expires - fail-open). The clear / no-source /
 /// unknown paths must key up immediately so a stack with no carrier-sense wired is unchanged.
 /// </summary>
 public class CarrierSenseGateTests
@@ -48,7 +48,7 @@ public class CarrierSenseGateTests
     [Fact]
     public async Task Unknown_busy_state_fails_open_immediately()
     {
-        // null = "no report yet / cannot sense" — must not wedge traffic.
+        // null = "no report yet / cannot sense" - must not wedge traffic.
         var gate = new CarrierSenseGate(new FakeCarrierSense { ChannelBusy = null }, new FakeTimeProvider());
 
         var wait = gate.WaitForClearAsync();

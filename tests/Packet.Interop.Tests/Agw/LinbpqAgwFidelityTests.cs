@@ -19,7 +19,7 @@ namespace Packet.Interop.Tests.Agw;
 /// </para>
 /// <para>
 /// Does NOT exercise connected-mode L2 (which would need a remote
-/// peer to terminate the connect against — and BPQ would route it via
+/// peer to terminate the connect against - and BPQ would route it via
 /// its modem, not via this same AGW listener). That's a separate test
 /// once we have direwolf + kissutil bridged into net-sim, or two BPQ
 /// instances in different docker namespaces talking to each other.
@@ -55,7 +55,7 @@ public class LinbpqAgwFidelityTests
 
         // Async returns when the X-ack frame arrives. BPQ's status byte
         // is 0x01 (registered) vs XR's 0x00 (already registered); we
-        // tolerate either — the call simply asserts the server acknowledged.
+        // tolerate either - the call simply asserts the server acknowledged.
         await client.RegisterCallsignAsync("PNTEST", cts.Token);
     }
 
@@ -65,7 +65,7 @@ public class LinbpqAgwFidelityTests
         using var cts = new CancellationTokenSource(ConnectBudget);
         var client = await AgwClient.ConnectAsync(Host, AgwPort, ct: cts.Token);
         await client.DisposeAsync();
-        // No assertion needed — the test passing means dispose returned
+        // No assertion needed - the test passing means dispose returned
         // without timing out. Regression-guards the background loops
         // shutdown ordering.
     }

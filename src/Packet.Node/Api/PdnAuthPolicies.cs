@@ -5,7 +5,7 @@ namespace Packet.Node.Api;
 
 /// <summary>
 /// The web control-API authorization policies and the scope requirement behind
-/// them — the per-endpoint gates that enforce the <c>read</c>/<c>operate</c>/<c>admin</c>
+/// them - the per-endpoint gates that enforce the <c>read</c>/<c>operate</c>/<c>admin</c>
 /// scopes when <c>management.auth.enabled</c> is on, and pass through entirely when
 /// it is off.
 /// </summary>
@@ -20,7 +20,7 @@ namespace Packet.Node.Api;
 /// </para>
 /// <para>
 /// <b>Scope implication (admin ⊃ operate ⊃ read)</b> is applied here via
-/// <see cref="AuthScopes.Satisfies"/> — a single <c>scope</c> claim on the token is
+/// <see cref="AuthScopes.Satisfies"/> - a single <c>scope</c> claim on the token is
 /// compared by rank against the endpoint's required scope, so an <c>admin</c> token
 /// passes a <c>read</c> gate without carrying a <c>read</c> claim.
 /// </para>
@@ -36,14 +36,14 @@ public static class PdnAuthPolicies
     /// <summary>Policy name for the admin-scope gate.</summary>
     public const string Admin = "pdn-admin";
 
-    /// <summary>Policy name for the MCP endpoint gate — read scope, but pinned to the
+    /// <summary>Policy name for the MCP endpoint gate - read scope, but pinned to the
     /// MCP token audience so a control-API token can't reach <c>/mcp</c> and (more
     /// importantly) an MCP token can't reach the control API. Per-tool step-up to
     /// <c>operate</c> happens inside the MCP write tools.</summary>
     public const string Mcp = "pdn-mcp";
 
     /// <summary>Register the scope policies on the options. The control-API gates pin
-    /// the control-API audience; the MCP gate pins the MCP audience — so the two token
+    /// the control-API audience; the MCP gate pins the MCP audience - so the two token
     /// audiences stay segregated even though both validate on the same signing key.</summary>
     public static void AddPdnScopePolicies(this AuthorizationOptions options)
     {
@@ -56,7 +56,7 @@ public static class PdnAuthPolicies
 }
 
 /// <summary>An endpoint's required scope (one of <see cref="AuthScopes"/>) and the JWT
-/// audience the satisfying token must carry (control-API vs MCP) — so a token minted for
+/// audience the satisfying token must carry (control-API vs MCP) - so a token minted for
 /// one surface is not accepted on the other.</summary>
 public sealed class ScopeRequirement(string requiredScope, string requiredAudience) : IAuthorizationRequirement
 {

@@ -8,21 +8,21 @@ namespace Packet.Node.Core.Configuration;
 /// accepts (an <see cref="Ax25ParseOptions"/> preset, optionally adjusted by
 /// individual named flags) and which SDL session quirks new sessions run with
 /// (an <see cref="Ax25SessionQuirks"/> selector). Null / absent =
-/// <c>lenient</c> parsing + <c>default</c> quirks — exactly the node's
+/// <c>lenient</c> parsing + <c>default</c> quirks - exactly the node's
 /// historical behaviour, so adding this setting is never a silent change.
 /// </summary>
 /// <remarks>
 /// <para>
 /// This is the node-host surface for the library's spec-vs-pragmatic flags
 /// (see <c>docs/strict-vs-pragmatic-audit.md</c>): the operator matches a port
-/// to its neighbour — a BPQ-facing port runs <c>preset: bpq</c>, a clean v2.2
-/// link can run <c>preset: strict</c> — instead of every port being
+/// to its neighbour - a BPQ-facing port runs <c>preset: bpq</c>, a clean v2.2
+/// link can run <c>preset: strict</c> - instead of every port being
 /// kitchen-sink lenient. Presets are resolved by <see cref="Ax25CompatPresets"/>;
 /// the per-flag overrides apply on top of the preset, explicit-wins, mirroring
 /// how <see cref="ChannelProfiles"/> overlays timing params.
 /// </para>
 /// <para>
-/// Like the rest of <see cref="PortConfig"/> this is a value record — the
+/// Like the rest of <see cref="PortConfig"/> this is a value record - the
 /// reconcile planner diffs it with <c>Equals</c> to classify a compat-only
 /// edit as a hot (no-restart) change.
 /// </para>
@@ -36,7 +36,7 @@ public sealed record PortCompatConfig
     public string? Preset { get; init; }
 
     /// <summary>Override the preset's <see cref="Ax25ParseOptions.AllowEmptyCallsignBase"/>
-    /// (accept all-space callsign slots — BPQ <c>&gt;IS</c> ID beacons et al).
+    /// (accept all-space callsign slots - BPQ <c>&gt;IS</c> ID beacons et al).
     /// Null = take the preset's value.</summary>
     public bool? AllowEmptyCallsignBase { get; init; }
 
@@ -46,14 +46,14 @@ public sealed record PortCompatConfig
     public bool? AllowInfoOnSupervisoryFrames { get; init; }
 
     /// <summary>Override the preset's <see cref="Ax25ParseOptions.AllowCommandFrameAsResponse"/>
-    /// (accept a SABM/SABME/DISC whose C-bits don't mark it a command — AX.25
+    /// (accept a SABM/SABME/DISC whose C-bits don't mark it a command - AX.25
     /// v1.x interop, #142). Null = take the preset's value.</summary>
     public bool? AllowCommandFrameAsResponse { get; init; }
 
     /// <summary>The <see cref="Ax25SessionQuirks"/> selector for sessions on this
-    /// port: <c>default</c> (spec-correct — all documented figure-defect
+    /// port: <c>default</c> (spec-correct - all documented figure-defect
     /// corrections on) | <c>strictly-faithful</c> (run the SDL figures exactly
-    /// as drawn, defects included — conformance study only, not for on-air
+    /// as drawn, defects included - conformance study only, not for on-air
     /// use). Null = <c>default</c>.</summary>
     public string? Quirks { get; init; }
 }
@@ -77,12 +77,12 @@ public static class Ax25CompatPresets
     public static IReadOnlyList<string> QuirksNames { get; } = ["default", "strictly-faithful"];
 
     /// <summary>True if <paramref name="preset"/> names a known parse preset
-    /// (case-insensitive). Null/empty is "no preset" (= lenient) — also valid.</summary>
+    /// (case-insensitive). Null/empty is "no preset" (= lenient) - also valid.</summary>
     public static bool IsKnownPreset(string? preset) =>
         string.IsNullOrWhiteSpace(preset) || PresetFor(preset) is not null;
 
     /// <summary>True if <paramref name="quirks"/> names a known quirks selector
-    /// (case- and hyphen/underscore-insensitive). Null/empty is "default" — also
+    /// (case- and hyphen/underscore-insensitive). Null/empty is "default" - also
     /// valid.</summary>
     public static bool IsKnownQuirks(string? quirks) =>
         string.IsNullOrWhiteSpace(quirks) || QuirksFor(quirks) is not null;
@@ -91,7 +91,7 @@ public static class Ax25CompatPresets
     /// Resolve a port's effective inbound <see cref="Ax25ParseOptions"/>: the
     /// named preset (null = <see cref="Ax25ParseOptions.Lenient"/>) with the
     /// individual flag overrides applied on top. An unknown preset name resolves
-    /// as lenient — unreachable in practice because validation rejects it first.
+    /// as lenient - unreachable in practice because validation rejects it first.
     /// </summary>
     public static Ax25ParseOptions ResolveParseOptions(PortCompatConfig? compat)
     {
@@ -111,7 +111,7 @@ public static class Ax25CompatPresets
 
     /// <summary>Resolve a port's effective <see cref="Ax25SessionQuirks"/> (null
     /// = <see cref="Ax25SessionQuirks.Default"/>). An unknown selector resolves
-    /// as default — unreachable in practice because validation rejects it first.</summary>
+    /// as default - unreachable in practice because validation rejects it first.</summary>
     public static Ax25SessionQuirks ResolveQuirks(PortCompatConfig? compat) =>
         QuirksFor(compat?.Quirks) ?? Ax25SessionQuirks.Default;
 

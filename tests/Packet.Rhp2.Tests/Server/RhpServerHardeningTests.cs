@@ -12,7 +12,7 @@ namespace Packet.Rhp2.Tests.Server;
 
 /// <summary>
 /// Hardness tests for <see cref="RhpServer"/>: the resource bounds that keep a hostile or
-/// buggy client from wedging the listener — the concurrent-connection cap, the per-client
+/// buggy client from wedging the listener - the concurrent-connection cap, the per-client
 /// handle cap (with its reservation freed on close), and the in-frame read timeout that drops
 /// a slowloris peer. All driven over real TCP loopback with the recording
 /// <see cref="RhpServerTests.FakeGateway"/>.
@@ -60,7 +60,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
 
     // A round-trip proves the connection is fully accepted (and counted) before we proceed.
     // A `socket` request is the simplest supported request that always Ok's on a fresh
-    // connection (the `hello` capability-discovery surface was removed — #449).
+    // connection (the `hello` capability-discovery surface was removed - #449).
     private static async Task PingAsync(RhpServerTests.RhpTestClient client, int id)
     {
         await client.SendAsync(new SocketMessage { Id = id, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
@@ -123,7 +123,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
             {
-                // The server hadn't yet released the old slot — back off and retry.
+                // The server hadn't yet released the old slot - back off and retry.
                 await candidate.DisposeAsync();
                 await Task.Delay(50);
             }
@@ -351,7 +351,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         var client = await ConnectAsync(server);
 
         // Five bad auths over one connection. The first three reach the verify and fail;
-        // by the fourth the IP is locked, so the verify is skipped — but every reply is
+        // by the fourth the IP is locked, so the verify is skipped - but every reply is
         // still Unauthorised on the wire.
         for (int i = 1; i <= 5; i++)
         {
@@ -389,7 +389,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         await client.SendAsync(new AuthMessage { Id = 3, User = "sysop", Pass = "right" });
         (await client.ExpectAsync<AuthReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.Ok);
 
-        // The reset means the failure budget is full again — three more failures are
+        // The reset means the failure budget is full again - three more failures are
         // needed to lock, proving the earlier two were cleared.
         throttle.IsLocked(IPAddress.Loopback.ToString()).Should().BeFalse();
     }

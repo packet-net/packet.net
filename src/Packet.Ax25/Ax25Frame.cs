@@ -5,7 +5,7 @@ namespace Packet.Ax25;
 
 /// <summary>
 /// One AX.25 frame, in the form delivered by KISS (no opening / closing flags,
-/// no FCS — the TNC handles HDLC framing and the frame check sequence).
+/// no FCS - the TNC handles HDLC framing and the frame check sequence).
 /// </summary>
 /// <remarks>
 /// <para>Layout per AX.25 v2.2 §3:</para>
@@ -17,7 +17,7 @@ namespace Packet.Ax25;
 /// The <c>pid</c> octet is present only on I frames and UI frames. The
 /// <c>info</c> field is present on I and UI frames; some other frame types
 /// (FRMR, XID, TEST) also carry information, which this type exposes as raw
-/// <see cref="Info"/> bytes — their internal structure is decoded elsewhere
+/// <see cref="Info"/> bytes - their internal structure is decoded elsewhere
 /// (e.g. XID parameter fields by the types under <c>Packet.Ax25.Xid</c>).
 /// </para>
 /// </remarks>
@@ -29,13 +29,13 @@ public sealed partial class Ax25Frame
     /// <summary>Control byte for a UI frame with the P/F bit set.</summary>
     public const byte ControlUiPollFinal = 0x13;
 
-    /// <summary>PID 0xF0 — no Layer 3 protocol implemented (per §3.4).</summary>
+    /// <summary>PID 0xF0 - no Layer 3 protocol implemented (per §3.4).</summary>
     public const byte PidNoLayer3 = 0xF0;
 
-    /// <summary>PID 0xCF — NET/ROM.</summary>
+    /// <summary>PID 0xCF - NET/ROM.</summary>
     public const byte PidNetRom = 0xCF;
 
-    /// <summary>PID 0x08 — segmented frame (per §6.6).</summary>
+    /// <summary>PID 0x08 - segmented frame (per §6.6).</summary>
     public const byte PidSegmented = 0x08;
 
     /// <summary>Maximum number of Layer-2 repeater (digipeater) entries (§3.12.5).</summary>
@@ -51,7 +51,7 @@ public sealed partial class Ax25Frame
     public IReadOnlyList<Ax25Address> Digipeaters { get; }
 
     /// <summary>
-    /// Raw control byte — the first (low-order) control octet (see
+    /// Raw control byte - the first (low-order) control octet (see
     /// <see cref="ControlUi"/>). For an extended (modulo-128) I or S frame
     /// this is the first of two octets; <see cref="ControlExtension"/> holds
     /// the second. The frame-type discriminator bits (bit 0; bits 1-0) live
@@ -63,7 +63,7 @@ public sealed partial class Ax25Frame
     /// <summary>
     /// Second control octet of an extended (modulo-128) I or S frame, carrying
     /// the 7-bit N(R) (bits 7-1) and the P/F bit (bit 0) per AX.25 v2.2
-    /// Fig 4.1b. <c>null</c> for U frames and for every modulo-8 frame — those
+    /// Fig 4.1b. <c>null</c> for U frames and for every modulo-8 frame - those
     /// have a 1-octet control field. Its presence is what makes a frame
     /// "extended" (see <see cref="IsExtendedControl"/>).
     /// </summary>
@@ -100,7 +100,7 @@ public sealed partial class Ax25Frame
     /// <summary>
     /// N(R), the receive sequence number carried by I and S frames. 3-bit in
     /// modulo-8 (control bits 7-5); 7-bit in extended modulo-128 (second
-    /// control octet bits 7-1) per Fig 4.1b. Meaningless on U frames — the
+    /// control octet bits 7-1) per Fig 4.1b. Meaningless on U frames - the
     /// caller must know the frame type before relying on this.
     /// </summary>
     public byte Nr => ControlExtension is byte ext
@@ -110,7 +110,7 @@ public sealed partial class Ax25Frame
     /// <summary>
     /// N(S), the send sequence number carried by I frames. 3-bit in modulo-8
     /// (control bits 3-1); 7-bit in extended modulo-128 (first control octet
-    /// bits 7-1) per Fig 4.1b. Meaningful only for I frames — on an S frame the
+    /// bits 7-1) per Fig 4.1b. Meaningful only for I frames - on an S frame the
     /// same bits encode the supervisory type, so the caller must check the
     /// frame type first.
     /// </summary>
@@ -194,7 +194,7 @@ public sealed partial class Ax25Frame
         byte control = pollFinal ? ControlUiPollFinal : ControlUi;
         byte[] infoBytes = info.ToArray();
 
-        // UI is a U frame — 1-octet control in both modulo-8 and modulo-128.
+        // UI is a U frame - 1-octet control in both modulo-8 and modulo-128.
         return new Ax25Frame(dest, src, digiList, control, controlExtension: null, pid, infoBytes);
     }
 
@@ -223,7 +223,7 @@ public sealed partial class Ax25Frame
 
     /// <summary>
     /// Number of bytes <see cref="WriteToWithFcs"/> / <see cref="ToBytesWithFcs"/>
-    /// will write — the frame body plus the 2-octet FCS trailer.
+    /// will write - the frame body plus the 2-octet FCS trailer.
     /// </summary>
     public int RequiredBytesWithFcs => RequiredBytes + 2;
 
@@ -233,20 +233,20 @@ public sealed partial class Ax25Frame
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is the standard RFC-1226 AXIP / AXUDP wire form — what every real peer
+    /// This is the standard RFC-1226 AXIP / AXUDP wire form - what every real peer
     /// expects, and what AXUDP unconditionally carries. Settled by a citation survey
     /// (see <c>docs/strict-vs-pragmatic-audit.md</c>): RFC 1226 + rfc1226-bis mandate
     /// the FCS ("is included", no FCS-less option); ax25ipd appends/checks it
     /// unconditionally (<c>process.c</c>); LinBPQ's BPQAXIP over UDP REQUIRES it (its
-    /// UDP receive path drops anything whose CRC residue isn't <c>0xf0b8</c> —
+    /// UDP receive path drops anything whose CRC residue isn't <c>0xf0b8</c> -
     /// <c>bpqaxip.c</c>, confirmed on the wire); XRouter requires it; and real-on-air
     /// HDLC frames carry it. The plain <see cref="ToBytes"/> form (no FCS) is the
-    /// KISS-layer serialisation — a KISS TNC computes the FCS itself, so the KISS
+    /// KISS-layer serialisation - a KISS TNC computes the FCS itself, so the KISS
     /// transports never carry one on the wire; it is <b>not</b> an AXUDP form.
     /// </para>
     /// <para>
     /// FCS byte-order note: AX.25 v2.2 §3.8 says "the FCS shall be transmitted
-    /// most-significant bit first" — that refers to the bit-stream order on
+    /// most-significant bit first" - that refers to the bit-stream order on
     /// the radio, not the byte order of the serialised octets. In byte form
     /// (and in AXUDP payloads) the FCS is octet-pair low-byte-first, then
     /// high-byte. This has been verified empirically against XRouter (which
@@ -350,7 +350,7 @@ public sealed partial class Ax25Frame
     /// Try to parse a frame from its KISS-form bytes for a link operating at a
     /// known modulo. An I or S frame's control field is 1 octet under modulo-8
     /// and 2 octets under modulo-128 (Fig 4.1b), and the width is <em>not</em>
-    /// derivable from the octets alone — so the caller (the receive path, which
+    /// derivable from the octets alone - so the caller (the receive path, which
     /// knows the session's negotiated modulo) passes <paramref name="extended"/>.
     /// U frames are 1 octet in both modes, so <paramref name="extended"/> only
     /// affects I and S frames.
@@ -374,7 +374,7 @@ public sealed partial class Ax25Frame
         // Ax25Address.Read throws ArgumentException when the bytes don't
         // shape up as a valid address (non-A-Z/0-9 chars in the callsign,
         // spaces interleaved with non-spaces, etc.). For TryParse's
-        // contract that has to translate to a "false" return, not a throw —
+        // contract that has to translate to a "false" return, not a throw -
         // arbitrary KISS payloads land here without a higher framing layer
         // having vetted them.
         try
@@ -384,7 +384,7 @@ public sealed partial class Ax25Frame
 
             if (destination.ExtensionBit)
             {
-                // E-bit set on destination — no source address present. Malformed.
+                // E-bit set on destination - no source address present. Malformed.
                 return false;
             }
 

@@ -37,15 +37,15 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
     }
 
     /// <summary>The <c>GET /statusz</c> body (#583/#587), consulted per fetch so a test can evolve
-    /// it between polls. Null (the default) answers 404 — a pre-0.1.4 daemon with no statusz, which
+    /// it between polls. Null (the default) answers 404 - a pre-0.1.4 daemon with no statusz, which
     /// is what drives the health poller's healthz fallback.</summary>
     public Func<HeadEndStatus?>? Status { get; set; }
 
-    /// <summary>How many <c>GET /inventory</c> requests have been served — lets a reconnect test
+    /// <summary>How many <c>GET /inventory</c> requests have been served - lets a reconnect test
     /// assert the head-end was genuinely re-resolved, not re-dialled from a cached binding.</summary>
     public int InventoryFetches => Volatile.Read(ref inventoryFetches);
 
-    /// <summary>How many <c>GET /statusz</c> requests have been served — lets a health-poll test
+    /// <summary>How many <c>GET /statusz</c> requests have been served - lets a health-poll test
     /// assert the poller genuinely hit the wire (or, gated off, didn't).</summary>
     public int StatusFetches => Volatile.Read(ref statusFetches);
 
@@ -57,7 +57,7 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
 
     private int lastBaud = -1;
 
-    /// <summary>The baud of the most recent <c>POST /ports/{id}/line</c>, or -1 if none — the shared
+    /// <summary>The baud of the most recent <c>POST /ports/{id}/line</c>, or -1 if none - the shared
     /// clock a baud-sweep loopback gates its MODEL answer on. Read cross-thread (the responder task).</summary>
     public int LastBaud => Volatile.Read(ref lastBaud);
 

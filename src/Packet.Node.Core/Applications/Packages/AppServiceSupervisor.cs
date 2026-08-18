@@ -11,7 +11,7 @@ namespace Packet.Node.Core.Applications.Packages;
 /// <summary>
 /// The app-package service supervisor (<c>docs/app-packages.md</c> § Lifecycle): for every
 /// enabled, error-free package whose manifest declares a <c>service:</c> block with
-/// <c>managed: pdn</c>, pdn owns the daemon — start on enable / node start / config apply,
+/// <c>managed: pdn</c>, pdn owns the daemon - start on enable / node start / config apply,
 /// stop on disable / shutdown (SIGTERM the process group → grace → kill the tree, the same
 /// discipline as <see cref="ExternalProcessApplication"/>'s teardown), restart per the
 /// manifest policy with exponential backoff, and a crash-loop breaker into
@@ -25,11 +25,11 @@ namespace Packet.Node.Core.Applications.Packages;
 /// merged environment): a manifest or override edit that changes the spawn restarts the
 /// service; an edit that doesn't leaves it alone. A <see cref="AppServiceState.Faulted"/>
 /// service is only resurrected by <see cref="RestartAsync"/> or a reconcile whose desired
-/// fingerprint <b>changed</b> — a plain re-reconcile never resurrects it.
+/// fingerprint <b>changed</b> - a plain re-reconcile never resurrects it.
 /// </para>
 /// <para>
 /// On Linux each daemon is spawned as a process-group leader (via <c>setsid</c>, present on
-/// every mainstream distro), so the graceful stop can SIGTERM the <b>whole group</b> — the
+/// every mainstream distro), so the graceful stop can SIGTERM the <b>whole group</b> - the
 /// daemon and anything it forked. Where <c>setsid</c> is unavailable the direct child gets the
 /// SIGTERM and the kill-tree fallback covers still-attached descendants. All timer-shaped
 /// waits (backoff, stop grace, the crash-loop window) ride the injected
@@ -59,7 +59,7 @@ public sealed partial class AppServiceSupervisor(
     private readonly TimeSpan backoffBase = backoffBase ?? TimeSpan.FromSeconds(1);
     private readonly TimeSpan stopGrace = stopGrace ?? TimeSpan.FromSeconds(5);
 
-    /// <summary>Serializes reconcile / restart / dispose — concurrent reconciles can't race.</summary>
+    /// <summary>Serializes reconcile / restart / dispose - concurrent reconciles can't race.</summary>
     private readonly SemaphoreSlim gate = new(1, 1);
 
     /// <summary>Guards <see cref="services"/> and every entry's mutable status fields.</summary>
@@ -92,7 +92,7 @@ public sealed partial class AppServiceSupervisor(
                 }
             }
 
-            // The node is the callsign authority — resolve every enabled packet app's callsign
+            // The node is the callsign authority - resolve every enabled packet app's callsign
             // once per reconcile so the PDN_APP_CALLSIGN we inject is consistent across the set.
             var callsigns = AppCallsignResolver.Resolve(current, discovered);
 
@@ -139,7 +139,7 @@ public sealed partial class AppServiceSupervisor(
                 {
                     if (string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal))
                     {
-                        // Matching — leave alone. This includes a Faulted or cleanly-exited
+                        // Matching - leave alone. This includes a Faulted or cleanly-exited
                         // (OnFailure, exit 0) entry: a plain re-reconcile with an unchanged
                         // desired spawn never resurrects; RestartAsync / a fingerprint change /
                         // a disable-enable cycle are the deliberate ways back.
@@ -196,7 +196,7 @@ public sealed partial class AppServiceSupervisor(
             }
 
             // A fresh entry by construction clears Faulted, the backoff ladder, and the
-            // crash-loop window — this is the owner's way out of Faulted.
+            // crash-loop window - this is the owner's way out of Faulted.
             var callsigns = AppCallsignResolver.Resolve(current, discovered);
             var spec = BuildSpec(pkg, current, callsigns);
             LogRestartRequested(id);
@@ -227,7 +227,7 @@ public sealed partial class AppServiceSupervisor(
             foreach (var pkg in catalog.Discover(config.Current))
             {
                 // Every discovered package with a service block. (An unreadable-manifest error
-                // entry has no manifest at all — nothing to report a service for.)
+                // entry has no manifest at all - nothing to report a service for.)
                 if (pkg.Manifest?.Service is not { } service || !seen.Add(pkg.Id))
                 {
                     continue;
@@ -295,7 +295,7 @@ public sealed partial class AppServiceSupervisor(
 
     /// <summary>Resolve one desired package service to its concrete spawn: command/args against
     /// the package dir (the contract's path rule), working dir (?? state dir), and the merged
-    /// environment overlay — PDN_APP_*, then PDN_RHP_* when the RHP server is on, then the
+    /// environment overlay - PDN_APP_*, then PDN_RHP_* when the RHP server is on, then the
     /// manifest map, then the owner's override map (last wins).</summary>
     private static ServiceSpawnSpec BuildSpec(
         DiscoveredAppPackage pkg, NodeConfig current,
@@ -318,7 +318,7 @@ public sealed partial class AppServiceSupervisor(
             ["PDN_NODE_CALLSIGN"] = current.Identity.Callsign,
         };
         // The node is the callsign authority: a migrated app binds the node-resolved
-        // PDN_APP_CALLSIGN instead of deriving its own. Additive — PDN_NODE_CALLSIGN stays.
+        // PDN_APP_CALLSIGN instead of deriving its own. Additive - PDN_NODE_CALLSIGN stays.
         if (callsigns.TryGetValue(pkg.Id, out var resolved))
         {
             environment["PDN_APP_CALLSIGN"] = resolved.Callsign.ToString();
@@ -347,7 +347,7 @@ public sealed partial class AppServiceSupervisor(
         return new ServiceSpawnSpec(command, args, workingDirectory, environment, pkg.StateDir, service.Restart);
     }
 
-    /// <summary>A canonical string of everything that shapes the spawn — command, args, working
+    /// <summary>A canonical string of everything that shapes the spawn - command, args, working
     /// dir, and the <b>effective</b> merged environment (key-sorted, so merge order that nets
     /// out identical doesn't read as a change). Equal fingerprint ⇒ leave the service alone;
     /// changed ⇒ stop-and-respawn on the next reconcile.</summary>
@@ -412,7 +412,7 @@ public sealed partial class AppServiceSupervisor(
     }
 
     /// <summary>One service's whole supervised life: spawn → run → exit → policy →
-    /// backoff/restart, with the crash-loop breaker, until stopped or done. Total — a defect
+    /// backoff/restart, with the crash-loop breaker, until stopped or done. Total - a defect
     /// here faults the one service, never the node.</summary>
     private async Task RunServiceAsync(ServiceEntry entry)
     {
@@ -467,7 +467,7 @@ public sealed partial class AppServiceSupervisor(
                     var pumps = Task.WhenAll(
                         ProcessSupervision.PumpAsync(process.StandardOutput, line => AppLog.Stdout(appLogger, line), pumpStop.Token),
                         ProcessSupervision.PumpAsync(process.StandardError, line => AppLog.Stderr(appLogger, line), pumpStop.Token));
-                    // A daemon gets no stdin — closing the pipe reads as immediate EOF
+                    // A daemon gets no stdin - closing the pipe reads as immediate EOF
                     // (equivalent to /dev/null for a well-behaved service).
                     try
                     {
@@ -475,7 +475,7 @@ public sealed partial class AppServiceSupervisor(
                     }
                     catch (Exception)
                     {
-                        // Already closed / broken pipe — irrelevant to supervision.
+                        // Already closed / broken pipe - irrelevant to supervision.
                     }
 
                     try
@@ -665,7 +665,7 @@ public sealed partial class AppServiceSupervisor(
         public List<DateTimeOffset> StartTimes { get; } = [];
     }
 
-    /// <summary>The fully-resolved spawn for one desired service — what the fingerprint hashes
+    /// <summary>The fully-resolved spawn for one desired service - what the fingerprint hashes
     /// and the spawn executes. <see cref="Environment"/> is the overlay applied over the
     /// inherited environment (already merged manifest-then-override).</summary>
     private sealed record ServiceSpawnSpec(

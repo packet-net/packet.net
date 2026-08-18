@@ -12,9 +12,9 @@ public sealed record HailRequest(string? PeerSdmId);
 /// <summary>
 /// The <b>station-hail</b> surface of the pdn node API: <c>POST /api/v1/ports/{id}/hail</c> sends a
 /// hail to a peer over the port's SDM side channel and returns the peer's
-/// <see cref="Packet.Node.Core.Api.PortHailStatus"/> — its callsign, current NinoTNC mode/bitrate,
+/// <see cref="Packet.Node.Core.Api.PortHailStatus"/> - its callsign, current NinoTNC mode/bitrate,
 /// channel and capabilities. Because the side channel rides the radio's own FFSK modem (independent
-/// of the packet modulation), the hail succeeds — and reveals the peer's mode — even when the two
+/// of the packet modulation), the hail succeeds - and reveals the peer's mode - even when the two
 /// stations cannot reach each other on the packet path because of a mode mismatch.
 /// <para>
 /// The hail <b>transmits</b> (an SDM to the peer), so the endpoint is <b>admin</b>-scoped and

@@ -13,9 +13,9 @@ namespace Packet.NetRom.Wire;
 /// (<c>Strict</c> / <c>Lenient</c> / <c>Bpq</c> / <c>Xrouter</c>).
 /// </summary>
 /// <remarks>
-/// A RIF is the connected-mode analogue of a NODES broadcast — both lead with the
+/// A RIF is the connected-mode analogue of a NODES broadcast - both lead with the
 /// <c>0xFF</c> signature, both are a self-delimited sequence of fixed-prefix
-/// entries — so the strict-by-default / lenient-on-promiscuous-ingest discipline
+/// entries - so the strict-by-default / lenient-on-promiscuous-ingest discipline
 /// is identical. The two currently-known divergences are about <em>tolerance of
 /// the entry list</em> (an empty list, a clipped trailing RIP), not the field
 /// layout, exactly as for NODES.
@@ -50,7 +50,7 @@ public sealed record Inp3ParseOptions
     public bool AllowTrailingPartialRip { get; init; } = true;
 
     /// <summary>
-    /// Strict canonical INP3 — every accommodation disabled. A RIF is accepted
+    /// Strict canonical INP3 - every accommodation disabled. A RIF is accepted
     /// only if every byte after the signature forms a whole RIP and there is at
     /// least one RIP.
     /// </summary>
@@ -63,7 +63,7 @@ public sealed record Inp3ParseOptions
     /// <summary>
     /// Accept-everything mode. All currently-known accommodations enabled. The
     /// parameterless <see cref="Inp3Rif.TryParse(ReadOnlySpan{byte}, out Inp3Rif?)"/>
-    /// overload uses this — read-only promiscuous ingest wants to be forgiving.
+    /// overload uses this - read-only promiscuous ingest wants to be forgiving.
     /// </summary>
     public static Inp3ParseOptions Lenient { get; } = new();
 
@@ -94,16 +94,16 @@ public sealed record Inp3ParseOptions
 /// Two types have defined meaning (INP3 spec / plan §4.2):
 /// </para>
 /// <list type="bullet">
-///   <item><description><see cref="AliasType"/> (<c>0x00</c>) — the destination's
+///   <item><description><see cref="AliasType"/> (<c>0x00</c>) - the destination's
 ///   ASCII alias / mnemonic. Decode with <see cref="AsAlias"/>.</description></item>
-///   <item><description><see cref="IpType"/> (<c>0x01</c>) — an IP address;
+///   <item><description><see cref="IpType"/> (<c>0x01</c>) - an IP address;
 ///   <see cref="Value"/> length 4 = IPv4, 16 = IPv6. Decode with
 ///   <see cref="AsIpAddress"/>.</description></item>
 /// </list>
 /// <para>
 /// <b>Unknown types are retained verbatim.</b> Any TLV whose type is neither of
 /// the above is preserved exactly (type + value bytes) and re-emitted unchanged
-/// when the RIP is forwarded — a RIP is never dropped for carrying a TLV we don't
+/// when the RIP is forwarded - a RIP is never dropped for carrying a TLV we don't
 /// understand (forward-compat, plan §4.2/§4.3). <see cref="IsKnown"/> reports
 /// whether the type is one we interpret.
 /// </para>
@@ -133,7 +133,7 @@ public sealed record Inp3Tlv
     /// <summary>
     /// Build an alias TLV (<see cref="AliasType"/>) from a mnemonic string. The
     /// printable-ASCII characters of <paramref name="alias"/> are written verbatim
-    /// (no padding, no shift) — the alias is variable-length inside a TLV, unlike
+    /// (no padding, no shift) - the alias is variable-length inside a TLV, unlike
     /// the fixed 6-byte NODES alias field.
     /// </summary>
     public static Inp3Tlv Alias(string alias)
@@ -158,7 +158,7 @@ public sealed record Inp3Tlv
     /// <summary>
     /// Decode <see cref="Value"/> as a trimmed ASCII alias string. Returns the
     /// printable characters only (a corrupted octet is dropped, never rendered as
-    /// mojibake) with trailing spaces stripped — the same discipline as
+    /// mojibake) with trailing spaces stripped - the same discipline as
     /// <see cref="NetRomCallsign.ReadAlias"/>. Meaningful only when
     /// <see cref="Type"/> is <see cref="AliasType"/>, but works on any value.
     /// </summary>
@@ -197,7 +197,7 @@ public sealed record Inp3Tlv
     /// <summary>Encode this TLV (<c>[type][len][value…]</c>) into
     /// <paramref name="destination"/> (≥ <see cref="EncodedLength"/> octets).</summary>
     /// <exception cref="InvalidOperationException">The value is longer than 255 octets
-    /// (cannot be length-prefixed by a single byte) — a construction bug; we never
+    /// (cannot be length-prefixed by a single byte) - a construction bug; we never
     /// emit a malformed TLV.</exception>
     public void Write(Span<byte> destination)
     {
@@ -216,7 +216,7 @@ public sealed record Inp3Tlv
 }
 
 /// <summary>
-/// One INP3 Routing Information Packet — a single routing entry inside a
+/// One INP3 Routing Information Packet - a single routing entry inside a
 /// <see cref="Inp3Rif"/>: "destination <see cref="Destination"/> is reachable in
 /// <see cref="HopCount"/> hops with a measured target time of
 /// <see cref="TargetTimeMs"/> ms," plus zero or more <see cref="Inp3Tlv"/>
@@ -252,7 +252,7 @@ public sealed record Inp3Rip
     /// <summary>Octets of fixed prefix before the TLV region: 7 callsign + 1 hop + 2 target-time.</summary>
     public const int PrefixLength = NetRomCallsign.ShiftedLength + 1 + 2;   // 10
 
-    /// <summary>Target-time units (10 ms each) at the routing horizon — destination unreachable.</summary>
+    /// <summary>Target-time units (10 ms each) at the routing horizon - destination unreachable.</summary>
     public const int HorizonUnits = 0xEA60;   // 60000
 
     /// <summary>The routing horizon in milliseconds (600.000 s). A target time at or above this is a withdrawal.</summary>
@@ -278,7 +278,7 @@ public sealed record Inp3Rip
     public required IReadOnlyList<Inp3Tlv> Tlvs { get; init; }
 
     /// <summary><c>true</c> if <see cref="TargetTimeMs"/> is at or above the routing
-    /// horizon (<see cref="HorizonMs"/>) — i.e. this RIP withdraws the route.</summary>
+    /// horizon (<see cref="HorizonMs"/>) - i.e. this RIP withdraws the route.</summary>
     public bool IsHorizon => TargetTimeMs >= HorizonMs;
 
     /// <summary>
@@ -316,7 +316,7 @@ public sealed record Inp3Rip
 
     /// <summary>Encode this RIP into <paramref name="destination"/> (≥ <see cref="EncodedLength"/> octets).</summary>
     /// <exception cref="InvalidOperationException">A field is out of encodable range
-    /// (target time, or a TLV value over 255 octets) — a construction bug; we never
+    /// (target time, or a TLV value over 255 octets) - a construction bug; we never
     /// emit a malformed RIP.</exception>
     public void Write(Span<byte> destination)
     {
@@ -359,12 +359,12 @@ public sealed record Inp3Rip
     /// Try to decode one RIP from the front of <paramref name="source"/>, reporting
     /// how many octets it consumed (prefix + TLVs + EOP). Returns <c>false</c>
     /// (never throws) on any input that is too short or cannot be framed as a whole
-    /// RIP — a truncated prefix, a callsign field that fails to decode, a TLV whose
+    /// RIP - a truncated prefix, a callsign field that fails to decode, a TLV whose
     /// claimed length runs off the end of <paramref name="source"/>, or a RIP with
     /// no terminating EOP.
     /// </summary>
     /// <param name="source">The RIF body at this RIP's start (it may contain
-    /// further RIPs after this one — only the consumed prefix is parsed here).</param>
+    /// further RIPs after this one - only the consumed prefix is parsed here).</param>
     /// <param name="rip">The decoded RIP on success.</param>
     /// <param name="consumed">Octets consumed from <paramref name="source"/> on success; 0 on failure.</param>
     public static bool TryParse(ReadOnlySpan<byte> source, [NotNullWhen(true)] out Inp3Rip? rip, out int consumed)
@@ -395,7 +395,7 @@ public sealed record Inp3Rip
         {
             if (offset >= source.Length)
             {
-                // Ran out of bytes before an EOP — the RIP is truncated.
+                // Ran out of bytes before an EOP - the RIP is truncated.
                 return false;
             }
 
@@ -416,14 +416,14 @@ public sealed record Inp3Rip
                 // indistinguishable from EOP-plus-partial, so it degrades to a RIP
                 // that keeps its route but drops the malformed alias (the residual
                 // flagged for I-5 interop validation; alias *emission* stays gated
-                // off until then). Never panics either way — the fuzz contract holds.
+                // off until then). Never panics either way - the fuzz contract holds.
                 bool isTlv =
                     offset + 1 < source.Length                                   // room for a len byte
                     && offset + 2 + source[offset + 1] <= source.Length;          // room for len value bytes
 
                 if (!isTlv)
                 {
-                    // EOP — RIP ends here.
+                    // EOP - RIP ends here.
                     offset += 1;
                     break;
                 }
@@ -441,7 +441,7 @@ public sealed record Inp3Rip
             int valueStart = offset + 2;
             if (valueStart + len > source.Length)
             {
-                // TLV claims more value bytes than remain — truncated.
+                // TLV claims more value bytes than remain - truncated.
                 return false;
             }
 
@@ -463,7 +463,7 @@ public sealed record Inp3Rip
 }
 
 /// <summary>
-/// A parsed INP3 Routing Information Frame — the <c>0xFF</c>-signed body carried
+/// A parsed INP3 Routing Information Frame - the <c>0xFF</c>-signed body carried
 /// in the information field of a connected-mode interlink I-frame (PID 0xCF). It
 /// is the connected-mode analogue of a <see cref="NodesBroadcast"/>: a signature
 /// byte followed by a self-delimited sequence of routing entries
@@ -477,17 +477,17 @@ public sealed record Inp3Rip
 /// </code>
 /// <para>
 /// This type models the I-frame's <em>info-field body</em>, exactly as
-/// <see cref="NodesBroadcast"/> models a UI info field — not the surrounding AX.25
+/// <see cref="NodesBroadcast"/> models a UI info field - not the surrounding AX.25
 /// frame. RIF and NODES are <b>never confused</b> despite both leading with
 /// <c>0xFF</c>: they arrive on different carriers (RIF on a connected I-frame,
 /// NODES on a UI frame to dest <c>NODES</c>), so the caller selects the codec by
-/// carrier — there is no content-sniffing (AMBIGUITY-RIF-1).
+/// carrier - there is no content-sniffing (AMBIGUITY-RIF-1).
 /// </para>
 /// <para>
 /// Parsing is read-only and total: arbitrary, truncated or adversarial bytes
-/// never throw — they return <c>false</c>/<c>null</c>. Divergence tolerance
+/// never throw - they return <c>false</c>/<c>null</c>. Divergence tolerance
 /// (empty RIP list, a clipped trailing RIP) is gated by
-/// <see cref="Inp3ParseOptions"/> — strict by default, lenient on the
+/// <see cref="Inp3ParseOptions"/> - strict by default, lenient on the
 /// parameterless overload used for promiscuous ingest.
 /// </para>
 /// </remarks>
@@ -540,7 +540,7 @@ public sealed record Inp3Rif
 
     /// <summary>
     /// Try to parse a RIF body from an interlink I-frame's information field, using
-    /// lenient options (the promiscuous-ingest default — see
+    /// lenient options (the promiscuous-ingest default - see
     /// <see cref="Inp3ParseOptions.Lenient"/>).
     /// </summary>
     public static bool TryParse(ReadOnlySpan<byte> info, [NotNullWhen(true)] out Inp3Rif? rif)
@@ -549,7 +549,7 @@ public sealed record Inp3Rif
     /// <summary>
     /// Try to parse a RIF body, applying <paramref name="options"/> for the
     /// strict-vs-lenient divergence choices. Returns <c>false</c> (never throws) on
-    /// any malformed input — empty, wrong signature, truncated, or adversarial.
+    /// any malformed input - empty, wrong signature, truncated, or adversarial.
     /// </summary>
     public static bool TryParse(ReadOnlySpan<byte> info, Inp3ParseOptions options, [NotNullWhen(true)] out Inp3Rif? rif)
     {
@@ -562,7 +562,7 @@ public sealed record Inp3Rif
             return false;
         }
 
-        // Signature gates the whole body — a non-0xFF first octet means this is
+        // Signature gates the whole body - a non-0xFF first octet means this is
         // not a RIF (the same "wrong signature → ignore" heuristic NODES uses).
         if (info[0] != Signature)
         {

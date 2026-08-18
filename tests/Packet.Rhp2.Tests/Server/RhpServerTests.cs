@@ -36,7 +36,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         var server = new RhpServer(new RhpServerOptions
         {
             Bind = IPAddress.Loopback,
-            Port = 0,                      // ephemeral — no clashes across parallel test classes
+            Port = 0,                      // ephemeral - no clashes across parallel test classes
             RequireAuth = requireAuth,
             Authenticate = auth,
         }, gateway);
@@ -153,7 +153,7 @@ public sealed class RhpServerTests : IAsyncDisposable
     }
 
     // ── seqno: per-RHP-connection, starting at 0, shared across push types ─
-    //    (RHPTEST-verified: first push is seqno 0; live XRouter confirms — a fresh
+    //    (RHPTEST-verified: first push is seqno 0; live XRouter confirms - a fresh
     //    connection's first notification carries "seqno":0.)
 
     [Fact]
@@ -308,7 +308,7 @@ public sealed class RhpServerTests : IAsyncDisposable
     public async Task Open_without_local_is_accepted_and_defaults_to_the_node_callsign()
     {
         // Deviation D8: requiring `local` on open is an XRouter-ism, not an RHP rule
-        // (RHPTEST quotes the author saying exactly that). pdn stays permissive — a null
+        // (RHPTEST quotes the author saying exactly that). pdn stays permissive - a null
         // local reaches the gateway, which dials as the node's own callsign.
         var (server, gateway) = await StartServerAsync();
         var client = await ConnectAsync(server);
@@ -484,7 +484,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         reply.ErrCode.Should().Be(RhpErrorCode.InvalidHandle);   // same as unknown, no oracle
     }
 
-    // ── dgram (pure UI datagram): socket → bind → sendto (TX) + async recv (RX) — R-6 ───
+    // ── dgram (pure UI datagram): socket → bind → sendto (TX) + async recv (RX) - R-6 ───
 
     [Fact]
     public async Task Socket_bind_sendto_emits_a_pure_ui_datagram_with_the_right_source_dest_and_data()
@@ -493,7 +493,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         var client = await ConnectAsync(server);
         var handle = await BindDgramAsync(client, "M0LTE-1", port: "1");
 
-        // Pure datagram: bind the station, sendto the whole `data` as the UI info — no PID field on
+        // Pure datagram: bind the station, sendto the whole `data` as the UI info - no PID field on
         // the wire; a `dgram` frame's PID is the implicit no-Layer-3 0xF0.
         await client.SendAsync(new SendToMessage { Id = 9, Handle = handle, Remote = "GB7RDG", Data = "hi\r" });
 
@@ -538,7 +538,7 @@ public sealed class RhpServerTests : IAsyncDisposable
     [Fact]
     public async Task Sendto_with_an_empty_payload_is_rejected_errCode_1()
     {
-        // AX.25 UI, unlike UDP, carries no zero-byte datagram — errCode 1 (protocol.md).
+        // AX.25 UI, unlike UDP, carries no zero-byte datagram - errCode 1 (protocol.md).
         var (server, _) = await StartServerAsync();
         var client = await ConnectAsync(server);
         var handle = await BindDgramAsync(client, "M0LTE-1");

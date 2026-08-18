@@ -43,7 +43,7 @@ public sealed class NinoTncBurstStimulus : IBurstStimulus
             }
             catch (TimeoutException)
             {
-                // No TX-completion echo — the frame may still have gone out,
+                // No TX-completion echo - the frame may still have gone out,
                 // but it cannot be counted as confirmed. Keep going.
             }
         }

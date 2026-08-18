@@ -258,7 +258,7 @@ public class FlrigRigTests
         var dcd = async () => await rig.ReadDcdAsync();
         await dcd.Should().ThrowAsync<NotSupportedException>();
 
-        // The uncalibrated s-meter stays reachable — the message teaches the escape hatch.
+        // The uncalibrated s-meter stays reachable - the message teaches the escape hatch.
         var strength = async () => await rig.ReadSignalStrengthDbmAsync();
         (await strength.Should().ThrowAsync<NotSupportedException>())
             .Which.Message.Should().Contain("rig.get_smeter");

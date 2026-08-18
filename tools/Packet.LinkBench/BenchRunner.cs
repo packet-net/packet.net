@@ -34,13 +34,13 @@ internal sealed record BenchResult
 /// <summary>
 /// One rung-1 run: stand up two AX.25 engines on the configured channel,
 /// connect A→B, stream the payload as connected-mode I-frames, drain on B,
-/// verify integrity, clean DISC — and table what the wire saw.
+/// verify integrity, clean DISC - and table what the wire saw.
 /// </summary>
 internal static class BenchRunner
 {
     // Cycles the SSID per run so frames still draining through a slow shared
     // channel (net-sim audio in flight) from run N can't hit run N+1's
-    // handshake — the address filter drops them as not-ours.
+    // handshake - the address filter drops them as not-ours.
     private static int runCounter = -1;
 
     public static async Task<BenchResult> RunAsync(RunConfig cfg, CancellationToken ct)
@@ -65,7 +65,7 @@ internal static class BenchRunner
 
         var pacingTimeout = Scale(PacingKissModem.DefaultPacingTimeout, cfg.TimeScale);
         // Ackmode is only enabled on a channel whose endpoints are TX-completion-capable
-        // (InProc, NetSim — see IBenchChannel.SupportsAckMode), so the cast is safe.
+        // (InProc, NetSim - see IBenchChannel.SupportsAckMode), so the cast is safe.
         IAx25Transport modemA = cfg.AckMode
             ? new PacingKissModem(new AckReceiptTap((ITxCompletionTransport)channel.EndpointA, Record), pacingTimeout)
             : channel.EndpointA;
@@ -175,7 +175,7 @@ internal static class BenchRunner
             }
             var connected = DateTimeOffset.UtcNow;
 
-            // B's accepted session — always captured (needed for SREJ enablement
+            // B's accepted session - always captured (needed for SREJ enablement
             // and for the bidirectional send). By the time A's ConnectAsync has
             // returned, B has sent its UA, so B is Connected and its establish
             // (which sets the v2.0 reject mode) has already run.
@@ -191,8 +191,8 @@ internal static class BenchRunner
 
             // SREJ (selective reject): force it on BOTH ends, mirroring the engine's
             // own Set_Selective_Reject verb (the figc4.7 v2.2 default). Must be set
-            // AFTER establish — a mod-8 connect runs Set_Version_2_0, which clears
-            // SrejEnabled — so ConfigureSession (pre-connect) would be clobbered;
+            // AFTER establish - a mod-8 connect runs Set_Version_2_0, which clears
+            // SrejEnabled - so ConfigureSession (pre-connect) would be clobbered;
             // this is exactly how DataLinkSrejUnderLossTests stage it. SREJ only
             // changes behaviour under frame loss (the --loss knob, or net-sim
             // collisions): a clean run never produces an out-of-sequence frame, so

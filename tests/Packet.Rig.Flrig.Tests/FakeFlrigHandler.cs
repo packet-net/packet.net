@@ -6,7 +6,7 @@ using System.Text;
 namespace Packet.Rig.Flrig.Tests;
 
 /// <summary>
-/// A scripted flrig XML-RPC endpoint behind an <see cref="HttpMessageHandler"/> — no sockets,
+/// A scripted flrig XML-RPC endpoint behind an <see cref="HttpMessageHandler"/> - no sockets,
 /// fully deterministic. Implements the stateful method slice hamlib's flrig backend exercises;
 /// individual methods can be overridden or faulted per test. (flrig itself is an FLTK GUI with
 /// no headless mode, so an in-process fake is the established way to test its clients.)
@@ -19,10 +19,10 @@ internal sealed class FakeFlrigHandler : HttpMessageHandler
     internal string Mode = "USB";
     internal int Ptt;
     internal string Modes = "LSB\nUSB\nAM\nCW\nRTTY-U\nDATA-U";
-    internal double PwrMeter = 50;       // 0–100 needle deflection
+    internal double PwrMeter = 50;       // 0-100 needle deflection
     internal double PwrMeterScale = 1.0;
     internal double? SwrDirect = 1.2;    // rig.get_SWR when non-null; else the method faults
-    internal double SwrMeter;            // 0–100 deflection for the fallback path
+    internal double SwrMeter;            // 0-100 deflection for the fallback path
 
     /// <summary>Method names that fault with (code, message) on next call.</summary>
     internal readonly ConcurrentDictionary<string, (int Code, string Message)> Faults = new();
@@ -35,7 +35,7 @@ internal sealed class FakeFlrigHandler : HttpMessageHandler
     /// <summary>Method invocation log: (method, rawArgsXml).</summary>
     internal readonly ConcurrentQueue<(string Method, string Body)> Calls = new();
 
-    /// <summary>When set, requests never complete — timeout tests advance a FakeTimeProvider.</summary>
+    /// <summary>When set, requests never complete - timeout tests advance a FakeTimeProvider.</summary>
     internal volatile bool HangNextRequest;
 
     protected override async Task<HttpResponseMessage> SendAsync(

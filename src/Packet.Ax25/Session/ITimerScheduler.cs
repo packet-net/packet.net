@@ -48,14 +48,14 @@ public interface ITimerScheduler
 
     /// <summary>
     /// Atomically re-arm <paramref name="name"/> with a fresh
-    /// <paramref name="duration"/> and its <em>existing</em> expiry callback —
+    /// <paramref name="duration"/> and its <em>existing</em> expiry callback -
     /// but only if it is currently running. Returns <c>false</c> (touching
     /// nothing) when the timer isn't armed.
     /// </summary>
     /// <remarks>
     /// The TX-complete→T1 seam: when a TNC's ACKMODE echo reports that an
     /// I-frame / enquiry actually cleared the air, the listener pushes a
-    /// <em>running</em> T1's deadline out to (now + T1V) — the SDL armed T1 at
+    /// <em>running</em> T1's deadline out to (now + T1V) - the SDL armed T1 at
     /// enqueue, before the frame had even keyed up. The
     /// check-and-re-arm must be atomic against the SDL stopping T1 on the
     /// dispatch thread (an ack racing the echo): re-arming a timer the SDL
@@ -76,7 +76,7 @@ public interface ITimerScheduler
     /// snapshot: cancel every currently-armed timer and re-arm exactly those in
     /// <paramref name="state"/> with their captured remaining time. The session
     /// uses this to undo a transition that threw part-way through, so a
-    /// half-applied transition can't leave the link watchdog (T1) cancelled —
+    /// half-applied transition can't leave the link watchdog (T1) cancelled -
     /// which would wedge the session silently. (packet-net/packet.net#225)
     /// </summary>
     void RestoreState(IReadOnlyList<ArmedTimer> state);

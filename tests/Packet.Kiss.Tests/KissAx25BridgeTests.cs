@@ -170,7 +170,7 @@ public class KissAx25BridgeTests
         // (Before #327 this test pinned the re-entrancy corruption: the UA
         // dispatched INLINE mid-transition, advanced A to Connected, and
         // then t03's commit clobbered the state back to AwaitingConnection
-        // — the previous assertion here. That was the artifact, not the
+        // - the previous assertion here. That was the artifact, not the
         // contract.)
         var time = new FakeTimeProvider();
         var ctxA = new Ax25SessionContext { Local = Local, Remote = Remote };

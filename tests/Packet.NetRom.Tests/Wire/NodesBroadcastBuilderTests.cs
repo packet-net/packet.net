@@ -6,7 +6,7 @@ namespace Packet.NetRom.Tests.Wire;
 /// <summary>
 /// Tests for the L3-origination <see cref="NodesBroadcastBuilder"/>: the bytes it
 /// emits must parse back through the production <see cref="NodesBroadcast"/> parser
-/// to the same entries (no hand-rolled-encoder tautology — the parser is the
+/// to the same entries (no hand-rolled-encoder tautology - the parser is the
 /// oracle), and a table larger than 11 entries must chunk into multiple frames.
 /// </summary>
 public sealed class NodesBroadcastBuilderTests
@@ -87,7 +87,7 @@ public sealed class NodesBroadcastBuilderTests
     [Fact]
     public void A_null_paclen_segments_exactly_as_the_unlimited_default()
     {
-        // 5 entries — well under the structural 11-per-frame cap — must yield ONE frame,
+        // 5 entries - well under the structural 11-per-frame cap - must yield ONE frame,
         // byte-identical to the parameterless overload. The default-off guarantee.
         var entries = Enumerable.Range(0, 5)
             .Select(i => Entry($"GB7N{i:D2}", $"N{i:D2}", "GB7HUB", (byte)(200 - i)))

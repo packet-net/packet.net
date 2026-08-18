@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Applications.Packages;
 /// </summary>
 public static class AppPackagePaths
 {
-    /// <summary>The default install root for owner-installed packages — the second discovery
+    /// <summary>The default install root for owner-installed packages - the second discovery
     /// root (<c>docs/app-packages.md</c> § Discovery). The catalog installer places each app
     /// at <c>&lt;AppsRoot&gt;/&lt;id&gt;/</c> so the existing discovery picks it up unchanged.</summary>
     public const string AppsRoot = "/var/lib/packetnet/apps";

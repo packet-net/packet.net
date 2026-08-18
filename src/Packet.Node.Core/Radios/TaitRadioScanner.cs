@@ -7,12 +7,12 @@ namespace Packet.Node.Core.Radios;
 /// The production <see cref="IRadioScanner"/>: probes the machine's candidate serial ports via
 /// <see cref="TaitRadioPortDiscovery"/> and, on Linux, annotates each hit with its
 /// <c>/dev/serial/by-id</c> symlink (<see cref="SerialByIdResolver"/>). Kept bounded (a wall-clock
-/// timeout) and single-flight (a semaphore) because a scan transiently opens serial ports — two at
+/// timeout) and single-flight (a semaphore) because a scan transiently opens serial ports - two at
 /// once, or one that never returns, would be a bus hazard.
 /// </summary>
 public sealed class TaitRadioScanner : IRadioScanner, IDisposable
 {
-    /// <summary>Default hard ceiling on a scan — probing is serial (one port at a time) and each
+    /// <summary>Default hard ceiling on a scan - probing is serial (one port at a time) and each
     /// probe self-times-out sub-second, so a machine with a handful of ttyUSB devices finishes well
     /// inside this; the cap just bounds a pathological hang.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(20);
@@ -51,7 +51,7 @@ public sealed class TaitRadioScanner : IRadioScanner, IDisposable
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // Our own timeout tripped — return whatever we found rather than hanging or throwing.
+                // Our own timeout tripped - return whatever we found rather than hanging or throwing.
             }
             return results;
         }
@@ -62,7 +62,7 @@ public sealed class TaitRadioScanner : IRadioScanner, IDisposable
     }
 
     /// <summary>Map one discovered radio to its scan row, carrying the band split
-    /// (<see cref="TaitRadioIdentity.Band"/>) the remote head-end scan already surfaces — parity so a
+    /// (<see cref="TaitRadioIdentity.Band"/>) the remote head-end scan already surfaces - parity so a
     /// local-attach port can be band-named too (#586). Internal so the mapping is testable with a
     /// synthetic identity (the discovery itself needs real serial hardware).</summary>
     internal static RadioScanResult ToResult(TaitDiscoveredRadio found, string? byIdPath)

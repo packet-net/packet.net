@@ -3,9 +3,9 @@ namespace Packet.Rig;
 /// <summary>
 /// An operating mode as a canonical token (hamlib's vocabulary: <c>USB</c>, <c>LSB</c>,
 /// <c>CW</c>, <c>PKTUSB</c>, …) with pass-through for anything a backend reports that has no
-/// canonical spelling. Mode vocabularies genuinely diverge across backends — hamlib
+/// canonical spelling. Mode vocabularies genuinely diverge across backends - hamlib
 /// canonicalises per-rig names itself, flrig surfaces whatever the attached rig calls the mode
-/// ("DIGI", "DATA-U", …) — so this is a value wrapper over a token, not a closed enum: compare
+/// ("DIGI", "DATA-U", …) - so this is a value wrapper over a token, not a closed enum: compare
 /// against the well-known statics where a match exists, and fall back to <see cref="Token"/>
 /// for the rest.
 /// </summary>

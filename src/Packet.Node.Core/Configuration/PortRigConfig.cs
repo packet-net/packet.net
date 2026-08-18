@@ -2,7 +2,7 @@ namespace Packet.Node.Core.Configuration;
 
 /// <summary>
 /// Optional per-port <b>rig-control attachment</b> (<c>rig:</c>): the CAT/station-control channel
-/// to the transceiver behind this port — frequency, mode, PTT state and TX-side meters via
+/// to the transceiver behind this port - frequency, mode, PTT state and TX-side meters via
 /// <c>Packet.Rig.IRigControl</c> (hamlib's <c>rigctld</c> network protocol or flrig's XML-RPC
 /// server). Read-only surface today: the node polls and projects rig state
 /// (<c>GET /api/v1/rigs</c>, <c>GET /api/v1/ports/{id}/rig</c>, the <c>/api/v1/rigs/events</c>
@@ -13,25 +13,25 @@ namespace Packet.Node.Core.Configuration;
 /// <para>
 /// This is the <b>station-control</b> sibling of the <c>radio:</c> block (plan OQ-011): a
 /// <c>radio:</c> attachment is the packet-medium seam (RSSI tagging, hardware carrier-sense
-/// CSMA), a <c>rig:</c> attachment is the operator-facing CAT view. A port can carry both — an
+/// CSMA), a <c>rig:</c> attachment is the operator-facing CAT view. A port can carry both - an
 /// HF port might have a NinoTNC modem, a Tait <c>radio:</c> is nonsense there, but a
 /// <c>rig: {kind: hamlib}</c> gives the operator the transceiver's dial state and TX health.
 /// The rig never touches the packet path.
 /// </para>
 /// <para>
 /// <b>Two binding shapes.</b> The <b>BYO-daemon</b> shape (<see cref="Host"/> +
-/// <see cref="Port"/>) points at a rigctld/flrig the operator already runs — the only shape
+/// <see cref="Port"/>) points at a rigctld/flrig the operator already runs - the only shape
 /// flrig supports (it is a GUI app the node can't sensibly spawn). The <b>node-managed</b>
 /// shape (<see cref="Device"/> + <see cref="Model"/>, hamlib only) hands the daemon's lifetime
 /// to the node: it spawns <c>rigctld -m &lt;model&gt; -r &lt;device&gt;</c> on a loopback port it
-/// allocates itself, supervises it (respawn with capped backoff — an unplugged USB CAT cable
+/// allocates itself, supervises it (respawn with capped backoff - an unplugged USB CAT cable
 /// self-heals on replug), and dials that. <see cref="Device"/> being set is what selects the
 /// shape; <see cref="Host"/>/<see cref="Port"/> then stay unset (the node owns the endpoint),
 /// and <see cref="Model"/>/<see cref="SerialSpeed"/> belong only to it.
 /// </para>
 /// <para>
 /// A rig that fails to connect at port start degrades cleanly: the fault is logged and the port
-/// runs without rig status — an absent rigctld/flrig daemon must never take a working packet
+/// runs without rig status - an absent rigctld/flrig daemon must never take a working packet
 /// channel down. After a successful attach, transport drops self-heal (the backends re-dial per
 /// command), so a bounced daemon comes back on the next poll. Changing this block is a
 /// restart-class config edit (see <c>Hosting.ReconcilePlanner</c>).
@@ -39,7 +39,7 @@ namespace Packet.Node.Core.Configuration;
 /// </remarks>
 public sealed record PortRigConfig
 {
-    /// <summary>The rig-control backend kind — one of <see cref="RigKinds.Names"/>
+    /// <summary>The rig-control backend kind - one of <see cref="RigKinds.Names"/>
     /// (<c>hamlib</c> = rigctld's network protocol, <c>flrig</c> = flrig's XML-RPC server).
     /// Matched case- and hyphen/underscore-insensitively.</summary>
     public string Kind { get; init; } = "";

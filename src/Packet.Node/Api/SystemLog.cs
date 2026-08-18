@@ -5,7 +5,7 @@ namespace Packet.Node.Api;
 /// <summary>
 /// Structured audit-log lines for the system/update endpoints, via the
 /// <see cref="LoggerMessage"/> source generator (allocation-free, repo logging rule).
-/// Logged under the <c>Packet.Node.System</c> category. No secrets cross this surface —
+/// Logged under the <c>Packet.Node.System</c> category. No secrets cross this surface -
 /// only a username, a source IP, the install channel, and an outcome.
 /// </summary>
 internal static partial class SystemLog

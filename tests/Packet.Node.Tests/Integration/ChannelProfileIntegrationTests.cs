@@ -10,9 +10,9 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// The slow-channel profile, proven end-to-end at the node-host layer: a port
 /// configured with <c>profile: slow-afsk1200</c> brings up a listener whose
-/// sessions carry the profile's longer T1 (10 s) — i.e. the named, opt-in tuning
+/// sessions carry the profile's longer T1 (10 s) - i.e. the named, opt-in tuning
 /// actually flows config → supervisor → listener → session. Without a profile (or
-/// any explicit tuning) the session keeps the engine's spec default — proving the
+/// any explicit tuning) the session keeps the engine's spec default - proving the
 /// profile is opt-in and strict-by-default is intact.
 /// </summary>
 [Trait("Category", "Node")]
@@ -75,13 +75,13 @@ public sealed class ChannelProfileIntegrationTests
         await supervisor.StartAsync();
         await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("p1"), "port p1 should come up");
 
-        // Capture the node-side session — and its T1V — as it is accepted.
+        // Capture the node-side session - and its T1V - as it is accepted.
         // The read must happen HERE, synchronously inside the accept dispatch,
         // not after the banner exchange: since #327 the remote delayed-acks the
         // node's banner I-frame, which gives the node a live RTT sample and the
         // figc4.7 SRT IIR correctly adapts T1V (to 7/8 of the seed on a
-        // same-process ~0 RTT). These tests verify the CONFIG PLUMBING — that
-        // the configured value seeds the session — so they must observe T1V
+        // same-process ~0 RTT). These tests verify the CONFIG PLUMBING - that
+        // the configured value seeds the session - so they must observe T1V
         // before the first ack lands. At accept time the establishment path
         // (T1V := 2 x SRT seed) has run and no I-frame can have been acked yet
         // (the remote's RR needs a later inbound pump iteration).

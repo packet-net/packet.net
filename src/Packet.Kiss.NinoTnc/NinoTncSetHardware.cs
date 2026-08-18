@@ -14,7 +14,7 @@ public static class NinoTncSetHardware
     public const byte NonPersistOffset = 16;
 
     /// <summary>
-    /// Maximum valid mode number (DIP position 0–15).
+    /// Maximum valid mode number (DIP position 0-15).
     /// </summary>
     public const byte MaxMode = 15;
 
@@ -22,10 +22,10 @@ public static class NinoTncSetHardware
     /// Compute the single-byte SETHW payload for a given mode and persist
     /// preference.
     /// </summary>
-    /// <param name="mode">DIP-switch-equivalent mode 0–15.</param>
+    /// <param name="mode">DIP-switch-equivalent mode 0-15.</param>
     /// <param name="persistToFlash">
     /// If <c>true</c>, the TNC writes the new mode to flash so it survives a
-    /// reboot. If <c>false</c>, the change is RAM-only — this is the
+    /// reboot. If <c>false</c>, the change is RAM-only - this is the
     /// commonly-preferred default in tooling because flash has limited write
     /// cycles.
     /// </param>

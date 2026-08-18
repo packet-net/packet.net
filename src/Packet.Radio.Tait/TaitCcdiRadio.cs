@@ -16,12 +16,12 @@ namespace Packet.Radio.Tait;
 /// <para>
 /// CCDI is a prompt-disciplined request/response protocol with unsolicited PROGRESS/ERROR
 /// messages interleaved: this driver serialises commands, matches solicited responses to the
-/// in-flight transaction, and routes everything else to events. Events fire on the read pump —
+/// in-flight transaction, and routes everything else to events. Events fire on the read pump -
 /// keep handlers fast and non-blocking.
 /// </para>
 /// <para>
 /// Carrier-sense events require the radio to emit PROGRESS messages, which is per-session
-/// radio state — call <see cref="SetProgressMessagesAsync"/> after opening. The radio must be
+/// radio state - call <see cref="SetProgressMessagesAsync"/> after opening. The radio must be
 /// in Command mode (its power-up default when so programmed); Transparent-mode escape is not
 /// attempted by this driver.
 /// </para>
@@ -34,7 +34,7 @@ namespace Packet.Radio.Tait;
 public sealed class TaitCcdiRadio : IRadioControl, IDisposable
 {
     /// <summary>The CCDI serial rate these radios are commonly programmed for. The radio's
-    /// programmed rate wins — 1200 to 115200 are all possible (§1.8).</summary>
+    /// programmed rate wins - 1200 to 115200 are all possible (§1.8).</summary>
     public const int DefaultBaudRate = 28800;
 
     private readonly ISerialIo io;
@@ -81,7 +81,7 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// <inheritdoc/>
     /// <remarks><see cref="RadioCapabilities.SideChannel"/> advertises the driver machinery
     /// (<see cref="TaitSdmSideChannel"/>); whether SDMs are enabled in the radio's programming
-    /// needs a live probe (error 0/06 = disabled — cf. the tuning doctor's SDM probe).</remarks>
+    /// needs a live probe (error 0/06 = disabled - cf. the tuning doctor's SDM probe).</remarks>
     public RadioCapabilities Capabilities =>
         RadioCapabilities.RssiRead | RadioCapabilities.CarrierSense | RadioCapabilities.TransmitterControl |
         RadioCapabilities.SideChannel;
@@ -105,7 +105,7 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     public event EventHandler<CarrierSenseChange>? CarrierSenseChanged;
 
     /// <summary>Fired when the radio reports its transmitter keying/unkeying (PROGRESS
-    /// PTT activated/deactivated) — whether keyed by CCDI, the microphone, or a data PTT line.</summary>
+    /// PTT activated/deactivated) - whether keyed by CCDI, the microphone, or a data PTT line.</summary>
     public event EventHandler<TransmitterStateChange>? TransmitterStateChanged;
 
     /// <summary>Every unsolicited PROGRESS message, decoded. The DCD and PTT edges also surface
@@ -115,13 +115,13 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// <summary>Unsolicited ERROR messages (system errors outside any transaction).</summary>
     public event EventHandler<CcdiErrorMessage>? ErrorReceived;
 
-    /// <summary>Every decoded inbound message, solicited or not — a diagnostics tap.</summary>
+    /// <summary>Every decoded inbound message, solicited or not - a diagnostics tap.</summary>
     public event EventHandler<CcdiMessage>? MessageReceived;
 
-    /// <summary>Unsolicited RING messages — incoming Selcall / status / SDM / data calls.</summary>
+    /// <summary>Unsolicited RING messages - incoming Selcall / status / SDM / data calls.</summary>
     public event EventHandler<CcdiRingMessage>? RingReceived;
 
-    /// <summary>Unsolicited GET_SDM messages — received SDMs pushed by the radio without a
+    /// <summary>Unsolicited GET_SDM messages - received SDMs pushed by the radio without a
     /// QUERY, which happens when SDM output-on-reception is enabled
     /// (<see cref="SetSdmOutputOnReceptionAsync"/>). Solicited reads via
     /// <see cref="ReadBufferedSdmAsync"/> do NOT raise this.</summary>
@@ -130,7 +130,7 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// <summary>
     /// Over-air delivery receipt for a sent SDM (PROGRESS type 1D, requires auto-ack enabled in
     /// both radios' programming): <c>Acknowledged</c> true = the addressed radio confirmed
-    /// receipt; false = no acknowledgement within the radio's configured wait time — which a
+    /// receipt; false = no acknowledgement within the radio's configured wait time - which a
     /// wrong/absent destination also produces. Hardware-verified both ways on the bench.
     /// </summary>
     public event EventHandler<TaitSdmReceipt>? SdmDeliveryReceipt;
@@ -184,7 +184,7 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
 
     /// <summary>
     /// Open the named serial port (8N1, no flow control) and start the read pump. The radio is
-    /// not touched — pair with <see cref="SetProgressMessagesAsync"/> to turn on DCD events.
+    /// not touched - pair with <see cref="SetProgressMessagesAsync"/> to turn on DCD events.
     /// </summary>
     public static TaitCcdiRadio Open(
         string portName,
@@ -206,10 +206,10 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
 
     /// <summary>
     /// Open a Tait radio whose CCDI serial port is bridged as a raw binary TCP pipe by a remote
-    /// head-end (the split-station topology — see <c>docs/research/split-station-rf-headend.md</c>)
+    /// head-end (the split-station topology - see <c>docs/research/split-station-rf-headend.md</c>)
     /// and start the read pump. The socket carries the CCDI/PROGRESS byte stream unchanged, so
     /// carrier-sense (DCD) edges, RSSI reads, SDM and every transaction work exactly as over a
-    /// local port. Like <see cref="Open"/>, the radio itself is not touched — pair with
+    /// local port. Like <see cref="Open"/>, the radio itself is not touched - pair with
     /// <see cref="SetProgressMessagesAsync"/> to turn on DCD events.
     /// </summary>
     /// <param name="host">Head-end host bridging the serial port.</param>
@@ -218,7 +218,7 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// Applied at open only when <paramref name="setBaud"/> is supplied (the head-end owns the
     /// clock); with the default null callback the head-end's current clock is trusted as-is.</param>
     /// <param name="setBaud">Async line-control callback the data-plane <c>SetBaudRate</c> routes
-    /// to — the out-of-band head-end verb that re-clocks the physical port (the data socket is a
+    /// to - the out-of-band head-end verb that re-clocks the physical port (the data socket is a
     /// pure binary pipe and cannot carry line-rate changes). <c>null</c> (the default) makes baud
     /// a no-op: a plain raw pipe works today, and the verb lands in a later stage.</param>
     /// <param name="options">Behavioural knobs; null uses defaults.</param>

@@ -7,7 +7,7 @@ namespace Packet.Node.Core.Console;
 /// connected console session. Every method routes through the SAME serialized host seams
 /// the web control API uses (<c>NodeHostedService.RunExclusiveAsync</c> for lifecycle /
 /// session actions, <c>IWritableConfigProvider.TryApply</c> for config), so RF admin can
-/// never race a config reconcile or a port bring-up — it is the identical validated path,
+/// never race a config reconcile or a port bring-up - it is the identical validated path,
 /// reached over a different transport.
 /// </summary>
 /// <remarks>
@@ -26,9 +26,9 @@ namespace Packet.Node.Core.Console;
 /// <b>Deliberately scoped (named, not silent).</b> The first tranche covers the
 /// operationally meaningful RF-admin actions: list sessions, kick a session, bring a port
 /// up/down, reload the conffile. Free-form config <c>SET &lt;path&gt; &lt;value&gt;</c> and
-/// a full-node <c>RESTART</c> over RF are deferred by design — editing a deep config tree
+/// a full-node <c>RESTART</c> over RF are deferred by design - editing a deep config tree
 /// char-by-char over a lossy 1200-baud line, and a restart that drops the operator's own
-/// RF session, each want their own focused design — and this seam is shaped so they slot in
+/// RF session, each want their own focused design - and this seam is shaped so they slot in
 /// later without disturbing the elevation gate.
 /// </para>
 /// </remarks>
@@ -43,7 +43,7 @@ public interface ISysopOperations
     /// found and asked to disconnect.</summary>
     Task<SysopActionResult> KickAsync(string sessionId, CancellationToken ct = default);
 
-    /// <summary>Enable or disable a configured port by id — persisted via
+    /// <summary>Enable or disable a configured port by id - persisted via
     /// <c>TryApply</c> then brought up/down under the exclusive gate (the same path the web
     /// Ports API uses). Returns the outcome + a message for the console.</summary>
     Task<SysopActionResult> SetPortEnabledAsync(string portId, bool enabled, CancellationToken ct = default);
@@ -81,7 +81,7 @@ public sealed record SysopActionResult(bool Ok, string Message)
 /// the per-connection <see cref="NodeConsoleEnvironment"/> stays simple, and so a node with
 /// none of it wired (auth off / older call site / test) simply has a null
 /// <see cref="NodeConsoleEnvironment.Sysop"/> and the <c>SYSOP</c> command reports
-/// "not available" — the default-off contract.
+/// "not available" - the default-off contract.
 /// </summary>
 public sealed class SysopContext
 {
@@ -92,7 +92,7 @@ public sealed class SysopContext
         Operations = operations ?? throw new ArgumentNullException(nameof(operations));
     }
 
-    /// <summary>The user store — resolves a callsign (AX.25) or username (telnet) to the
+    /// <summary>The user store - resolves a callsign (AX.25) or username (telnet) to the
     /// account whose TOTP secret a presented code is checked against.</summary>
     public IUserStore Users { get; }
 

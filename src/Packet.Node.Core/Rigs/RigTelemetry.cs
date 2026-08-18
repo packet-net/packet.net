@@ -8,7 +8,7 @@ namespace Packet.Node.Core.Rigs;
 /// The rig-status fan-out hub behind the <c>/api/v1/rigs/events</c> SSE stream: every
 /// <see cref="RigStatusMonitor"/> publishes a <see cref="RigStatus"/> here after each poll tick,
 /// and each SSE client holds a bounded subscription. Mirrors <c>NodeTelemetry</c>'s
-/// subscribe/broadcast shape — DropOldest channels, so a slow consumer drops its oldest buffered
+/// subscribe/broadcast shape - DropOldest channels, so a slow consumer drops its oldest buffered
 /// updates rather than back-pressuring the poll loops.
 /// </summary>
 public sealed class RigTelemetry

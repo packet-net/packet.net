@@ -3,7 +3,7 @@ using Packet.Rig;
 namespace Packet.Radio.Tait;
 
 /// <summary>
-/// The station-control (<see cref="IRigControl"/>) view of a Tait CCDI radio — the third,
+/// The station-control (<see cref="IRigControl"/>) view of a Tait CCDI radio - the third,
 /// deliberately-different implementation pressure-testing the <c>Packet.Rig</c> abstraction
 /// from the channelised-PMR side (after rigctld and flrig; plan OQ-011). A thin adapter over
 /// <see cref="TaitCcdiRadio"/>: the radio object stays the owner of the wire, the packet-medium
@@ -15,27 +15,27 @@ namespace Packet.Radio.Tait;
 /// <b>What is (and isn't) advertised, and why:</b>
 /// </para>
 /// <list type="bullet">
-/// <item><description><b>PTT set + get</b> — <c>FUNCTION 9</c> keying, with get served from
+/// <item><description><b>PTT set + get</b> - <c>FUNCTION 9</c> keying, with get served from
 /// last-known state (see <see cref="GetPttAsync"/> for the PROGRESS dependency).</description></item>
-/// <item><description><b>RF-power meter (relative)</b> — CCTM 318's forward-power detector as a
-/// fraction of its 0–1200 mV full scale. A genuine meter-deflection fraction, which is exactly
+/// <item><description><b>RF-power meter (relative)</b> - CCTM 318's forward-power detector as a
+/// fraction of its 0-1200 mV full scale. A genuine meter-deflection fraction, which is exactly
 /// this member's contract.</description></item>
-/// <item><description><b>NOT watts, NOT SWR</b> — CCTM 318/319 are raw detector millivolts, "a
+/// <item><description><b>NOT watts, NOT SWR</b> - CCTM 318/319 are raw detector millivolts, "a
 /// VSWR / antenna-health proxy", not calibrated power. Deriving watts or an SWR ratio needs a
 /// detector-calibration decision that hasn't been made; until then advertising them would
 /// launder detector volts into units the abstraction promises. Raw readings stay available on
 /// <see cref="TaitCcdiRadio.ReadForwardPowerAsync"/> / <see cref="TaitCcdiRadio.ReadReversePowerAsync"/>.</description></item>
-/// <item><description><b>NOT frequency</b> — the tuned frequency is not CCDI-readable at all
+/// <item><description><b>NOT frequency</b> - the tuned frequency is not CCDI-readable at all
 /// (only the band split is; see <see cref="TaitRadioIdentity.Band"/>), and frequency <em>set</em>
 /// is a CCR-session retune that is still unproven on the bench (plan §5.11). The flags light up
 /// when that lands.</description></item>
-/// <item><description><b>NOT mode</b> — an FM PMR radio has no operating-mode concept to
+/// <item><description><b>NOT mode</b> - an FM PMR radio has no operating-mode concept to
 /// control; this is precisely the divergence the capability flags exist for.</description></item>
 /// </list>
 /// </remarks>
 public sealed class TaitRigControl : IRigControl
 {
-    /// <summary>CCTM 318/319 detector full scale in millivolts (manual: raw 0–1200 mV).</summary>
+    /// <summary>CCTM 318/319 detector full scale in millivolts (manual: raw 0-1200 mV).</summary>
     public const double DetectorFullScaleMillivolts = 1200.0;
 
     /// <summary>How long the dispose-unkey may take before it is abandoned (best effort).</summary>
@@ -68,7 +68,7 @@ public sealed class TaitRigControl : IRigControl
     /// Wrap <paramref name="radio"/>, querying its identity over the wire to populate
     /// <see cref="Info"/>. The radio must be in Command mode (identity queries don't run over a
     /// Transparent byte pipe). <paramref name="ownsRadio"/> transfers disposal: when true,
-    /// disposing the adapter disposes the radio; when false (the node case — the port supervisor
+    /// disposing the adapter disposes the radio; when false (the node case - the port supervisor
     /// owns the radio) disposal only detaches and best-effort-unkeys anything this adapter keyed.
     /// </summary>
     /// <param name="radio">The CCDI radio to re-present through the rig seam.</param>
@@ -88,7 +88,7 @@ public sealed class TaitRigControl : IRigControl
     }
 
     /// <summary>Wrap <paramref name="radio"/> with an already-known identity (the node caches
-    /// identity at adoption) — no wire traffic.</summary>
+    /// identity at adoption) - no wire traffic.</summary>
     /// <param name="radio">The CCDI radio to re-present through the rig seam.</param>
     /// <param name="identity">The radio's already-queried identity.</param>
     /// <param name="ownsRadio">Whether disposing the adapter also disposes the radio.</param>
@@ -133,7 +133,7 @@ public sealed class TaitRigControl : IRigControl
     /// Served from last-known state, not a wire query (CCDI has no TX-state poll): fused from
     /// this adapter's own <see cref="SetPttAsync"/> calls and the radio's unsolicited PROGRESS
     /// transmit/receive edges. External keying (the fist mic) is therefore only observed when
-    /// PROGRESS output is enabled (<see cref="TaitCcdiRadio.SetProgressMessagesAsync"/> — the
+    /// PROGRESS output is enabled (<see cref="TaitCcdiRadio.SetProgressMessagesAsync"/> - the
     /// node does this at port bring-up). Fresh state reads false.
     /// </remarks>
     public ValueTask<bool> GetPttAsync(CancellationToken cancellationToken = default)
@@ -173,7 +173,7 @@ public sealed class TaitRigControl : IRigControl
     }
 
     /// <inheritdoc />
-    /// <remarks>CCTM 318 forward-power detector reading over its 0–1200 mV full scale —
+    /// <remarks>CCTM 318 forward-power detector reading over its 0-1200 mV full scale -
     /// meaningful while transmitting; idle reads ~0.</remarks>
     public async ValueTask<double> ReadRfPowerAsync(CancellationToken cancellationToken = default)
     {
@@ -225,7 +225,7 @@ public sealed class TaitRigControl : IRigControl
 
         if (keyedByUs && !ownsRadio)
         {
-            // The radio outlives this adapter, so its own dispose-unkey won't run — unkey here.
+            // The radio outlives this adapter, so its own dispose-unkey won't run - unkey here.
             try
             {
                 // Budgeted on the injected clock (plan 2.7), so a FakeTimeProvider test can
@@ -236,7 +236,7 @@ public sealed class TaitRigControl : IRigControl
             catch (Exception ex) when (ex is TaitCcdiException or TimeoutException or IOException
                 or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
             {
-                // Best effort only — the link (or the radio object) may already be gone.
+                // Best effort only - the link (or the radio object) may already be gone.
             }
         }
 

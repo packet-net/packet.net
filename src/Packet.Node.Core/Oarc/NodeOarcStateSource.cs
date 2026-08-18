@@ -13,7 +13,7 @@ namespace Packet.Node.Core.Oarc;
 /// circuits from the running subsystems for the <see cref="OarcReporter"/>. It reads the live
 /// <see cref="PortSupervisor"/> / <see cref="NetRomService"/> / <see cref="NodeTelemetry"/> handles off
 /// <see cref="NodeHostedService"/> (which sets them at start, so the handles may be absent before the
-/// node has started — a pre-start capture is simply empty). Enumerates each running port's
+/// node has started - a pre-start capture is simply empty). Enumerates each running port's
 /// <see cref="Ax25Listener.ActiveSessions"/> (connected only), correlates per-link frame/byte counters
 /// from telemetry, reads the NET/ROM circuit table, and tracks inbound-vs-outbound by latching the
 /// <see cref="Ax25Listener.SessionAccepted"/> / <see cref="CircuitManager.IncomingCircuit"/> signals.
@@ -22,7 +22,7 @@ namespace Packet.Node.Core.Oarc;
 /// <remarks>
 /// Stable per-link/per-circuit ids are assigned lazily via <see cref="ConditionalWeakTable{TKey,TValue}"/>
 /// keyed on the session/circuit instance (weak, so they vanish with the object and are never reused
-/// while alive). Circuit segment/byte counters are reported as 0 — <see cref="NetRomCircuit"/> does not
+/// while alive). Circuit segment/byte counters are reported as 0 - <see cref="NetRomCircuit"/> does not
 /// expose them yet (the named §9 fidelity gap); a circuit still appears with its identity + lifecycle.
 /// </remarks>
 public sealed class NodeOarcStateSource : IOarcStateSource
@@ -156,7 +156,7 @@ public sealed class NodeOarcStateSource : IOarcStateSource
                 Remote = circuit.RemoteNode.ToString(),
                 Inbound = meta.Inbound,
                 Service = null,
-                // NetRomCircuit exposes no segment/byte counters yet (design §9) — 0 for now.
+                // NetRomCircuit exposes no segment/byte counters yet (design §9) - 0 for now.
                 SegmentsSent = 0,
                 SegmentsReceived = 0,
                 SegmentsResent = 0,

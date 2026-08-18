@@ -29,13 +29,13 @@ namespace Packet.Node.Api;
 /// every <c>begin</c> stashes the server-built options (challenge included) keyed to the
 /// user (register) or a per-attempt session (assert); the matching <c>complete</c>
 /// <em>consumes</em> that exact stashed options and verifies the authenticator's signed
-/// challenge against the server's — never a client-supplied one. Single-use (a replay
+/// challenge against the server's - never a client-supplied one. Single-use (a replay
 /// finds nothing), expiring (off the injected clock), and key-bound.
 /// </para>
 /// <para>
 /// <b>Sign-count clone detection.</b> The verify path rejects an assertion whose new
 /// signature counter has not advanced past the stored one (when the authenticator uses
-/// counters &gt; 0) — the signature of a cloned credential. Fido2NetLib enforces this
+/// counters &gt; 0) - the signature of a cloned credential. Fido2NetLib enforces this
 /// against the <see cref="MakeAssertionParams.StoredSignatureCounter"/> we pass; we then
 /// persist the advanced counter on success.
 /// </para>
@@ -49,7 +49,7 @@ namespace Packet.Node.Api;
 /// <para>
 /// <b>Default-off contract.</b> These endpoints are ALWAYS mapped, but a node only
 /// becomes usable via passkeys when <c>management.auth.enabled</c> is on AND a user has
-/// enrolled one. The register + credential-management endpoints are <c>read</c>-gated —
+/// enrolled one. The register + credential-management endpoints are <c>read</c>-gated -
 /// the floor for an authenticated self-service action: a logged-in user enrols/manages a
 /// passkey for THEMSELVES (the username comes from the authenticated principal, never the
 /// body), so any authenticated user may add a passkey to their own account. The assert
@@ -74,7 +74,7 @@ public static class PdnWebAuthnApi
 
         // ===== ALWAYS-OPEN: passwordless assertion (login) ======================
 
-        // Begin a passwordless assertion. Always open — a login has no bearer token.
+        // Begin a passwordless assertion. Always open - a login has no bearer token.
         // Supports a username-less / discoverable-credential assertion (empty allow-list
         // ⇒ the authenticator offers any resident credential it holds for this RP), and a
         // username-scoped one (allow-list = that user's enrolled credentials).
@@ -150,7 +150,7 @@ public static class PdnWebAuthnApi
 
             // CONSUME the server-stashed options for this session (single-use). A replay /
             // unknown / expired session finds nothing → reject. The challenge to verify
-            // against is the one INSIDE these options — never a client value.
+            // against is the one INSIDE these options - never a client value.
             var options = challenges.Take<AssertionOptions>(WebAuthnChallengeCache.AssertionKey(body.SessionId));
             if (options is null)
             {
@@ -170,7 +170,7 @@ public static class PdnWebAuthnApi
             }
 
             // A response with no credential id (e.g. an empty/garbage body that still
-            // deserialised) can't identify a credential — reject generically rather than
+            // deserialised) can't identify a credential - reject generically rather than
             // fault the store lookup.
             if (raw.RawId is not { Length: > 0 })
             {
@@ -242,7 +242,7 @@ public static class PdnWebAuthnApi
         var group = v1.MapGroup("/auth/webauthn");
 
         // Begin enrolling a passkey FOR THE SIGNED-IN USER. The username comes from the
-        // authenticated principal — never the body — so a user can only enrol for self.
+        // authenticated principal - never the body - so a user can only enrol for self.
         group.MapPost("/register/begin", (
             HttpContext http,
             IUserStore users,
@@ -370,7 +370,7 @@ public static class PdnWebAuthnApi
                     AttestationResponse = raw,
                     OriginalOptions = options,
                     // Global uniqueness: the credential id must not already be enrolled
-                    // (by anyone) — a fresh key always is, but enforce it explicitly.
+                    // (by anyone) - a fresh key always is, but enforce it explicitly.
                     IsCredentialIdUniqueToUserCallback = (p, _) =>
                         Task.FromResult(credentials.GetByCredentialId(p.CredentialId) is null),
                 }, ct).ConfigureAwait(false);

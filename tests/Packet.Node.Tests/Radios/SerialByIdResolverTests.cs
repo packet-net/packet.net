@@ -4,7 +4,7 @@ using Packet.Node.Tests.Support;
 namespace Packet.Node.Tests.Radios;
 
 /// <summary>
-/// <see cref="SerialByIdResolver"/> against a temp directory of symlinks — the udev by-id resolution
+/// <see cref="SerialByIdResolver"/> against a temp directory of symlinks - the udev by-id resolution
 /// (Linux-only). It must resolve a unique symlink but refuse an ambiguous one (two links to the same
 /// device, as the shared-USB-serial CP2102 CCDI dongles produce).
 /// </summary>

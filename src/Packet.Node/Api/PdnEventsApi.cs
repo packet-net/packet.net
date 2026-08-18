@@ -19,7 +19,7 @@ namespace Packet.Node.Api;
 /// <para>
 /// Unauthenticated and read-only, like the rest of step-1/1b: the node binds
 /// 127.0.0.1 by default and auth is a later step. The connection is held open
-/// for the client's lifetime — a periodic heartbeat comment (<c>: ping</c>)
+/// for the client's lifetime - a periodic heartbeat comment (<c>: ping</c>)
 /// keeps it warm through buffering proxies, and the loop tears down cleanly when
 /// <see cref="HttpContext.RequestAborted"/> fires (the client navigated away or
 /// the SPA closed the EventSource).
@@ -45,7 +45,7 @@ public static class PdnEventsApi
 
         app.MapGet("/api/v1/events", async (HttpContext ctx, NodeHostedService host, TimeProvider clock) =>
         {
-            // (gated `read` below — the gate is a no-op when auth is disabled.)
+            // (gated `read` below - the gate is a no-op when auth is disabled.)
             var ct = ctx.RequestAborted;
 
             SseWriter.Begin(ctx);

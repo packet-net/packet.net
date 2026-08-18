@@ -44,7 +44,7 @@ public class Ax25ParseOptionsTests
     [Fact]
     public void With_Expression_Produces_Independent_Instance()
     {
-        // Records support non-destructive mutation via `with` —
+        // Records support non-destructive mutation via `with` -
         // callers can derive custom options from any preset.
         var custom = Ax25ParseOptions.Strict with { AllowEmptyCallsignBase = true };
         custom.AllowEmptyCallsignBase.Should().BeTrue();

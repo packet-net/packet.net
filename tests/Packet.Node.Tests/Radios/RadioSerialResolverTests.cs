@@ -4,7 +4,7 @@ using Packet.Radio.Tait;
 namespace Packet.Node.Tests.Radios;
 
 /// <summary>
-/// <see cref="RadioSerialResolver.Match"/> — the CCDI-serial-to-device resolution behind a
+/// <see cref="RadioSerialResolver.Match"/> - the CCDI-serial-to-device resolution behind a
 /// <c>serial:</c>-bound port. The point of binding by CCDI serial is that it works where device
 /// paths and <c>/dev/serial/by-id</c> don't: two CP2102 dongles that share a USB serial on
 /// renumbered <c>/dev/ttyUSB*</c> paths still resolve to the right physical radio.

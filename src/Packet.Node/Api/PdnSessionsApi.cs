@@ -17,7 +17,7 @@ namespace Packet.Node.Api;
 
 /// <summary>
 /// The session-action + ping side of the pdn node control API (Slice 3, step 4): the
-/// direct-supervisor actions the web Sessions screen and the ping tool drive —
+/// direct-supervisor actions the web Sessions screen and the ping tool drive -
 /// connect-out (<c>POST /sessions</c>), disconnect (<c>DELETE /sessions/{id}</c>), send
 /// one line into a connected-mode session (<c>POST /sessions/{id}/send</c>), and the
 /// connectionless TEST ping (<c>POST /ping</c>).
@@ -25,8 +25,8 @@ namespace Packet.Node.Api;
 /// <remarks>
 /// <para>
 /// Every action that touches the live port/session set runs under the host's exclusive
-/// gate (<see cref="NodeHostedService.RunExclusiveAsync{T}"/>) — the same gate the
-/// reconcile worker holds — so a web action can never race a config reconcile (or another
+/// gate (<see cref="NodeHostedService.RunExclusiveAsync{T}"/>) - the same gate the
+/// reconcile worker holds - so a web action can never race a config reconcile (or another
 /// action) mutating ports or sessions. The critical sections are kept short: the gate is
 /// held only to <em>capture</em> a listener/session reference or to post a single event;
 /// the one long-running operation, a connect-out dial that awaits SABM/UA, runs
@@ -70,15 +70,15 @@ namespace Packet.Node.Api;
 /// <see cref="Ax25Listener.FrameTraced"/> stream to measure RTT. The correlation core lives
 /// in <see cref="AxPinger"/> (web-free, in <c>Packet.Node.Core</c>), driven here through a
 /// captured <see cref="Ax25Listener"/> wrapped in a <see cref="ListenerAxPingChannel"/>. The
-/// pinger only READS frames + calls the public <see cref="Ax25Listener.SendTestAsync"/>, so —
-/// unlike the connect/disconnect/send actions — it does NOT mutate the live port set and does
+/// pinger only READS frames + calls the public <see cref="Ax25Listener.SendTestAsync"/>, so -
+/// unlike the connect/disconnect/send actions - it does NOT mutate the live port set and does
 /// NOT run under the host's <c>RunExclusiveAsync</c> gate (the listener reference is captured
 /// once, defensively; if the port is gone mid-run, sends throw and the run records loss). A
 /// peer that doesn't implement TEST simply never answers → all timeouts → loss 100%, which is
 /// a normal result returned as a 200, not an error.
 /// </para>
 /// <para>
-/// Auth is a later step — like the read API, the SSE feed, the config write API, and the
+/// Auth is a later step - like the read API, the SSE feed, the config write API, and the
 /// port-management API, these are unauthenticated and the node binds 127.0.0.1 by default.
 /// Ping RTT + per-ping timeout ride the injected <see cref="TimeProvider"/> /
 /// <c>Stopwatch</c>, never <c>DateTime.Now</c> (repo rule §2.7).
@@ -189,7 +189,7 @@ public static class PdnSessionsApi
                 return Results.NotFound(new { error = "No running port to connect out on." });
             }
 
-            // Dial OUTSIDE the gate — awaiting SABM/UA (or a NET/ROM circuit) is the
+            // Dial OUTSIDE the gate - awaiting SABM/UA (or a NET/ROM circuit) is the
             // long-running part and must not block config reconciles. The ceiling timer
             // rides the injected TimeProvider (repo rule §2.7: no wall-clock), linked with
             // the request token.
@@ -228,7 +228,7 @@ public static class PdnSessionsApi
             // id (the "{portId}:{peer}" the projection minted) so the stream/send/disconnect
             // endpoints address it by that exact id. The manager starts a read pump that
             // captures the peer's output (banner/prompt/responses) into a backlog and fans it
-            // out to SSE subscribers — without this the dialled connection's output would
+            // out to SSE subscribers - without this the dialled connection's output would
             // buffer unread (the v1 "blind connect-out"). The manager owns the connection's
             // lifetime from here (its CloseAsync / peer-gone path disposes it, posting DISC).
             console.Open(info.Id, connection);
@@ -236,7 +236,7 @@ public static class PdnSessionsApi
         });
 
         // Disconnect a session: find it by {id} (portId:peer). If the manager owns it (an
-        // adopted connect-out), close it through the manager — that stops the read pump,
+        // adopted connect-out), close it through the manager - that stops the read pump,
         // disposes the connection (posts DISC), and completes any open SSE subscribers. Else
         // fall back to posting DL-DISCONNECT on a live AX.25 session under the gate. Absent in
         // both → 404, else 204.
@@ -247,7 +247,7 @@ public static class PdnSessionsApi
                 return Results.NotFound();
             }
 
-            // A disconnect transmits DISC/DL-DISCONNECT — audit the teardown request.
+            // A disconnect transmits DISC/DL-DISCONNECT - audit the teardown request.
             audit.RecordRest(ctx, clock, "disconnect_session", id, "requested", "");
 
             if (console.IsManaged(id))
@@ -497,8 +497,8 @@ public static class PdnSessionsApi
     }
 
     // Emit one `output` SSE event carrying a text chunk. The chunk is JSON-encoded as a
-    // string (JsonSerializer.Serialize) so embedded CR/LF — which a packet banner/prompt is
-    // full of — survive SSE's line framing: a raw \n in a data: line would terminate the
+    // string (JsonSerializer.Serialize) so embedded CR/LF - which a packet banner/prompt is
+    // full of - survive SSE's line framing: a raw \n in a data: line would terminate the
     // event early. A plain string serializes identically under any options, so the default
     // serializer is used.
     private static Task WriteOutputAsync(HttpContext ctx, string chunk, CancellationToken ct)

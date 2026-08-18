@@ -4,7 +4,7 @@ namespace Packet.NetRom.Wire;
 
 /// <summary>
 /// Builds the information field(s) of one or more NET/ROM NODES routing
-/// broadcasts — the L3-origination counterpart to <see cref="NodesBroadcast"/>'s
+/// broadcasts - the L3-origination counterpart to <see cref="NodesBroadcast"/>'s
 /// parser. The caller transmits each returned byte array as a UI frame (PID 0xCF,
 /// AX.25 destination the literal text callsign <c>NODES</c>).
 /// </summary>
@@ -19,7 +19,7 @@ namespace Packet.NetRom.Wire;
 /// </para>
 /// <para>
 /// Construction stays strict (we never emit a frame that violates the canonical
-/// format — the outbound path is always spec-faithful, per CLAUDE.md), even
+/// format - the outbound path is always spec-faithful, per CLAUDE.md), even
 /// though the parser tolerates real-world divergences inbound.
 /// </para>
 /// </remarks>
@@ -38,7 +38,7 @@ public static class NodesBroadcastBuilder
     public readonly record struct Entry(Callsign Destination, string DestinationAlias, Callsign BestNeighbour, byte Quality);
 
     /// <summary>
-    /// The largest number of entries the canonical format ever packs into one frame —
+    /// The largest number of entries the canonical format ever packs into one frame -
     /// the <see cref="NodesBroadcast.MaxEntriesPerFrame"/> structural cap. A per-port
     /// byte cap (NODESPACLEN) can only lower the entries-per-frame below this; it never
     /// raises it.
@@ -47,7 +47,7 @@ public static class NodesBroadcastBuilder
     {
         if (maxFrameBytes is not { } cap)
         {
-            return NodesBroadcast.MaxEntriesPerFrame;   // unlimited — the structural cap (today's behaviour).
+            return NodesBroadcast.MaxEntriesPerFrame;   // unlimited - the structural cap (today's behaviour).
         }
 
         // How many whole entries fit after the 7-octet header within the byte cap. A cap
@@ -77,10 +77,10 @@ public static class NodesBroadcastBuilder
     /// <paramref name="maxFrameBytes"/> octets (the BPQ per-port <c>NODESPACLEN</c>) so a
     /// large NODES table fragments into several smaller UI frames. <c>null</c> (the default,
     /// via the parameterless overload) keeps the canonical structural cap of
-    /// <see cref="NodesBroadcast.MaxEntriesPerFrame"/> (11) entries per frame —
+    /// <see cref="NodesBroadcast.MaxEntriesPerFrame"/> (11) entries per frame -
     /// byte-for-byte today's behaviour. A non-null cap can only <em>lower</em> the
     /// entries-per-frame; it never raises it above the structural maximum. Each frame is a
-    /// self-contained broadcast (full header + whole entries only — an entry is never split
+    /// self-contained broadcast (full header + whole entries only - an entry is never split
     /// across frames), so the receiver merges them by destination exactly as for the
     /// multi-frame split a full table already produces.
     /// </summary>
@@ -98,7 +98,7 @@ public static class NodesBroadcastBuilder
         var frames = new List<byte[]>();
         int perFrame = EntriesPerFrame(maxFrameBytes);
 
-        // Header-only broadcast when there's nothing to advertise — a node still
+        // Header-only broadcast when there's nothing to advertise - a node still
         // announces itself. (The receiver creates a neighbour entry for us from
         // the UI frame's source callsign regardless of the entry list.)
         int frameCount = entries.Count == 0

@@ -8,7 +8,7 @@ namespace Packet.Kiss.NinoTnc;
 
 /// <summary>
 /// The over-air UI frame the NinoTNC transmits when its operator presses
-/// the front-panel TX-Test button. This is the on-air signal — the
+/// the front-panel TX-Test button. This is the on-air signal - the
 /// receiving modem will deliver it to its host as a normal KISS Data
 /// frame. <see cref="NinoTncTxTestFrame"/> is the *other* frame the
 /// pressed modem emits (synthetic, host-side only, never on the air).
@@ -23,17 +23,17 @@ namespace Packet.Kiss.NinoTnc;
 ///   <item>Source = the modem's <em>learned</em> callsign (the first
 ///         callsign it saw transmitted through itself since power-on;
 ///         persists across mode changes)</item>
-///   <item>Destination = <c>CQBEEP-N</c> — the button press uses SSID 5;
+///   <item>Destination = <c>CQBEEP-N</c> - the button press uses SSID 5;
 ///         host-built frames may use any SSID (see below)</item>
 ///   <item>INFO = <c>"{N "</c> followed by 50 bytes of printable ASCII
-///         starting at byte <c>0x20 + N</c> and stepping +1 — total INFO
+///         starting at byte <c>0x20 + N</c> and stepping +1 - total INFO
 ///         length always 53 bytes</item>
 ///   <item><c>N</c> is a per-press counter (digit 1..9, presumably
 ///         wraps; not yet observed past 2 in this codebase)</item>
 /// </list>
 /// <para>
 /// The destination SSID is significant on the receive side: an <em>armed</em>
-/// NinoTNC (one that has transmitted a <c>[TARPNstat</c> status frame — see
+/// NinoTNC (one that has transmitted a <c>[TARPNstat</c> status frame - see
 /// <see cref="NinoTncCqBeep"/>) answers a received CQBEEP-N frame with N
 /// seconds of 440 Hz tone. Any SSID is therefore recognised here, and
 /// exposed as <see cref="DestinationSsid"/>.

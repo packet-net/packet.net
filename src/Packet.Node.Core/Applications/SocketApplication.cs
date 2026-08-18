@@ -10,9 +10,9 @@ namespace Packet.Node.Core.Applications;
 /// The <c>pdn-app/1</c> "next rung": runs a registered <see cref="ApplicationConfig"/> that is a
 /// <b>long-running daemon</b> listening on a Unix-domain socket. The node opens a fresh
 /// connection to that socket per connect and bridges the user's session over it
-/// (<see cref="AppSessionBridge"/>) — so, unlike the spawn-per-connect process floor, the app can
+/// (<see cref="AppSessionBridge"/>) - so, unlike the spawn-per-connect process floor, the app can
 /// hold <b>shared in-memory state across users</b> (a chat room, a live presence list) and push
-/// unsolicited output. The owner runs the daemon (the node does not manage its lifecycle — it
+/// unsolicited output. The owner runs the daemon (the node does not manage its lifecycle - it
 /// only connects). See <c>docs/app-local-session-wire.md</c>.
 /// </summary>
 /// <remarks>
@@ -57,7 +57,7 @@ public sealed partial class SocketApplication : INodeApplication
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    throw;   // the node is shutting down — not an app failure
+                    throw;   // the node is shutting down - not an app failure
                 }
                 catch (Exception ex) when (ex is SocketException or OperationCanceledException or IOException)
                 {

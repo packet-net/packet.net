@@ -8,12 +8,12 @@ namespace Packet.Node.Core.Console;
 /// allocation-bounded: it <b>never throws</b> on arbitrary input, bounds the
 /// line length it will consider, and turns anything it can't classify into
 /// <see cref="UnknownCommand"/> (or a typed error like
-/// <see cref="MalformedConnect"/>). This is the property/fuzz contract — see
+/// <see cref="MalformedConnect"/>). This is the property/fuzz contract - see
 /// <c>tools/Packet.Fuzz</c> and the parser property tests.
 /// </summary>
 /// <remarks>
 /// TNC2 conventions: verbs are case-insensitive and abbreviate to their first
-/// letter — <c>C</c>/<c>CONNECT</c>, <c>B</c>/<c>BYE</c>, <c>D</c>/<c>DISCONNECT</c>,
+/// letter - <c>C</c>/<c>CONNECT</c>, <c>B</c>/<c>BYE</c>, <c>D</c>/<c>DISCONNECT</c>,
 /// <c>N</c>/<c>NODES</c>, <c>I</c>/<c>INFO</c>, <c>H</c>/<c>HELP</c>/<c>?</c>. Any
 /// unambiguous prefix of a verb is accepted (e.g. <c>CONN</c>, <c>DISC</c>).
 /// </remarks>
@@ -25,7 +25,7 @@ public static class NodeCommandParser
     public const int MaxLineLength = 512;
 
     /// <summary>
-    /// Decode <paramref name="lineBytes"/> as text (UTF-8, lenient — invalid
+    /// Decode <paramref name="lineBytes"/> as text (UTF-8, lenient - invalid
     /// sequences become replacement chars, never an exception) and parse. Used
     /// by the wire-facing paths and the fuzz harness, which feed raw bytes.
     /// </summary>
@@ -97,10 +97,10 @@ public static class NodeCommandParser
         {
             return ParseConnect(rest, trimmed);
         }
-        // CAP(ABILITIES) — the per-peer capability cache. CONNECT and the CAP family both start
+        // CAP(ABILITIES) - the per-peer capability cache. CONNECT and the CAP family both start
         // with 'C', so a bare "C" is ambiguous: it MUST stay CONNECT (checked above) and never
         // trigger CAP. Require ≥2 chars AND a "CA" stem so only an explicit CAP-family verb
-        // matches — any prefix of CAPABILITIES (CA/CAP/CAPA/…), plus the plural "CAPS" (which is
+        // matches - any prefix of CAPABILITIES (CA/CAP/CAPA/…), plus the plural "CAPS" (which is
         // not a prefix of CAPABILITIES). Bare ⇒ list (read-only); "CAP CLEAR <id>" ⇒ forget
         // (sysop); anything else after CAP ⇒ a typed usage error.
         if (upper.Length >= 2 && (Matches(upper, "CAPABILITIES") || upper == "CAPS"))
@@ -123,7 +123,7 @@ public static class NodeCommandParser
         {
             return new HelpCommand();
         }
-        // MH(EARD) — the heard log. Require ≥2 chars (the "MH" stem) so a bare "M" never triggers
+        // MH(EARD) - the heard log. Require ≥2 chars (the "MH" stem) so a bare "M" never triggers
         // it; any prefix of MHEARD from "MH" up (MH/MHE/MHEARD) matches. Bare ⇒ node-wide list;
         // "MH <port>" ⇒ that port's list.
         if (upper.Length >= 2 && Matches(upper, "MHEARD"))
@@ -132,7 +132,7 @@ public static class NodeCommandParser
         }
 
         // Over-RF sysop verbs (auth part 4). SYSOP and SESSIONS both start with 'S', so a
-        // bare "S" is ambiguous — require ≥2 chars for those two (SY… → SYSOP, SE… →
+        // bare "S" is ambiguous - require ≥2 chars for those two (SY… → SYSOP, SE… →
         // SESSIONS) and never let a single keystroke trigger the auth command. KICK / PORT
         // / RELOAD have unique initials, so the usual unambiguous-prefix rule is safe.
         if (upper.Length >= 2 && Matches(upper, "SYSOP"))
@@ -187,7 +187,7 @@ public static class NodeCommandParser
         return new SysopCommand(t1, string.IsNullOrEmpty(t2) ? null : t2);
     }
 
-    // KICK <id>  — id is "portId:peer" (the same id SESSIONS renders).
+    // KICK <id>  - id is "portId:peer" (the same id SESSIONS renders).
     private static NodeCommand ParseKick(string rest)
     {
         if (string.IsNullOrWhiteSpace(rest))
@@ -279,7 +279,7 @@ public static class NodeCommandParser
 
         // First token: a bare integer when ≥2 tokens follow is a PORT number (XRouter/BPQ
         // convention: "C 1 G0ABC-2"); otherwise it's the target callsign. A single token is
-        // always the callsign — "2" alone is a (degenerate) callsign, not a port, and "2E0ABC"
+        // always the callsign - "2" alone is a (degenerate) callsign, not a port, and "2E0ABC"
         // starts with a digit but is a callsign because it doesn't parse as a pure integer.
         int ws = IndexOfWhitespace(rest);
         string firstToken = ws < 0 ? rest : rest[..ws];

@@ -168,7 +168,7 @@ public class Ax25ListenerLocalAliasTests
         sabm!.Source.Callsign.Should().Be(AppCall, "the session originates from the alias");
         sabm.Destination.Callsign.Should().Be(Peer);
 
-        // Peer answers UA addressed to the ALIAS — the (local, remote) key must route it.
+        // Peer answers UA addressed to the ALIAS - the (local, remote) key must route it.
         modem.InjectInbound(Ax25Frame.Ua(AppCall, Peer, finalBit: true));
         var session = await connect.WithTimeout(Budget);
         session.Context.Local.Should().Be(AppCall);
@@ -198,7 +198,7 @@ public class Ax25ListenerLocalAliasTests
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = NodeCall });
         listener.AddLocalAlias(AppCall);
         listener.AddLocalAlias(AppCall);     // a second independent registration
-        listener.RemoveLocalAlias(AppCall);  // balances one — STILL registered
+        listener.RemoveLocalAlias(AppCall);  // balances one - STILL registered
 
         var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
         listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);

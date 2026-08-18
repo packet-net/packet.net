@@ -5,14 +5,14 @@ using System.Xml.Linq;
 namespace Packet.Rig.Flrig;
 
 /// <summary>
-/// The sliver of XML-RPC flrig actually uses, hand-rolled — every C# flrig consumer surveyed
+/// The sliver of XML-RPC flrig actually uses, hand-rolled - every C# flrig consumer surveyed
 /// hand-rolls this rather than take an XML-RPC package dependency, and flrig's dialect is tiny:
 /// scalar params in, one scalar out, faults for errors. Kept IO-free for direct testing.
 /// </summary>
 internal static class XmlRpcCodec
 {
     /// <summary>Serialise a call. Args are pre-typed: strings go as <c>&lt;string&gt;</c>,
-    /// doubles as <c>&lt;double&gt;</c>, ints as <c>&lt;i4&gt;</c> — flrig is picky about
+    /// doubles as <c>&lt;double&gt;</c>, ints as <c>&lt;i4&gt;</c> - flrig is picky about
     /// receiving the type its method table declares (set_frequency wants a double).</summary>
     internal static string BuildCall(string methodName, params object[] args)
     {
@@ -53,7 +53,7 @@ internal static class XmlRpcCodec
 
     /// <summary>
     /// Extract the single return value of a <c>methodResponse</c> as its string form (flrig is
-    /// stringly-typed — even frequencies come back as <c>&lt;value&gt;14074000&lt;/value&gt;</c>;
+    /// stringly-typed - even frequencies come back as <c>&lt;value&gt;14074000&lt;/value&gt;</c>;
     /// callers parse). Void replies yield <c>""</c>. Faults throw <see cref="RigCommandException"/>
     /// with flrig's faultCode/faultString.
     /// </summary>

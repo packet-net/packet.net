@@ -84,7 +84,7 @@ public class GuardEvaluatorTests
     public void Bindings_Are_Re_Evaluated_Each_Call()
     {
         // Closures that look at mutable state must reflect changes between
-        // evaluations — guards are checked at dispatch time, not at
+        // evaluations - guards are checked at dispatch time, not at
         // binding-construction time.
         bool busy = false;
         var bindings = new Dictionary<Ax25Guard, Func<bool>>

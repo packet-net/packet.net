@@ -11,12 +11,12 @@ using Packet.Node.Core.Hosting;
 namespace Packet.Node.Core.Tailscale;
 
 /// <summary>
-/// Supervises the embedded Tailscale <c>tsnet</c> Go sidecar (<c>packetnet-tsnet</c>) — pdn's
+/// Supervises the embedded Tailscale <c>tsnet</c> Go sidecar (<c>packetnet-tsnet</c>) - pdn's
 /// blessed remote + passkey path (<c>docs/network-access.md</c> § The sidecar). <b>Infra, not
 /// an app</b>: it never appears in the apps inventory. It subscribes to
 /// <see cref="IConfigProvider.OnChange"/> and reconciles the single child against
-/// <c>tailscale.*</c> — enable launches it, disable stops it, a relevant-field change restarts
-/// it — pumping the child's JSON status lines (stdout) into <see cref="ITailscaleStatus"/> and
+/// <c>tailscale.*</c> - enable launches it, disable stops it, a relevant-field change restarts
+/// it - pumping the child's JSON status lines (stdout) into <see cref="ITailscaleStatus"/> and
 /// its logs (stderr) into the node log, restarting on failure with exponential backoff.
 /// </summary>
 /// <remarks>
@@ -28,25 +28,25 @@ namespace Packet.Node.Core.Tailscale;
 /// doubles per consecutive failure, capped. Every timer-shaped wait rides the injected
 /// <see cref="TimeProvider"/> (FakeTimeProvider in tests). The surface is <b>total</b>: a
 /// missing binary, a spawn failure, or any defect sets <see cref="ITailscaleStatus"/> to
-/// <c>error</c>, logs, and backs off — it never throws out of the run loop or crashes the node.
+/// <c>error</c>, logs, and backs off - it never throws out of the run loop or crashes the node.
 /// </para>
 /// <para>
 /// <b>The pinned sidecar contract.</b> The binary lives at
 /// <see cref="DefaultBinaryPath"/> (override via the <see cref="BinaryPathEnvVar"/> env var,
 /// e.g. for tests). Flags: <c>--hostname</c>, <c>--state-dir</c>, <c>--target</c>,
-/// <c>--authkey-file &lt;path&gt;</c> (when an auth key is configured — an inline
+/// <c>--authkey-file &lt;path&gt;</c> (when an auth key is configured - an inline
 /// <c>tailscale.authKey</c> is written to a temp 0600 file; an <c>authKeyFile</c> is passed
 /// through directly), and <c>--funnel</c> (when <c>tailscale.funnel</c>). The child writes one
-/// JSON status object per line to stdout — <c>{"state":"starting"}</c>,
+/// JSON status object per line to stdout - <c>{"state":"starting"}</c>,
 /// <c>{"state":"needs-login","authURL":"…"}</c>,
 /// <c>{"state":"running","fqdn":"pdn.&lt;tailnet&gt;.ts.net"}</c>, <c>{"state":"error","error":"…"}</c>
-/// — logs to stderr, and exits 0 on SIGTERM.
+/// - logs to stderr, and exits 0 on SIGTERM.
 /// </para>
 /// </remarks>
 public sealed partial class TailscaleSidecarHostedService : BackgroundService, IAsyncDisposable
 {
     /// <summary>The packaged binary path (staged into the <c>.deb</c> beside the self-update
-    /// helpers — <c>docs/network-access.md</c> § Packaging).</summary>
+    /// helpers - <c>docs/network-access.md</c> § Packaging).</summary>
     public const string DefaultBinaryPath = "/usr/lib/packetnet/packetnet-tsnet";
 
     /// <summary>Env var overriding <see cref="DefaultBinaryPath"/> (tests point this at a fake
@@ -85,7 +85,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
 
     // The single live child run, and the spawn fingerprints it was launched for. Null = no child.
     // The fingerprint is split so a forwards-only change can be live-reloaded (SIGHUP) instead of
-    // restarting the whole tsnet node (which drops every tailnet connection — docs/network-access.md):
+    // restarting the whole tsnet node (which drops every tailnet connection - docs/network-access.md):
     //   • node-level fingerprint changes → restart (a fresh tsnet node is required)
     //   • node-level unchanged, forwards changed → rewrite forwards.json + SIGHUP the child
     private CancellationTokenSource? runStopping;
@@ -171,7 +171,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         }
         catch (OperationCanceledException)
         {
-            // Shutdown — expected.
+            // Shutdown - expected.
         }
         catch (Exception ex)
         {
@@ -193,7 +193,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         try
         {
             // Resolve the effective node hostname once (explicit, else <callsign>-pdn) so the
-            // fingerprint + the spawn args both see it — a callsign change renames the node.
+            // fingerprint + the spawn args both see it - a callsign change renames the node.
             var ts = config.Current.Tailscale with
             {
                 Hostname = TailscaleHostname.Resolve(
@@ -211,11 +211,11 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                 return;
             }
 
-            // The app-declared tailnet forwards from every enabled, error-free package — applied
+            // The app-declared tailnet forwards from every enabled, error-free package - applied
             // only when tailscale is enabled (no tailscale → no forwards). The spawn fingerprint is
             // split: node-level fields need a fresh tsnet node (restart), whereas a forwards-only
-            // change is live-reloaded via SIGHUP — rewriting --forwards-file and signalling the
-            // child — so it does NOT tear down + rejoin the tailnet (which would drop every tailnet
+            // change is live-reloaded via SIGHUP - rewriting --forwards-file and signalling the
+            // child - so it does NOT tear down + rejoin the tailnet (which would drop every tailnet
             // connection, including the operator's control-panel session). See docs/network-access.md.
             var forwards = CollectForwards();
             var nodeFingerprint = NodeFingerprintOf(ts);
@@ -226,7 +226,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
             {
                 if (string.Equals(runForwardsFingerprint, forwardsFingerprint, StringComparison.Ordinal))
                 {
-                    // Running with the same spawn-relevant config — leave it alone.
+                    // Running with the same spawn-relevant config - leave it alone.
                     return;
                 }
 
@@ -256,7 +256,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
     }
 
     /// <summary>The <b>node-level</b> spawn-relevant config: everything that needs a fresh tsnet
-    /// node (so a change here restarts the child). Deliberately excludes the forwards — those are
+    /// node (so a change here restarts the child). Deliberately excludes the forwards - those are
     /// fingerprinted separately (<see cref="FingerprintForwards"/>) and reconciled live via SIGHUP,
     /// because they can change on the existing node without tearing down the tailnet.</summary>
     private static string NodeFingerprintOf(TailscaleConfig ts) =>

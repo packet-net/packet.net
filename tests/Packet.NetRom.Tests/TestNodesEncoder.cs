@@ -7,12 +7,12 @@ namespace Packet.NetRom.Tests;
 /// Test-only encoder for NET/ROM NODES-broadcast information fields. The
 /// production library is strictly read-only (it parses heard broadcasts and
 /// never originates one), so the tests bring their own byte builder to exercise
-/// the parser and the routing table with realistic, spec-shaped input — encode
+/// the parser and the routing table with realistic, spec-shaped input - encode
 /// here, parse with <see cref="NodesBroadcast.TryParse"/>, assert.
 /// </summary>
 /// <remarks>
 /// The callsign fields use the genuine AX.25 shifted form via
-/// <see cref="Ax25Address.Write"/> — the same codec the parser decodes with — so
+/// <see cref="Ax25Address.Write"/> - the same codec the parser decodes with - so
 /// a round-trip proves the shift/SSID handling, not a tautology against a
 /// hand-rolled encoder.
 /// </remarks>

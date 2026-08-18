@@ -6,7 +6,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Tests for <see cref="Ax25Listener.SendUiAsync"/> — the connectionless UI
+/// Tests for <see cref="Ax25Listener.SendUiAsync"/> - the connectionless UI
 /// (unproto) send path added for NET/ROM NODES origination. It bypasses the
 /// session layer: the source is the listener's own callsign and the frame is a UI
 /// frame with the supplied destination + PID + info.

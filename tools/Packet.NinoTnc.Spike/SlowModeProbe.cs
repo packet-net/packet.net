@@ -9,12 +9,12 @@ using Packet.Kiss.NinoTnc;
 namespace Packet.NinoTnc.Spike;
 
 /// <summary>
-/// Followup to <see cref="Mode12Probe"/> — does the "TXDELAY=100 breaks
+/// Followup to <see cref="Mode12Probe"/> - does the "TXDELAY=100 breaks
 /// B→A" failure mode also show up on the other 300-baud modes?
 ///
-///   Mode 12: 300 AFSK AX.25       — plain AFSK demod, AX.25 framing
-///   Mode 13: 300 AFSKPLL IL2P     — PLL AFSK demod, IL2P framing
-///   Mode 14: 300 AFSKPLL IL2P+CRC — PLL AFSK demod, IL2P+CRC framing
+///   Mode 12: 300 AFSK AX.25       - plain AFSK demod, AX.25 framing
+///   Mode 13: 300 AFSKPLL IL2P     - PLL AFSK demod, IL2P framing
+///   Mode 14: 300 AFSKPLL IL2P+CRC - PLL AFSK demod, IL2P+CRC framing
 ///
 /// Probes both directions at TXDELAY=50 and TXDELAY=100 with N=50 each
 /// so we can tell whether the failure is rooted in:
@@ -146,7 +146,7 @@ internal static class SlowModeProbe
     }
 
     /// <summary>
-    /// Compact pattern description: "—" for none, "first" if only index 0,
+    /// Compact pattern description: "-" for none, "first" if only index 0,
     /// "0 + run from N" if frame 0 plus a contiguous tail, "scattered (n)"
     /// otherwise.
     /// </summary>

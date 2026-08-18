@@ -22,7 +22,7 @@ namespace Packet.AprsIs.Spike;
 /// piping.
 /// </para>
 /// <para>
-/// Output schema in the corpus SQLite (idempotent — re-running just
+/// Output schema in the corpus SQLite (idempotent - re-running just
 /// overwrites rows):
 /// <code>
 ///   CREATE TABLE direwolf_decoded (
@@ -55,7 +55,7 @@ public static class DirewolfMode
     // wrong coordinates that we mis-attributed to direwolf bugs.
     // The current pattern stops at the FIRST `:` after the q-construct.
     static readonly Regex QConstructStripper = new(@",q[A-Z][A-Z]?(,[^:]+)?:", RegexOptions.Compiled);
-    // Strip every CSI sequence — direwolf emits more than just SGR (m/K).
+    // Strip every CSI sequence - direwolf emits more than just SGR (m/K).
     // It also emits cursor-erase (J), which my first pass missed and left
     // a stray "[0J" line that threw line-index parsing off by one.
     static readonly Regex AnsiStripper = new(@"\x1b\[[0-9;]*[A-Za-z]", RegexOptions.Compiled);
@@ -179,7 +179,7 @@ public static class DirewolfMode
 
     static async Task FlushBatchAsync(List<(long id, string raw)> batch, SqliteConnection conn, Options opts)
     {
-        // Spin up a fresh decode_aprs per batch — the process accepts a file
+        // Spin up a fresh decode_aprs per batch - the process accepts a file
         // via stdin and exits when stdin closes.
         var psi = new ProcessStartInfo
         {
@@ -269,7 +269,7 @@ public static class DirewolfMode
 
     // Delegate to the shared splitter in DirewolfPipeline. The fixed
     // splitter requires a frame-boundary header to be preceded by a
-    // blank line — see DirewolfPipeline.SplitOutputByFrame for the
+    // blank line - see DirewolfPipeline.SplitOutputByFrame for the
     // detailed rationale (concatenated-frame alignment bug, 2026-05-14).
     static List<string> SplitOutputByFrame(string output)
         => DirewolfPipeline.SplitOutputByFrame(output);

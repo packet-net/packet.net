@@ -12,7 +12,7 @@ using Xunit;
 namespace Packet.Interop.Tests.Linbpq;
 
 /// <summary>
-/// v2.2 arc V5b — extended-mode (mod-128 / SABME) interop against the real
+/// v2.2 arc V5b - extended-mode (mod-128 / SABME) interop against the real
 /// LinBPQ container over the net-sim AFSK1200 link. Our <see cref="Ax25Session"/>
 /// attaches to net-sim's KISS-TCP on 8100 (node a); LinBPQ dials net-sim's 8102
 /// (node c) from inside docker. Same transport as the mod-8
@@ -23,7 +23,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <remarks>
 /// <para>
 /// <b>The headline finding (verified against LinBPQ source + on the wire).</b>
-/// LinBPQ 6.0.25.23 — the pinned container — <b>does not implement mod-128 at
+/// LinBPQ 6.0.25.23 - the pinned container - <b>does not implement mod-128 at
 /// the AX.25 L2 layer</b>. Its frame handler (<c>L2Code.c</c> ~line 687)
 /// reads, verbatim:
 /// <code>
@@ -35,27 +35,27 @@ namespace Packet.Interop.Tests.Linbpq;
 ///       return;
 ///   }
 /// </code>
-/// — an inbound SABME is answered with an FRMR ("invalid control field",
+/// - an inbound SABME is answered with an FRMR ("invalid control field",
 /// W-bit set). Outbound, BPQ only ever sends <c>SABM | PFBIT</c> (it has no
 /// SABME-send path), and its XID handler is clamped to "Mod 8 and 256 Byte
 /// frames". The <c>MAXFRAME=1..127</c> the docs advertise sets only the mod-8
 /// window cap; the framing stays mod-8. So there is <b>no</b> BPQ config that
-/// makes it accept a SABME and run mod-128 — the limitation is in the compiled
+/// makes it accept a SABME and run mod-128 - the limitation is in the compiled
 /// L2 code, not a tunable. (Empirically: sending a SABME to BPQ over the
 /// net-sim KISS path returns control <c>0x97</c> = <c>FRMR|PF</c> with info
-/// <c>7F 00 01</c> — the rejected SABME control byte, then the SDINVC flag.)
+/// <c>7F 00 01</c> - the rejected SABME control byte, then the SDINVC flag.)
 /// </para>
 /// <para>
 /// That makes the §7.1 "SABME connect / mod-128 windowed transfer / mod-128
 /// loss recovery / segmentation-vs-BPQ-mod-128" rows <b>unreachable against
 /// this peer</b> (they need a mod-128 link BPQ won't establish). What it
-/// <i>does</i> exercise — and what this test asserts — is the §7.1
+/// <i>does</i> exercise - and what this test asserts - is the §7.1
 /// <b>version-negotiation fallback</b> row: our extended-preferred connect
 /// sends a SABME, BPQ rejects it with FRMR (§975), and our figc4.6
 /// <c>t14_frmr_received</c> path (<see cref="Ax25SessionQuirks.Ax25Spec45FrmrFallbackReestablishesV20"/>,
 /// default on) sets version 2.0 and re-establishes with a SABM, completing a
 /// mod-8 connection. The §7.1 fallback row explicitly names "a BPQ port pinned
-/// v2.0" as a valid peer for this case — BPQ <i>is</i> that peer for L2
+/// v2.0" as a valid peer for this case - BPQ <i>is</i> that peer for L2
 /// connect purposes, and it actively FRMRs the SABME, which is the cleanest
 /// possible trigger for the fallback. This is real end-to-end exercise of the
 /// v2.2 version-negotiation machinery against a third-party stack.
@@ -81,7 +81,7 @@ public class LinbpqViaNetsimExtendedMode
     private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(40);
     private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
 
-    // Faster RR-ack turnaround on the shared half-duplex channel — same
+    // Faster RR-ack turnaround on the shared half-duplex channel - same
     // rationale as LinbpqViaNetsimConnectedMode. T1/T3 keep spec defaults so
     // the SABME→FRMR→SABM retransmit recovery is unchanged.
     private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
@@ -94,11 +94,11 @@ public class LinbpqViaNetsimExtendedMode
 
     /// <summary>
     /// Our extended-preferred DL-CONNECT against LinBPQ: we emit SABME, BPQ
-    /// answers FRMR (it does not implement mod-128 — see class remarks), and
+    /// answers FRMR (it does not implement mod-128 - see class remarks), and
     /// our figc4.6 FRMR-fallback drops us to v2.0 and re-establishes with a
     /// SABM, completing a <b>mod-8</b> connection. Then DISC/UA tears it down.
     /// Asserts the full negotiation on the live FRMR the real BPQ sends, not a
-    /// synthesised one — the conformance suite proves the in-process state
+    /// synthesised one - the conformance suite proves the in-process state
     /// machine; this proves it fires against a real peer's FRMR over the RF sim.
     /// </summary>
     [Fact]
@@ -113,7 +113,7 @@ public class LinbpqViaNetsimExtendedMode
 
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         // Brief settle so net-sim's per-port TX queue is ready before SABME.
@@ -147,7 +147,7 @@ public class LinbpqViaNetsimExtendedMode
     /// produced is a fully functional mod-8 data link by round-tripping a
     /// command against BPQ's node prompt. We connect extended (→ FRMR →
     /// mod-8), drain BPQ's welcome banner, send "P\r" (ports command), and
-    /// require a non-empty response — then DISC/UA. Asserts the fallback
+    /// require a non-empty response - then DISC/UA. Asserts the fallback
     /// leaves a usable connection, not merely a Connected state.
     /// </summary>
     [Fact]
@@ -167,7 +167,7 @@ public class LinbpqViaNetsimExtendedMode
         var rig = BuildRig(local: OurCall, remote: BpqCall, kiss: kiss);
         // `await using` so the pump is cancelled + awaited on EVERY exit path
         // (pass, assertion-failure, throw, timeout), not just at the happy-path end
-        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        // - declared after `cts` so it disposes first. See InboundPumpScope.
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         await Task.Delay(500, cts.Token);
@@ -211,7 +211,7 @@ public class LinbpqViaNetsimExtendedMode
     // Same shape as LinbpqViaNetsimConnectedMode.BuildRig, plus: IsExtended =
     // true on the context (so DL-CONNECT initiates SABME) and an Observed
     // frame log (so the test can assert BPQ's FRMR appeared on the wire). Kept
-    // duplicated rather than shared for the same reason the mod-8 rig is — the
+    // duplicated rather than shared for the same reason the mod-8 rig is - the
     // two are likely to diverge as more BPQ-specific extended quirks surface.
 
     private sealed record Rig(
@@ -281,7 +281,7 @@ public class LinbpqViaNetsimExtendedMode
                 // are extended (pre-FRMR) we parse extended; after the fallback
                 // forces v2.0 the context is mod-8. U-frames (SABME/UA/DM/FRMR)
                 // are one control octet in both modes, so the handshake frames
-                // parse the same either way — only the post-connect I/S frames
+                // parse the same either way - only the post-connect I/S frames
                 // depend on the modulo, by which point ctx is mod-8.
                 if (!Ax25Frame.TryParse(f.Payload, Ax25ParseOptions.Lenient,
                         rig.Session.Context.IsExtended, out var parsed))
@@ -289,7 +289,7 @@ public class LinbpqViaNetsimExtendedMode
                     continue;
                 }
 
-                // net-sim's afsk1200 channel is broadcast — only react to
+                // net-sim's afsk1200 channel is broadcast - only react to
                 // frames addressed to our local callsign.
                 if (!parsed.Destination.Callsign.Equals(rig.Session.Context.Local))
                 {

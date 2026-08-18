@@ -6,7 +6,7 @@ namespace Packet.Node.Core.Hosting;
 /// <summary>
 /// Turns the field-level <see cref="ReconcilePlan"/> (the "decide" half of hot
 /// reconfiguration) into the operator-facing <see cref="ReconcilePreview"/> the web
-/// config editor shows before applying — changes grouped by how disruptive they are
+/// config editor shows before applying - changes grouped by how disruptive they are
 /// (apply live · restart a port · restart the node), each a plain-language line that
 /// never leaks an internal type name.
 /// </summary>
@@ -17,7 +17,7 @@ namespace Packet.Node.Core.Hosting;
 /// (cosmetic, read live by the status API) as <c>live</c>; the whole NET/ROM block (the
 /// service is built once at start) as <c>node-reset</c> with an honest "applies after a node
 /// restart" note; and the ARDOP / POCSAG services (each an independent hosted service that
-/// self-reconciles on config change) as <c>port-restart</c> — they apply without a node or
+/// self-reconciles on config change) as <c>port-restart</c> - they apply without a node or
 /// AX.25-port restart, but the service itself restarts and its clients drop.
 /// </remarks>
 public static class ReconcilePreviewBuilder
@@ -128,15 +128,15 @@ public static class ReconcilePreviewBuilder
             live.Add(new ReconcileChange("services", Live, "Banner/prompt updated (applies to new sessions)."));
         }
 
-        // The NET/ROM block is not hot-reconciled — the service is constructed once at
-        // start — so an edit persists but takes effect on the next restart. Be honest
+        // The NET/ROM block is not hot-reconciled - the service is constructed once at
+        // start - so an edit persists but takes effect on the next restart. Be honest
         // about that rather than implying it went live.
         if (!from.NetRom.Equals(to.NetRom))
         {
             nodeReset.Add(new ReconcileChange("netRom", NodeReset, "NET/ROM settings changed - applies after a node restart."));
         }
 
-        // The ARDOP and POCSAG services are not driven by the reconcile plan — each is an
+        // The ARDOP and POCSAG services are not driven by the reconcile plan - each is an
         // independent hosted service that self-reconciles on config change (it tears down and
         // rebuilds its own audio device + TCP listener). Itemise the change honestly rather than
         // omitting it: no node or AX.25-port restart, but the service restarts and its clients drop.

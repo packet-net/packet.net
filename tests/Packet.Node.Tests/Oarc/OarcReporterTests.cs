@@ -104,7 +104,7 @@ public sealed class OarcReporterTests
     /// but BEFORE its background send loop is started. Tests that depend on intercepting the very
     /// first <see cref="CapturingClient.ReportAsync"/> call (e.g. the node-up POST) MUST install their
     /// <see cref="CapturingClient.Responder"/> and/or <see cref="OarcReporter.RetryBackoffArmed"/> seam
-    /// here — installing them after <see cref="OarcReporter.StartAsync"/> returns races the loop, which
+    /// here - installing them after <see cref="OarcReporter.StartAsync"/> returns races the loop, which
     /// may already have posted (and the responder default of Accepted / a null RetryBackoffArmed makes
     /// the signal it depends on never fire). See <see cref="A_transport_error_is_retried_then_accepted"/>.</param>
     private static async Task<Harness> StartAsync(
@@ -312,10 +312,10 @@ public sealed class OarcReporterTests
         // Gate the clock advance on the reporter having ARMED its backoff timer, so this is
         // deterministic rather than racing the background send loop's park (the old
         // AdvanceUntil hammered Advance in a loop and could miss the timer under CI
-        // contention — it flaked exactly that way: "condition not met within 30s").
+        // contention - it flaked exactly that way: "condition not met within 30s").
         //
         // BOTH seams (the failing responder AND the backoff hook) are wired via `configure:`,
-        // i.e. BEFORE the background send loop is started — otherwise the loop can post the
+        // i.e. BEFORE the background send loop is started - otherwise the loop can post the
         // node-up before they are installed: the responder would default to Accepted (no retry,
         // so the hook never fires → 30 s timeout), and even a failing post would Invoke a null
         // hook (signal lost → 30 s timeout). Installing them pre-start closes both races.
@@ -340,8 +340,8 @@ public sealed class OarcReporterTests
     [Fact]
     public async Task A_rejected_payload_is_not_retried()
     {
-        // Install the rejecting responder via `configure:` (pre-start) so the FIRST post — the node-up
-        // — is the one rejected. Installing it after StartAsync races the loop: the node-up could post
+        // Install the rejecting responder via `configure:` (pre-start) so the FIRST post - the node-up
+        // - is the one rejected. Installing it after StartAsync races the loop: the node-up could post
         // before the responder is set, defaulting to Accepted, so the test would silently exercise the
         // accepted-not-retried path instead of the rejected-not-retried path it means to cover.
         await using var h = await StartAsync(
@@ -358,7 +358,7 @@ public sealed class OarcReporterTests
     private static Ax25FrameEventArgs Tx(Ax25Frame frame) => new() { Frame = frame, Direction = FrameDirection.Transmitted, Timestamp = T0 };
 
     /// <summary>Repeatedly advance the fake clock until <paramref name="condition"/> holds. Used for
-    /// assertions driven by the reporter's <em>periodic poll</em> timer, which continuously re-arms —
+    /// assertions driven by the reporter's <em>periodic poll</em> timer, which continuously re-arms -
     /// so hammering Advance reliably catches it. (The one-shot retry-backoff timer is NOT robust this
     /// way; <see cref="A_transport_error_is_retried_then_accepted"/> gates on
     /// <c>RetryBackoffArmed</c> and advances deterministically instead.)</summary>

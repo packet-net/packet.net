@@ -68,7 +68,7 @@ public readonly record struct NinoTncFirmwareVersion(int Major, int Minor) : ICo
     /// <inheritdoc/>
     public int CompareTo(NinoTncFirmwareVersion other)
     {
-        // Comparison only makes sense within the same chip variant — a
+        // Comparison only makes sense within the same chip variant - a
         // "3.44" is not "less than" or "greater than" a "4.44"; they're
         // for different chips. Callers should filter by ChipVariant
         // before ranking. We still expose a total order so the type can

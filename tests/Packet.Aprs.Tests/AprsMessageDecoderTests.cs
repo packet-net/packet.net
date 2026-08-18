@@ -59,7 +59,7 @@ public class AprsMessageDecoderTests
     [Fact]
     public void Decodes_Bulletin()
     {
-        // Bulletins are addressed to BLNn — same envelope.
+        // Bulletins are addressed to BLNn - same envelope.
         var info = System.Text.Encoding.ASCII.GetBytes(":BLN1     :General bulletin text");
         AprsMessageDecoder.TryDecode(info, out var m).Should().BeTrue();
         m.Addressee.Should().Be("BLN1");

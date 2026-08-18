@@ -10,7 +10,7 @@ namespace Packet.Aprs;
 /// transmitting station's own position. Each object has a 9-character
 /// name (used by receivers to overwrite a previous report of the same
 /// object) and a position with the same encoding as ordinary position
-/// reports — uncompressed (§8) or compressed (§9).
+/// reports - uncompressed (§8) or compressed (§9).
 /// </para>
 /// <para>
 /// Compare with <see cref="AprsPosition"/>, which carries the
@@ -28,7 +28,7 @@ namespace Packet.Aprs;
 /// objects tell receivers to remove a previously-reported object of
 /// the same name from their displays.
 /// </param>
-/// <param name="Position">The object's location — same encoding rules as a station position.</param>
+/// <param name="Position">The object's location - same encoding rules as a station position.</param>
 public readonly record struct AprsObject(
     string Name,
     bool IsAlive,

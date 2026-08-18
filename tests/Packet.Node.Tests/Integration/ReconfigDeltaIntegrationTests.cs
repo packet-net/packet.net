@@ -111,7 +111,7 @@ public sealed class ReconfigDeltaIntegrationTests
         await supervisor.ApplyAsync(ReconcilePlanner.Plan(Config(Port("a", 1)), next), next);
 
         supervisor.RunningPortIds.Should().BeEquivalentTo("a", "b");
-        // Port a's listener object is the very same instance — it wasn't touched.
+        // Port a's listener object is the very same instance - it wasn't touched.
         supervisor.GetPort("a")!.Listener.Should().BeSameAs(listenerA, "adding b must not disturb a");
     }
 
@@ -143,7 +143,7 @@ public sealed class ReconfigDeltaIntegrationTests
     public async Task A_session_on_an_untouched_port_survives_a_reconcile_of_another_port_same_object_identity()
     {
         // Two ports. A peer is connected on port a. We add port b. The session on
-        // port a must survive — the SAME Ax25Session object identity.
+        // port a must survive - the SAME Ax25Session object identity.
         var busA = new SharedRadioBus();
         var busB = new SharedRadioBus();
         var before = Config(Port("a", 1));
@@ -169,7 +169,7 @@ public sealed class ReconfigDeltaIntegrationTests
         var sessionBefore = nodeSideSession!;
         sessionBefore.CurrentState.Should().Be("Connected");
 
-        // Add an unrelated port b — a reconcile that must not touch port a.
+        // Add an unrelated port b - a reconcile that must not touch port a.
         var after = Config(Port("a", 1), Port("b", 2));
         config.Apply(after);
         await supervisor.ApplyAsync(ReconcilePlanner.Plan(before, after), after);
@@ -219,7 +219,7 @@ public sealed class ReconfigDeltaIntegrationTests
     public async Task Tx_tail_is_sent_to_the_modem_on_bring_up_even_with_no_kiss_block()
     {
         // #465: TXTAIL defaults to an implicit 0 sent to the modem UNCONDITIONALLY on
-        // bring-up — even for a port that sets no KISS params at all (no kiss block).
+        // bring-up - even for a port that sets no KISS params at all (no kiss block).
         var (nodeModem, _) = InMemoryRadio.CreatePair();
 
         var config = new TestConfigProvider(Config(Port("a", 1)));   // no kiss block
@@ -306,7 +306,7 @@ public sealed class ReconfigDeltaIntegrationTests
         await supervisor.ApplyAsync(ReconcilePlanner.Plan(before, after), after);
 
         // Invariant: the listener AND the live session keep their object identity,
-        // and the session is still Connected — the reseed did NOT restart the port
+        // and the session is still Connected - the reseed did NOT restart the port
         // or drop the session ON THE CHANGED PORT.
         supervisor.GetPort("a")!.Listener.Should().BeSameAs(listenerBefore, "an AX.25 reseed must not restart the port");
         firstNodeSession.Should().BeSameAs(firstSessionBefore, "the live session object identity survives the reseed");
@@ -346,8 +346,8 @@ public sealed class ReconfigDeltaIntegrationTests
     {
         // A compat-only change is HOT (#366): the listener keeps its identity and
         // its live parameter record now carries the resolved parse options +
-        // session quirks. (The behavioural halves — parse options gating the very
-        // next inbound frame, quirks seeding the next-built session — are pinned
+        // session quirks. (The behavioural halves - parse options gating the very
+        // next inbound frame, quirks seeding the next-built session - are pinned
         // at the listener layer in Ax25ListenerCompatTests.)
         var bus = new SharedRadioBus();
         var before = Config(Port("a", 1));

@@ -163,7 +163,7 @@ public sealed class SqliteWebAuthnCredentialStoreTests : IDisposable
         broken.GetAllCredentialIds().Should().BeEmpty();
         broken.Delete(new byte[] { 1 }, "alice").Should().BeFalse();
         broken.DeleteByUser("alice").Should().Be(0);
-        // UpdateSignCount swallows the fault (best-effort) — must not throw.
+        // UpdateSignCount swallows the fault (best-effort) - must not throw.
         broken.Invoking(b => b.UpdateSignCount(new byte[] { 1 }, 2, DateTimeOffset.UnixEpoch))
             .Should().NotThrow();
     }

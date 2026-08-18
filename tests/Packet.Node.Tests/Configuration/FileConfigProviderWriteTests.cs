@@ -8,7 +8,7 @@ namespace Packet.Node.Tests.Configuration;
 /// Unit tests for the <see cref="IWritableConfigProvider"/> write seam on
 /// <see cref="FileConfigProvider"/> (the path a <c>PUT /config</c> persists
 /// through). Driven over a temp file with <c>watch: false</c> so the only reloads
-/// are the ones the test calls — the deterministic pattern the existing
+/// are the ones the test calls - the deterministic pattern the existing
 /// <see cref="FileConfigProviderTests"/> use. Covers a clean apply (Current
 /// advances, the file is rewritten, OnChange fires once), an atomic reject (no
 /// mutation, no event), Validate-without-side-effects, and the watcher

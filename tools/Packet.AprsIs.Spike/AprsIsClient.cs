@@ -8,7 +8,7 @@ namespace Packet.AprsIs.Spike;
 /// each received line via <see cref="ReadLinesAsync"/>.
 /// </summary>
 /// <remarks>
-/// Read-only by convention — login passcode of <c>-1</c> tells the server
+/// Read-only by convention - login passcode of <c>-1</c> tells the server
 /// the client is monitoring only and won't be allowed to inject frames.
 /// </remarks>
 public sealed class AprsIsClient : IAsyncDisposable
@@ -31,7 +31,7 @@ public sealed class AprsIsClient : IAsyncDisposable
         string login = $"user {callsign} pass {passcode} vers PacketNET.AprsIs.Spike 0.1 filter {filter}";
         await _writer.WriteLineAsync(login);
 
-        // Server replies with another '#' line — log it then enter the data stream.
+        // Server replies with another '#' line - log it then enter the data stream.
         string? loginAck = await _reader.ReadLineAsync(ct);
         Console.Error.WriteLine($"# login-ack: {loginAck}");
     }

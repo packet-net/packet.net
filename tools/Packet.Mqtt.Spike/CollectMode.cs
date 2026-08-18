@@ -5,7 +5,7 @@ using MQTTnet.Client;
 namespace Packet.Mqtt.Spike;
 
 /// <summary>
-/// Long-running collector — subscribes to the MQTT broker and persists every
+/// Long-running collector - subscribes to the MQTT broker and persists every
 /// message to daily-rotated SQLite files. Designed to run as a systemd-style
 /// service on the LinBPQ host.
 /// </summary>

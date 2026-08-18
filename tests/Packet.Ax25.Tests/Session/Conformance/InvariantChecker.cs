@@ -4,12 +4,12 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// The conformance oracle. Encodes the invariants every correct AX.25 exchange
 /// must satisfy, independent of the scenario that drove the harness there. Run
 /// after every step (safety) and at the end of a converging run (liveness).
-/// A violation throws <see cref="InvariantViolationException"/> with a precise message —
+/// A violation throws <see cref="InvariantViolationException"/> with a precise message -
 /// in happy-path tests that fails the test; under generative testing it's a
 /// shrinkable counterexample.
 /// </summary>
 /// <remarks>
-/// Build and trust this on known-answer (happy-path) scenarios first — a
+/// Build and trust this on known-answer (happy-path) scenarios first - a
 /// fuzzer is only as good as its oracle (see <c>docs/conformance-harness-plan.md</c>).
 /// </remarks>
 public static class InvariantChecker

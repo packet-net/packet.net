@@ -9,8 +9,8 @@ namespace Packet.Node.Core;
 
 /// <summary>
 /// Resolves the X.509 certificate for the optional HTTPS listener (see
-/// <see cref="HttpsConfig"/>): loads an operator-supplied PKCS#12, or — when none is
-/// configured and <see cref="HttpsConfig.GenerateSelfSignedOnMissing"/> is set —
+/// <see cref="HttpsConfig"/>): loads an operator-supplied PKCS#12, or - when none is
+/// configured and <see cref="HttpsConfig.GenerateSelfSignedOnMissing"/> is set -
 /// generates a self-signed cert on first start and persists it so it is stable across
 /// restarts.
 /// </summary>
@@ -18,7 +18,7 @@ namespace Packet.Node.Core;
 /// <para>
 /// <b>Graceful degrade.</b> Every path that can't produce a usable cert returns
 /// <c>null</c> (logged), so the host simply does not bind the HTTPS endpoint and the
-/// plain HTTP listener keeps serving — a TLS misconfiguration never takes the node
+/// plain HTTP listener keeps serving - a TLS misconfiguration never takes the node
 /// down. (HTTPS is opt-in, so failing loud-but-soft is the right posture.)
 /// </para>
 /// <para>
@@ -34,7 +34,7 @@ namespace Packet.Node.Core;
 /// </remarks>
 public static partial class TlsCertificateProvider
 {
-    // serverAuth EKU OID — browsers + Kestrel expect a TLS server cert to assert it.
+    // serverAuth EKU OID - browsers + Kestrel expect a TLS server cert to assert it.
     private const string ServerAuthOid = "1.3.6.1.5.5.7.3.1";
 
     /// <summary>
@@ -145,7 +145,7 @@ public static partial class TlsCertificateProvider
         return X509CertificateLoader.LoadPkcs12(pfx, null);
     }
 
-    // The PKCS#12 holds the private key — keep it owner-only (best-effort; no-op off Unix).
+    // The PKCS#12 holds the private key - keep it owner-only (best-effort; no-op off Unix).
     private static void TrySetOwnerOnlyPermissions(string path)
     {
         if (!OperatingSystem.IsWindows())

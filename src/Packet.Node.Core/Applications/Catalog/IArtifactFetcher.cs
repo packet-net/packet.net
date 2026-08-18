@@ -18,11 +18,11 @@ public interface IArtifactFetcher
 /// <summary>
 /// The production <see cref="IArtifactFetcher"/>: streams an https artifact to a temp file,
 /// enforcing a byte cap and refusing any non-https scheme (the catalog only ever pins https
-/// urls — a plain-http or file url is a sign of a tampered catalog).
+/// urls - a plain-http or file url is a sign of a tampered catalog).
 /// </summary>
 public sealed partial class HttpArtifactFetcher : IArtifactFetcher
 {
-    /// <summary>The default body cap — 512 MB. DAPPS binaries are ~100 MB; this leaves
+    /// <summary>The default body cap - 512 MB. DAPPS binaries are ~100 MB; this leaves
     /// headroom while still bounding a runaway download.</summary>
     public const long DefaultMaxBytes = 512L * 1024 * 1024;
 

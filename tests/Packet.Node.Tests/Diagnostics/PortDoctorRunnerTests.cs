@@ -16,7 +16,7 @@ namespace Packet.Node.Tests.Diagnostics;
 public sealed class PortDoctorRunnerTests
 {
     /// <summary>A runner whose probe core is replaced by a stand-in that records the options it was
-    /// called with and returns <paramref name="canned"/> — lets us assert the gate deterministically.</summary>
+    /// called with and returns <paramref name="canned"/> - lets us assert the gate deterministically.</summary>
     private static PortDoctorRunner WithSeam(List<TuningDoctorOptions> calls, IReadOnlyList<DoctorProbe>? canned = null)
     {
         var probes = canned ?? [new DoctorProbe("tnc-present", DoctorOutcome.Pass, "ok", null)];

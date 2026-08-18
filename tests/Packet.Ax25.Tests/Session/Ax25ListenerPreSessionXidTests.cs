@@ -10,7 +10,7 @@ namespace Packet.Ax25.Tests.Session;
 /// Pre-session XID-command handling on <see cref="Ax25Listener"/>.
 ///
 /// A peer that does pre-SABM XID negotiation to us (the §6.3.2 "negotiate before
-/// the connection" pattern — what a PDN NET/ROM mod-8 interlink initiator does)
+/// the connection" pattern - what a PDN NET/ROM mod-8 interlink initiator does)
 /// sends an XID *command* with no active link yet. §4.3.3.7 makes answering an XID
 /// command unconditional ("A station receiving an XID command returns an XID
 /// response unless a UA is pending or a FRMR condition exists"); the MDL (Annex
@@ -19,7 +19,7 @@ namespace Packet.Ax25.Tests.Session;
 /// adopted the negotiated parameters (SREJ when both sides offered it).
 ///
 /// Before the fix the pre-session XID fell through to a transient session, got
-/// reclassified to all_other_commands, and was answered with a DM — stalling the
+/// reclassified to all_other_commands, and was answered with a DM - stalling the
 /// initiator.
 /// </summary>
 public class Ax25ListenerPreSessionXidTests
@@ -38,7 +38,7 @@ public class Ax25ListenerPreSessionXidTests
     private static bool IsUa(Ax25Frame f) => IsUFrame(f) && (f.Control & 0xEF) == UaControl;
     private static bool IsDm(Ax25Frame f) => IsUFrame(f) && (f.Control & 0xEF) == DmControl;
 
-    /// <summary>A mod-8 XID command offering SREJ — the offer a PDN interlink
+    /// <summary>A mod-8 XID command offering SREJ - the offer a PDN interlink
     /// initiator puts on the wire before its SABM.</summary>
     private static Ax25Frame Mod8SrejXidCommand() => Ax25Frame.Xid(
         destination: LocalCall,
@@ -65,7 +65,7 @@ public class Ax25ListenerPreSessionXidTests
         });
         await listener.StartAsync();
 
-        // No prior session — the peer opens with a bare XID command.
+        // No prior session - the peer opens with a bare XID command.
         modem.InjectInbound(Mod8SrejXidCommand());
 
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
@@ -98,7 +98,7 @@ public class Ax25ListenerPreSessionXidTests
         await listener.StartAsync();
 
         // 1) Pre-session XID command → XID response. SessionAccepted must NOT fire
-        //    yet (no DL-CONNECT — the SABM raises it).
+        //    yet (no DL-CONNECT - the SABM raises it).
         modem.InjectInbound(Mod8SrejXidCommand());
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
         Ax25Frame.TryParse(modem.SentFrames[0].Span, out var xidReply).Should().BeTrue();

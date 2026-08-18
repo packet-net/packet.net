@@ -7,7 +7,7 @@ namespace Packet.Node.Tests.Console;
 /// The in-memory duplex used by the browser command console. The key behaviour under test is the
 /// <c>normalizeAppOutputToCrlf</c> seam: the appEnd is the terminal-bound direction, so its writes
 /// must complete bare-CR / lone-LF endings to CR-LF (so a relayed BBS/node greeting advances the
-/// xterm line instead of leaving the cursor at column 0 — the reported iPhone symptom), exactly as
+/// xterm line instead of leaving the cursor at column 0 - the reported iPhone symptom), exactly as
 /// the real telnet listener's TcpNodeConnection does. The userEnd (keystroke/input direction) must
 /// stay a raw pipe. Default construction stays raw on both ends for the other callers.
 /// </summary>
@@ -52,7 +52,7 @@ public sealed class LoopbackNodeConnectionTests
             "console", NodeTransportKind.Telnet, "console", NodeTransportKind.Telnet,
             normalizeAppOutputToCrlf: true);
 
-        // The node's own replies are already CR-LF — they must not become CR-CR-LF.
+        // The node's own replies are already CR-LF - they must not become CR-CR-LF.
         await appEnd.WriteAsync(Encoding.ASCII.GetBytes("ports\r\n"), CancellationToken.None);
 
         (await ReadAllAsciiAsync(userEnd, 1)).Should().Be("ports\r\n");

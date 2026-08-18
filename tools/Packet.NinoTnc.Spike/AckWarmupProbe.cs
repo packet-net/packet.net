@@ -11,11 +11,11 @@ namespace Packet.NinoTnc.Spike;
 /// ~15 seconds" finding. Runs four scenarios back-to-back and prints the
 /// timing of the first and second ACKMODE-with-echo round trips:
 ///
-///   1) Vanilla — Open, SetMode, 500ms, send ACKMODE.
-///   2) Long settle — Open, SetMode, 5s, send ACKMODE.
-///   3) Prime with KISS Data first — Open, SetMode, 500ms, send Data
+///   1) Vanilla - Open, SetMode, 500ms, send ACKMODE.
+///   2) Long settle - Open, SetMode, 5s, send ACKMODE.
+///   3) Prime with KISS Data first - Open, SetMode, 500ms, send Data
 ///      (await over-air), then ACKMODE.
-///   4) Prime with first ACKMODE — Open, SetMode, 500ms, send ACKMODE
+///   4) Prime with first ACKMODE - Open, SetMode, 500ms, send ACKMODE
 ///      to consume the warmup, then send the "real" ACKMODE we measure.
 ///
 /// Each scenario opens fresh modems so port state doesn't leak across.

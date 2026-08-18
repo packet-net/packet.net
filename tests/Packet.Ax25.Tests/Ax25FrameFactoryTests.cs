@@ -7,7 +7,7 @@ namespace Packet.Ax25.Tests;
 /// <summary>
 /// Byte-level encoding tests for the non-UI <see cref="Ax25Frame"/> factories.
 /// The control-byte values are taken verbatim from AX.25 v2.2 §4.3.2
-/// (supervisory) and §4.3.3 (unnumbered) — each test pins the exact octet
+/// (supervisory) and §4.3.3 (unnumbered) - each test pins the exact octet
 /// the factory must produce.
 /// </summary>
 public class Ax25FrameFactoryTests
@@ -179,7 +179,7 @@ public class Ax25FrameFactoryTests
         bytes[14].Should().Be(0x3F, "SABM with P=1");
 
         // Dest "M0LTE" shifted left 1, plus C/H=1, RR=11, SSID=0, E=0 → 0x60 in SSID byte
-        // (binary 01100000): top bit = C/H = 1? No — bit pattern is C R R SSID(4) E.
+        // (binary 01100000): top bit = C/H = 1? No - bit pattern is C R R SSID(4) E.
         // For dest command frame: C=1, R bits = "11" (v2.2 default), SSID=0, E=0
         //   → 1_11_0000_0 = 0xE0
         bytes[6].Should().Be(0xE0, "destination SSID byte: C=1 (cmd), R=11, SSID=0, E=0");

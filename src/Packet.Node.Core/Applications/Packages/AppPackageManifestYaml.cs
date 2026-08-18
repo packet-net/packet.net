@@ -9,7 +9,7 @@ namespace Packet.Node.Core.Applications.Packages;
 /// <summary>
 /// The YAML (de)serialisation of an app package's <c>pdn-app.yaml</c>
 /// (<see cref="AppPackageManifest"/>). Mirrors <see cref="NodeConfigYaml"/>: camelCase
-/// property naming, unmatched keys ignored (a manifest may carry future keys — the
+/// property naming, unmatched keys ignored (a manifest may carry future keys - the
 /// <c>manifest:</c> version gate is the forward-compat boundary, enforced by the catalog),
 /// and the interface-typed collections mapped to concrete types so YamlDotNet can bind them.
 /// </summary>
@@ -27,7 +27,7 @@ public static class AppPackageManifestYaml
         // The contract writes the manifest enums in kebab-case (`restart: on-failure`,
         // `managed: external`, `kind: socket`). YamlDotNet's built-in enum binding is
         // case-insensitive but not hyphen-tolerant ("on-failure" would never match
-        // OnFailure), so a dedicated converter binds — and emits — the kebab forms.
+        // OnFailure), so a dedicated converter binds - and emits - the kebab forms.
         .WithTypeConverter(KebabCaseEnumYamlConverter.Instance)
         // ui.mode is the one closed set the contract makes lenient: an unknown/missing value
         // binds to the safe default (standalone) rather than erroring the whole manifest, so an
@@ -54,7 +54,7 @@ public static class AppPackageManifestYaml
     /// Parse <c>pdn-app.yaml</c> text into an <see cref="AppPackageManifest"/>. Throws a
     /// descriptive <see cref="InvalidDataException"/> on malformed YAML, a non-mapping or
     /// empty document, or an enum value outside its closed set. Structural validation
-    /// (id ↔ directory, required per-kind fields, verb collisions) is the catalog's job —
+    /// (id ↔ directory, required per-kind fields, verb collisions) is the catalog's job -
     /// this method only gets the text into the record shape.
     /// </summary>
     public static AppPackageManifest Parse(string yaml)
@@ -68,7 +68,7 @@ public static class AppPackageManifestYaml
         }
         catch (YamlException ex)
         {
-            // Surface the innermost message — YamlDotNet wraps converter/typing faults in
+            // Surface the innermost message - YamlDotNet wraps converter/typing faults in
             // generic "Exception during deserialization" layers and the useful text (which
             // field, which value, the document mark) is at the bottom.
             throw new InvalidDataException($"pdn-app.yaml is not a valid manifest: {Innermost(ex)}", ex);
@@ -102,7 +102,7 @@ public static class AppPackageManifestYaml
     /// Binds the manifest's closed enum sets from the contract's kebab-case spelling
     /// (<c>on-failure</c> → <see cref="AppServiceRestart.OnFailure"/>) as well as the plain
     /// case-insensitive forms (<c>onFailure</c>, <c>OnFailure</c>), and emits kebab-case.
-    /// Numeric scalars are rejected — the YAML surface is names, not ordinals.
+    /// Numeric scalars are rejected - the YAML surface is names, not ordinals.
     /// </summary>
     private sealed class KebabCaseEnumYamlConverter : IYamlTypeConverter
     {

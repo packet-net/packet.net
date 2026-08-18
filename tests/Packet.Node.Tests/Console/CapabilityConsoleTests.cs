@@ -14,7 +14,7 @@ namespace Packet.Node.Tests.Console;
 /// Dispatch tests for the CONSOLE surface of the per-peer AX.25 capability cache (the operator
 /// view added alongside PORTS / KICK): drive the real <see cref="NodeCommandService"/> over a
 /// scripted connection against a real <see cref="PeerCapabilityCache"/> seeded via the public
-/// <c>RecordOutcome</c>. They lock the two load-bearing behaviours — <c>CAP</c> renders the
+/// <c>RecordOutcome</c>. They lock the two load-bearing behaviours - <c>CAP</c> renders the
 /// cached records read-only (no elevation), and <c>CAP CLEAR</c> forgets one only when elevated.
 /// Mirrors <see cref="SysopElevationTests"/>'s harness (ScriptedConnection + RecordingSysopOps).
 /// </summary>
@@ -72,11 +72,11 @@ public sealed class CapabilityConsoleTests : IDisposable
     private PeerCapabilityCache SeededCache()
     {
         var cache = new PeerCapabilityCache(store: null, time: clock);
-        // gb7rdg:M0LTE-1 — extended dialled + succeeded; SREJ left null (never probed via XID).
+        // gb7rdg:M0LTE-1 - extended dialled + succeeded; SREJ left null (never probed via XID).
         cache.RecordOutcome("gb7rdg", "M0LTE-1",
             dialedExtended: true, observedIsExtended: true,
             dialedPreConnectXid: false, observedSrejEnabled: false);
-        // gb7isw:G0XYZ-2 — extended dialled + REFUSED (degrade), and an XID that disabled SREJ.
+        // gb7isw:G0XYZ-2 - extended dialled + REFUSED (degrade), and an XID that disabled SREJ.
         cache.RecordOutcome("gb7isw", "G0XYZ-2",
             dialedExtended: true, observedIsExtended: false,
             dialedPreConnectXid: true, observedSrejEnabled: false);
@@ -123,7 +123,7 @@ public sealed class CapabilityConsoleTests : IDisposable
         await svc.RunAsync(conn);
 
         conn.Text.Should().Contain("Forgot capability for gb7rdg:M0LTE-1.");
-        // The cache really lost that entry — and only that entry.
+        // The cache really lost that entry - and only that entry.
         cache.All().Should().NotContain(r => r.PortId == "gb7rdg" && r.Peer == "M0LTE-1");
         cache.All().Should().Contain(r => r.PortId == "gb7isw" && r.Peer == "G0XYZ-2");
     }
@@ -139,7 +139,7 @@ public sealed class CapabilityConsoleTests : IDisposable
         await svc.RunAsync(conn);
 
         conn.Text.Should().Contain("Not authorised. Use SYSOP");
-        // The gate was reached before the cache — the record survives.
+        // The gate was reached before the cache - the record survives.
         cache.All().Should().Contain(r => r.PortId == "gb7rdg" && r.Peer == "M0LTE-1");
     }
 
@@ -173,7 +173,7 @@ public sealed class CapabilityConsoleTests : IDisposable
         line.Text.Should().Be("Sysop command CAP-CLEAR (gb7rdg:M0LTE-1) run over M0LTE-7.");
     }
 
-    // A no-op privileged-operations stub — these tests exercise CAP, not SESSIONS/KICK/etc., so
+    // A no-op privileged-operations stub - these tests exercise CAP, not SESSIONS/KICK/etc., so
     // the ops surface just needs to exist for the SysopContext.
     private sealed class NoopSysopOps : ISysopOperations
     {

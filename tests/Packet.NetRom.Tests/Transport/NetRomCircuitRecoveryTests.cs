@@ -73,7 +73,7 @@ public sealed class NetRomCircuitRecoveryTests
         // B drains its backlog → releases choke → A resumes and the second frame
         // arrives. (With ChokeThreshold=1, B will re-choke the moment "two" lands;
         // the point under test is that the gate opened and the held frame got
-        // through — draining again then clears the re-choke.)
+        // through - draining again then clears the re-choke.)
         bCap.Circuit.OnDeliveryDrained();
         h.Pump();
         bCap.Received.Should().HaveCount(2, "the held frame went out once choke was released");

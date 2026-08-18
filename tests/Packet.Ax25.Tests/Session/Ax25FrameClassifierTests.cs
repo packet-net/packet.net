@@ -176,7 +176,7 @@ public class Ax25FrameClassifierTests
     [Fact]
     public void S_Frame_Carrying_An_Information_Field_Classifies_To_InfoNotPermitted()
     {
-        // An RR with a trailing info field is malformed — S frames carry no info
+        // An RR with a trailing info field is malformed - S frames carry no info
         // (§3.5). Strict rejects it at parse; Lenient lets it through to the
         // data-link layer, where the classifier surfaces it as the "information
         // not permitted in frame" error (DL-ERROR M) rather than a plain RR.
@@ -209,7 +209,7 @@ public class Ax25FrameClassifierTests
     [Fact]
     public void Info_Bearing_U_Frames_Are_Unaffected_By_The_Info_Check()
     {
-        // FRMR/XID/TEST/UI legitimately carry an information field — the M check
+        // FRMR/XID/TEST/UI legitimately carry an information field - the M check
         // must not misfire on them (regression guard for the classifier change).
         Ax25FrameClassifier.Classify(Ax25Frame.Frmr(Local, Remote, info: stackalloc byte[] { 0, 0, 0 }))
             .Should().BeOfType<FrmrReceived>();

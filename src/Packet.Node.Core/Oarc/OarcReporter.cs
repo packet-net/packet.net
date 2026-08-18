@@ -54,7 +54,7 @@ public sealed partial class OarcReporter : BackgroundService
     private long dropped;
     private long droppedReported;
 
-    // Diff + cadence state — touched only by the single poll loop, so no locking needed.
+    // Diff + cadence state - touched only by the single poll loop, so no locking needed.
     private readonly Dictionary<int, OarcLinkState> lastLinks = new();
     private readonly Dictionary<int, OarcCircuitState> lastCircuits = new();
     private bool wasEnabled;
@@ -218,7 +218,7 @@ public sealed partial class OarcReporter : BackgroundService
     private void OnDisabled(OarcConfig cfg, Identity identity, DateTimeOffset now)
     {
         LogDisabled();
-        // A clean node-down (if we had announced up); do NOT spam link-downs — the collector ages
+        // A clean node-down (if we had announced up); do NOT spam link-downs - the collector ages
         // links out, and the node-down marks us off the map.
         if (nodeUpSent && cfg.ReportNodeStatus && Locator(identity) is { } loc)
         {
@@ -403,7 +403,7 @@ public sealed partial class OarcReporter : BackgroundService
     // the send loop is about to await it. Lets a FakeTimeProvider test Advance the clock
     // deterministically instead of racing the background loop's park (the old "hammer
     // Advance in a loop" helper could miss the timer under CI contention). Null in
-    // production — a no-op.
+    // production - a no-op.
     internal Action? RetryBackoffArmed;
 
     private async Task SendWithRetryAsync(OarcEvent ev, CancellationToken ct)
@@ -422,7 +422,7 @@ public sealed partial class OarcReporter : BackgroundService
                 return;
             }
             // Arm the timer (registered on `clock` synchronously by Task.Delay), THEN signal,
-            // THEN await — so a test observing the signal knows the timer is live and an
+            // THEN await - so a test observing the signal knows the timer is live and an
             // Advance past it will fire deterministically.
             var backoff = Task.Delay(Backoff[attempt], clock, ct);
             RetryBackoffArmed?.Invoke();

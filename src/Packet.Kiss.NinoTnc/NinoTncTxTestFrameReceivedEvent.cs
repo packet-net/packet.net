@@ -5,7 +5,7 @@ namespace Packet.Kiss.NinoTnc;
 /// <summary>
 /// The on-demand TX-Test diagnostic frame the NinoTNC emits when the
 /// operator presses the front-panel TX-Test button. The over-air frame
-/// (the modem-generated test signal — see
+/// (the modem-generated test signal - see
 /// <see cref="NinoTncAirTestFrameReceivedEvent"/>) is *not* this; this
 /// is the synthetic KISS-Data frame the firmware delivers to its USB
 /// host at the same moment.

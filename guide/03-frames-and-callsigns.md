@@ -4,11 +4,11 @@ Now we move up one layer to the thing that flows across a transport: the AX.25
 frame. This chapter covers the value types (`Callsign`, `Ax25Address`,
 `Ax25Frame`), the factory methods that build well-formed frames, and the
 `Ax25ParseOptions` that govern how leniently you decode. We finish by building
-**`axbeacon`**, a UI/beacon sender — your first program that *transmits*.
+**`axbeacon`**, a UI/beacon sender - your first program that *transmits*.
 
-## Callsigns — `Packet.Core.Callsign`
+## Callsigns - `Packet.Core.Callsign`
 
-A `Callsign` is a readonly struct: a base (1–6 chars) plus an SSID (0–15).
+A `Callsign` is a readonly struct: a base (1-6 chars) plus an SSID (0-15).
 
 ```csharp
 using Packet.Core;
@@ -21,7 +21,7 @@ if (Callsign.TryParse(userInput, out var c))
 ```
 
 SSID 0 renders without a suffix (`M0LTE`). Callsigns compare by value, so they
-work as dictionary keys — which is exactly how `Ax25Listener` keys its per-peer
+work as dictionary keys - which is exactly how `Ax25Listener` keys its per-peer
 session cache.
 
 A `Callsign` is the *logical* identity. On the wire, AX.25 wraps it in an
@@ -31,14 +31,14 @@ A `Callsign` is the *logical* identity. On the wire, AX.25 wraps it in an
 public readonly record struct Ax25Address(Callsign Callsign, bool CrhBit, bool ExtensionBit);
 ```
 
-You rarely build these by hand — the frame factories take plain `Callsign`s and
-set the bits correctly — but when you *read* a received frame, its
+You rarely build these by hand - the frame factories take plain `Callsign`s and
+set the bits correctly - but when you *read* a received frame, its
 `Destination`, `Source`, and `Digipeaters` are `Ax25Address` values, so reach for
 `address.Callsign` to get the callsign back out.
 
-## The frame — `Packet.Ax25.Ax25Frame`
+## The frame - `Packet.Ax25.Ax25Frame`
 
-`Ax25Frame` is the one type for every frame kind — UI, the I/S/U families — with
+`Ax25Frame` is the one type for every frame kind - UI, the I/S/U families - with
 properties that mean different things depending on the kind:
 
 ```csharp
@@ -66,11 +66,11 @@ public sealed partial class Ax25Frame
 
 ### Building frames: the factories
 
-Outbound construction is **always strict** — the factories produce spec-faithful
+Outbound construction is **always strict** - the factories produce spec-faithful
 frames and there are no leniency knobs here. Each factory takes `Callsign`s (not
 `Ax25Address`es) and handles the bits.
 
-The one you'll use most is the UI factory (connectionless data — beacons, APRS,
+The one you'll use most is the UI factory (connectionless data - beacons, APRS,
 NET/ROM NODES broadcasts):
 
 ```csharp
@@ -84,7 +84,7 @@ public static Ax25Frame Ui(
     IEnumerable<Callsign>? digipeaters = null);
 ```
 
-The rest of the family (you'll rarely build these by hand — `Ax25Session` does —
+The rest of the family (you'll rarely build these by hand - `Ax25Session` does -
 but they're public for tooling and tests):
 
 | Family | Factories |
@@ -112,7 +112,7 @@ byte[] withFcs = frame.ToBytesWithFcs();    // append CRC-16-CCITT — for raw H
 
 `ToBytes()` is precisely the AX.25 frame body an `IAx25Transport.SendAsync` wants,
 closing the loop with [chapter 2](02-transports.md). (A transport whose wire
-*does* carry the FCS — AXUDP — appends it internally; you still hand it the
+*does* carry the FCS - AXUDP - appends it internally; you still hand it the
 bodies.)
 
 Parsing is the inverse:
@@ -128,11 +128,11 @@ Ax25Frame.TryParse(body, Ax25ParseOptions.Bpq, extended: true, out frame);
 
 The `extended` overload matters because an I/S frame's control field is 1 octet
 under modulo-8 and 2 under modulo-128, and you **cannot** tell which from the
-bytes alone — the receiver knows it from the session's negotiated modulo. For
+bytes alone - the receiver knows it from the session's negotiated modulo. For
 connectionless monitoring (UI frames, [chapter 4](04-listen.md)) modulo-8 is
 correct and the simple overload is fine.
 
-## `Ax25ParseOptions` — leniency as a named choice
+## `Ax25ParseOptions` - leniency as a named choice
 
 This is the strict-vs-pragmatic rule from
 [chapter 1](01-architecture.md#strict-by-default-pragmatism-is-a-named-flag) made
@@ -160,7 +160,7 @@ that port is decoded with it.
     [`docs/strict-vs-pragmatic-audit.md`](../docs/strict-vs-pragmatic-audit.md)
     documents every flag, what it accepts, and which preset turns it on.
 
-## Tool #2 — `axbeacon`
+## Tool #2 - `axbeacon`
 
 A beacon is the simplest possible transmitter: build a UI frame, encode it, hand
 the bytes to the modem. No state machine, no connection.
@@ -194,12 +194,12 @@ Run it and watch the frame come back on the dumper from
 periodically, wrap the send in a `PeriodicTimer` loop.
 
 If you wanted to route the beacon through a digipeater path, pass
-`digipeaters: new[] { Callsign.Parse("WIDE1-1") }` to the factory — the outbound
+`digipeaters: new[] { Callsign.Parse("WIDE1-1") }` to the factory - the outbound
 path will lay the address field out correctly.
 
 You can now **send** and (with chapter 4) **decode**. That's connectionless
-packet radio in full. The jump to *connected* mode — where frames are
-acknowledged, retransmitted, sequenced, and flow-controlled — is the jump to
+packet radio in full. The jump to *connected* mode - where frames are
+acknowledged, retransmitted, sequenced, and flow-controlled - is the jump to
 `Ax25Session`, and it's the subject of chapter 5. First, let's make the receive
 side readable.
 

@@ -4,7 +4,7 @@ using Packet.Node.Core.Api;
 namespace Packet.Node.Core.Tuning;
 
 /// <summary>
-/// The registry-facing shape of a live tuning session on a port — what the
+/// The registry-facing shape of a live tuning session on a port - what the
 /// one-session-per-port bookkeeping (<see cref="PortTuningRegistry"/>), the shared
 /// SSE feed (<c>GET /api/v1/ports/{id}/tuning/events</c>) and the shared stop verbs
 /// need, independent of what the session actually does. Two implementations:

@@ -7,14 +7,14 @@ namespace Packet.Node.Core.Api;
 /// <see cref="HeadEndScan"/> (#583): each instance the monitor tracks gains
 /// <see cref="HeadEndInstanceScan.ReachableNow"/> / <see cref="HeadEndInstanceScan.LastSeen"/> so
 /// the Head-ends screen's reachable badge can reflect the ~30 s background poll instead of only the
-/// point-in-time scan. Pure over its inputs — an in-memory join by instance id, no probing — so the
+/// point-in-time scan. Pure over its inputs - an in-memory join by instance id, no probing - so the
 /// <c>GET /api/v1/radios/headends</c> request path stays exactly as expensive as the scan itself.
 /// </summary>
 public static class HeadEndScanEnrichment
 {
     /// <summary>Return <paramref name="scan"/> with live-health fields folded into every instance
     /// the monitor has data for. A null/empty <paramref name="health"/> (monitor absent in a
-    /// stripped embedder, or no cycle completed yet) returns the scan unchanged — the fields stay
+    /// stripped embedder, or no cycle completed yet) returns the scan unchanged - the fields stay
     /// null, an honest "no live data".</summary>
     public static HeadEndScan WithLiveHealth(HeadEndScan scan, IReadOnlyList<HeadEndHealth>? health)
     {

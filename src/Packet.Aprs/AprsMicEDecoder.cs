@@ -16,7 +16,7 @@ namespace Packet.Aprs;
 /// <para>
 /// DTI is <c>`</c> (current GPS data) or <c>'</c> (old data). Real
 /// implementations also use <c>0x1C</c> / <c>0x1D</c> on Rev. 0 beta
-/// units — accepted on receive.
+/// units - accepted on receive.
 /// </para>
 /// </remarks>
 public static class AprsMicEDecoder
@@ -45,7 +45,7 @@ public static class AprsMicEDecoder
     /// </summary>
     /// <remarks>
     /// Strict mode (per APRS101 §10) rejects the legacy DTI bytes
-    /// <c>0x1C</c> / <c>0x1D</c> — those are "Rev. 0 beta units only"
+    /// <c>0x1C</c> / <c>0x1D</c> - those are "Rev. 0 beta units only"
     /// per spec and effectively a permissive accommodation for early
     /// Kenwood firmware.
     /// </remarks>
@@ -69,7 +69,7 @@ public static class AprsMicEDecoder
         }
 
         // DTI check. The spec-canonical DTIs are 0x60 (`) and 0x27 (').
-        // 0x1C / 0x1D are Rev. 0 beta legacy bytes — gated by an option.
+        // 0x1C / 0x1D are Rev. 0 beta legacy bytes - gated by an option.
         byte dti = info[0];
         bool isCanonicalDti = dti == (byte)'`' || dti == (byte)'\'';
         bool isLegacyDti = dti == 0x1C || dti == 0x1D;
@@ -145,11 +145,11 @@ public static class AprsMicEDecoder
 
         if (d is >= 180 and <= 189)
         {
-            d -= 80;       // 100–109°
+            d -= 80;       // 100-109°
         }
         else if (d is >= 190 and <= 199)
         {
-            d -= 190; // 0–9°
+            d -= 190; // 0-9°
         }
 
         if (d is < 0 or > 179)
@@ -225,7 +225,7 @@ public static class AprsMicEDecoder
 
         int speed = sp * 10 + speedUnits;
         int course = courseHundredsIdx * 100 + se;
-        // Per §10's "speed/course adjustments" — if either overflows the
+        // Per §10's "speed/course adjustments" - if either overflows the
         // representable range, wrap. In practice this catches the rare
         // sender that uses out-of-table byte combinations.
         if (speed >= 800)
@@ -272,7 +272,7 @@ public static class AprsMicEDecoder
     //   - one message-bit value (0 or 1)
     //   - for bit=1, whether the hint is "Standard 1" or "Custom 1"
     //   - for bytes 3/4/5, the N/S, long-offset and W/E flags (computed
-    //     separately by the caller — they only depend on which char-class
+    //     separately by the caller - they only depend on which char-class
     //     the byte falls in).
 
     private static bool TryDecodeDestinationChar(char c, out char digit, out int msgBit, out bool stdHint, out bool customHint)
@@ -294,7 +294,7 @@ public static class AprsMicEDecoder
     private static bool TryParseLatitude(ReadOnlySpan<char> digits, bool isNorth, out double latitude)
     {
         // Layout: DDMM.HH (6 digits + 2 hundredths). Spaces are
-        // position-ambiguity markers — treat as zero per §10.
+        // position-ambiguity markers - treat as zero per §10.
         latitude = 0;
         Span<int> ds = stackalloc int[6];
         for (int i = 0; i < 6; i++)

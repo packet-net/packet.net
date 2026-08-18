@@ -17,7 +17,7 @@ namespace Packet.Agw;
 /// <remarks>
 /// Callsigns are encoded as fixed-width 10-byte ASCII fields padded
 /// with NUL bytes. SSIDs are included in the string (e.g. <c>"M0LTE-1"</c>),
-/// not split out into a separate byte — that's part of AGW's
+/// not split out into a separate byte - that's part of AGW's
 /// callsign-as-string ergonomic compared to KISS's address-byte
 /// encoding.
 /// </remarks>
@@ -157,7 +157,7 @@ public sealed record AgwFrame(
 
     private static string ReadCallsign(ReadOnlySpan<byte> field)
     {
-        // Trim at the first NUL — that's the field's terminator
+        // Trim at the first NUL - that's the field's terminator
         // convention. Some servers pad with spaces instead; trim those
         // too to be tolerant.
         int end = field.IndexOf((byte)0);

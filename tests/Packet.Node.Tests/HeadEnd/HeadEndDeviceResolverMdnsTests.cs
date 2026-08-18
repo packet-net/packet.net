@@ -7,7 +7,7 @@ namespace Packet.Node.Tests.HeadEnd;
 /// <summary>
 /// The Stage-3b wiring of <see cref="HeadEndDeviceResolver"/> to the address source: a head-end
 /// configured in discover mode (blank address) resolves its device binding through an mDNS browse of
-/// its instance id — the "plug in and go" bring-up path — while keeping <c>(instanceId, deviceId)</c>
+/// its instance id - the "plug in and go" bring-up path - while keeping <c>(instanceId, deviceId)</c>
 /// keying so a re-addressed head-end still resolves.
 /// </summary>
 [Trait("Category", "Node")]

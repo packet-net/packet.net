@@ -1,8 +1,8 @@
 # INP3 two-node lab (docker)
 
-A self-contained, reproducible lab that runs **two real `Packet.Node` hosts with the INP3 overlay ON**, sharing one net-sim `afsk1200` channel, and shows INP3 converging on the wire — independent of the shared packetdotnet lab.
+A self-contained, reproducible lab that runs **two real `Packet.Node` hosts with the INP3 overlay ON**, sharing one net-sim `afsk1200` channel, and shows INP3 converging on the wire - independent of the shared packetdotnet lab.
 
-INP3 (the time-based NET/ROM routing overlay) rides a connected-mode PID-0xCF interlink: the nodes discover each other via NODES, the first `connect` raises the interlink, then the L3RTT probe/reflect loop measures the link (SNTT) and RIFs propagate the measured time-routes. Both nodes end up holding a destination with **both** metrics — the NODES quality and the INP3 measured target time — coexisting on one route.
+INP3 (the time-based NET/ROM routing overlay) rides a connected-mode PID-0xCF interlink: the nodes discover each other via NODES, the first `connect` raises the interlink, then the L3RTT probe/reflect loop measures the link (SNTT) and RIFs propagate the measured time-routes. Both nodes end up holding a destination with **both** metrics - the NODES quality and the INP3 measured target time - coexisting on one route.
 
 ## Run it
 
@@ -29,7 +29,7 @@ docker compose -f docker/inp3lab/compose.yml down -v
 
 ## What you should see
 
-After convergence, the `N` (Nodes) command shows the learned route carrying the INP3 metric alongside the quality pair — verified 2026-06-08:
+After convergence, the `N` (Nodes) command shows the learned route carrying the INP3 metric alongside the quality pair - verified 2026-06-08:
 
 ```
 GB7AAA> N
@@ -43,7 +43,7 @@ NET/ROM routes:
 
 ## Files
 
-- `compose.yml` — net-sim + two pdn nodes (consoles on `127.0.0.1:9011`/`9012`, net-sim API on `9080`).
-- `network.yaml` — net-sim topology: `a`↔`b` on one afsk1200 channel (KISS 8100/8101).
-- `node-a.yaml` / `node-b.yaml` — pdn configs: KISS-TCP to net-sim, `netRom.{enabled,broadcast,connect}`, and `inp3.enabled` with compressed probe/RIF intervals for a quick demo.
-- `Dockerfile` — runs the `./app` self-contained publish output (globalization-invariant; the `app/` dir is gitignored — build it per step 1).
+- `compose.yml` - net-sim + two pdn nodes (consoles on `127.0.0.1:9011`/`9012`, net-sim API on `9080`).
+- `network.yaml` - net-sim topology: `a`↔`b` on one afsk1200 channel (KISS 8100/8101).
+- `node-a.yaml` / `node-b.yaml` - pdn configs: KISS-TCP to net-sim, `netRom.{enabled,broadcast,connect}`, and `inp3.enabled` with compressed probe/RIF intervals for a quick demo.
+- `Dockerfile` - runs the `./app` self-contained publish output (globalization-invariant; the `app/` dir is gitignored - build it per step 1).

@@ -3,7 +3,7 @@ using Packet.Radio.Tait;
 namespace Packet.Node.Core.Radios;
 
 /// <summary>
-/// Pure matching of a configured CCDI serial number to a discovered radio — the stable-identity
+/// Pure matching of a configured CCDI serial number to a discovered radio - the stable-identity
 /// resolution behind a <c>serial:</c>-bound port. Factored out of <see cref="RadioControlFactory"/>
 /// so the "which device is this radio on right now?" decision is unit-testable without opening a
 /// serial port.

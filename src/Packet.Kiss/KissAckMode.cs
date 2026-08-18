@@ -16,7 +16,7 @@ namespace Packet.Kiss;
 /// for slow modes where queue-acceptance ≠ transmit-completion.
 /// </para>
 /// <para>
-/// This class is framing-neutral — it just sits on top of <see cref="KissCommand.AckMode"/>
+/// This class is framing-neutral - it just sits on top of <see cref="KissCommand.AckMode"/>
 /// and a <see cref="KissFrame"/>. The KISS encoder/decoder already handle SLIP framing,
 /// command-byte port nibble, and FEND/FESC escapes uniformly.
 /// </para>
@@ -54,7 +54,7 @@ public static class KissAckMode
     }
 
     /// <summary>
-    /// True if <paramref name="frame"/> is an ACKMODE *data* frame — command
+    /// True if <paramref name="frame"/> is an ACKMODE *data* frame - command
     /// 0x0C with a payload of 2 sequence bytes followed by AX.25 bytes (length
     /// strictly greater than 2). Single-port TNCs do not normally emit
     /// inbound ACKMODE data, but multi-master / cross-link bridges can.

@@ -4,13 +4,13 @@ namespace Packet.Node.Core.Configuration;
 /// Named, <b>opt-in</b> per-port channel-tuning profiles. A profile is a small,
 /// documented bundle of AX.25 timer + KISS CSMA defaults suited to a class of
 /// physical channel. It only ever <em>fills in fields the operator left unset</em>
-/// — an explicit value on the port always wins.
+/// - an explicit value on the port always wins.
 /// <para>
 /// A profile captures <em>channel</em> properties (timing under contention, CSMA,
 /// TX warm-up). It deliberately does <b>not</b> set a non-zero TX tail: the need for
 /// one is a <em>modem + radio-audio-path</em> property (software modems and latency
 /// audio paths need one; a fully analogue path doesn't) that the node can't infer
-/// from the channel — so a non-zero <c>kiss.txTail</c> stays an explicit per-port
+/// from the channel - so a non-zero <c>kiss.txTail</c> stays an explicit per-port
 /// operator override. The default tail is an <b>implicit 0</b> sent to the modem on
 /// every apply (#465); the resolver supplies that 0 when neither the operator nor
 /// the profile set one, so a profiled port still gets a deterministic explicit tail.
@@ -27,11 +27,11 @@ namespace Packet.Node.Core.Configuration;
 /// clear air) plus sane CSMA.
 /// </para>
 /// <para>
-/// We do <b>not</b> bake this into the engine — the engine stays spec-compliant by
+/// We do <b>not</b> bake this into the engine - the engine stays spec-compliant by
 /// default (working agreement §2). Nor do we apply it as a silent node-wide
 /// default: T1 and TXDELAY are properties of the <em>physical channel</em>, and a
 /// single node can host fast ports (AXUDP, 9600, full-duplex) and slow ports
-/// (AFSK1200 half-duplex) at once — a blanket default would be wrong for the fast
+/// (AFSK1200 half-duplex) at once - a blanket default would be wrong for the fast
 /// ones. So tuning is a <em>named, per-port</em> choice the operator makes
 /// (<c>profile: slow-afsk1200</c>), with a documented effect. Absent a profile, a
 /// port gets exact spec defaults (or whatever the operator set explicitly).
@@ -43,7 +43,7 @@ namespace Packet.Node.Core.Configuration;
 /// </remarks>
 public static class ChannelProfiles
 {
-    /// <summary>The profile name for a slow, half-duplex 1200-baud AFSK channel —
+    /// <summary>The profile name for a slow, half-duplex 1200-baud AFSK channel -
     /// the classic VHF packet channel the #292 stall was found on.</summary>
     public const string SlowAfsk1200 = "slow-afsk1200";
 
@@ -51,7 +51,7 @@ public static class ChannelProfiles
     /// Resolve a port's <em>effective</em> AX.25 + KISS parameters by overlaying its
     /// explicit values on top of its profile's defaults. Explicit wins; the profile
     /// fills only the gaps. A null / empty / unknown profile is a pure pass-through
-    /// (returns the port's own params unchanged — spec defaults downstream).
+    /// (returns the port's own params unchanged - spec defaults downstream).
     /// </summary>
     /// <param name="port">The port whose params to resolve.</param>
     /// <returns>The effective <see cref="Ax25PortParams"/> and <see cref="KissParams"/>
@@ -69,7 +69,7 @@ public static class ChannelProfiles
     }
 
     /// <summary>True if <paramref name="profile"/> names a known profile (case- and
-    /// hyphen-insensitive). Null/empty is "no profile" — also valid. Used by the
+    /// hyphen-insensitive). Null/empty is "no profile" - also valid. Used by the
     /// validator to reject a typo'd profile name.</summary>
     public static bool IsKnown(string? profile)
     {
@@ -93,7 +93,7 @@ public static class ChannelProfiles
 
         return Normalise(profile) switch
         {
-            // slow-afsk1200: the #292 channel. A longer T1 (10 s) — deliberately
+            // slow-afsk1200: the #292 channel. A longer T1 (10 s) - deliberately
             // above the spec 6 s AND above common peer defaults (LinBPQ FRACK,
             // direwolf), so two stations' timers run asymmetric and break the
             // phase-lock that stalls a contended half-duplex QSO. N2=15 widens the
@@ -101,20 +101,20 @@ public static class ChannelProfiles
             // defaults (PERSIST=63 / SLOTTIME=10), confirmed good enough for
             // two-station contention by the NinoTNC characterisation; stated here
             // to make the intent explicit. TXDELAY=30 (300 ms) is a generic
-            // AFSK1200 TX warm-up — less than the over-conservative 500 ms spec
+            // AFSK1200 TX warm-up - less than the over-conservative 500 ms spec
             // default, comfortably above a fast modem's floor (operator should
             // tune down for a known-fast TNC).
             //
             // NB this profile deliberately does NOT set a non-zero TX tail. The need
             // for one is a property of the MODEM + the radio's audio-path latency, NOT
             // of the channel or the baud rate: a software modem (samoyed / Dire Wolf)
-            // needs one, and so does a NinoTNC into a radio with a latency audio path —
+            // needs one, and so does a NinoTNC into a radio with a latency audio path -
             // but a NinoTNC into a fully analogue audio path needs none, even on this
             // exact slow AFSK1200 channel. The node can't infer the audio-path latency,
             // so a non-zero TXTAIL stays an explicit per-port operator override
             // (`kiss.txTail`), documented in the config template. The profile leaving it
             // unset resolves (with the operator also unset) to the implicit 0 default
-            // sent on every apply (#465) — not bundled into the channel profile.
+            // sent on every apply (#465) - not bundled into the channel profile.
             "slowafsk1200" => (
                 new Ax25PortParams { T1Ms = 10000, N2 = 15 },
                 new KissParams { TxDelay = 30, Persistence = 63, SlotTime = 10 }),
@@ -149,7 +149,7 @@ public static class ChannelProfiles
             SlotTime = e?.SlotTime ?? profile.SlotTime,
             // TxTail has an IMPLICIT default of 0 (#465): a channel profile still does
             // not SET a tail (a non-zero tail is a modem/audio-path-latency property no
-            // profile can know — see the class remarks), but the resolved value resolves
+            // profile can know - see the class remarks), but the resolved value resolves
             // to a deterministic 0 when neither the operator nor the profile set one, so
             // a profiled port gets an explicit 0 sent to its modem rather than nothing.
             // The explicit per-port override (e?.TxTail) still wins.

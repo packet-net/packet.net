@@ -6,8 +6,8 @@ namespace Packet.Rig.Flrig;
 
 /// <summary>
 /// <see cref="IRigControl"/> over flrig's XML-RPC server (default 127.0.0.1:12345). The client
-/// contract here deliberately mirrors hamlib's own flrig backend (<c>rigs/dummy/flrig.c</c>) —
-/// the most battle-tested flrig client in existence — including its meter conversions and its
+/// contract here deliberately mirrors hamlib's own flrig backend (<c>rigs/dummy/flrig.c</c>) -
+/// the most battle-tested flrig client in existence - including its meter conversions and its
 /// try-<c>rig.get_SWR</c>-then-fall-back probing.
 /// </summary>
 /// <remarks>
@@ -15,21 +15,21 @@ namespace Packet.Rig.Flrig;
 /// <b>flrig's dialect quirks, designed around rather than fought:</b> frequency <em>gets</em>
 /// return strings of Hz while <em>sets</em> take doubles; mode names are whatever the attached
 /// transceiver calls them (<see cref="SupportedModes"/> enumerates the valid table, fetched at
-/// connect via <c>rig.get_modes</c>); the get-side reports no passband width; meters are 0–100
+/// connect via <c>rig.get_modes</c>); the get-side reports no passband width; meters are 0-100
 /// needle deflections scaled by <c>rig.get_pwrmeter_scale</c>; and SWR needs interpolation
-/// unless the newer direct <c>rig.get_SWR</c> method exists. flrig is poll-only — no
-/// notifications — and supports multiple concurrent clients, so state can change under you.
+/// unless the newer direct <c>rig.get_SWR</c> method exists. flrig is poll-only - no
+/// notifications - and supports multiple concurrent clients, so state can change under you.
 /// </para>
 /// <para>
 /// <b>Capabilities</b> are static: presenting freq/mode/PTT and the meter methods is flrig's
-/// job regardless of rig. A transceiver without a power/SWR meter simply reads 0 — flrig
+/// job regardless of rig. A transceiver without a power/SWR meter simply reads 0 - flrig
 /// answers anyway. (Hamlib's backend advertises exactly the same unconditional set.) Note the
 /// server-side "Ignore xmlrpc mode changes" option makes flrig silently drop mode sets.
 /// </para>
 /// <para>
 /// <b>Transport:</b> one HTTP POST per command, serialised through an internal gate so calls
 /// from concurrent callers keep arrival order. HTTP is per-request, so there is no connection
-/// state to heal — a dead flrig surfaces as <see cref="RigConnectionException"/> on each call
+/// state to heal - a dead flrig surfaces as <see cref="RigConnectionException"/> on each call
 /// and recovery is automatic when it returns.
 /// </para>
 /// </remarks>
@@ -65,7 +65,7 @@ public sealed class FlrigRig : IRigControl
     public string? FlrigVersion { get; private set; }
 
     /// <summary>
-    /// The attached rig's mode vocabulary (<c>rig.get_modes</c>) — flrig mode names are
+    /// The attached rig's mode vocabulary (<c>rig.get_modes</c>) - flrig mode names are
     /// rig-native, so this is the set <see cref="SetModeAsync"/> accepts. Empty when flrig
     /// didn't supply a table.
     /// </summary>
@@ -94,7 +94,7 @@ public sealed class FlrigRig : IRigControl
             }
             catch (RigCommandException)
             {
-                // Not fatal — hamlib's backend treats a missing get_xcvr the same way.
+                // Not fatal - hamlib's backend treats a missing get_xcvr the same way.
             }
 
             rig.Info = new RigInfo("flrig", Manufacturer: null, Model: string.IsNullOrWhiteSpace(xcvr) ? null : xcvr);
@@ -109,7 +109,7 @@ public sealed class FlrigRig : IRigControl
             }
             catch (RigCommandException)
             {
-                // Older flrig — scale stays 1, same default as hamlib's backend.
+                // Older flrig - scale stays 1, same default as hamlib's backend.
             }
 
             try
@@ -120,10 +120,10 @@ public sealed class FlrigRig : IRigControl
             }
             catch (RigCommandException)
             {
-                // No table — SetModeAsync will pass tokens through unchecked.
+                // No table - SetModeAsync will pass tokens through unchecked.
             }
 
-            // Static by design — see the class remarks.
+            // Static by design - see the class remarks.
             rig.Capabilities =
                 RigCapabilities.FrequencyGet | RigCapabilities.FrequencySet |
                 RigCapabilities.ModeGet | RigCapabilities.ModeSet |
@@ -168,7 +168,7 @@ public sealed class FlrigRig : IRigControl
         }
 
         // flrig's get side has no passband report (rig.get_bw's reply shapes are rig-dependent
-        // and unreliable — hamlib falls back to cache), so PassbandHz is honest-null.
+        // and unreliable - hamlib falls back to cache), so PassbandHz is honest-null.
         return new RigModeState(RigMode.From(mode), PassbandHz: null);
     }
 

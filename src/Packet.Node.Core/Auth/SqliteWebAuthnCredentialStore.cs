@@ -14,7 +14,7 @@ namespace Packet.Node.Core.Auth;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> — the same
+/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> - the same
 /// meta-row approach the other auth stores use, so it doesn't fight the routing store
 /// over <c>PRAGMA user_version</c>. One table, <c>webauthn_credential</c>, keyed by the
 /// raw credential id (a BLOB), with an index on <c>username</c> for the by-user lookup.
@@ -23,7 +23,7 @@ namespace Packet.Node.Core.Auth;
 /// <b>Resilient.</b> Every operation is wrapped: a schema/open failure logs and leaves
 /// the node running (passkeys simply can't be used); a lookup returns null/empty on
 /// fault, a write returns false. Persistence can never take the node down. WAL mode, a
-/// fresh pooled connection per call — the same discipline as the sibling stores — so it
+/// fresh pooled connection per call - the same discipline as the sibling stores - so it
 /// is safe to share across the request threads.
 /// </para>
 /// <para>
@@ -52,7 +52,7 @@ public sealed partial class SqliteWebAuthnCredentialStore : IWebAuthnCredentialS
     private readonly ILogger<SqliteWebAuthnCredentialStore> logger;
 
     /// <summary>Open (creating if absent) the credential store at <paramref name="dbPath"/>
-    /// and ensure its schema. A schema/open failure is logged, not thrown — the node
+    /// and ensure its schema. A schema/open failure is logged, not thrown - the node
     /// still boots, just without passkeys.</summary>
     public SqliteWebAuthnCredentialStore(string dbPath, ILogger<SqliteWebAuthnCredentialStore>? logger = null)
     {
@@ -110,7 +110,7 @@ public sealed partial class SqliteWebAuthnCredentialStore : IWebAuthnCredentialS
         }
         catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
         {
-            // SQLITE_CONSTRAINT (19) — the credential id already exists. A normal
+            // SQLITE_CONSTRAINT (19) - the credential id already exists. A normal
             // "already enrolled" outcome, not a fault: return false without log noise.
             return false;
         }

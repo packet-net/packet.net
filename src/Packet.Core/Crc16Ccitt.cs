@@ -19,7 +19,7 @@ namespace Packet.Core;
 /// </remarks>
 public static class Crc16Ccitt
 {
-    // 0x8408 is the bit-reverse of 0x1021 — used because RefIn/RefOut=true
+    // 0x8408 is the bit-reverse of 0x1021 - used because RefIn/RefOut=true
     // is implemented by reflecting the polynomial and shifting right.
     private const ushort ReflectedPolynomial = 0x8408;
 

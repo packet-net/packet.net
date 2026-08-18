@@ -19,13 +19,13 @@ namespace Packet.Node.Core.Configuration;
 /// frequently-evolving record tree (a kind-discriminated transport union, many additive
 /// sub-records). Shredding it into structured tables would duplicate the whole shape in
 /// DDL, demand a migration on every field add, and re-implement the polymorphic union in
-/// SQL. A single JSON blob round-trips the EXACT model the provider produces — provably
+/// SQL. A single JSON blob round-trips the EXACT model the provider produces - provably
 /// zero behaviour change. The blob is the canonical management-API JSON
 /// (<see cref="NodeConfigJson"/>), so the structured <c>PUT /config</c> body and the
 /// persisted bytes are identical.
 /// </para>
 /// <para>
-/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> — the meta-less
+/// <b>Schema</b> is created with <c>CREATE TABLE IF NOT EXISTS</c> - the meta-less
 /// pattern the heard / capability stores use, so it does NOT fight the routing store over
 /// <c>PRAGMA user_version</c>. One table, <c>node_config</c>, a singleton row pinned by a
 /// <c>CHECK (id = 1)</c>. Writes are an upsert (<c>ON CONFLICT(id) DO UPDATE</c>).
@@ -34,7 +34,7 @@ namespace Packet.Node.Core.Configuration;
 /// <b>Resilient.</b> WAL mode, a fresh pooled connection per call, every op wrapped: a
 /// schema/open failure logs and leaves the node running (the provider boots on its
 /// in-memory current / seed); a read returns <c>null</c> on fault, a write returns
-/// <c>false</c>. Persistence can never take the node down — the same discipline as every
+/// <c>false</c>. Persistence can never take the node down - the same discipline as every
 /// other store.
 /// </para>
 /// </remarks>
@@ -62,12 +62,12 @@ public sealed partial class SqliteConfigStore : ISqliteConfigStore
     // (NodeConfig.CurrentSchemaVersion + NodeConfigSchemaMigrations.Registry). The internal
     // ctor lets tests drive the load-time migrate-and-log path with a synthetic current
     // (e.g. v2) + a synthetic registry, because CurrentSchemaVersion is 1 with no real
-    // migration registered yet — so the seam is proven, not stubbed.
+    // migration registered yet - so the seam is proven, not stubbed.
     private readonly int targetSchemaVersion;
     private readonly IReadOnlyDictionary<int, NodeConfigSchemaMigrations.Migration> migrations;
 
     /// <summary>Open (creating if absent) the config store at <paramref name="dbPath"/>
-    /// and ensure its schema. A schema/open failure is logged, not thrown — the node
+    /// and ensure its schema. A schema/open failure is logged, not thrown - the node
     /// still boots, the provider just runs on its seed/in-memory config for the run.</summary>
     public SqliteConfigStore(string dbPath, TimeProvider? clock = null, ILogger<SqliteConfigStore>? logger = null)
         : this(dbPath, NodeConfig.CurrentSchemaVersion, NodeConfigSchemaMigrations.Registry, clock, logger)
@@ -132,13 +132,13 @@ public sealed partial class SqliteConfigStore : ISqliteConfigStore
 
         if (row is null)
         {
-            return null;   // absent row — the provider's first-boot migration/seed path
+            return null;   // absent row - the provider's first-boot migration/seed path
         }
 
         if (!string.Equals(row.Format, JsonFormat, StringComparison.Ordinal))
         {
             // An unknown blob format (no second format exists yet, but be honest about it)
-            // — treat as unusable so the provider re-seeds rather than crashing.
+            // - treat as unusable so the provider re-seeds rather than crashing.
             LogUnknownFormat(row.Format, connectionString);
             return null;
         }
@@ -149,13 +149,13 @@ public sealed partial class SqliteConfigStore : ISqliteConfigStore
         {
             if (storedVer == targetSchemaVersion)
             {
-                // Common path: the blob is already at the running schema — deserialise as-is.
+                // Common path: the blob is already at the running schema - deserialise as-is.
                 return (NodeConfigJson.Deserialize(row.Payload), storedVer);
             }
 
             // The blob predates (or postdates) the running schema. Transform the raw JSON to
-            // the current shape FIRST — so a renamed/restructured field is handled without the
-            // old typed model — then deserialise through the current type. A GREATER (future)
+            // the current shape FIRST - so a renamed/restructured field is handled without the
+            // old typed model - then deserialise through the current type. A GREATER (future)
             // schema makes Migrate throw NodeConfigSchemaException: the boot-fails-on-unknown-
             // config fail-safe, which propagates (it is NOT a degrade-to-reseed).
             var migrated = NodeConfigSchemaMigrations.Migrate(
@@ -197,7 +197,7 @@ public sealed partial class SqliteConfigStore : ISqliteConfigStore
         catch (JsonException ex)
         {
             // Serialising a valid NodeConfig should never fail; if it somehow does, don't
-            // persist a half-blob — surface it as a failed write (Current won't advance).
+            // persist a half-blob - surface it as a failed write (Current won't advance).
             LogSerializeFailed(ex, connectionString);
             return false;
         }

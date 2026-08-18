@@ -22,8 +22,8 @@ dotnet publish tools/Packet.Mqtt.Spike \
   -o ./publish/packet-mqtt-collector
 ```
 
-Result: `./publish/packet-mqtt-collector/Packet.Mqtt.Spike` — a standalone
-binary with the .NET runtime + MQTTnet + SQLite baked in. Roughly 70–90 MB.
+Result: `./publish/packet-mqtt-collector/Packet.Mqtt.Spike` - a standalone
+binary with the .NET runtime + MQTTnet + SQLite baked in. Roughly 70-90 MB.
 
 ## 2. Copy onto the host
 
@@ -84,7 +84,7 @@ ORDER BY ts_utc_us DESC LIMIT 20;
 
 Re-publish, rsync the binary over, `systemctl restart packet-mqtt-collector`.
 The service's `Restart=on-failure` + the WAL-mode SQLite means a restart is
-safe — no message loss for messages already written, brief gap for
+safe - no message loss for messages already written, brief gap for
 in-flight ones.
 
 ## 7. Pulling the corpus back for analysis
@@ -95,18 +95,18 @@ rsync -av root@gb7rdg-node:/var/lib/packet-mqtt-collector/*.sqlite ./corpus/
 ```
 
 Then run any analysis script that opens the SQLite files. The collector
-itself doesn't parse the AX.25 frames — that's deliberately offline so
+itself doesn't parse the AX.25 frames - that's deliberately offline so
 parser changes can be re-run against a stable corpus.
 
 ## Notes
 
 - **WAL files**: each `.sqlite` has companion `-shm` and `-wal` files while
   the writer is active. On the host they're owned by `packet-mqtt`. When
-  copying for analysis, copy them too so SQLite has the full state — or
+  copying for analysis, copy them too so SQLite has the full state - or
   run `PRAGMA wal_checkpoint(TRUNCATE);` to fold them into the main file
   first (the service does this implicitly on each rotation).
 - **Quiet broker windows**: real RF traffic is sparse on most ports. A
-  60-s smoke test may see 0–10 messages. A 24-h capture should produce
+  60-s smoke test may see 0-10 messages. A 24-h capture should produce
   several thousand. Don't read too much into short-window counts.
 - **Schema**: see `../SqliteSink.cs` for the canonical schema. It's
   intentionally simple (one table + run_meta). Denormalised topic

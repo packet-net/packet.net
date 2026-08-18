@@ -7,7 +7,7 @@ namespace Packet.Tune.Core;
 public sealed record NinoTncStationStatusOptions
 {
     /// <summary>The mode numbers this station advertises it can run. Null = every concrete
-    /// NinoTNC catalog mode (0–14; the "Set from KISS" escape 15 is not a fixed mode).</summary>
+    /// NinoTNC catalog mode (0-14; the "Set from KISS" escape 15 is not a fixed mode).</summary>
     public IReadOnlyList<byte>? SupportedModes { get; init; }
 
     /// <summary>The capability tokens this station advertises. Null = the standard set
@@ -16,7 +16,7 @@ public sealed record NinoTncStationStatusOptions
 
     /// <summary>Whether to sample the radio's receiver RSSI at hail receipt for
     /// <see cref="StationStatus.RssiOfHailDbm"/>. Default <c>true</c> (a cheap query; never
-    /// keys). Best-effort — a failed read simply omits the field.</summary>
+    /// keys). Best-effort - a failed read simply omits the field.</summary>
     public bool SampleRssiOfHail { get; init; } = true;
 
     /// <summary>Whether to query the radio's current channel for
@@ -37,7 +37,7 @@ public sealed record NinoTncStationStatusOptions
 /// The current mode is taken from <see cref="NinoTncSerialPort.CurrentMode"/> /
 /// <see cref="NinoTncSerialPort.CurrentBitRateHz"/> when this connection has set one; otherwise it
 /// falls back to a best-effort <c>GETALL</c> read of the firmware's actual running mode (so a
-/// responder that did not itself command the mode — the usual case — still reports it correctly).
+/// responder that did not itself command the mode - the usual case - still reports it correctly).
 /// Every hardware query is best-effort: a timeout drops the field, never the whole reply.
 /// </remarks>
 public sealed class NinoTncStationStatusSource : IStationStatusProvider
@@ -78,7 +78,7 @@ public sealed class NinoTncStationStatusSource : IStationStatusProvider
     /// <inheritdoc/>
     public async Task<StationStatus> GetStatusAsync(StationHail hail, CancellationToken cancellationToken = default)
     {
-        // RSSI first — sampled as close to hail receipt as we can, before any other query
+        // RSSI first - sampled as close to hail receipt as we can, before any other query
         // (or the responder's own auto-ack) perturbs the receiver.
         double? rssi = null;
         if (radio is not null && options.SampleRssiOfHail)
@@ -106,7 +106,7 @@ public sealed class NinoTncStationStatusSource : IStationStatusProvider
         };
     }
 
-    /// <summary>The concrete NinoTNC catalog modes (0–14), the default advertised capability set.</summary>
+    /// <summary>The concrete NinoTNC catalog modes (0-14), the default advertised capability set.</summary>
     public static IReadOnlyList<byte> DefaultSupportedModes() =>
         NinoTncCatalog.ByMode.Keys.Where(m => m != 15).OrderBy(m => m).ToArray();
 

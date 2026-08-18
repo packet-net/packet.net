@@ -16,14 +16,14 @@ public interface ITransportFactory
     /// Open the transport described by <paramref name="transport"/>. For serial
     /// transports this opens the port; for KISS-TCP it dials the endpoint; for a
     /// NinoTNC it opens the port and applies the configured mode. Every transport
-    /// kind — the KISS-speaking ones and AXUDP alike — implements
+    /// kind - the KISS-speaking ones and AXUDP alike - implements
     /// <see cref="IAx25Transport"/> natively, so the factory uniformly returns
     /// <see cref="IAx25Transport"/>.
     /// </summary>
     /// <param name="transport">The transport to open.</param>
     /// <param name="timeProvider">
     /// Clock for any transport-internal timers (e.g. the KISS-TCP read-idle
-    /// liveness timeout — #464) and inbound-frame timestamping. Null uses the system
+    /// liveness timeout - #464) and inbound-frame timestamping. Null uses the system
     /// clock; the port supervisor threads its own clock through so component tests
     /// stay deterministic.
     /// </param>

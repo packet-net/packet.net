@@ -12,7 +12,7 @@ namespace Packet.Node.Tests.Integration;
 /// back-to-back over an <see cref="InMemoryRadio"/> channel. Station A runs
 /// <see cref="AxPinger.RunAsync"/> against station B; B's built-in connectionless
 /// TEST responder (§4.3.4.2) answers each probe, and A's correlator measures the
-/// round-trip. This is the live-send proof of the full TEST exchange — the loop we
+/// round-trip. This is the live-send proof of the full TEST exchange - the loop we
 /// could not close on the lab because LinBPQ does not answer TEST (XRouter does,
 /// per the interop probe).
 /// </summary>
@@ -50,7 +50,7 @@ public sealed class AxPingRoundTripIntegrationTests
         result.Replies.Should().OnlyContain(r => !r.Timeout, "every probe must be answered");
         result.Replies.Should().OnlyContain(r => r.RttMs != null, "every answered probe has a measured RTT");
 
-        // The TEST exchange is connectionless — neither station opened a session.
+        // The TEST exchange is connectionless - neither station opened a session.
         listenerA.ActiveSessions.Should().BeEmpty("axping never opens a connection");
         listenerB.ActiveSessions.Should().BeEmpty("answering a TEST never opens a connection");
     }
@@ -62,7 +62,7 @@ public sealed class AxPingRoundTripIntegrationTests
 
         var (radioA, _) = InMemoryRadio.CreatePair();
 
-        // Only A is on the air — B's endpoint exists but no listener is attached,
+        // Only A is on the air - B's endpoint exists but no listener is attached,
         // so nothing answers (the LinBPQ-on-the-lab situation). A must report 100%
         // loss as a normal result, not an error.
         await using var listenerA = new Ax25Listener(radioA, new Ax25ListenerOptions { MyCall = StationA });

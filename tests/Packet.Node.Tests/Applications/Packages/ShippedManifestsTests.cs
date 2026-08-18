@@ -6,9 +6,9 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Tests.Applications.Packages;
 
 /// <summary>
-/// The SHIPPED bundled manifests — <c>examples/wall/pdn-app.yaml</c> and
+/// The SHIPPED bundled manifests - <c>examples/wall/pdn-app.yaml</c> and
 /// <c>examples/lobby/pdn-app.yaml</c>, staged by <c>scripts/build-deb.sh</c> into
-/// <c>/usr/share/packetnet/apps/&lt;id&gt;</c> — parsed and validated mechanically, so an
+/// <c>/usr/share/packetnet/apps/&lt;id&gt;</c> - parsed and validated mechanically, so an
 /// edit that breaks parsing (or drifts the wiring the two halves of an app agree on)
 /// fails CI instead of failing on a deployed node.
 /// </summary>
@@ -36,7 +36,7 @@ public class ShippedManifestsTests
         m.Capabilities.Should().Equal("session", "web");
 
         // Packet plane: spawn-per-connect wall.py over the stdio wire. The args are
-        // package-dir-relative by design — the host resolves them against the package dir.
+        // package-dir-relative by design - the host resolves them against the package dir.
         m.Packet.Should().NotBeNull();
         m.Packet!.Command.Should().Be("WALL");
         m.Session.Should().NotBeNull();
@@ -115,7 +115,7 @@ public class ShippedManifestsTests
     public void Catalog_discovers_the_example_packages_as_valid_and_disabled_by_default()
     {
         // examples/ is the in-repo half of the layout build-deb.sh stages into
-        // /usr/share/packetnet/apps (wall + lobby — the only BUNDLED packages now;
+        // /usr/share/packetnet/apps (wall + lobby - the only BUNDLED packages now;
         // DAPPS/bpqchat/convers ship in the app catalog, fetched on demand). The
         // catalog skips directories without a manifest.
         var catalog = new AppPackageCatalog(NullLoggerFactory.Instance);
@@ -141,7 +141,7 @@ public class ShippedManifestsTests
         File.ReadAllText(Path.Combine(RepoRoot(), "examples", id, AppPackageCatalog.ManifestFileName));
 
     /// <summary>Walk up from the test assembly to the repo root (the directory that has
-    /// <c>examples/wall/pdn-app.yaml</c>) — same approach as <c>WallAppIntegrationTests</c>.</summary>
+    /// <c>examples/wall/pdn-app.yaml</c>) - same approach as <c>WallAppIntegrationTests</c>.</summary>
     private static string RepoRoot()
     {
         var dir = AppContext.BaseDirectory;

@@ -13,7 +13,7 @@ namespace Packet.Tune;
 /// (Linux), and reads the running firmware version over KISS GETVER. Asks
 /// for confirmation unless <c>--yes</c>. After a successful flash, waits for
 /// the reboot (+ first-boot bootloader self-update) and re-verifies with
-/// GETVER — reminding the operator that the RAM mode has reset to 0.
+/// GETVER - reminding the operator that the RAM mode has reset to 0.
 /// </summary>
 internal static class FlashTncCommand
 {
@@ -58,7 +58,7 @@ internal static class FlashTncCommand
         }
 
         // Best-effort running-firmware read. A stranded bootloader (or a TNC
-        // mid-boot) won't answer — that's not fatal, the flasher probes for it.
+        // mid-boot) won't answer - that's not fatal, the flasher probes for it.
         string? runningVersion = null;
         try
         {
@@ -67,7 +67,7 @@ internal static class FlashTncCommand
         }
         catch (TimeoutException)
         {
-            // no GETVER reply — possibly a stranded bootloader
+            // no GETVER reply - possibly a stranded bootloader
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -155,7 +155,7 @@ internal static class FlashTncCommand
     /// <summary>
     /// Find processes holding <paramref name="portName"/> open, lsof-style,
     /// by scanning <c>/proc/*/fd</c> (Linux only; other platforms return
-    /// empty — SerialPort's own open will still fail if the port is locked).
+    /// empty - SerialPort's own open will still fail if the port is locked).
     /// Only processes owned by the current user are visible without
     /// privileges, which covers the realistic collision (our own KISS host).
     /// </summary>
@@ -199,14 +199,14 @@ internal static class FlashTncCommand
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
             {
-                // process exited, or not ours to inspect — skip
+                // process exited, or not ours to inspect - skip
             }
         }
         return holders;
     }
 
     /// <summary>Single-line console progress, updated when the percentage
-    /// changes (the flasher reports every line — ~17 k reports).</summary>
+    /// changes (the flasher reports every line - ~17 k reports).</summary>
     private sealed class ConsoleLineProgress : IProgress<NinoTncFlashProgress>
     {
         private int lastPercent = -1;

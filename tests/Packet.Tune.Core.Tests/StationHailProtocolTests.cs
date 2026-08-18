@@ -6,7 +6,7 @@ namespace Packet.Tune.Core.Tests;
 /// <summary>
 /// The hailer/responder state machine over the in-memory link pair with a fake status
 /// provider: a hail is answered with the peer's status, a hail with no responder times out,
-/// an undeliverable hail reports a link failure, and — the node property — a resident
+/// an undeliverable hail reports a link failure, and - the node property - a resident
 /// responder and an on-demand hailer coexist on one <see cref="FanOutTuningLink"/> without
 /// stealing each other's telegrams.
 /// <para>The two no-reply tests turn on the hailer's reply timeout expiring, so they run it

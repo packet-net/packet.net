@@ -34,8 +34,8 @@ public interface IGitHubReleaseClient
 /// <summary>
 /// The production <see cref="IGitHubReleaseClient"/>: GETs <c>/repos/{owner}/{repo}/releases/latest</c>
 /// over HTTPS, with a short-TTL in-process cache so repeated <c>/info</c> calls don't hammer the
-/// API (unauthenticated GitHub allows ~60 req/h/IP — the cache keeps us comfortably under). Every
-/// fault — offline, non-2xx (incl. 403 rate-limit / 404 no-release), malformed JSON, timeout — is
+/// API (unauthenticated GitHub allows ~60 req/h/IP - the cache keeps us comfortably under). Every
+/// fault - offline, non-2xx (incl. 403 rate-limit / 404 no-release), malformed JSON, timeout - is
 /// swallowed to <c>null</c>.
 /// </summary>
 public sealed partial class GitHubReleaseClient : IGitHubReleaseClient, IDisposable
@@ -103,7 +103,7 @@ public sealed partial class GitHubReleaseClient : IGitHubReleaseClient, IDisposa
             }
 
             var result = await FetchAsync(cancellationToken).ConfigureAwait(false);
-            // Cache even a null result — a 403 rate-limit shouldn't trigger a retry storm.
+            // Cache even a null result - a 403 rate-limit shouldn't trigger a retry storm.
             cached = result;
             cachedAt = now;
             haveCached = true;
@@ -155,7 +155,7 @@ public sealed partial class GitHubReleaseClient : IGitHubReleaseClient, IDisposa
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
-            // Offline / timeout / malformed body — the safe default. (TaskCanceledException covers
+            // Offline / timeout / malformed body - the safe default. (TaskCanceledException covers
             // the HttpClient timeout; a genuine caller cancellation rethrows below.)
             if (ex is TaskCanceledException && cancellationToken.IsCancellationRequested)
             {

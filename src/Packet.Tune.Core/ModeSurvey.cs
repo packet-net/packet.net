@@ -11,10 +11,10 @@ namespace Packet.Tune.Core;
 /// <summary>Per-cell verdict of a mode survey: did the mode carry traffic?</summary>
 public enum ModeSurveyVerdict
 {
-    /// <summary>Nothing decoded — the mode does not work on this channel.</summary>
+    /// <summary>Nothing decoded - the mode does not work on this channel.</summary>
     Dead,
 
-    /// <summary>Some frames decoded, some lost — the tuning assistant's natural home.</summary>
+    /// <summary>Some frames decoded, some lost - the tuning assistant's natural home.</summary>
     Marginal,
 
     /// <summary>Every frame decoded.</summary>
@@ -84,7 +84,7 @@ public static class ModeSurvey
 {
     /// <summary>
     /// The exact catalog-name fragment that selects the surveyed modes.
-    /// Deliberately <c>"IL2P+CRC"</c> — plain <c>"IL2P"</c> (mode 13) and the
+    /// Deliberately <c>"IL2P+CRC"</c> - plain <c>"IL2P"</c> (mode 13) and the
     /// legacy AX.25 modes are excluded.
     /// </summary>
     public const string Il2pCrcNameFragment = "IL2P+CRC";
@@ -92,7 +92,7 @@ public static class ModeSurvey
     /// <summary>
     /// After the sender's ACKMODE TX-completion echo, how much longer the
     /// receiver is given to deliver the decoded frame (decode + serial trail;
-    /// bench-measured 35–115 ms, with generous margin).
+    /// bench-measured 35-115 ms, with generous margin).
     /// </summary>
     public static readonly TimeSpan PostTxGrace = TimeSpan.FromSeconds(3);
 
@@ -128,7 +128,7 @@ public static class ModeSurvey
     /// <summary>
     /// The mode-change throwaway frame. The NinoTNC applies a changed KISS
     /// setting (including SETHW mode) from the SECOND frame after the command
-    /// (bench-observed), so one of these is transmitted — and discarded — after
+    /// (bench-observed), so one of these is transmitted - and discarded - after
     /// every mode change before anything is measured. Its info text carries no
     /// <see cref="TuningBurst.Marker"/>, so it can never be counted as a probe.
     /// </summary>
@@ -144,7 +144,7 @@ public static class ModeSurvey
     /// Reduce busy-tagged RSSI polls to the burst's figure: the median of the
     /// samples taken while the receiver reported carrier (DCD), falling back
     /// to the strongest sample when no busy-tagged sample exists (no PROGRESS
-    /// / DCD source — the maximum is the best carrier estimate on an
+    /// / DCD source - the maximum is the best carrier estimate on an
     /// otherwise idle channel). <c>null</c> for no samples.
     /// </summary>
     public static double? PickRssi(IReadOnlyCollection<(double Dbm, bool Busy)> samples)

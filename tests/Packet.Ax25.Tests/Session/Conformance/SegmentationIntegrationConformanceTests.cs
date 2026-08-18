@@ -6,7 +6,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// v2.2 arc V4b (and the V4 headline exit criterion) — the <b>wired</b>
+/// v2.2 arc V4b (and the V4 headline exit criterion) - the <b>wired</b>
 /// segmentation/reassembly path end-to-end over the two-station harness, as
 /// opposed to <see cref="EnvelopeConformanceTests.Segmentation_reassembly_roundtrips_a_large_payload"/>
 /// which exercises the standalone <see cref="Segmenter"/>/<see cref="Reassembler"/>
@@ -95,7 +95,7 @@ public class SegmentationIntegrationConformanceTests
         h.AssertConverged();
     }
 
-    // Same, but REJ go-back-N recovery (SREJ off) — the lost segment is recovered
+    // Same, but REJ go-back-N recovery (SREJ off) - the lost segment is recovered
     // by retransmitting from the gap; reassembly must still be intact.
     [Fact]
     public void Over_N1_payload_segments_reassembles_and_REJ_recovers_a_lost_segment_mod128()
@@ -159,7 +159,7 @@ public class SegmentationIntegrationConformanceTests
             .WithMessage("*segmenter/reassembler has not been negotiated*");
     }
 
-    // Default format (SegmentFirstCarriesL3Pid on) — the wired round-trip must
+    // Default format (SegmentFirstCarriesL3Pid on) - the wired round-trip must
     // PRESERVE the original L3 PID through the segmented series (Dire Wolf's
     // first-segment inner-PID format), not flatten it to PidNoLayer3.
     [Fact]
@@ -179,7 +179,7 @@ public class SegmentationIntegrationConformanceTests
         h.AssertConverged();
     }
 
-    // StrictlyFaithful (SegmentFirstCarriesL3Pid off) — the wired round-trip uses
+    // StrictlyFaithful (SegmentFirstCarriesL3Pid off) - the wired round-trip uses
     // the figure-literal format: payload still reassembles intact, but the L3 PID
     // is NOT recovered and the reassembled payload is delivered as PidNoLayer3.
     // Pins Figure 6.2 exactly as drawn alongside the default.

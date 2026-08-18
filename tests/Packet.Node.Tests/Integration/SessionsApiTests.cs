@@ -15,15 +15,15 @@ namespace Packet.Node.Tests.Integration;
 /// Boots the real <c>Packet.Node</c> composition root and exercises the Slice 3
 /// session-action + ping API (step 4): <c>POST /api/v1/sessions</c> (connect-out),
 /// <c>DELETE /api/v1/sessions/{id}</c> (disconnect), <c>POST /api/v1/sessions/{id}/send</c>
-/// (send a line), and <c>POST /api/v1/ping</c>. Mirrors <see cref="PortsApiTests"/> — a
+/// (send a line), and <c>POST /api/v1/ping</c>. Mirrors <see cref="PortsApiTests"/> - a
 /// temp YAML config with no ports and telnet disabled (so no fixed TCP port is bound under
 /// the WAF), the routing store in the same temp dir.
 /// </summary>
 /// <remarks>
 /// The actual connect / send / disconnect against a real peer can't be WAF-tested (no
 /// modem): the human live-verifies against GB7RDG. These cover the deterministically
-/// reachable contract — the 4xx/5xx behaviours when there is no live session / no running
-/// port / a bad target — plus ping's no-running-port 404 and the pure session-id split
+/// reachable contract - the 4xx/5xx behaviours when there is no live session / no running
+/// port / a bad target - plus ping's no-running-port 404 and the pure session-id split
 /// helper (<see cref="SessionIdSplitTests"/>).
 /// </remarks>
 [Trait("Category", "Node")]
@@ -40,7 +40,7 @@ public sealed class SessionsApiTests : IDisposable
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         // No ports + telnet off: the WAF host binds no fixed TCP port and has no running
-        // listener — so every connect/disconnect/send hits its no-live-session path.
+        // listener - so every connect/disconnect/send hits its no-live-session path.
         File.WriteAllText(configPath, $"""
             schemaVersion: 1
             identity:

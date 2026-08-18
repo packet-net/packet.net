@@ -1,7 +1,7 @@
 namespace Packet.Kiss;
 
 /// <summary>
-/// KISS framing constants — the SLIP-style escape bytes that delimit and
+/// KISS framing constants - the SLIP-style escape bytes that delimit and
 /// transparently encode KISS frames on a serial / TCP stream.
 /// </summary>
 /// <remarks>
@@ -12,13 +12,13 @@ public static class KissFraming
     /// <summary>Frame End delimiter.</summary>
     public const byte Fend = 0xC0;
 
-    /// <summary>Frame Escape — enter escape mode.</summary>
+    /// <summary>Frame Escape - enter escape mode.</summary>
     public const byte Fesc = 0xDB;
 
-    /// <summary>Transposed Frame End — escaped form of FEND.</summary>
+    /// <summary>Transposed Frame End - escaped form of FEND.</summary>
     public const byte Tfend = 0xDC;
 
-    /// <summary>Transposed Frame Escape — escaped form of FESC.</summary>
+    /// <summary>Transposed Frame Escape - escaped form of FESC.</summary>
     public const byte Tfesc = 0xDD;
 
     /// <summary>

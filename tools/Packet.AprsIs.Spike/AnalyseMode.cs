@@ -12,7 +12,7 @@ namespace Packet.AprsIs.Spike;
 /// <remarks>
 /// <para>
 /// Reads from one or more SQLite files produced by <see cref="CollectMode"/>.
-/// Doesn't touch the network. Idempotent — running twice over the same
+/// Doesn't touch the network. Idempotent - running twice over the same
 /// corpus produces the same report.
 /// </para>
 /// <para>

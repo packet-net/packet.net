@@ -23,9 +23,9 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <b>Tier 2 (frame-perfect, modem-less) NET/ROM L3-origination + L4-circuit
 /// interop vs real LinBPQ over AXUDP.</b> The AXUDP re-home of the load-sensitive
 /// net-sim <c>NetRomL4CircuitViaNetsim</c> (removed): it asserts the <em>same</em>
-/// protocol behaviour against a real LinBPQ 6.0.25.23 — NODES both ways, an L4 circuit each
+/// protocol behaviour against a real LinBPQ 6.0.25.23 - NODES both ways, an L4 circuit each
 /// way with Information round-tripping, and the Connect-Request info-field framing
-/// — but over a BPQAXIP/UDP tunnel (<see cref="AxudpFrameTransport"/>) rather than
+/// - but over a BPQAXIP/UDP tunnel (<see cref="AxudpFrameTransport"/>) rather than
 /// net-sim's software-AFSK channel. AXUDP is AX.25-frames-over-UDP, so it sheds the
 /// net-sim flakiness (CPU-glitch → audio-decode-fail → fake loss / half-duplex
 /// collision) while staying a genuine real-BPQ interop. See <c>docs/plan.md</c> §7.
@@ -35,7 +35,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <b>Transport.</b> pdn runs a real <see cref="Ax25Listener"/> over an
 /// <see cref="AxudpFrameTransport"/> bound to a fixed host UDP port, pointed at BPQ's
 /// BPQAXIP/UDP listener (127.0.0.1:8093). A <see cref="NetRomService"/> with
-/// broadcast + connect on rides that one listener — the whole NET/ROM stack
+/// broadcast + connect on rides that one listener - the whole NET/ROM stack
 /// (NODES origination, interlink AX.25 PID-0xCF sessions, L4 circuits) is
 /// transport-agnostic, so swapping KISS-TCP for the AXUDP modem is the only change
 /// from the net-sim test.
@@ -46,7 +46,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// BPQAXIP port drops its own NODES UI broadcast unless the recipient MAP entry is
 /// flagged a broadcast target. The fixture's AXIP port carries
 /// <c>BROADCAST NODES</c> + <c>MAP PNL4BX-1 … B</c> so BPQ emits its
-/// <c>PN0TST &gt; NODES</c> to pdn over UDP — the AXUDP counterpart of the net-sim
+/// <c>PN0TST &gt; NODES</c> to pdn over UDP - the AXUDP counterpart of the net-sim
 /// port's <c>QUALITY=192</c>. pdn's own NODES is a UI frame addressed to
 /// <c>NODES</c>; BPQ's <c>AUTOADDQUIET</c> learns pdn's reply route from it.
 /// </para>
@@ -60,7 +60,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <b>2. L4 circuit pdn → BPQ (the core deliverable).</b>
 /// <see cref="NetRomService.ConnectCircuitAsync"/> opens an interlink AX.25 PID-0xCF
 /// session over the AXUDP tunnel + originates an L4 circuit; a command round-trips
-/// to BPQ's node prompt over the circuit (BPQ's <c>PN0TST</c> identity relays back —
+/// to BPQ's node prompt over the circuit (BPQ's <c>PN0TST</c> identity relays back -
 /// Information both ways); then a clean Disconnect Request/Acknowledge.
 /// </para>
 /// <para>
@@ -69,13 +69,13 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <see cref="CircuitManager.IncomingCircuit"/> fires, pdn accepts + bridges a tiny
 /// echo console, and a line round-trips. BPQ pipelines its Connect Request onto a
 /// fresh interlink and abandons it if pdn's AX.25 session isn't up yet, so we
-/// re-drive on a bounded cadence (same as the net-sim test) — but over a lossless
+/// re-drive on a bounded cadence (same as the net-sim test) - but over a lossless
 /// tunnel the first attempt almost always lands.
 /// </para>
 /// <para>
 /// <b>The Connect-Request info-field framing</b> (the #308/#309 finding, re-asserted
 /// frame-perfectly here): BPQ carries the proposed window + originating user/node in
-/// the INFO field (<c>[window][user][node]</c>), not the transport-header TX byte —
+/// the INFO field (<c>[window][user][node]</c>), not the transport-header TX byte -
 /// the <see cref="ConnectRequestInfo"/> codec. The reverse-circuit
 /// <see cref="CircuitManager.IncomingCircuit"/> assertion reads BPQ's originating
 /// user from exactly that field, so a regression there fails this test.
@@ -83,13 +83,13 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <para>
 /// <b>Determinism.</b> Over a reliable UDP tunnel the budgets are far tighter than
 /// the net-sim version's (no channel loss, no half-duplex collision, no audio decode
-/// to glitch under CPU load) — this is the load-insensitivity the Tier-2 re-home
+/// to glitch under CPU load) - this is the load-insensitivity the Tier-2 re-home
 /// buys. Serialised into <see cref="NetsimCollection"/> (shared BPQ daemon + fixed
 /// UDP port); tagged <c>Group=NetRom</c> so it runs in the clean-stack-fenced
 /// NET/ROM phase of <c>interop.yml</c> (fresh BPQ → no learned-state carryover),
 /// isolated from the timing-sensitive AX.25 tests. <c>NetRomService</c> is
 /// <c>await using</c> so its <c>DisposeAsync</c> cleanly DISCs the interlink before
-/// the listener disposes (BPQ-state hygiene — the #309 teardown discipline).
+/// the listener disposes (BPQ-state hygiene - the #309 teardown discipline).
 /// </para>
 /// <para>
 /// Bring the stack up with
@@ -143,7 +143,7 @@ public class NetRomL4CircuitViaAxudp
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
 
         // `await using` (not `using`): NetRomService.DisposeAsync runs the GRACEFUL
-        // teardown — DISCs the interlink AX.25 session + waits (bounded) for DISC/UA on
+        // teardown - DISCs the interlink AX.25 session + waits (bounded) for DISC/UA on
         // the wire BEFORE the listener (declared earlier → disposed after) is torn down,
         // so BPQ isn't left a half-open interlink (the #309 hygiene discipline; cheap
         // over a UDP tunnel).

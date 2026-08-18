@@ -9,7 +9,7 @@ namespace Packet.Node.Tests.Telemetry;
 
 /// <summary>
 /// Per-frame RSSI/SNR reaching the node telemetry surfaces through the node-owned
-/// <see cref="IInboundRadioSource"/> — the design that keeps radio metadata OFF the parity-tracked
+/// <see cref="IInboundRadioSource"/> - the design that keeps radio metadata OFF the parity-tracked
 /// AX.25 listener contract. Drives <see cref="NodeTelemetry.Observe"/> directly with a scripted radio
 /// source and asserts the stamped <see cref="Packet.Node.Core.Api.MonitorEvent"/> + the heard log.
 /// </summary>

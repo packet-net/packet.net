@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Auth;
 /// one scope (the highest they need); the implication is encoded in the
 /// authorization check (<see cref="Satisfies"/>), <em>not</em> by stuffing all
 /// three scopes into the token. So an <c>admin</c> token satisfies a
-/// <c>read</c>-gated endpoint without carrying a <c>read</c> claim — keeping the
+/// <c>read</c>-gated endpoint without carrying a <c>read</c> claim - keeping the
 /// token small and the grant single-valued (one source of truth for "what is
 /// this user").
 /// </para>
@@ -37,7 +37,7 @@ public static class AuthScopes
     /// <summary>The claim type carrying a user's granted scope on the JWT.</summary>
     public const string ScopeClaim = "scope";
 
-    // Privilege rank — higher grants everything at-or-below. Anything not a known
+    // Privilege rank - higher grants everything at-or-below. Anything not a known
     // scope ranks below read (rank 0), so it satisfies nothing.
     private static int Rank(string? scope) => scope switch
     {
@@ -48,7 +48,7 @@ public static class AuthScopes
     };
 
     /// <summary>Whether a user holding <paramref name="granted"/> may access an
-    /// endpoint requiring <paramref name="required"/> — i.e. the granted scope
+    /// endpoint requiring <paramref name="required"/> - i.e. the granted scope
     /// ranks at or above the required one (admin ⊃ operate ⊃ read). An unknown /
     /// null granted scope satisfies nothing; an unknown required scope is never
     /// satisfied.</summary>

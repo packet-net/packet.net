@@ -9,7 +9,7 @@ namespace Packet.NinoTnc.Spike;
 
 /// <summary>
 /// Deep-dive on mode 12 (300 AFSK AX.25) flakiness. The standard soak
-/// uses 5-frame samples — far too small to tell signal from noise.
+/// uses 5-frame samples - far too small to tell signal from noise.
 /// This probe runs 100-frame samples and breaks down where the
 /// failures fall: time-of-arrival, TXDELAY sensitivity, payload-size
 /// sensitivity, and one-direction-vs-the-other.
@@ -37,13 +37,13 @@ internal static class Mode12Probe
         // 1) Big sample at default TXDELAY=50, default payload "PROBE-NNN".
         await BigSample(portA, portB, txDelay: 50, payloadBytes: 50, sink);
 
-        // 2) Same again with high TXDELAY=100 — does more preamble help?
+        // 2) Same again with high TXDELAY=100 - does more preamble help?
         await BigSample(portA, portB, txDelay: 100, payloadBytes: 50, sink);
 
         // 3) Same with low TXDELAY=20.
         await BigSample(portA, portB, txDelay: 20, payloadBytes: 50, sink);
 
-        // 4) Payload-size sweep at TXDELAY=50 — does failure correlate with frame length?
+        // 4) Payload-size sweep at TXDELAY=50 - does failure correlate with frame length?
         await PayloadSweep(portA, portB, sink);
 
         await sink.WriteLineAsync();

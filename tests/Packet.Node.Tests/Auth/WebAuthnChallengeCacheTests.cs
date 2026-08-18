@@ -8,12 +8,12 @@ namespace Packet.Node.Tests.Auth;
 /// the entry), expiry on the injected clock (a stale ceremony can't be completed), and
 /// the user/session key binding (a registration for one user can't be taken as another;
 /// an assertion is bound to its per-attempt session handle). All driven by
-/// <see cref="FakeTimeProvider"/> — no wall-clock.
+/// <see cref="FakeTimeProvider"/> - no wall-clock.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class WebAuthnChallengeCacheTests
 {
-    // A stand-in "options" object — the cache is type-agnostic (it stashes object), so a
+    // A stand-in "options" object - the cache is type-agnostic (it stashes object), so a
     // simple sentinel proves the take/expiry/binding semantics without a real Fido2 type.
     private sealed record Options(string Marker);
 
@@ -31,7 +31,7 @@ public sealed class WebAuthnChallengeCacheTests
         cache.Put(key, new Options("reg-alice"));
 
         cache.Take<Options>(key).Should().Be(new Options("reg-alice"));
-        // Consumed — a second take (a replay) finds nothing.
+        // Consumed - a second take (a replay) finds nothing.
         cache.Take<Options>(key).Should().BeNull();
     }
 
@@ -42,9 +42,9 @@ public sealed class WebAuthnChallengeCacheTests
         var key = WebAuthnChallengeCache.AssertionKey("sess-1");
         cache.Put(key, new Options("assert"));
 
-        // Just before expiry — still good.
+        // Just before expiry - still good.
         clock.Advance(TimeSpan.FromMinutes(5) - TimeSpan.FromSeconds(1));
-        // (don't take yet — re-put so we can test the past-expiry case on a fresh entry)
+        // (don't take yet - re-put so we can test the past-expiry case on a fresh entry)
         var stillGood = new WebAuthnChallengeCache(clock, TimeSpan.FromMinutes(5));
         stillGood.Put(key, new Options("assert2"));
         clock.Advance(TimeSpan.FromMinutes(5));   // now strictly at/after expiry

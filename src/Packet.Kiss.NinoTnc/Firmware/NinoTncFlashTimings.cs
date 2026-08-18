@@ -4,7 +4,7 @@ namespace Packet.Kiss.NinoTnc.Firmware;
 /// Every timing constant of the bootloader flash protocol, in one place.
 /// The defaults are the hardware-validated values from upstream
 /// <c>flashtnc.py</c> (seven successful flashes on the bench rig before this
-/// implementation) — do not change them casually. Tests shrink them to keep
+/// implementation) - do not change them casually. Tests shrink them to keep
 /// the scripted-fake suite fast; that is the only intended reason to deviate.
 /// </summary>
 internal sealed record NinoTncFlashTimings
@@ -29,7 +29,7 @@ internal sealed record NinoTncFlashTimings
     public TimeSpan VersionReplyTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>Delay after each character of the image's <em>first</em>
-    /// line — the bootloader performs the flash page erase while receiving
+    /// line - the bootloader performs the flash page erase while receiving
     /// it and must not be rushed.</summary>
     public TimeSpan FirstLineCharDelay { get; init; } = TimeSpan.FromMilliseconds(100);
 

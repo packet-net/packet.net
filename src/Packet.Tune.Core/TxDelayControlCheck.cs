@@ -26,21 +26,21 @@ public sealed record TxDelayControlResult(bool UnderSoftwareControl, bool UsedRe
 /// <para>Two measurement paths, in preference order:</para>
 /// <list type="number">
 ///   <item>the GETALL delta of register 0B (preamble words; seconds = words ×
-///     16 ÷ baud) across the measured frame — but firmware 3.41 and 3.44
+///     16 ÷ baud) across the measured frame - but firmware 3.41 and 3.44
 ///     never increment this register for host traffic (bench-verified
 ///     2026-07-02), so on today's firmware this path never engages;</item>
-///   <item>fallback: ACKMODE TX-completion timing — queue→echo elapsed is
+///   <item>fallback: ACKMODE TX-completion timing - queue→echo elapsed is
 ///     TXDELAY + airtime + a constant, so the difference between the two
 ///     test points isolates the TXDELAY change.</item>
 /// </list>
 /// <para>The NinoTNC applies a changed TXDELAY on the SECOND frame after the
 /// change, so each test point transmits a settling frame first and discards
 /// it. The echo-timing path measures three frames per test point and keeps
-/// the MINIMUM elapsed — the TNC's CSMA adds a random per-transmission
+/// the MINIMUM elapsed - the TNC's CSMA adds a random per-transmission
 /// deferral that a single sample can't distinguish from a pot offset
 /// (bench-observed: up to ~0.5 s of jitter on a quiet channel).</para>
 /// <para><b>Run this with the TNC in a known-good mode</b>: a fresh firmware
-/// flash boots mode 0 (9600 GFSK — dead on narrow channels), where the
+/// flash boots mode 0 (9600 GFSK - dead on narrow channels), where the
 /// timing measurement produces a false "pot override" verdict; callers
 /// should SETHW a sane mode (6 is the default in the CLI) before invoking.</para>
 /// </remarks>
@@ -49,7 +49,7 @@ public static class TxDelayControlCheck
     /// <summary>Commanded TXDELAY test points, in KISS 10 ms units.</summary>
     private static readonly byte[] TestPointsTenMs = [20, 50];
 
-    /// <summary>Measured frames per test point — the minimum elapsed wins
+    /// <summary>Measured frames per test point - the minimum elapsed wins
     /// (strips the TNC's random CSMA deferral).</summary>
     private const int SamplesPerPoint = 3;
 
@@ -122,7 +122,7 @@ public static class TxDelayControlCheck
             await tnc.SetTxDelayAsync(tenMs, cancellationToken).ConfigureAwait(false);
 
             // The NinoTNC applies a changed TXDELAY on the SECOND frame after
-            // the change — transmit and discard a settling frame first.
+            // the change - transmit and discard a settling frame first.
             // ACKMODE sends resolve when the TNC finishes keying, so the
             // GETALL snapshots cannot land mid-transmission.
             await tnc.SendFrameWithAckAsync(ProbeFrame(source, 1), TimeSpan.FromSeconds(20), null, cancellationToken)
@@ -169,7 +169,7 @@ public static class TxDelayControlCheck
     {
         double commandedDiff = (points[1].CommandedMs - points[0].CommandedMs) / 1000.0;
 
-        // Preferred path: register 0B moved — read the preamble directly.
+        // Preferred path: register 0B moved - read the preamble directly.
         if (points.All(p => p.Words is > 0))
         {
             double m1 = points[0].PreambleS!.Value;
@@ -185,7 +185,7 @@ public static class TxDelayControlCheck
             return new TxDelayControlResult(tracks, UsedRegisterPath: true, summary);
         }
 
-        // Fallback path: firmware 3.41/3.44 never increment reg 0B — use the
+        // Fallback path: firmware 3.41/3.44 never increment reg 0B - use the
         // ACKMODE echo timing. The elapsed is TXDELAY + airtime + constant,
         // so the two points' difference isolates the TXDELAY step.
         double e1 = points[0].EchoElapsed.TotalSeconds;

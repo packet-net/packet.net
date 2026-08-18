@@ -22,7 +22,7 @@ namespace Packet.Ax25.Session;
 /// adapter's outgoing bytes in whatever framing the transport needs.
 /// </para>
 /// <para>
-/// <c>sendBytes</c> receives the AX.25 frame body without FCS — typical
+/// <c>sendBytes</c> receives the AX.25 frame body without FCS - typical
 /// for KISS, which adds its own framing. Callers targeting AXUDP-with-CRC
 /// (Xrouter) should pass through <see cref="Ax25Frame.ToBytesWithFcs"/>
 /// instead of <see cref="Ax25Frame.ToBytes"/>; this adapter chooses the
@@ -33,7 +33,7 @@ public sealed class Ax25Adapter
 {
     private readonly Action<ReadOnlyMemory<byte>> sendBytes;
 
-    /// <summary>The wrapped session — exposed so callers can drive it via <see cref="Ax25Session.PostEvent"/>.</summary>
+    /// <summary>The wrapped session - exposed so callers can drive it via <see cref="Ax25Session.PostEvent"/>.</summary>
     public Ax25Session Session { get; }
 
     /// <summary>The wrapped dispatcher.</summary>
@@ -95,12 +95,12 @@ public sealed class Ax25Adapter
             sendUpward: _ => { /* DL-layer signals stay in-memory for the caller to subscribe to via Context */ },
             // Grant LM-SEIZE after the §6.7.1.2 acknowledge delay (T2). The
             // media this adapter fronts (AXUDP / KISS-TCP / KISS-serial) are
-            // contention-free from the session's point of view — any real
+            // contention-free from the session's point of view - any real
             // channel access (CSMA persist/slottime) is the TNC's job, and it
             // buffers. The grant itself is mandatory (#327: a stubbed
             // sendLinkMux swallowed the seize, so an idle receiver never
             // acked), but granting immediately acks once per received I-frame
-            // — one RR keyup per frame, which on a half-duplex channel
+            // - one RR keyup per frame, which on a half-duplex channel
             // deafens the port to the peer's next window and leads to stale
             // F=1 checkpoint answers and a retransmit rollback loop (#385).
             // Deferring the grant by ctx.T2 coalesces a burst into ONE
@@ -136,7 +136,7 @@ public sealed class Ax25Adapter
             sendInternal: _ => { /* internal signals: queue-management already mutates Context directly */ },
             subroutines: subroutines);
 
-        // If no custom bindings were supplied, build the default ones —
+        // If no custom bindings were supplied, build the default ones -
         // but with frame-awareness wired to the session we're about to
         // create. The forward-reference is harmless because the binding
         // closures only fire later, when guards.Evaluate is called.

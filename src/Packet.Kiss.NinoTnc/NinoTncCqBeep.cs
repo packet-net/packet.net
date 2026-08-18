@@ -11,7 +11,7 @@ namespace Packet.Kiss.NinoTnc;
 /// <remarks>
 /// <para>
 /// The firmware ships a remote test-tone responder that is <em>disarmed</em>
-/// until the TNC transmits a TARPN status frame — a UI frame whose info text
+/// until the TNC transmits a TARPN status frame - a UI frame whose info text
 /// starts <c>[TARPNstat</c> (how the firmware learns it is part of a TARPN
 /// system). Send <see cref="BuildArmingFrame"/> through the TNC's own serial
 /// port to arm it. Arming is volatile: it does not survive a reset, so
@@ -21,7 +21,7 @@ namespace Packet.Kiss.NinoTnc;
 /// Once armed, receiving a UI frame addressed to <c>CQBEEP-N</c> makes the
 /// TNC key its transmitter and send N seconds of 440 Hz tone (bench-verified
 /// 2026-07-02 on firmware 3.41: N=7 measured 6.99 s). The front-panel
-/// TX-Test button emits the same frame shape with SSID 5 — see
+/// TX-Test button emits the same frame shape with SSID 5 - see
 /// <see cref="NinoTncAirTestFrame"/>, which recognises any CQBEEP-N.
 /// The tone is the remote half of a deviation/level tuning loop: trigger a
 /// beep, meter the received audio (e.g. GETRSSI on the listening TNC),
@@ -42,7 +42,7 @@ public static class NinoTncCqBeep
     /// <summary>
     /// Build the arming frame: a UI frame whose info text starts
     /// <c>[TARPNstat</c>. Transmit it through the TNC to arm that TNC's
-    /// CQBEEP responder (volatile — re-arm after reset).
+    /// CQBEEP responder (volatile - re-arm after reset).
     /// </summary>
     /// <param name="source">Source callsign for the frame.</param>
     /// <param name="destination">
@@ -78,8 +78,8 @@ public static class NinoTncCqBeep
     /// errors against the known pattern).
     /// </summary>
     /// <param name="source">Source callsign for the frame.</param>
-    /// <param name="seconds">Seconds of tone to request, 1–15 (the destination SSID).</param>
-    /// <param name="sequenceCounter">The per-request counter digit, 0–9.</param>
+    /// <param name="seconds">Seconds of tone to request, 1-15 (the destination SSID).</param>
+    /// <param name="sequenceCounter">The per-request counter digit, 0-9.</param>
     /// <exception cref="ArgumentOutOfRangeException">Seconds or counter out of range.</exception>
     public static Ax25Frame BuildBeepRequest(Callsign source, int seconds, int sequenceCounter = 1)
     {

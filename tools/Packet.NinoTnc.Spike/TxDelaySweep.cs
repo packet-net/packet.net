@@ -7,7 +7,7 @@ namespace Packet.NinoTnc.Spike;
 
 /// <summary>
 /// Empirically determines the minimum workable TXDELAY for every NinoTNC mode, using two
-/// TNCs wired audio-to-audio. No radios, no soundmodem — this measures the TNC itself, so
+/// TNCs wired audio-to-audio. No radios, no soundmodem - this measures the TNC itself, so
 /// the answer is a property of the hardware rather than of anything we built.
 /// </summary>
 /// <remarks>
@@ -20,7 +20,7 @@ namespace Packet.NinoTnc.Spike;
 ///         throws its first frame away. Measured directly: moving 300 → 50 ms, burst #0
 ///         still occupied 571 ms of air and #1 onward 330 ms.</item>
 ///   <item><b>The applied preamble is quantised to 16-bit words</b>, so the requested
-///         TXDELAY and the delivered one differ — at 300 baud one word is already 53 ms.
+///         TXDELAY and the delivered one differ - at 300 baud one word is already 53 ms.
 ///         GETALL register 0B reports what actually landed, and that is what gets recorded.</item>
 /// </list>
 /// </remarks>
@@ -33,7 +33,7 @@ internal static class TxDelaySweep
 
     /// <summary>
     /// Result of one attempt: whether the TNC confirmed it finished keying, how long that
-    /// took, and whether the far end decoded it. Keeping these apart is the whole point —
+    /// took, and whether the far end decoded it. Keeping these apart is the whole point -
     /// a frame that never went out is not a decode failure.
     /// </summary>
     private readonly record struct Attempt(bool Transmitted, double KeyedMs, bool Decoded);
@@ -42,7 +42,7 @@ internal static class TxDelaySweep
     {
         int searchFrames = Arg(rest, "--frames", 5);
         int confirmFrames = Arg(rest, "--confirm-frames", 10);
-        byte ceiling = (byte)Arg(rest, "--ceiling", 30);   // 300 ms — assumed good
+        byte ceiling = (byte)Arg(rest, "--ceiling", 30);   // 300 ms - assumed good
         byte[] modes = rest.FirstOrDefault(a => a.StartsWith("--modes=", StringComparison.Ordinal)) is { } m
             ? m["--modes=".Length..].Split(',').Select(byte.Parse).ToArray()
             : Enumerable.Range(0, 15).Select(i => (byte)i).ToArray();
@@ -73,7 +73,7 @@ internal static class TxDelaySweep
 
         // p-persistence exists so stations do not collide; with exactly two TNCs that never
         // transmit at once, its dice roll only adds random latency and irregular keying.
-        // Pin both to transmit-as-soon-as-clear so timing is deterministic. Rig-only — this
+        // Pin both to transmit-as-soon-as-clear so timing is deterministic. Rig-only - this
         // must never become a shipped default.
         foreach (NinoTncSerialPort tnc in new[] { a, b })
         {
@@ -135,7 +135,7 @@ internal static class TxDelaySweep
     /// <remarks>
     /// Two reasons the obvious approach was wrong, both found by trying it:
     /// <list type="bullet">
-    ///   <item>Requested TXDELAY is not the parameter — the firmware quantises to 16-bit
+    ///   <item>Requested TXDELAY is not the parameter - the firmware quantises to 16-bit
     ///         words, so at 300 baud every request from 0 to 50 ms delivers the same single
     ///         word. Scanning in 10 ms steps re-measures identical signals and invents
     ///         boundaries between them.</item>
@@ -200,7 +200,7 @@ internal static class TxDelaySweep
                 $", keyed {meanKeyed,6:F0} ms{(dead > 0 ? $", {dead} NOT TX" : "")}{(ok >= topOk ? "  ✓" : "")}");
         }
 
-        // Lowest preamble matching the ceiling, and everything above it must hold too —
+        // Lowest preamble matching the ceiling, and everything above it must hold too -
         // an isolated pass under a run of failures is a fluke, not a floor.
         (long Words, double Ms, int Ok)? floor = null;
         for (int i = 0; i < curve.Count; i++)
@@ -258,14 +258,14 @@ internal static class TxDelaySweep
     /// counts how many of <paramref name="frames"/> the far end reports.</summary>
     /// <summary>Sets TXDELAY, throws the next frame away (it goes at the old setting), then
     /// counts how many of <paramref name="frames"/> the far end decodes. Frames the TNC
-    /// never transmitted are reported separately — they are not decode failures.</summary>
+    /// never transmitted are reported separately - they are not decode failures.</summary>
     private static async Task<(int Received, int NotTransmitted, double MeanKeyedMs, long PreambleWords)> Probe(
         NinoTncSerialPort tx, NinoTncSerialPort rx, byte units, int frames, int bitRate)
     {
         await tx.SetTxDelayAsync(units);
         await Task.Delay(250);
 
-        _ = await SendAndWait(tx, rx, units, 0, bitRate);       // throwaway — old TXDELAY
+        _ = await SendAndWait(tx, rx, units, 0, bitRate);       // throwaway - old TXDELAY
 
         long words = -1;
         try
@@ -306,7 +306,7 @@ internal static class TxDelaySweep
     /// fire-and-forget send: that one returns when the bytes reach the serial stream, which
     /// says nothing about the air. Waiting on the far end alone conflates "the TNC has not
     /// transmitted yet" (CSMA backoff, DCD hold) with "the TNC transmitted and the far end
-    /// could not decode it" — and only the second is a TXDELAY measurement. The ACKMODE echo
+    /// could not decode it" - and only the second is a TXDELAY measurement. The ACKMODE echo
     /// separates them, and times the keying as a bonus.
     /// </remarks>
     private static async Task<Attempt> SendAndWait(
@@ -340,7 +340,7 @@ internal static class TxDelaySweep
             }
 
             // The frame is provably on the air now, so the far end has either decoded it or
-            // not — a short window, and no ambiguity about what a timeout means.
+            // not - a short window, and no ambiguity about what a timeout means.
             using var cts = new CancellationTokenSource(1500);
             await using (cts.Token.Register(() => seen.TrySetResult(false)))
             {
@@ -378,7 +378,7 @@ internal static class TxDelaySweep
         return [.. Addr(Dest, false, 1), .. Addr(Source, true, 0), 0x03, 0xF0, .. payload];
     }
 
-    /// <summary>SETHW, settle, then read the running mode back. Retries — SETHW is
+    /// <summary>SETHW, settle, then read the running mode back. Retries - SETHW is
     /// unacknowledged and does silently fail.</summary>
     private static async Task<bool> SetModeVerified(NinoTncSerialPort tnc, byte mode)
     {

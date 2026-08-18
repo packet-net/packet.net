@@ -99,7 +99,7 @@ public sealed class AppCallsignResolverTests
     public void Pins_are_reserved_before_auto_assign_regardless_of_order()
     {
         // The auto app comes FIRST in config order, the pin (-2) second. The auto app must
-        // still avoid 2 — pins are reserved in a pass before any auto-assign.
+        // still avoid 2 - pins are reserved in a pass before any auto-assign.
         var cfg = Node("M0LTE-0", PacketApp("auto"), PacketApp("pin", callsign: "-2"));
         var map = AppCallsignResolver.Resolve(cfg, []);
 
@@ -179,8 +179,8 @@ public sealed class AppCallsignResolverTests
 
     [Theory]
     [InlineData("-7", "M0LTE", 7, true)]
-    [InlineData("M9YYY-3", "M9YYY", 3, false)]   // a full callsign off the node base — honoured, not on-base.
-    [InlineData("M0LTE-4", "M0LTE", 4, true)]    // a full callsign ON the node base — on-base.
+    [InlineData("M9YYY-3", "M9YYY", 3, false)]   // a full callsign off the node base - honoured, not on-base.
+    [InlineData("M0LTE-4", "M0LTE", 4, true)]    // a full callsign ON the node base - on-base.
     public void TryResolvePin_handles_suffix_and_full_forms(string pin, string expectBase, int expectSsid, bool onNodeBase)
     {
         AppCallsignResolver.TryResolvePin(pin, "M0LTE", out var call, out var onBase).Should().BeTrue();

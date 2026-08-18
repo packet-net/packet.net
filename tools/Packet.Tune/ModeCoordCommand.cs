@@ -8,7 +8,7 @@ namespace Packet.Tune;
 
 /// <summary>
 /// <c>mode-coord</c>: renegotiate the TNC mode (and optionally the radio channel) of a
-/// working RF link over the radios' own SDM side channel — which is mode/channel-agnostic,
+/// working RF link over the radios' own SDM side channel - which is mode/channel-agnostic,
 /// so the coordination keeps working while the link under it is being changed. The
 /// coordinator proposes each switch, both ends commit, the new link is verified with
 /// probe frames both ways, and any failure reverts both ends to the session's home
@@ -106,7 +106,7 @@ internal static class ModeCoordCommand
         }
         finally
         {
-            // Whatever happened, finish at home — coordinated when the link is
+            // Whatever happened, finish at home - coordinated when the link is
             // alive, locally if not.
             try
             {

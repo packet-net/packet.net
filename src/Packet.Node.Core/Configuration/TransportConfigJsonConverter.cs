@@ -7,7 +7,7 @@ namespace Packet.Node.Core.Configuration;
 /// System.Text.Json converter for the <see cref="TransportConfig"/> discriminated
 /// union. STJ can serialise the concrete record fine (the <see cref="TransportConfig.Kind"/>
 /// getter emits the <c>kind</c> discriminator), but it can't <em>deserialise</em> an
-/// abstract record — so a <c>PUT /config</c> body needs this to turn
+/// abstract record - so a <c>PUT /config</c> body needs this to turn
 /// <c>{ "kind": "kiss-tcp", "host": …, "port": … }</c> back into the right concrete
 /// subtype. The YAML layer has its own equivalent (<see cref="TransportConfigYamlConverter"/>);
 /// this is the JSON twin for the web API.

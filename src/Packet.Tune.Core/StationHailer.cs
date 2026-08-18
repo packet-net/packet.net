@@ -8,7 +8,7 @@ public enum StationHailOutcome
     /// <summary>The peer answered with its <see cref="StationStatus"/>.</summary>
     Answered,
 
-    /// <summary>The hail was sent but no status came back before the timeout — the peer's
+    /// <summary>The hail was sent but no status came back before the timeout - the peer's
     /// radio may be off, unprogrammed for SDM, or out of range on the side channel.</summary>
     NoReply,
 
@@ -37,7 +37,7 @@ public sealed record StationHailerOptions
     public int MaxAttempts { get; init; } = 2;
 
     /// <summary>How long to wait for the <c>STAT</c> reply after a hail is sent, per attempt.
-    /// Default 30 s — a delivered+receipted hail plus the responder's post-receive auto-ack
+    /// Default 30 s - a delivered+receipted hail plus the responder's post-receive auto-ack
     /// guard plus an extended-SDM status reply all cost seconds over the side channel.</summary>
     public TimeSpan ReplyTimeout { get; init; } = TimeSpan.FromSeconds(30);
 }
@@ -46,7 +46,7 @@ public sealed record StationHailerOptions
 /// The hailing end of the station-hail protocol: sends a <see cref="StationHail"/> over an
 /// <see cref="ITuningLink"/> (canonically <see cref="SdmTuningLink"/> over the radios' own
 /// FFSK side channel) and awaits the peer's <see cref="StationStatus"/>, with retries. Because
-/// the side channel is mode/channel-agnostic, a hail succeeds — and reports the peer's mode —
+/// the side channel is mode/channel-agnostic, a hail succeeds - and reports the peer's mode -
 /// even when the packet path between the two stations is broken by a mode mismatch.
 /// </summary>
 public sealed class StationHailer : IAsyncDisposable
@@ -99,7 +99,7 @@ public sealed class StationHailer : IAsyncDisposable
             catch (TuningLinkException ex)
             {
                 // Delivery unconfirmed after the link's own retries. The peer may still have
-                // heard it (a lost receipt) — wait for a reply anyway before giving up.
+                // heard it (a lost receipt) - wait for a reply anyway before giving up.
                 lastLinkError = ex.Message;
                 Log?.Invoke($"hailer: hail delivery unconfirmed ({ex.Message}) — waiting for a reply regardless");
             }

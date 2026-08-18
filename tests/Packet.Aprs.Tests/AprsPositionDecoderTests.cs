@@ -7,7 +7,7 @@ public class AprsPositionDecoderTests
     // ─── Uncompressed format tests ─────────────────────────────────────
     //
     // Test cases lifted from the APRS-IS corpus (gb7rdg-node observation,
-    // 2026-05-14) — each input is a real frame's info field, expected
+    // 2026-05-14) - each input is a real frame's info field, expected
     // lat/lon are direwolf's reference decode for the same frame.
 
     [Theory]
@@ -77,12 +77,12 @@ public class AprsPositionDecoderTests
         pos.Comment.Should().Be("Schneider i-Gate Batt=4.33V");
     }
 
-    // ─── Negative paths — rejections that match direwolf's error classes ──
+    // ─── Negative paths - rejections that match direwolf's error classes ──
 
     [Fact]
     public void TryDecode_Rejects_Bad_Hemisphere_Indicator()
     {
-        // Last byte of lat field should be N or S — 'X' is invalid.
+        // Last byte of lat field should be N or S - 'X' is invalid.
         var bytes = "!4725.22X/00810.83E_"u8;
         AprsPositionDecoder.TryDecode(bytes, out _).Should().BeFalse();
     }

@@ -8,7 +8,7 @@ namespace Packet.Node.Core.Auth.Oauth;
 
 /// <summary>
 /// SQLite-backed <see cref="IOauthCodeStore"/> on <c>pdn.db</c>. The single-use guarantee is
-/// the atomic <c>DELETE … RETURNING</c> in <see cref="Consume"/> — SQLite serialises it, so
+/// the atomic <c>DELETE … RETURNING</c> in <see cref="Consume"/> - SQLite serialises it, so
 /// two concurrent redemptions of the same code cannot both succeed. Same resilient discipline
 /// as the sibling stores (a fault logs + degrades, never throws into the auth path).
 /// </summary>

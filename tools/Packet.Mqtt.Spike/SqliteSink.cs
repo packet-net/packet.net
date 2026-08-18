@@ -10,7 +10,7 @@ namespace Packet.Mqtt.Spike;
 /// Schema is intentionally simple: store the raw payload as a BLOB plus the
 /// denormalised topic components (format / node / direction / port) so
 /// queries don't have to re-parse the topic string. Parsing the AX.25 frame
-/// itself happens offline — we don't want collector behaviour to depend on
+/// itself happens offline - we don't want collector behaviour to depend on
 /// parser changes.
 ///
 /// Not thread-safe on its own. Use a single producer (the consumer task in
@@ -112,7 +112,7 @@ public sealed class SqliteSink : IAsyncDisposable
         _conn = new SqliteConnection(connString);
         await _conn.OpenAsync(ct);
 
-        // Pragmas first — WAL is the big win on append-heavy workloads, busy
+        // Pragmas first - WAL is the big win on append-heavy workloads, busy
         // timeout cushions accidental concurrent reads.
         using (var pragma = _conn.CreateCommand())
         {
@@ -125,7 +125,7 @@ public sealed class SqliteSink : IAsyncDisposable
             await pragma.ExecuteNonQueryAsync(ct);
         }
 
-        // Schema (idempotent — rotating into an existing file just adds rows).
+        // Schema (idempotent - rotating into an existing file just adds rows).
         using (var schema = _conn.CreateCommand())
         {
             schema.CommandText = """

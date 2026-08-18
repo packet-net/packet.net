@@ -10,7 +10,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <summary>
 /// The native carrier-sense CSMA gate (OQ-012) wired into a live <see cref="Ax25Listener"/>:
 /// an injected <see cref="ICarrierSense"/> holds the listener's keyups while the channel is
-/// busy and releases them when it clears — without altering the data-link SDL (the SABM still
+/// busy and releases them when it clears - without altering the data-link SDL (the SABM still
 /// drives figc4.1 t14 → UA + Connected; only the <em>physical</em> UA is deferred). With no
 /// source injected the listener is byte-for-byte its prior self, which every other
 /// <c>Ax25Listener*Tests</c> file already covers; the baseline here pins that explicitly.
@@ -63,7 +63,7 @@ public class Ax25ListenerCarrierSenseTests
     {
         var modem = new LoopbackModem();
         var time = new FakeTimeProvider();
-        // No ICarrierSense — the always-clear degenerate gate. Behaviour must be unchanged.
+        // No ICarrierSense - the always-clear degenerate gate. Behaviour must be unchanged.
         await using var listener = new Ax25Listener(
             modem, new Ax25ListenerOptions { MyCall = LocalCall }, time);
         await listener.StartAsync();
@@ -88,7 +88,7 @@ public class Ax25ListenerCarrierSenseTests
 
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCall));
 
-        // A definite "clear" keys up immediately — only a definite "busy" defers.
+        // A definite "clear" keys up immediately - only a definite "busy" defers.
         await modem.SentFrames.WaitForCountAsync(1, Budget);
         Ax25Frame.TryParse(modem.SentFrames[0].Span, out var ua).Should().BeTrue();
         IsUa(ua!).Should().BeTrue();

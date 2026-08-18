@@ -4,7 +4,7 @@ namespace Packet.Node.Core.Tuning;
 
 /// <summary>
 /// The set of live <see cref="IPortTuningSession"/>s (deviation tuning, TXDELAY
-/// minimisation…), keyed by port id — at most one per port, whatever the flavour. Split
+/// minimisation…), keyed by port id - at most one per port, whatever the flavour. Split
 /// out from <see cref="PortTuningService"/> so the "one session per port" and "stop-all-on-shutdown"
 /// bookkeeping is unit-testable without a live node host. A port stays claimed (a second
 /// <see cref="TryAdd"/> fails) until its session removes itself, which the service does only after

@@ -55,12 +55,12 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// The last mode this driver set via <see cref="SetModeAsync"/>, or <c>null</c> if none has
-    /// been set on this connection. This is what *we* commanded — not a DIP-switch or
+    /// been set on this connection. This is what *we* commanded - not a DIP-switch or
     /// flash-persisted mode chosen outside this connection.
     /// </summary>
     /// <remarks>
     /// A verified <see cref="SetModeAsync"/> (the default) has proved this against the TNC's own
-    /// GETALL readback, and rewrites it to the observed mode — or <c>null</c> — when the mode
+    /// GETALL readback, and rewrites it to the observed mode - or <c>null</c> - when the mode
     /// refused to take, so it never asserts a mode the TNC contradicted. A fire-and-forget send
     /// (<see cref="NinoTncModeVerification.None"/>) leaves this as the commanded mode alone, which
     /// SETHW does not guarantee (#633).
@@ -87,7 +87,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// Fired for every inbound KISS frame after framing/unescaping, in
-    /// its raw form. Subscribers run on the dispatch task — keep handlers
+    /// its raw form. Subscribers run on the dispatch task - keep handlers
     /// fast and non-blocking. Use <see cref="ReadFramesAsync"/> if you'd
     /// rather pull frames on your own task.
     /// </summary>
@@ -124,9 +124,9 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// Open a NinoTNC whose USB-CDC serial port is bridged as a raw binary TCP pipe by a remote
-    /// head-end (the split-station topology — see
+    /// head-end (the split-station topology - see
     /// <c>docs/research/split-station-rf-headend.md</c>) and start the read pump. This is the
-    /// <b>full-control</b> NinoTNC-over-TCP path — GETVER, mode agility, GETRSSI and ACKMODE
+    /// <b>full-control</b> NinoTNC-over-TCP path - GETVER, mode agility, GETRSSI and ACKMODE
     /// TX-completion all work remotely, distinct from the generic control-less <c>kiss-tcp</c>
     /// transport. NinoTNC baud is fictional over USB-CDC, so there is no baud parameter.
     /// </summary>
@@ -136,7 +136,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// Clock used to stamp inbound frames' <see cref="Ax25InboundFrame.ReceivedAt"/> on the
     /// <see cref="IAx25Transport"/> seam. Null uses the system clock.
     /// </param>
-    /// <param name="options">Behavioural knobs; null uses defaults — which for the TCP path
+    /// <param name="options">Behavioural knobs; null uses defaults - which for the TCP path
     /// includes the GETVER keep-alive poll (#580), so an RF-quiet channel never trips the
     /// socket's 5-min read-idle liveness budget while a dead link still faults on it.</param>
     /// <param name="cancellationToken">Cancels the connect.</param>
@@ -179,7 +179,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// has arrived for <paramref name="interval"/>, issue a GETVER. On a healthy-but-RF-quiet
     /// link the reply's bytes reset the TCP pipe's read-idle liveness budget, so the port never
     /// churns through a pointless reconnect cycle; on a dead link the probe goes unanswered (or
-    /// the write fails) and the idle budget faults the pump exactly as before — dead links still
+    /// the write fails) and the idle budget faults the pump exactly as before - dead links still
     /// fault fast, quiet links stop faulting at all.
     /// </summary>
     private async Task KeepAliveAsync(TimeSpan interval, CancellationToken cancellationToken)
@@ -221,7 +221,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// <see cref="IAx25Transport"/>: async stream of inbound AX.25 frames, pre-filtered to KISS
-    /// Data (non-Data KISS commands — TX-Test echoes, diagnostics — are dropped here).
+    /// Data (non-Data KISS commands - TX-Test echoes, diagnostics - are dropped here).
     /// </summary>
     public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -323,20 +323,20 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// The DIP position that means "Set from KISS" rather than naming an
-    /// operating mode — see <see cref="SetModeAsync"/> on why it is not verified.
+    /// operating mode - see <see cref="SetModeAsync"/> on why it is not verified.
     /// </summary>
     private const byte SetFromKissMode = 15;
 
     /// <summary>
-    /// Set the NinoTNC operating mode via KISS SETHW (command 0x06), and — by
-    /// default — verify the TNC actually applied it.
+    /// Set the NinoTNC operating mode via KISS SETHW (command 0x06), and - by
+    /// default - verify the TNC actually applied it.
     /// </summary>
     /// <remarks>
     /// <para>
     /// SETHW is unacknowledged and <em>does</em> silently fail to apply (#633):
     /// bench-observed twice on firmware 3.44 with DIP 1111, the TNC carrying on
     /// in its previous mode while every downstream measurement scored zero in
-    /// both directions — which reads as broken RF, not an ignored command. So
+    /// both directions - which reads as broken RF, not an ignored command. So
     /// this method sends the SETHW, lets the modem settle, reads the running
     /// mode back with GETALL, retries, and throws
     /// <see cref="NinoTncModeNotAppliedException"/> if the mode never takes.
@@ -347,13 +347,13 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// <para>
     /// The readback compares through <see cref="NinoTncCatalog"/>
     /// (<see cref="NinoTncStatusFrame.RunningMode"/>), not raw firmware bytes,
-    /// so firmware-specific spellings of a mode — e.g. 3.41 reporting mode 14 as
-    /// <c>0x90</c> where 3.44 reports <c>0x23</c> — verify correctly rather than
+    /// so firmware-specific spellings of a mode - e.g. 3.41 reporting mode 14 as
+    /// <c>0x90</c> where 3.44 reports <c>0x23</c> - verify correctly rather than
     /// reading as a mis-set.
     /// </para>
     /// <para>
-    /// <b>Mode 15 is never verified.</b> It is the "Set from KISS" escape — a
-    /// statement about where the mode comes from, not an operating mode to run —
+    /// <b>Mode 15 is never verified.</b> It is the "Set from KISS" escape - a
+    /// statement about where the mode comes from, not an operating mode to run -
     /// so there is nothing meaningful to compare a readback against, and the
     /// send is passed straight through.
     /// </para>
@@ -408,7 +408,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
             }
             catch (TimeoutException ex)
             {
-                // A readback that never lands says nothing about the mode — re-send and re-ask.
+                // A readback that never lands says nothing about the mode - re-send and re-ask.
                 lastFailure = ex;
                 lastStatus = null;
                 continue;
@@ -421,7 +421,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
         }
 
         // Don't leave CurrentMode (and CurrentBitRateHz through it) asserting a
-        // mode the TNC just told us it isn't running — that is the same lie in a
+        // mode the TNC just told us it isn't running - that is the same lie in a
         // different place. Prefer what it reports; otherwise admit we don't know.
         Volatile.Write(ref currentMode, lastStatus?.RunningMode?.Mode ?? -1);
 
@@ -489,11 +489,11 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// <remarks>
     /// Firmware 3.41 answers GETALL with the labelled <c>=FirmwareVr:</c>
     /// diagnostic (mapped through <see cref="NinoTncStatusFrame.FromDiagnostic"/>,
-    /// so the registers with no labelled counterpart — PTT-on, DCD-on,
-    /// RX/TX bytes, FEC-corrected bytes — come back <c>null</c>); newer
+    /// so the registers with no labelled counterpart - PTT-on, DCD-on,
+    /// RX/TX bytes, FEC-corrected bytes - come back <c>null</c>); newer
     /// firmware documents the numeric <c>=II:</c> report, which is matched
     /// directly. A periodic status frame arriving during the wait also
-    /// satisfies it — the content is the same snapshot.
+    /// satisfies it - the content is the same snapshot.
     /// </remarks>
     /// <param name="timeout">Maximum wait for the reply. Defaults to 5 s.</param>
     /// <param name="cancellationToken">Cancels the send and the wait.</param>
@@ -539,22 +539,22 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// <summary>
     /// GETRSSI: request an RX-audio level reading and await the reply.
     /// The value is the RMS level of the TNC's receive audio in dB, not an
-    /// RF dBm figure — see <see cref="NinoTncRssiReading"/>.
+    /// RF dBm figure - see <see cref="NinoTncRssiReading"/>.
     /// </summary>
     /// <remarks>
-    /// <b>Firmware 3.41 only — REMOVED in firmware 3.44.</b> GETRSSI was an
+    /// <b>Firmware 3.41 only - REMOVED in firmware 3.44.</b> GETRSSI was an
     /// undocumented 3.41 feature; on 3.44 the query gets no reply at all
     /// (bench-verified 2026-07-02 after flashing both rig TNCs), so this
     /// call ends in <see cref="TimeoutException"/>. Callers must catch it
-    /// and degrade — e.g. meter deviation by decoded-frame counts, IL2P
+    /// and degrade - e.g. meter deviation by decoded-frame counts, IL2P
     /// FEC-corrected-byte deltas and the lost-ADC counter instead (see
     /// <see cref="NinoTncStatusDelta"/>). Where it exists it is a continuous
-    /// post-FM-demod deviation meter — the deviation-tuning assistant probes
+    /// post-FM-demod deviation meter - the deviation-tuning assistant probes
     /// for it once per session and samples it during bursts (the fast path).
     /// </remarks>
     /// <param name="timeout">Maximum wait for the reply. Defaults to 5 s.</param>
     /// <param name="cancellationToken">Cancels the send and the wait.</param>
-    /// <exception cref="TimeoutException">No reply within the timeout — including always on firmware 3.44+, which removed the query.</exception>
+    /// <exception cref="TimeoutException">No reply within the timeout - including always on firmware 3.44+, which removed the query.</exception>
     public async Task<float> GetRssiAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         var reading = await SendAwaitingReplyAsync(
@@ -569,11 +569,11 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// STOPTX: tell the TNC to abort any transmission in progress.
-    /// Fire-and-forget — the firmware sends no acknowledgement.
+    /// Fire-and-forget - the firmware sends no acknowledgement.
     /// </summary>
     /// <remarks>
     /// Bench note (firmware 3.41, 2026-07-02): STOPTX sent mid-tone did
-    /// <b>not</b> cut short an in-progress CQBEEP responder tone — the tone
+    /// <b>not</b> cut short an in-progress CQBEEP responder tone - the tone
     /// ran its full N seconds. Treat it as a queue/normal-TX abort;
     /// whether newer firmware also stops the beep generator is unverified.
     /// </remarks>
@@ -582,7 +582,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// SETBCNINT: set the interval of the periodic status report
-    /// (<see cref="NinoTncStatusFrame"/>) in minutes. Fire-and-forget —
+    /// (<see cref="NinoTncStatusFrame"/>) in minutes. Fire-and-forget -
     /// the firmware sends no acknowledgement.
     /// </summary>
     /// <param name="minutes">Reporting interval in minutes.</param>
@@ -620,14 +620,14 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// SETSERNO: <b>write</b> the TNC's 8-byte KAUP8R identity register.
-    /// Fire-and-forget — the firmware sends no acknowledgement; confirm with
+    /// Fire-and-forget - the firmware sends no acknowledgement; confirm with
     /// <see cref="GetSerialNumberAsync"/>. Upstream tnc-tools prescribes
     /// clearing (<see cref="ClearSerialNumberAsync"/>) before setting.
     /// </summary>
     /// <remarks>
     /// The wire form follows upstream tnc-tools (KISS command 0x0A + 8 ASCII
     /// characters). <b>The write path has not been exercised on this bench's
-    /// hardware</b> — only the GETSERNO read has (the rig TNCs' identity
+    /// hardware</b> - only the GETSERNO read has (the rig TNCs' identity
     /// registers are deliberately left untouched).
     /// </remarks>
     /// <param name="serialNumber">Exactly 8 printable-ASCII characters.</param>
@@ -641,7 +641,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// <summary>
     /// CLRSERNO: <b>erase</b> the TNC's KAUP8R identity register (SETSERNO
     /// with 8 zero bytes). Fire-and-forget; see the
-    /// <see cref="SetSerialNumberAsync"/> remarks — the write path is
+    /// <see cref="SetSerialNumberAsync"/> remarks - the write path is
     /// bench-unexercised.
     /// </summary>
     /// <param name="cancellationToken">Cancels the underlying send.</param>
@@ -655,7 +655,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// Arm this TNC's CQBEEP tone responder by transmitting a
     /// <c>[TARPNstat</c> status frame through it (see
     /// <see cref="NinoTncCqBeep.BuildArmingFrame"/>). The frame goes out
-    /// over the air like any UI frame. Arming is volatile — re-arm after
+    /// over the air like any UI frame. Arming is volatile - re-arm after
     /// the TNC resets.
     /// </summary>
     /// <param name="source">Source callsign for the arming frame.</param>
@@ -669,7 +669,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// tone (see <see cref="NinoTncCqBeep.BuildBeepRequest"/>).
     /// </summary>
     /// <param name="source">Source callsign for the request frame.</param>
-    /// <param name="seconds">Seconds of tone to request, 1–15.</param>
+    /// <param name="seconds">Seconds of tone to request, 1-15.</param>
     /// <param name="cancellationToken">Cancels the underlying send.</param>
     public Task SendCqBeepRequestAsync(Callsign source, int seconds, CancellationToken cancellationToken = default) =>
         SendFrameAsync(NinoTncCqBeep.BuildBeepRequest(source, seconds).ToBytes(), cancellationToken);
@@ -678,7 +678,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     {
         // The GETVER reply is a short bare-ASCII string ("3.41") on the 0xE0
         // reply command byte. Field-style replies (labelled/numeric dumps)
-        // start '=' and the GETRSSI reply contains ':' — exclude both so a
+        // start '=' and the GETRSSI reply contains ':' - exclude both so a
         // concurrent query cannot be mistaken for the version.
         if (!NinoTncCommands.IsReply(frame) || frame.Payload.Length is 0 or > 16)
         {

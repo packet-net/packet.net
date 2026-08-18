@@ -8,7 +8,7 @@ namespace Packet.Node.Tests.Applications.Packages;
 /// <summary>
 /// The session-resolution union in <see cref="ApplicationHost"/>: verbs resolve from the inline
 /// <c>applications:</c> list first, then from enabled, error-free app packages with a
-/// <c>session:</c> block — mapped onto the <see cref="ApplicationConfig"/> shape the existing
+/// <c>session:</c> block - mapped onto the <see cref="ApplicationConfig"/> shape the existing
 /// run path understands (command/args resolved against the package dir, working dir = the
 /// state dir, capabilities from the manifest, no UI). A null catalog is exactly the
 /// pre-package host, which the existing <c>ApplicationHostTests</c> keep covering.
@@ -110,7 +110,7 @@ public sealed class ApplicationHostPackageUnionTests
         using var pkg = new TempAppPackage("daemon");
         pkg.WriteScript("run.sh", "#!/bin/sh\n");
         var catalog = new FakeAppPackageCatalog();
-        catalog.Set(pkg.Service("run.sh"));   // service-only manifest — no console verb
+        catalog.Set(pkg.Service("run.sh"));   // service-only manifest - no console verb
 
         Host(catalog).Resolve("DAEMON").Should().BeNull();
     }

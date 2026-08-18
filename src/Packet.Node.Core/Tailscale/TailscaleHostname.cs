@@ -6,7 +6,7 @@ namespace Packet.Node.Core.Tailscale;
 /// Resolves the tailnet node hostname for the embedded sidecar. An explicit
 /// <c>tailscale.hostname</c> wins; otherwise it is derived as <c>&lt;callsign&gt;-pdn</c>
 /// (the lowercased base callsign) so that multiple pdn nodes on one tailnet don't all
-/// land on a bare <c>pdn</c> — Tailscale would suffix <c>-1</c>/<c>-2</c>, making the
+/// land on a bare <c>pdn</c> - Tailscale would suffix <c>-1</c>/<c>-2</c>, making the
 /// FQDN (and therefore the passkey RP ID) unpredictable. Falls back to <c>pdn</c> when
 /// no usable callsign is configured.
 /// </summary>

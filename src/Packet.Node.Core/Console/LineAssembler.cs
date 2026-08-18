@@ -14,7 +14,7 @@ namespace Packet.Node.Core.Console;
 /// resolve to "one line". An empty line (a lone terminator) is yielded as an
 /// empty string so the console re-prompts. A telnet "CR alone" arrives as
 /// CR-NUL (RFC 854); the NUL (also telnet's NOP) is dropped, never treated as
-/// content — otherwise it would prepend to the following line.
+/// content - otherwise it would prepend to the following line.
 /// </remarks>
 public sealed class LineAssembler
 {
@@ -43,7 +43,7 @@ public sealed class LineAssembler
         foreach (var b in span)
         {
             // Telnet sends NUL both as NOP and as the second byte of "CR alone"
-            // (CR-NUL, RFC 854) — it is never line content, so drop it. Without
+            // (CR-NUL, RFC 854) - it is never line content, so drop it. Without
             // this, a CR-NUL "Enter" leaves the NUL behind to prepend to the next
             // line, so a relayed command such as "/quit" reaches the peer as
             // "\0/quit" and isn't recognised.
@@ -69,7 +69,7 @@ public sealed class LineAssembler
                 continue;
             }
 
-            // Backspace / DEL: line editing — erase the last buffered byte, so the
+            // Backspace / DEL: line editing - erase the last buffered byte, so the
             // assembled line stays in step with the connection's server-side echo.
             if (b == 0x08 || b == 0x7f)
             {

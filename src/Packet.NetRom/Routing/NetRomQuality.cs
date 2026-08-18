@@ -1,7 +1,7 @@
 namespace Packet.NetRom.Routing;
 
 /// <summary>
-/// NET/ROM route-quality arithmetic — the multiplicative per-hop decay from the
+/// NET/ROM route-quality arithmetic - the multiplicative per-hop decay from the
 /// canonical NET/ROM appendix. Quality is an integer 0 (worst) … 255 (best).
 /// </summary>
 /// <remarks>
@@ -17,8 +17,8 @@ namespace Packet.NetRom.Routing;
 /// The <c>+ 128</c> is round-to-nearest on the divide-by-256. Quality therefore
 /// decays multiplicatively with each hop: a 200-quality direct link is ≈ 156 at
 /// two hops (200 × 200 / 256) and ≈ 78 at three (last link 128). The practical
-/// per-hop / floor conventions (direct link ~192–203, MINQUAL ~128–180) are
-/// <em>de-facto, not normative</em> — they vary per implementation, so they live
+/// per-hop / floor conventions (direct link ~192-203, MINQUAL ~128-180) are
+/// <em>de-facto, not normative</em> - they vary per implementation, so they live
 /// as configurable knobs on <see cref="NetRomRoutingOptions"/>, never hard-coded
 /// here.
 /// </para>
@@ -28,7 +28,7 @@ public static class NetRomQuality
     /// <summary>The maximum (best) quality value.</summary>
     public const int Max = 255;
 
-    /// <summary>The minimum (worst) quality value — a quality-0 route is never usable / re-advertised.</summary>
+    /// <summary>The minimum (worst) quality value - a quality-0 route is never usable / re-advertised.</summary>
     public const int Min = 0;
 
     /// <summary>

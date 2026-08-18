@@ -11,7 +11,7 @@ namespace Packet.Rhp2;
 /// <remarks>
 /// Real XRouter is inconsistent about the <c>port</c> field: TRACE-mode
 /// <c>recv</c> carries it as a JSON number, DGRAM-mode <c>recv</c> and
-/// <c>accept</c> carry it as a JSON string — and the PWP-0222 spec's
+/// <c>accept</c> carry it as a JSON string - and the PWP-0222 spec's
 /// <c>accept</c> example shows a number where XRouter actually sends a
 /// string. Rather than model three shapes we normalise everything to
 /// <c>string?</c> at the wire boundary. On write we always emit a JSON

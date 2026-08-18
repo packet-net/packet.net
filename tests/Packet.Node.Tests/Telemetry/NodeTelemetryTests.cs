@@ -8,7 +8,7 @@ namespace Packet.Node.Tests.Telemetry;
 
 /// <summary>
 /// Unit tests for <see cref="NodeTelemetry"/> driven directly via
-/// <see cref="NodeTelemetry.Observe"/> with synthetic frames — no modem, no live
+/// <see cref="NodeTelemetry.Observe"/> with synthetic frames - no modem, no live
 /// listener. The live <c>FrameTraced → Observe</c> wiring is covered by the SSE
 /// integration test; this file pins the counter math, the per-link byte/REJ/SREJ
 /// rollup, the FirstSeen/LastActivity timestamps, and the SSE subscription
@@ -202,7 +202,7 @@ public sealed class NodeTelemetryTests
 
         t.Observe(Port, Rx(Ax25Frame.Ui(Local, Peer, "x"u8), At(0)));
         t.Observe(Port, Rx(Ax25Frame.Ui(Local, Peer, "y"u8), At(5)));
-        t.Observe(Port, Tx(Ax25Frame.Ui(Peer, Local, "z"u8), At(6)));   // our TX — not a hearing
+        t.Observe(Port, Tx(Ax25Frame.Ui(Peer, Local, "z"u8), At(6)));   // our TX - not a hearing
 
         var rows = heard.ForPort(Port);
         rows.Should().ContainSingle();

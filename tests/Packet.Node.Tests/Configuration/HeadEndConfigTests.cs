@@ -5,7 +5,7 @@ namespace Packet.Node.Tests.Configuration;
 /// <summary>
 /// The Stage-3a split-station config surface: a first-class <see cref="HeadEndConfig"/> fleet, the
 /// head-end binding mode on a <see cref="PortRadioConfig"/> radio, the <c>nino-tnc-tcp</c> transport,
-/// the lifted radio-on-networked-transport rule, and cross-config reference resolution — plus YAML /
+/// the lifted radio-on-networked-transport rule, and cross-config reference resolution - plus YAML /
 /// JSON round-trips. See <c>docs/research/split-station-rf-headend.md</c>.
 /// </summary>
 [Trait("Category", "Node")]
@@ -47,7 +47,7 @@ public sealed class HeadEndConfigTests
     // ---- radio binding modes -------------------------------------------------------------------
 
     [Theory]
-    [InlineData("pi", "tait0", true)]     // both halves — a valid head-end binding
+    [InlineData("pi", "tait0", true)]     // both halves - a valid head-end binding
     [InlineData("pi", "", false)]         // only headEndId — incomplete
     [InlineData("", "tait0", false)]      // only deviceId — incomplete
     public void A_head_end_radio_needs_both_head_end_id_and_device_id(string headEndId, string deviceId, bool valid)

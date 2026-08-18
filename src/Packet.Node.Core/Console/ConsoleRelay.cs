@@ -3,7 +3,7 @@ namespace Packet.Node.Core.Console;
 /// <summary>
 /// Pumps bytes both ways between two <see cref="INodeConnection"/>s until either
 /// end drops, then returns. Used by the console's <c>Connect</c> command to
-/// bridge an inbound user to an outbound session, with no AX.25 knowledge — both
+/// bridge an inbound user to an outbound session, with no AX.25 knowledge - both
 /// sides are just byte streams.
 /// </summary>
 public static class ConsoleRelay
@@ -42,7 +42,7 @@ public static class ConsoleRelay
                     var done = await Task.WhenAny(readTask, from.Completion, to.Completion).ConfigureAwait(false);
                     if (done != readTask)
                     {
-                        // A connection completed — wind down this direction.
+                        // A connection completed - wind down this direction.
                         if (readTask.IsCompletedSuccessfully)
                         {
                             chunk = readTask.Result;   // a read also landed; deliver it then stop
@@ -83,7 +83,7 @@ public static class ConsoleRelay
         }
         finally
         {
-            // Tear the other direction down too — the bridge is over.
+            // Tear the other direction down too - the bridge is over.
             if (!linked.IsCancellationRequested)
             {
                 await linked.CancelAsync().ConfigureAwait(false);

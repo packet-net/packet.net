@@ -17,8 +17,8 @@ namespace Packet.Node.Core.NetRom;
 /// <summary>
 /// The node-level NET/ROM service: a singleton above the <see cref="Hosting.PortSupervisor"/>
 /// that hears NODES routing broadcasts on every AX.25 port and maintains a
-/// <see cref="NetRomRoutingTable"/> (the read-only awareness slice), and — when the
-/// operator opts in — <b>originates</b> its own NODES broadcast on the NODESINTERVAL
+/// <see cref="NetRomRoutingTable"/> (the read-only awareness slice), and - when the
+/// operator opts in - <b>originates</b> its own NODES broadcast on the NODESINTERVAL
 /// schedule (L3 origination) and runs the <b>L4 virtual-circuit</b> layer over
 /// connected-mode AX.25 interlinks (a <see cref="CircuitManager"/>) so
 /// <c>connect &lt;alias&gt;</c> routes a user to a distant node across the network.
@@ -27,7 +27,7 @@ namespace Packet.Node.Core.NetRom;
 /// <para>
 /// <b>Hearing can never disturb a QSO.</b> The read-only tap is the existing
 /// <see cref="Ax25Listener.FrameTraced"/> event (fires before address filtering, so
-/// it hears NODES — dest <c>NODES</c>, not us — with no engine change) and only
+/// it hears NODES - dest <c>NODES</c>, not us - with no engine change) and only
 /// reads. The TX-bearing behaviours are opt-in (<see cref="NetRomConfig.Broadcast"/>
 /// / a <see cref="NetRomConfig.Routing"/> mode that opens interlinks) and default off.
 /// </para>
@@ -35,7 +35,7 @@ namespace Packet.Node.Core.NetRom;
 /// <b>Interlinks.</b> The service owns the connected-mode AX.25 sessions (PID 0xCF)
 /// to neighbours: it dials one out (cached per neighbour) to carry a circuit's
 /// datagrams, and it taps inbound 0xCF data on every session (the supervisor's
-/// console ignores 0xCF — see <see cref="Ax25NodeConnection"/>) to feed the
+/// console ignores 0xCF - see <see cref="Ax25NodeConnection"/>) to feed the
 /// circuit manager. An inbound circuit (a user routed to us via NET/ROM) is bridged
 /// to a fresh node console via the injected <see cref="RunInboundConsole"/> hook.
 /// </para>
@@ -43,19 +43,19 @@ namespace Packet.Node.Core.NetRom;
 public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAsyncDisposable
 {
     // States from which an interlink AX.25 session still owes the peer a clean
-    // DISC. Mirrors Ax25NodeConnection's teardown set — anything that isn't fully
+    // DISC. Mirrors Ax25NodeConnection's teardown set - anything that isn't fully
     // Disconnected leaves the neighbour with a half-open link it will poll.
     private static readonly string[] LiveSessionStates =
         ["Connected", "TimerRecovery", "AwaitingConnection", "AwaitingV22Connection", "AwaitingRelease"];
 
     // How long to wait for an interlink's DISC/UA to settle on the wire before we
-    // give up and drop the socket anyway. Bounded so teardown can never hang — a
+    // give up and drop the socket anyway. Bounded so teardown can never hang - a
     // peer that won't UA still gets the DISC frame on the wire (which is what stops
     // it polling); the wait only buys the clean DISC/UA round-trip when the channel
     // is healthy.
     private static readonly TimeSpan InterlinkDisconnectGrace = TimeSpan.FromSeconds(8);
 
-    // How long after the last NODES ingest to wait before persisting the table — a
+    // How long after the last NODES ingest to wait before persisting the table - a
     // debounce so a burst of broadcast frames produces one write, not dozens.
     private static readonly TimeSpan PersistDebounce = TimeSpan.FromSeconds(30);
 
@@ -81,7 +81,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     // The per-peer AX.25 capability cache (optional). Null ⇒ today's behaviour exactly:
     // interlinks dial hard-coded mod-8 with the listener's pre-connect-XID default, and
     // nothing is recorded. Non-null ⇒ each interlink dial consults PlanDial for the
-    // version + XID probe and records the OUTCOME of a RETURNED dial (never on a throw —
+    // version + XID probe and records the OUTCOME of a RETURNED dial (never on a throw -
     // a dial that throws yielded no link of either version, so it carries no capability
     // signal; that is the correctness hinge).
     private readonly PeerCapabilityCache? capabilityCache;
@@ -114,7 +114,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     private bool nodeCallSet;
 
     // L3 transit-forwarding throughput counters (the /metrics exporter's "forwarding"
-    // bucket — #457). Bumped only on the transit-forward path (ForwardDatagram); a
+    // bucket - #457). Bumped only on the transit-forward path (ForwardDatagram); a
     // datagram addressed to us terminates here and never touches these. Interlocked
     // because ForwardDatagram runs on listener pump threads. Bytes are the encoded
     // NET/ROM datagram length (the L3 PDU forwarded on toward the destination).
@@ -143,21 +143,21 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         DroppedLooped: Interlocked.Read(ref droppedLooped),
         DroppedNoRoute: Interlocked.Read(ref droppedNoRoute));
 
-    /// <summary>True if NET/ROM L4 connect-routing is enabled (interlinks + circuits) —
+    /// <summary>True if NET/ROM L4 connect-routing is enabled (interlinks + circuits) -
     /// the routing role opens connected-mode interlinks (<see cref="NetRomRouting.Endpoint"/>
     /// or <see cref="NetRomRouting.Transit"/>). The successor to the old <c>connect</c>
     /// capability.</summary>
     public bool ConnectEnabled => config.Enabled && routing is NetRomRouting.Endpoint or NetRomRouting.Transit;
 
     /// <summary>True if this node forwards transit datagrams (the network-layer
-    /// routing role) — only under <see cref="NetRomRouting.Transit"/>. The successor to
+    /// routing role) - only under <see cref="NetRomRouting.Transit"/>. The successor to
     /// the old <c>connect &amp;&amp; forward</c> gate; <see cref="NetRomRouting.Endpoint"/> ⇒
     /// interlinks but endpoint-only (no transit).</summary>
     public bool ForwardEnabled => config.Enabled && routing == NetRomRouting.Transit;
 
     // Whether this node opens connected-mode interlinks at all (the routing role is
     // Endpoint or Transit). The construction-time gate for the CircuitManager / INP3 /
-    // the per-port session tap — what the old `config.Connect` gated. Equivalent to
+    // the per-port session tap - what the old `config.Connect` gated. Equivalent to
     // ConnectEnabled, named for the construction seam where it reads more clearly.
     private bool InterlinksEnabled => config.Enabled && routing is NetRomRouting.Endpoint or NetRomRouting.Transit;
 
@@ -170,7 +170,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     /// <summary>
     /// The hook the supervisor supplies to dial an interlink AX.25 session to a
-    /// neighbour with the <em>outbound claim</em> held — so the supervisor does not
+    /// neighbour with the <em>outbound claim</em> held - so the supervisor does not
     /// start a node console against the neighbour we dialled (an interlink carries
     /// NET/ROM datagrams, not console text; a console against it would flood the
     /// session with banner/prompt frames and starve the circuit). When null, the
@@ -261,13 +261,13 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     /// <summary>Construct the service from the node's NET/ROM config. When
     /// <paramref name="store"/> is supplied the learned routing table is persisted to it
-    /// — hydrated (downtime-aged) on construction and saved on the sweep tick, after a
-    /// debounced ingest, and on graceful dispose — so a restart does not lose the
+    /// - hydrated (downtime-aged) on construction and saved on the sweep tick, after a
+    /// debounced ingest, and on graceful dispose - so a restart does not lose the
     /// learned topology. Null = in-memory only (the default; every existing call site
     /// and test is unchanged).</summary>
     /// <summary>
     /// Optional source of <b>app NET/ROM adverts</b> (<c>docs/app-packages.md</c> § Application
-    /// packet identity): returns the extra destination entries to append to our NODES broadcast —
+    /// packet identity): returns the extra destination entries to append to our NODES broadcast -
     /// one per enabled app whose owner set <c>netrom.alias</c>, each pointing the alias at the
     /// app's resolved callsign with the configured quality (best-neighbour = this node). Null /
     /// returns-empty ⇒ nothing extra advertised (the opt-in default, off). Read fresh on each
@@ -324,7 +324,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
             // The NODESINTERVAL tick: ages the table (obsolescence) and, when
             // broadcast is on, originates our NODES broadcast. It never disturbs a
-            // session — broadcasts are UI frames, the sweep is pure table maintenance.
+            // session - broadcasts are UI frames, the sweep is pure table maintenance.
             sweepTimer = this.timeProvider.CreateTimer(_ => OnInterval(), state: null, dueTime: interval, period: interval);
 
             // A one-shot debounce that persists the table a short while after the last
@@ -344,7 +344,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
                 // INP3 rides on the connected-mode interlink machinery (the L3RTT / RIF
                 // frames are 0xCF I-frames on the same interlink sessions L4 uses), so it
-                // is created only when interlinks are enabled (routing Endpoint/Transit) —
+                // is created only when interlinks are enabled (routing Endpoint/Transit) -
                 // and then only when the operator opts in. When inp3 is null the node is
                 // byte-for-byte today (design §1).
                 if (config.Inp3.Enabled)
@@ -415,20 +415,20 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// <param name="neighbourQuality">
     /// The per-port NET/ROM route quality (BPQ per-port <c>QUALITY</c>) to assume for a
     /// directly-heard neighbour on this port. <c>null</c> (the default) ⇒ the node-wide
-    /// <see cref="NetRomConfig.DefaultNeighbourQuality"/> — byte-for-byte the prior behaviour.
+    /// <see cref="NetRomConfig.DefaultNeighbourQuality"/> - byte-for-byte the prior behaviour.
     /// When set, routes learned on this port are quality-combined against this value, so a
     /// mixed-grade node advertises an accurate per-port quality.
     /// </param>
     /// <param name="minQuality">
     /// The per-port NET/ROM minimum quality (BPQ per-port <c>MINQUAL</c>): the worst quality a
     /// route learned on this port may have and still be kept. <c>null</c> (the default) ⇒ the
-    /// node-wide <see cref="NetRomConfig.MinQuality"/> — byte-for-byte the prior behaviour. When
+    /// node-wide <see cref="NetRomConfig.MinQuality"/> - byte-for-byte the prior behaviour. When
     /// set, a route heard on this port deriving below it is not kept (the route-keep decision).
     /// </param>
     /// <param name="nodesPaclen">
     /// The per-port NODES-broadcast UI-frame octet cap (BPQ per-port <c>NODESPACLEN</c>):
     /// our NODES broadcast on this port fragments into frames no larger than this. <c>null</c>
-    /// (the default) ⇒ no cap (the canonical 11-entries-per-frame structural limit) —
+    /// (the default) ⇒ no cap (the canonical 11-entries-per-frame structural limit) -
     /// byte-for-byte the prior behaviour.
     /// </param>
     public void AttachPort(string portId, Callsign myCall, Ax25Listener listener, int? neighbourQuality = null, int? minQuality = null, int? nodesPaclen = null)
@@ -472,12 +472,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     }
 
     /// <summary>
-    /// Hot-apply the per-port NET/ROM awareness/advertisement knobs — route quality (BPQ
+    /// Hot-apply the per-port NET/ROM awareness/advertisement knobs - route quality (BPQ
     /// per-port <c>QUALITY</c>), minimum quality (<c>MINQUAL</c>), and the NODES-broadcast
-    /// UI-frame cap (<c>NODESPACLEN</c>) — to a running attachment without re-subscribing its
+    /// UI-frame cap (<c>NODESPACLEN</c>) - to a running attachment without re-subscribing its
     /// taps. No-op if the port isn't attached. All three affect only how the <em>next</em>
     /// NODES ingest/broadcast on this port is handled (read-only awareness + outbound
-    /// advertisement) — none can ever disturb a live session — so they are applied live rather
+    /// advertisement) - none can ever disturb a live session - so they are applied live rather
     /// than via a port restart.
     /// </summary>
     public void UpdatePortQuality(string portId, int? neighbourQuality, int? minQuality = null, int? nodesPaclen = null)
@@ -515,7 +515,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
             // Drop interlinks running on this port, posting a best-effort DISC first
             // so the neighbour tears its half of the AX.25 link down (otherwise it is
-            // left with a half-open session it polls — channel noise / interop flake).
+            // left with a half-open session it polls - channel noise / interop flake).
             foreach (var (key, link) in interlinks)
             {
                 if (string.Equals(key.PortId, portId, StringComparison.Ordinal))
@@ -548,8 +548,8 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     /// <summary>
     /// Async counterpart to <see cref="DetachPort"/>: gracefully <b>disconnects</b>
-    /// the port's interlink AX.25 sessions — posting the DISC and waiting (bounded)
-    /// for each to reach Disconnected so the DISC/UA round-trips on the wire — before
+    /// the port's interlink AX.25 sessions - posting the DISC and waiting (bounded)
+    /// for each to reach Disconnected so the DISC/UA round-trips on the wire - before
     /// the caller disposes the listener. Use this on port teardown / reconfigure so a
     /// neighbour is never left with a half-open interlink it polls (the #309
     /// contamination class). This port's routes leave the table (see
@@ -605,7 +605,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     // Gracefully disconnect an interlink: post the DISC and wait (bounded) for the
     // session to reach Disconnected, so the DISC/UA round-trips on the wire before
-    // the listener/socket is dropped. Best-effort — a peer that never UAs still got
+    // the listener/socket is dropped. Best-effort - a peer that never UAs still got
     // the DISC frame (which stops it polling); we just stop waiting at the grace cap.
     private async Task CloseInterlinkAsync(Interlink link, CancellationToken ct)
     {
@@ -669,7 +669,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     // (Re)arm the debounce so the table is persisted shortly after the last ingest.
     private void ArmPersist() => persistTimer?.Change(PersistDebounce, Timeout.InfiniteTimeSpan);
 
-    // Persist the current table snapshot. No-op without a store; resilient — the store
+    // Persist the current table snapshot. No-op without a store; resilient - the store
     // swallows + logs its own faults and we guard here too, so a persist can never
     // disturb the node.
     private void SaveSnapshot()
@@ -723,7 +723,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             // Per-port QUALITY + MINQUAL (BPQ per-port QUALITY / MINQUAL): the directly-heard
             // neighbour on this port gets the port's configured quality, and a route learned via
             // this broadcast is kept only if it derives at/above the port's MINQUAL floor (both
-            // null ⇒ the table-wide defaults — byte-for-byte the prior behaviour).
+            // null ⇒ the table-wide defaults - byte-for-byte the prior behaviour).
             attachments.TryGetValue(portId, out var att);
             int? portQuality = att?.NeighbourQuality;
             int? portMinQuality = att?.MinQuality;
@@ -757,7 +757,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             // scheduler NEGATIVE so the withdrawal fans out promptly rather than waiting for
             // the periodic RIF. Also nudge the INP3 ticks so a node whose own 1 s timer is
             // somehow starved still makes progress on the coarse cadence. No-op when INP3 is
-            // off (inp3 == null). (The 1 s Inp3Host timer is the primary driver — design §5.)
+            // off (inp3 == null). (The 1 s Inp3Host timer is the primary driver - design §5.)
             inp3?.OnNodesInterval();
 
             if (config.Broadcast)
@@ -793,7 +793,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // Opt-in app aliases (docs/app-packages.md § Application packet identity): append each
         // enabled app whose owner set netrom.alias, advertised AT our node (best-neighbour =
         // nodeCall) so a station C's the alias and routes to us, then to the app. Absent source
-        // (or no aliases) ⇒ nothing extra — the off-by-default, anti-noise behaviour. Composes
+        // (or no aliases) ⇒ nothing extra - the off-by-default, anti-noise behaviour. Composes
         // with the learned routes + the implicit node-self advert (the UI frame's source call).
         var appAdverts = AppAdvertSource?.Invoke() ?? [];
         var entries = appAdverts.Count == 0 ? learned : [.. learned, .. appAdverts];
@@ -803,7 +803,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // The entry list is identical on every port, but the FRAMING is per-port: a port with
         // a NODESPACLEN cap fragments the same entries into more, smaller UI frames so a large
         // NODES table stays robust on a slow/shared channel. A port with no cap (the default)
-        // uses the canonical structural limit (11 entries/frame) — byte-for-byte today's
+        // uses the canonical structural limit (11 entries/frame) - byte-for-byte today's
         // behaviour. Build once per port so the cap is honoured per port.
         foreach (var portId in AttachedPortIdsInOrder())
         {
@@ -879,9 +879,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // listener re-runs figc4.1 on a re-SABM and re-fires SessionAccepted), so if
         // the tap merely dropped its `tapped` membership on disconnect, the next
         // accept would add a SECOND closure to the same session and every inbound
-        // datagram would be processed twice. (Today the lower layers absorb it — the
+        // datagram would be processed twice. (Today the lower layers absorb it - the
         // circuit dedups a stale-sequence datagram and byPeerKey dedups a Connect
-        // Request — so it's currently benign, but a duplicated tap is a latent
+        // Request - so it's currently benign, but a duplicated tap is a latent
         // footgun on exactly the fresh/re-established interlinks this guards.) Detach
         // on disconnect + remove from `tapped`, so a reconnect re-attaches exactly one.
         EventHandler<DataLinkSignal> tap = null!;
@@ -925,11 +925,11 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             {
                 if (DispatchInp3(portId, fromNeighbour, info, out var l4Packet))
                 {
-                    return;   // consumed as a RIF or an L3RTT (or dropped as malformed) — never L4.
+                    return;   // consumed as a RIF or an L3RTT (or dropped as malformed) - never L4.
                 }
                 if (l4Packet is not null)
                 {
-                    DispatchL4(l4Packet, fromNeighbour);   // a normal L4 datagram — reuse the parsed packet.
+                    DispatchL4(l4Packet, fromNeighbour);   // a normal L4 datagram - reuse the parsed packet.
                 }
                 return;
             }
@@ -981,12 +981,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// has looped back to its own origin, resolve the destination's best next-hop
     /// neighbour that is not the one it just arrived from (don't bounce it straight
     /// back), ensure the interlink to that neighbour, and re-send. Synchronous when
-    /// the interlink is already up (the common transit path — preserves datagram
+    /// the interlink is already up (the common transit path - preserves datagram
     /// order); a cold-start interlink is dialled on a background task first.
     /// </summary>
     // The resolved INP3 forwarding/selection preference (BPQ PREFERINP3ROUTES). False
     // unless the overlay is constructed (inp3 != null ⇒ inp3.enabled + connect) AND the
-    // operator flipped the knob — so forward + connect route by quality byte-for-byte as
+    // operator flipped the knob - so forward + connect route by quality byte-for-byte as
     // today by default, even with the overlay on for awareness. When the overlay is off no
     // INP3 route is ever ingested, so this is moot; gating on `inp3 is not null` makes the
     // default-off guarantee explicit at the selection seam.
@@ -1030,7 +1030,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         var neighbour = decision.NextHopKey;
         var forwarded = decision.Packet;
 
-        // Count the forward once the decision resolved a next hop — the datagram is on its way
+        // Count the forward once the decision resolved a next hop - the datagram is on its way
         // toward the destination whether the interlink is hot (sent now) or cold (dialled then
         // sent). Bytes are the encoded L3 PDU length. A cold interlink that ultimately can't be
         // raised is rare and still counts as a forward attempt accepted by routing.
@@ -1078,12 +1078,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     /// <summary>
     /// Send raw 0xCF info-field bytes over an existing interlink to
-    /// <paramref name="neighbour"/> — the byte-shaped sibling of
+    /// <paramref name="neighbour"/> - the byte-shaped sibling of
     /// <see cref="TrySendOverInterlink"/>, used by the INP3 host because a RIF is an
     /// <c>Inp3Rif</c> (not a <see cref="NetRomPacket"/>) and an L3RTT frame is already
     /// bytes. Both funnel to the same <c>SendData(session, bytes, 0xCF)</c> seam L4 uses.
     /// Returns <c>false</c> if no interlink is up (the INP3 cold-interlink policy is
-    /// drop-don't-dial — design §4.1, so the host treats false as "not probed/advertised
+    /// drop-don't-dial - design §4.1, so the host treats false as "not probed/advertised
     /// this round," not a failure). A test seam (<see cref="interlinkSendSinkForTest"/>)
     /// captures the bytes instead of touching a real listener when set.
     /// </summary>
@@ -1136,7 +1136,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         => EnsureInterlinkAsync(neighbour, ct);
 
     // The shared neighbour-down path. With INP3 off (inp3 == null) this is EXACTLY today's
-    // table.MarkNeighbourDown — the L4 dial-failure failover, byte-for-byte. With INP3 on it
+    // table.MarkNeighbourDown - the L4 dial-failure failover, byte-for-byte. With INP3 on it
     // additionally drops the engine's per-neighbour timing state and escalates every
     // destination that just lost its last INP3 route to the scheduler (NEGATIVE → immediate
     // fan-out), so an L4 dial failure also propagates the INP3 withdrawal promptly. The 180 s
@@ -1167,7 +1167,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         var runConsole = RunInboundConsole;
         if (runConsole is null)
         {
-            // No console bridge — just accept the circuit (useful for transit/tests).
+            // No console bridge - just accept the circuit (useful for transit/tests).
             CircuitManager.AcceptIncoming(e);
             return;
         }
@@ -1215,7 +1215,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
         // Failover loop: try the best route; if the interlink to its neighbour can't
         // be raised (the neighbour is down), EnsureInterlinkAsync has already marked
-        // that neighbour down — which drops its routes from the table — so re-resolve
+        // that neighbour down - which drops its routes from the table - so re-resolve
         // the destination's now-best route and try again, until one connects or the
         // destination has no routes left. This is the connect-side of the link-down
         // failover signal: a `connect <alias>` re-routes around a dead next hop
@@ -1320,14 +1320,14 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             ?? PeerCapabilityCache.PlanWithoutCache(PeerDialPolicy.Interlink, link);
 
         // Dial the interlink. Prefer the supervisor's claim-aware hook (so no console
-        // is started against the neighbour — see OpenInterlink); fall back to a direct
+        // is started against the neighbour - see OpenInterlink); fall back to a direct
         // listener dial when no supervisor is wired (unit tests). A dial that fails
-        // (the neighbour never answered the SABM — ConnectAsync exhausts N2 and throws)
+        // (the neighbour never answered the SABM - ConnectAsync exhausts N2 and throws)
         // is the explicit link-down signal: mark the neighbour down so its now-dead
         // routes leave the table at once and the caller (forward / connect failover)
         // re-routes to an alternate next hop instead of re-dialling a link that isn't
         // there. A pre-dial setup fault (no port) is a local-config problem, not a
-        // neighbour-down — only the dial itself is guarded.
+        // neighbour-down - only the dial itself is guarded.
         Ax25Session session;
         try
         {
@@ -1337,10 +1337,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                 // NOT the listener's PreferExtendedConnect default. The NET/ROM neighbour
                 // population is overwhelmingly v2.0/mod-8 (BPQ/XRouter), and a peer that
                 // silently ignores our SABME (e.g. BPQ's AXUDP NET/ROM port) makes the dial
-                // exhaust N2 and throw instead of FRMR-degrading — breaking circuit
+                // exhaust N2 and throw instead of FRMR-degrading - breaking circuit
                 // origination. The per-peer capability cache (above) makes this adaptive:
                 // a neighbour learned-extended dials SABME, and a known non-XID-answerer
-                // skips the pre-connect XID — but with no cache the plan is the conservative
+                // skips the pre-connect XID - but with no cache the plan is the conservative
                 // mod-8 + pre-connect-XID default, byte-for-byte today's behaviour.
                 : await attachment.Listener.ConnectAsync(
                     neighbour, attachment.Listener.MyCall, plan.Extended, plan.PreConnectXid, ct).ConfigureAwait(false);
@@ -1354,7 +1354,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             LogNeighbourDown(downText, dropped);
             throw;
         }
-        // The dial RETURNED a session — record the outcome (plan-aware: what we dialled +
+        // The dial RETURNED a session - record the outcome (plan-aware: what we dialled +
         // what the resulting link observed). This is reached ONLY on a returned dial; the
         // catch above rethrows, so a dial that throws never records (no link ⇒ no signal).
         capabilityCache?.RecordOutcome(
@@ -1362,8 +1362,8 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             dialedExtended: plan.Extended, observedIsExtended: session.Context.IsExtended,
             dialedPreConnectXid: plan.PreConnectXid, observedSrejEnabled: session.Context.SrejEnabled);
 
-        // Tap the session for inbound NET/ROM (the tap is idempotent — TryAdd guards
-        // it — so OnSessionAccepted firing for the dial too is harmless).
+        // Tap the session for inbound NET/ROM (the tap is idempotent - TryAdd guards
+        // it - so OnSessionAccepted firing for the dial too is harmless).
         OnSessionAccepted(attachment.PortId, session);
         interlinks[key] = new Interlink(attachment.Listener, session);
         var neighbourText = key.ToString();
@@ -1414,7 +1414,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
             if (!interlinks.TryGetValue(neighbour.Value, out var link) || link.Session is null || link.Listener is null)
             {
-                // No interlink yet — the EnsureInterlinkAsync path (outbound connect)
+                // No interlink yet - the EnsureInterlinkAsync path (outbound connect)
                 // establishes it before the first datagram, so a missing link here is
                 // a transit/edge case we log rather than block on (sync sink).
                 var neighbourText = neighbour.Value.ToString();
@@ -1434,7 +1434,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// Synchronous dispose. Tears down the timer + circuit manager and detaches every
     /// port, posting a <b>best-effort</b> DISC to each interlink AX.25 session on the
     /// way (so a neighbour doesn't keep a half-open link). The DISC is fire-and-forget
-    /// here — the caller must keep the listeners alive momentarily for the frame to
+    /// here - the caller must keep the listeners alive momentarily for the frame to
     /// flush. For a guaranteed clean DISC/UA round-trip on the wire, dispose via
     /// <see cref="DisposeAsync"/> instead (the node host does).
     /// </summary>
@@ -1458,8 +1458,8 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// <summary>
     /// Graceful async dispose: stops origination, tears the L4 circuits down (their
     /// Disconnect Requests flow over the still-live interlinks), then <b>cleanly
-    /// disconnects each interlink AX.25 session</b> — posting the DISC and waiting
-    /// (bounded) for the DISC/UA to round-trip on the wire — before detaching the
+    /// disconnects each interlink AX.25 session</b> - posting the DISC and waiting
+    /// (bounded) for the DISC/UA to round-trip on the wire - before detaching the
     /// ports. This is what stops a neighbour (e.g. LinBPQ) being left with a half-open
     /// connected-mode link that it polls onto the shared channel (the #309
     /// contamination class). The caller must still keep the listeners alive until this
@@ -1582,7 +1582,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 }
 
 /// <summary>
-/// An immutable read of the node's L3 transit-forwarding throughput counters — the
+/// An immutable read of the node's L3 transit-forwarding throughput counters - the
 /// "forwarding" bucket of the Prometheus <c>/metrics</c> exporter (#457). All counts are
 /// monotonic over the service lifetime (process uptime), the semantics Prometheus
 /// counters expect. All-zero on an endpoint-only or NET/ROM-disabled node.

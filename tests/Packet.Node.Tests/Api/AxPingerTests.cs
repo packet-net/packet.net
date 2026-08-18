@@ -9,7 +9,7 @@ namespace Packet.Node.Tests.Api;
 
 /// <summary>
 /// Unit tests for the connectionless TEST-ping correlation core (<see cref="AxPinger"/>),
-/// driven through the <see cref="IAxPingChannel"/> seam by a fully synthetic fake — no
+/// driven through the <see cref="IAxPingChannel"/> seam by a fully synthetic fake - no
 /// modem, no live <see cref="Ax25Listener"/>. The fake captures the TEST command's info
 /// tag at send time and lets the test fire a synthetic <see cref="Ax25Listener.FrameTraced"/>
 /// TEST response, so each correlation path (echo → RTT; no echo → timeout/loss; wrong-tag /
@@ -57,7 +57,7 @@ public sealed class AxPingerTests
             });
 
         /// <summary>Build the spec-compliant TEST response that echoes a captured tag back
-        /// from <see cref="Peer"/> — source = peer, destination = us, C-bit = response.</summary>
+        /// from <see cref="Peer"/> - source = peer, destination = us, C-bit = response.</summary>
         public static Ax25Frame EchoResponse(ReadOnlyMemory<byte> tag) =>
             Ax25Frame.Test(destination: Us, source: Peer, info: tag.Span, isCommand: false, pollFinal: true);
     }
@@ -136,22 +136,22 @@ public sealed class AxPingerTests
         await Wait.ForAsync(() => channel.Sent.Count == 1, "the probe was sent");
         var tag = channel.Sent[0].Tag;
 
-        // (a) A TEST *command* with our tag (not a response) — must NOT match.
+        // (a) A TEST *command* with our tag (not a response) - must NOT match.
         channel.Raise(
             Ax25Frame.Test(destination: Us, source: Peer, info: tag, isCommand: true, pollFinal: true),
             FrameDirection.Received);
 
-        // (b) A TEST response from a DIFFERENT station, our tag — must NOT match.
+        // (b) A TEST response from a DIFFERENT station, our tag - must NOT match.
         channel.Raise(
             Ax25Frame.Test(destination: Us, source: Callsign.Parse("M7XYZ"), info: tag, isCommand: false, pollFinal: true),
             FrameDirection.Received);
 
-        // (c) A TEST response from the peer but a DIFFERENT (stray) tag — must NOT match.
+        // (c) A TEST response from the peer but a DIFFERENT (stray) tag - must NOT match.
         channel.Raise(
             Ax25Frame.Test(destination: Us, source: Peer, info: "STRAY"u8, isCommand: false, pollFinal: true),
             FrameDirection.Received);
 
-        // (d) Our own TEST command echoed on the TRANSMITTED side — wrong direction.
+        // (d) Our own TEST command echoed on the TRANSMITTED side - wrong direction.
         channel.Raise(
             Ax25Frame.Test(destination: Peer, source: Us, info: tag, isCommand: true, pollFinal: true),
             FrameDirection.Transmitted);
@@ -232,7 +232,7 @@ public sealed class AxPingerTests
         var clock = new FakeTimeProvider();
         var channel = new FakeChannel { ThrowOnSend = true };
 
-        // The port "went away" — every SendTestAsync throws. The run must complete with all
+        // The port "went away" - every SendTestAsync throws. The run must complete with all
         // probes recorded as loss, not surface the exception.
         var result = await AxPinger.RunAsync(channel, Peer, count: 2, perPingTimeout: TimeSpan.FromSeconds(5), clock, CancellationToken.None);
 
@@ -247,7 +247,7 @@ public sealed class AxPingerTests
     /// spec-compliant TEST responder (echoes the TEST command's info back as a TEST
     /// response). Proves the real adapter + real <see cref="Ax25Listener.SendTestAsync"/> +
     /// real <see cref="Ax25Listener.FrameTraced"/> correlation all line up on the wire (no
-    /// modem — an in-memory KISS channel). Uses <see cref="TimeProvider.System"/> because the
+    /// modem - an in-memory KISS channel). Uses <see cref="TimeProvider.System"/> because the
     /// listener pump is inherently real-time (see <c>Wait</c> / <c>TestAx25Timing</c>).
     /// </summary>
     [Fact]

@@ -12,10 +12,10 @@ namespace Packet.Node.Tests.Console;
 /// End-to-end gate tests for over-RF <c>SYSOP</c> elevation (auth part 4): drive the real
 /// <see cref="NodeCommandService"/> over a scripted connection with a real
 /// <see cref="SqliteUserStore"/> + <see cref="TotpService"/> and a recording fake
-/// <see cref="ISysopOperations"/>. These lock the load-bearing security properties — a valid
+/// <see cref="ISysopOperations"/>. These lock the load-bearing security properties - a valid
 /// code elevates, a replay is rejected, an expired elevation is rejected, an unelevated or
 /// under-scoped session can't run a privileged command, and the verb is inert when auth is
-/// off — exercising the actual replay guard (persisted counter) and TTL (injected clock).
+/// off - exercising the actual replay guard (persisted counter) and TTL (injected clock).
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class SysopElevationTests : IDisposable
@@ -250,7 +250,7 @@ public sealed class SysopElevationTests : IDisposable
         return count;
     }
 
-    // A recording fake for the privileged operations — asserts the gate reached (or didn't
+    // A recording fake for the privileged operations - asserts the gate reached (or didn't
     // reach) the action, without standing up a real host/supervisor.
     private sealed class RecordingSysopOps : ISysopOperations
     {

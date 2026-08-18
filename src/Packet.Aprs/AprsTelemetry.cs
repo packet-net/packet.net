@@ -6,7 +6,7 @@ namespace Packet.Aprs;
 /// <remarks>
 /// <para>
 /// Per spec §13: <c>T#xxx,aaa,aaa,aaa,aaa,aaa,bbbbbbbb[,comment]</c>
-/// — sequence number, five 8-bit unsigned analog values 000–255, and
+/// - sequence number, five 8-bit unsigned analog values 000-255, and
 /// an 8-bit binary value (8 ASCII <c>0</c>/<c>1</c> bytes), plus
 /// optional trailing comment.
 /// </para>
@@ -31,7 +31,7 @@ namespace Packet.Aprs;
 /// </para>
 /// </remarks>
 /// <param name="Sequence">
-/// Sequence number — typically 3 digits (e.g. <c>"005"</c>) or the
+/// Sequence number - typically 3 digits (e.g. <c>"005"</c>) or the
 /// literal <c>"MIC"</c> for MIM stations.
 /// </param>
 /// <param name="AnalogValues">Five analog channel values.</param>

@@ -70,7 +70,7 @@ public class NinoTncStatusFrameTests
     public void Firmware_341_Mode14_Byte_0x90_Resolves_To_A_Running_Mode()
     {
         // Firmware 3.41 reports mode 14 (300 AFSK IL2P+CRC) in register
-        // 06 as 0x90 (3.44 uses 0x23) — bench evidence: the 2026-07-03
+        // 06 as 0x90 (3.44 uses 0x23) - bench evidence: the 2026-07-03
         // wide-il2pc mode-survey runs. Status parsing must resolve it, not
         // report an unrecognised firmware byte.
         byte[] payload = [
@@ -104,7 +104,7 @@ public class NinoTncStatusFrameTests
     [Fact]
     public void Serial_Register_Is_Read_As_Eight_Raw_Bytes()
     {
-        // Identity bytes may contain '=' / ':' — the parser must take them
+        // Identity bytes may contain '=' / ':' - the parser must take them
         // positionally, not scan for the next separator.
         var payload = Encoding.ASCII.GetBytes("garbage=00:3.41=01:AB=:CD42=02:000003E8");
 

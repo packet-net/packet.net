@@ -36,7 +36,7 @@ namespace Packet.Ax25.Tests.Session;
 /// </remarks>
 public class DataLinkTimerRecoveryIntegrationTests
 {
-    private const int FastT1V = 200;   // ms — tight enough for sub-second tests
+    private const int FastT1V = 200;   // ms - tight enough for sub-second tests
     private const int FastN2 = 3;     // retries before give-up
 
     [Fact]
@@ -108,7 +108,7 @@ public class DataLinkTimerRecoveryIntegrationTests
         //
         // This exercises two fixes that both had to land for recovery to work:
         //   - runtime: ActionDispatcher re-emits old frames with the push-time
-        //     N(s) (was renumbered off the restored V(s) — pure-RR stall);
+        //     N(s) (was renumbered off the restored V(s) - pure-RR stall);
         //   - upstream (Packet.Ax25.Sdl 0.7.1, ax25sdl#54): figc4.5's
         //     recovery-complete decision now guards on the post-`V(a):=N(r)`
         //     value (`vs_eq_nr`) instead of the stale pre-action `vs_eq_va`,
@@ -206,7 +206,7 @@ public class DataLinkTimerRecoveryIntegrationTests
         var b = BuildEndpoint(nodeB, nodeA, time, link, out var bPeer);
 
         // Wire each endpoint's outbound to the peer's inbound *queue*
-        // (not its session directly — see Settle for the re-entrancy
+        // (not its session directly - see Settle for the re-entrancy
         // rationale).
         aPeer.Target = b.Inbound;
         bPeer.Target = a.Inbound;
@@ -260,7 +260,7 @@ public class DataLinkTimerRecoveryIntegrationTests
             {
                 return;
             }
-            // Address filter — drop if not for the peer (e.g. UI broadcast).
+            // Address filter - drop if not for the peer (e.g. UI broadcast).
             if (peerLocal.TargetLocal is { } expected
                 && !parsed.Destination.Callsign.Equals(expected))
             {
@@ -301,7 +301,7 @@ public class DataLinkTimerRecoveryIntegrationTests
             "no loss configured; SABM/UA handshake should complete after Settle drains the round-trip");
         rig.B.Session.CurrentState.Should().Be("Connected");
 
-        // Restore the fast timing values — the handshake runs the
+        // Restore the fast timing values - the handshake runs the
         // `T1V := 2 * SRT` verb (via the Select_T1 subroutine) which
         // overwrites the per-context T1V we set at construction. Apply
         // again after the handshake so the loss-scenario timing is fast.

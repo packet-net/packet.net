@@ -12,13 +12,13 @@ namespace Packet.Node.Core.Applications;
 /// The <c>pdn-app/1</c> stdio "floor": runs a registered <see cref="ApplicationConfig"/> as an
 /// out-of-process child spawned per connect, bridging the connected user's
 /// <see cref="INodeConnection"/> to the child's stdin/stdout via <see cref="AppSessionBridge"/>.
-/// The node and the app share <b>no code</b> — only the documented wire
+/// The node and the app share <b>no code</b> - only the documented wire
 /// (<c>docs/app-local-session-wire.md</c>), which is the entire separation boundary.
 /// </summary>
 /// <remarks>
 /// This type owns the process lifecycle (spawn, stderr drain, teardown); the duplex wire itself
 /// lives in <see cref="AppSessionBridge"/>, shared with the long-running-socket rung. Teardown is
-/// unconditional: the child's stdin is closed (EOF — a well-behaved app exits), and after a short
+/// unconditional: the child's stdin is closed (EOF - a well-behaved app exits), and after a short
 /// grace the process tree is killed. The node never crashes because an app misbehaves; a spawn
 /// failure surfaces as <see cref="ApplicationStartException"/> for the host to report.
 /// </remarks>
@@ -56,7 +56,7 @@ public sealed partial class ExternalProcessApplication : INodeApplication
 
             var stderr = DrainStderrAsync(process, ct);
 
-            // The bridge owns the wire and is total — it forwards the child's output even if the
+            // The bridge owns the wire and is total - it forwards the child's output even if the
             // header couldn't be delivered (a one-shot child that exited fast). The only "couldn't
             // start" failure is the spawn above (StartProcess → ApplicationStartException).
             await AppSessionBridge.RunAsync(
@@ -83,7 +83,7 @@ public sealed partial class ExternalProcessApplication : INodeApplication
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false,            // no shell — args are passed verbatim, no injection
+            UseShellExecute = false,            // no shell - args are passed verbatim, no injection
             CreateNoWindow = true,
             StandardOutputEncoding = Utf8NoBom,
             StandardErrorEncoding = Utf8NoBom,
@@ -130,7 +130,7 @@ public sealed partial class ExternalProcessApplication : INodeApplication
         }
         catch (OperationCanceledException)
         {
-            // teardown — normal.
+            // teardown - normal.
         }
         catch (Exception)
         {
@@ -155,7 +155,7 @@ public sealed partial class ExternalProcessApplication : INodeApplication
                 }
                 catch (OperationCanceledException)
                 {
-                    // Didn't exit on stdin-EOF within the grace — kill the tree.
+                    // Didn't exit on stdin-EOF within the grace - kill the tree.
                     try { process.Kill(entireProcessTree: true); } catch { /* race: already gone */ }
                     try { await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
                     LogKilled(config.Id);
@@ -164,7 +164,7 @@ public sealed partial class ExternalProcessApplication : INodeApplication
         }
         catch (Exception ex) when (ex is InvalidOperationException)
         {
-            // No process associated (already torn down) — nothing to do.
+            // No process associated (already torn down) - nothing to do.
         }
         finally
         {
@@ -197,7 +197,7 @@ public sealed partial class ExternalProcessApplication : INodeApplication
 /// <summary>
 /// Thrown when a registered application cannot be reached (a process can't be spawned, or a
 /// socket app's daemon isn't listening). The host catches it, logs, and tells the user the
-/// application is unavailable — the node itself never fails because an app is misconfigured.
+/// application is unavailable - the node itself never fails because an app is misconfigured.
 /// </summary>
 public sealed class ApplicationStartException : Exception
 {
@@ -217,7 +217,7 @@ public sealed class ApplicationStartException : Exception
 
     public string AppId { get; }
 
-    /// <summary>The thing that couldn't be reached — the command (process app) or socket path.</summary>
+    /// <summary>The thing that couldn't be reached - the command (process app) or socket path.</summary>
     public string Target { get; }
 
     /// <summary>The command, for a process application (alias of <see cref="Target"/>).</summary>

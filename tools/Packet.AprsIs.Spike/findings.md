@@ -1,6 +1,6 @@
-# APRS-IS corpus — early findings
+# APRS-IS corpus - early findings
 
-## 2026-05-14 (even later) — SECOND CORRECTION: the residual mismatches were OUR frame-alignment bug
+## 2026-05-14 (even later) - SECOND CORRECTION: the residual mismatches were OUR frame-alignment bug
 
 After fixing the q-strip regex (see next section), the differential
 still showed ~2.4% of `direwolf_decoded` rows had coordinates that
@@ -12,7 +12,7 @@ the bug to `DirewolfPipeline.SplitOutputByFrame`.
 like `DB0OA-1>...,DB0OA-1:!4741.47N\01015.98EDB0OA-R>APDG03,...:!4741...`),
 direwolf decodes the first position correctly and emits the trailing
 portion as the frame's "comment field". That comment line happens to
-start with `B0OA-R>APDG03,...:` — which **matches our TNC2 header
+start with `B0OA-R>APDG03,...:` - which **matches our TNC2 header
 regex**. The splitter saw it as a new frame boundary, claimed one
 input produced two frames, and shifted every subsequent batch-position
 assignment by one.
@@ -26,8 +26,8 @@ instead of 1.
 when it's preceded by a blank line. Direwolf separates consecutive
 frame analyses with an ANSI colour change (becomes a blank line after
 `AnsiStripper`), so every real header is preceded by a blank. The
-comment-field "fake header" sits immediately after a coords line —
-not preceded by a blank — so the new rule rejects it.
+comment-field "fake header" sits immediately after a coords line -
+not preceded by a blank - so the new rule rejects it.
 
 Code: `tools/Packet.AprsIs.Spike/DirewolfPipeline.cs:SplitOutputByFrame`.
 
@@ -35,7 +35,7 @@ After re-decoding the corpus with the fixed splitter, the differential
 numbers should reflect direwolf's actual decode quality (no
 pipeline-induced mismatches).
 
-**Lesson recap** — both "direwolf bugs" I reported earlier turned out
+**Lesson recap** - both "direwolf bugs" I reported earlier turned out
 to be bugs in OUR pipeline:
 1. Q-strip regex was greedy across `:` → mangled direwolf input on
    URLs
@@ -45,17 +45,17 @@ to be bugs in OUR pipeline:
 Direwolf's actual decode quality on the cases I've examined is
 essentially perfect.
 
-## 2026-05-14 (much later) — IMPORTANT CORRECTION: the "direwolf bugs" were our q-strip regex
+## 2026-05-14 (much later) - IMPORTANT CORRECTION: the "direwolf bugs" were our q-strip regex
 
 **Earlier "direwolf bug" claims (BothOkMismatch examples like Ajaccio/Indian Ocean,
 Tromsø/Antarctica) were wrong.** Investigation:
 
 The original q-construct stripper regex in `DirewolfMode.SanitiseForDirewolf`
-was `,qA.*:` — greedy `.*` matched across `:` characters. On frames whose
+was `,qA.*:` - greedy `.*` matched across `:` characters. On frames whose
 payload contained a URL like `http://`, the regex would over-strip from
 the q-construct all the way to the LAST `:` in the line (the `:` in
 `http:`). This left direwolf with a mangled input like
-`SRC>DEST://tknet.radioamateur.tk` — direwolf then made a heroic but
+`SRC>DEST://tknet.radioamateur.tk` - direwolf then made a heroic but
 nonsensical attempt to interpret the trailing characters as a
 compressed position, producing wildly wrong coordinates.
 
@@ -63,7 +63,7 @@ compressed position, producing wildly wrong coordinates.
 `/usr/bin/decode_aprs` (without the over-strip) produces the correct
 `N 41 57.2700, E 008 41.9600`. The bug was entirely in our pipeline.
 
-The regex is now `,q[A-Z][A-Z]?(,[^:]+)?:` — stops at the first `:` after
+The regex is now `,q[A-Z][A-Z]?(,[^:]+)?:` - stops at the first `:` after
 the q-construct. Re-decoded the 2.66M-row corpus with the fixed regex.
 
 Updated differential numbers (500k rows, with envelope-rewrite for the
@@ -80,13 +80,13 @@ generous 5e-4° tolerance to absorb APRS format-resolution noise):
 
 The remaining 0.6% mismatch cases are real but small. Spot-checks show:
 - Several are **concatenated frames** in a single APRS-IS line (gateway
-  bug where two TNC2 frames got merged) — we decode the first position,
+  bug where two TNC2 frames got merged) - we decode the first position,
   direwolf grabs different bytes
 - A cluster of compressed `L` overlay cases where direwolf produces
-  coordinates around (60, -120) or (0, 50) consistently — possibly a
+  coordinates around (60, -120) or (0, 50) consistently - possibly a
   real direwolf bug worth investigating further
 
-## 2026-05-14 — Envelope-rewrite mode for direwolf-rejected AX.25-invalid frames
+## 2026-05-14 - Envelope-rewrite mode for direwolf-rejected AX.25-invalid frames
 
 New spike mode `direwolf_rewrite` reads corpus rows where direwolf
 rejected the frame with "Bad source address" (letter SSIDs like D-Star
@@ -94,7 +94,7 @@ rejected the frame with "Bad source address" (letter SSIDs like D-Star
 
 1. Parses the TNC2 envelope
 2. Rewrites source / destination / digipeater callsigns to AX.25-valid
-   forms via `AprsCallsign.ToStrictCallsignOrCoerced()` — preserves
+   forms via `AprsCallsign.ToStrictCallsignOrCoerced()` - preserves
    what's recognisable, replaces letter SSIDs with `-1`, uppercases
    lowercase letters, truncates >6-char bases
 3. Q-constructs are preserved verbatim
@@ -108,16 +108,16 @@ still produces wrong coordinates after the envelope is fixed, the bug
 can't be blamed on envelope rejection masking the issue.
 
 Smoke run on 44.8k previously-rejected frames: 36k (80%) decoded
-successfully after rewrite — and direwolf's decode matched ours on
+successfully after rewrite - and direwolf's decode matched ours on
 every one. 5k frames were too malformed to even parse as TNC2;
 direwolf still rejected ~400 after rewrite (different errors, e.g.
 invalid timestamp).
 
 The differential analysis now uses both `direwolf_decoded` AND
-`direwolf_decoded_rewrite` (via COALESCE) — reclaims ~15 percentage
+`direwolf_decoded_rewrite` (via COALESCE) - reclaims ~15 percentage
 points of A/B coverage compared to the original-only baseline.
 
-## 2026-05-14 (later) — Extended decoder to `@` / `/` timestamped variants
+## 2026-05-14 (later) - Extended decoder to `@` / `/` timestamped variants
 
 Position decoder now handles all four position DTIs (`!`, `=`, `@`, `/`).
 Timestamped variants (`@` and `/`) strip the 7-byte (DHM zulu / DHM local /
@@ -129,22 +129,22 @@ Re-ran differential over 170,976 corpus rows covering all 4 DTIs:
 | Bucket | Count | % |
 |---|---:|---:|
 | `BothOkMatch` | 113,215 | **66.2%** (was 60.2% with just `!`/`=`) |
-| `OnlyUs` | 53,483 | 31.3% (was 37.4% — direwolf accepts more `@` because gateways more often have spec-clean SSIDs) |
+| `OnlyUs` | 53,483 | 31.3% (was 37.4% - direwolf accepts more `@` because gateways more often have spec-clean SSIDs) |
 | `BothOkMismatch` | 3,016 | 1.8% |
 | `BothFailed` | 793 | 0.5% |
-| `OnlyDirewolf` | 469 | 0.3% (slightly up — some firmware uses non-spec timestamp terminator bytes like `S` that direwolf accepts and we reject) |
+| `OnlyDirewolf` | 469 | 0.3% (slightly up - some firmware uses non-spec timestamp terminator bytes like `S` that direwolf accepts and we reject) |
 
 Adding the timestamped variants nets ~6% more match coverage and reveals
 that the `BothOkMismatch` direwolf-bug pattern persists across `@` frames
-too (e.g. an `@095214h1104.61N/06357.19Wy...` Venezuela frame — comment
-mentions QRZ.com Venezuela suffix `YY7ECA` — gets `(11.08, -63.95)` from
+too (e.g. an `@095214h1104.61N/06357.19Wy...` Venezuela frame - comment
+mentions QRZ.com Venezuela suffix `YY7ECA` - gets `(11.08, -63.95)` from
 us correctly vs `(62.83, -121.66)` from direwolf).
 
 8 new unit tests covering DHM zulu / local / HMS / MDHM timestamp
 formats plus negative paths (malformed terminator, non-digit body,
 short input).
 
-## 2026-05-14 (afternoon) — Position decoder differential vs direwolf
+## 2026-05-14 (afternoon) - Position decoder differential vs direwolf
 
 Stood up `src/Packet.Aprs` with `AprsPositionDecoder.TryDecode` covering the
 uncompressed (APRS12c §8) and compressed (§9) variants of DTI `!` / `=`.
@@ -158,7 +158,7 @@ Ran `differential` mode over 125,036 corpus lines:
 | `BothFailed` (both reject) | 602 | 0.5% |
 | `OnlyDirewolf` (direwolf decoded; we rejected) | 170 | 0.1% |
 
-### `OnlyUs` (37.4%) — direwolf rejects AX.25 envelope before getting to position
+### `OnlyUs` (37.4%) - direwolf rejects AX.25 envelope before getting to position
 
 Spot-checking samples: every `OnlyUs` case is direwolf reporting `"Bad source address"`
 and refusing to process the frame. The position bytes are well-formed; direwolf
@@ -174,13 +174,13 @@ Examples from the corpus (info-field bytes, all decoded fine by our payload-leve
 | `SM6JWU-B` | `!5638.82ND01255.59E&...` | SSID `B` |
 
 **Implication for our library**: payload-layer decoding should be independent of
-AX.25 envelope validity — APRS payloads decode reliably even when the surrounding
+AX.25 envelope validity - APRS payloads decode reliably even when the surrounding
 frame is AX.25-invalid (D-Star / DMR gateways routinely violate). The strict
 `Callsign` we use for outbound frame production is correct; for inbound APRS
 monitor display, we'll want the permissive `AprsCallsign` type planned in
 Tier 1(a) so we can still surface station identifiers from these frames.
 
-### `BothOkMismatch` (1.8%) — most are direwolf bugs
+### `BothOkMismatch` (1.8%) - most are direwolf bugs
 
 Of 5 hand-checked `BothOkMismatch` examples, **4 show direwolf producing
 wildly wrong coordinates** while our decoder produces a position that matches
@@ -188,40 +188,40 @@ the frame's comment text:
 
 | Comment text in frame | Our decode | Direwolf decode |
 |---|---|---|
-| "Ajaccio VHF (145.6375)" | (41.95, 8.70) — Corsica ✓ | (-38.08, 76.55) — southern Indian Ocean |
-| "Repeteur 147.255...Node 1453" (French) | (48.74, -69.09) — Quebec ✓ | (-79.63, 132.03) — Antarctica |
-| "Free radio repeater 446.225" | (50.43, 30.38) — Kyiv area | (62.66, -125.31) — northern Canada |
-| "LoRa APRS at Pir7 Tromsø" | (69.67, 19.02) — Tromsø ✓ | (-77.70, 131.92) — Antarctica |
-| "LoRa Tracker !wl]!" | (55.9512, -4.3275) — Glasgow | (55.9513, -4.3276) — same, 11m apart |
+| "Ajaccio VHF (145.6375)" | (41.95, 8.70) - Corsica ✓ | (-38.08, 76.55) - southern Indian Ocean |
+| "Repeteur 147.255...Node 1453" (French) | (48.74, -69.09) - Quebec ✓ | (-79.63, 132.03) - Antarctica |
+| "Free radio repeater 446.225" | (50.43, 30.38) - Kyiv area | (62.66, -125.31) - northern Canada |
+| "LoRa APRS at Pir7 Tromsø" | (69.67, 19.02) - Tromsø ✓ | (-77.70, 131.92) - Antarctica |
+| "LoRa Tracker !wl]!" | (55.9512, -4.3275) - Glasgow | (55.9513, -4.3276) - same, 11m apart |
 
-The Glasgow row is right at our 1e-4° (~11m) tolerance — borderline floating-point
+The Glasgow row is right at our 1e-4° (~11m) tolerance - borderline floating-point
 precision difference, not a real disagreement. The other four are systematic
 direwolf bugs. The wrong direwolf coordinates cluster in a recognisable pattern
 (latitudes around -77 to 62, longitudes around -125 to 132) suggesting direwolf
 may be misreading some bytes outside the position field on certain frame layouts.
 
-**Implication**: our decoder is competitive with — and on these cases, more
-accurate than — direwolf. Worth filing the mismatches as upstream
+**Implication**: our decoder is competitive with - and on these cases, more
+accurate than - direwolf. Worth filing the mismatches as upstream
 `wb2osz/direwolf` issues once we've nailed down the exact direwolf version
 + reproducer.
 
-### `OnlyDirewolf` (0.1%) — we're over-strict on symbol table identifier
+### `OnlyDirewolf` (0.1%) - we're over-strict on symbol table identifier
 
 Examples:
-- `!5846.46N[01658.39El000/000...` — symbol table `[` (0x5B); we reject, direwolf accepts.
-- `!4949.37N#01316.42EIPHG2130 12.1V` — symbol table `#`; we reject, direwolf accepts.
+- `!5846.46N[01658.39El000/000...` - symbol table `[` (0x5B); we reject, direwolf accepts.
+- `!4949.37N#01316.42EIPHG2130 12.1V` - symbol table `#`; we reject, direwolf accepts.
 
 Per APRS12c §20, the symbol table identifier should be `/`, `\`, or an
 overlay character from `0–9` / `A–Z`. `[` and `#` are non-spec but accepted
 in practice. Loosening our validator to "any printable ASCII" would clear
 these but at the cost of accepting some garbage. Trade-off to revisit.
 
-### `BothFailed` (0.5%) — genuinely malformed firmware bugs
+### `BothFailed` (0.5%) - genuinely malformed firmware bugs
 
-- `!335636.00ND1172241.40E&...` — 6-digit lat / 7-digit lon (overshoots format)
-- `!1488.93NU09062.91W#` — `90.62` longitude minutes (>59, invalid)
-- `!51.2867N,/07.7420E-` — decimal degrees in the lat field (non-standard)
-- `!4944.2930N/0920.5371W#` — extra digits in minutes field
+- `!335636.00ND1172241.40E&...` - 6-digit lat / 7-digit lon (overshoots format)
+- `!1488.93NU09062.91W#` - `90.62` longitude minutes (>59, invalid)
+- `!51.2867N,/07.7420E-` - decimal degrees in the lat field (non-standard)
+- `!4944.2930N/0920.5371W#` - extra digits in minutes field
 
 Real firmware bugs in the wild. Same flavour as the lowercase-source-address /
 exotic-DTI bugs documented in the earlier APRS12c spec cross-reference.
@@ -234,11 +234,11 @@ The `AprsPositionDecoder` v0 works. On the ~125k `!` / `=` frames sampled:
   position (60.2 / (60.2 + 1.8 + 0.1) = 97.0%).
 - The few mismatch cases we've examined favour our decoder.
 - 37.4% of frames are AX.25-invalid (letter SSIDs) and direwolf rejects them
-  outright — our decoder works on those because we look at payload bytes only.
+  outright - our decoder works on those because we look at payload bytes only.
 
 Follow-ups:
 
-1. Add support for `@` / `/` (timestamped positions) — strip the 7-byte
+1. Add support for `@` / `/` (timestamped positions) - strip the 7-byte
    timestamp prefix before delegating to the same decoder.
 2. Decide on symbol-table strictness for production.
 3. Investigate the `BothOkMismatch` direwolf bugs in more detail; file
@@ -254,19 +254,19 @@ raw stats.md / failures.jsonl land in `artifacts/aprs-is-analysis/<ts>/`
 
 Re-run with `dotnet run --project tools/Packet.AprsIs.Spike -- analyse`.
 
-## 2026-05-14 — Cross-reference: corpus errors vs APRS12c spec
+## 2026-05-14 - Cross-reference: corpus errors vs APRS12c spec
 
 Each error class surfaced by the direwolf pipeline (previous section) mapped
 to the canonical updated APRS specification.
 
 **Sources:**
 
-- `APRS101.pdf` — the original 1998 spec Tom linked. Now explicitly marked
+- `APRS101.pdf` - the original 1998 spec Tom linked. Now explicitly marked
   obsolete by [how.aprs.works/aprs101-pdf-is-obsolete](https://how.aprs.works/aprs101-pdf-is-obsolete/).
-- `APRS12c.pdf` — version 1.2 draft C, the current de-facto spec. Maintained
+- `APRS12c.pdf` - version 1.2 draft C, the current de-facto spec. Maintained
   by `wb2osz` (direwolf author) at
   [github.com/wb2osz/aprsspec](https://github.com/wb2osz/aprsspec).
-- `Understanding-APRS-Packets.pdf` — a more accessible "what real packets
+- `Understanding-APRS-Packets.pdf` - a more accessible "what real packets
   look like, including the common bugs" companion document by the same
   author.
 
@@ -282,15 +282,15 @@ sloppiness, not over-strict decoding.
 
 ### Per-error mapping
 
-#### "Bad source address" (58,609 cases — biggest bucket)
+#### "Bad source address" (58,609 cases - biggest bucket)
 
 Direwolf flags lowercase / >6-char / weird-SSID source addresses
 (`dl9mfl-6`, `WINLINK`, `BD8AWU-18`, `BI4KVT-8G`).
 
-**Spec position** — APRS12c Chapter 4: *"the field conforms to the standard
+**Spec position** - APRS12c Chapter 4: *"the field conforms to the standard
 AX.25 callsign format (i.e. up to 6 upper case alphanumeric characters plus
 SSID)"*. Understanding-APRS-Packets §1.1 lists invalid examples:
-`N2GH-0`, `N2GH-16`, `N2GH -1`, **`n2gh`** — *"Must be upper case."*
+`N2GH-0`, `N2GH-16`, `N2GH -1`, **`n2gh`** - *"Must be upper case."*
 
 §5.9 calls out lowercase as one of the documented common bugs.
 
@@ -301,7 +301,7 @@ type**, not a relaxation of `Callsign`.
 
 #### "Unknown APRS Data Type Indicator 'H' (KJ4ERJ APRSIS32)" (3,521 cases)
 
-**Spec position** — APRS12c Chapter 5, DTI table:
+**Spec position** - APRS12c Chapter 5, DTI table:
 
 | Range | Status |
 |---|---|
@@ -312,18 +312,18 @@ type**, not a relaxation of `Callsign`.
 
 #### "Unknown APRS Data Type Indicator '2'" (1,849 cases, APRSdroid)
 
-**Spec position** — APRS12c Chapter 5, DTI table: `0–9` is explicitly
+**Spec position** - APRS12c Chapter 5, DTI table: `0–9` is explicitly
 listed as **"[Do not use]"**. APRSdroid is violating the spec.
 
 #### "Unknown APRS Data Type Indicator '-'" / "' '" (space) / etc.
 
-**Spec position** — APRS12c Chapter 5: `-` is in the `[Unused]` row. Space
-(0x20) is not in the DTI table at all — implies the payload starts with
+**Spec position** - APRS12c Chapter 5: `-` is in the `[Unused]` row. Space
+(0x20) is not in the DTI table at all - implies the payload starts with
 whitespace (a mis-formed frame).
 
 #### "Invalid character in compressed longitude. Must be in range of '!' to '{'." (4,453 cases)
 
-**Spec position** — APRS12c Chapter 9 (Compressed Position Report Data
+**Spec position** - APRS12c Chapter 9 (Compressed Position Report Data
 Formats):
 
 > *"The values of YYYY and XXXX are computed as follows: YYYY is 380926 ×
@@ -331,13 +331,13 @@ Formats):
 > … To obtain the corresponding ASCII characters, 33 is added to each of
 > these values."*
 
-Base-91 values 0–90, plus 33 offset = ASCII 33 (`!`) through 123 (`{`).
+Base-91 values 0-90, plus 33 offset = ASCII 33 (`!`) through 123 (`{`).
 Anything outside that range is impossible under valid encoding. **Direwolf
 is correct.** The sender emitted a malformed compressed frame.
 
 #### "Invalid symbol table id for compressed position" (2,871 cases)
 
-**Spec position** — APRS12c Chapter 9 + 20: the Symbol Table Identifier is
+**Spec position** - APRS12c Chapter 9 + 20: the Symbol Table Identifier is
 `/` (primary) or `\` (secondary) or `0–9 / A–Z` (overlay characters).
 Anything else is not a valid table id and the leading character is then
 ambiguous (compressed-position or numeric-lat/long?). **Direwolf is
@@ -348,13 +348,13 @@ correct.**
 We have **two distinct lenience levers** to think about:
 
 1. **AX.25 envelope** (`Callsign`, `Ax25Frame`): stay strict per spec. Real
-   strictness is what we want on the wire — invalid frames shouldn't be
+   strictness is what we want on the wire - invalid frames shouldn't be
    accepted as "valid AX.25 + happens to have lowercase". Direwolf agrees;
    it warns rather than rejects but that's a UX choice, not a spec
    reading.
 2. **APRS payload** (future `Packet.Aprs`): validate per APRS12c
    directly. The bugs in the wild (APRSIS32, APRSdroid, Kenwood TM-D710
-   0xFF burst — §5.10 in Understanding-APRS-Packets) are real and
+   0xFF burst - §5.10 in Understanding-APRS-Packets) are real and
    documented. Our decoder should reject them cleanly and surface the
    reason (matching direwolf's class of error message), not silently
    accept.
@@ -365,9 +365,9 @@ fit them through the strict AX.25 mould. Lossy is fine: surface
 "`dl9mfl-6` (lowercase, non-spec)" rather than rejecting.
 
 For **frame production** (we send) we never emit lowercase or weird
-SSIDs — strict `Callsign` is the right input type.
+SSIDs - strict `Callsign` is the right input type.
 
-### APRS101 vs APRS12c — which to follow?
+### APRS101 vs APRS12c - which to follow?
 
 The community-maintained `wb2osz/aprsspec` repo explicitly says
 APRS101.pdf is obsolete. APRS12c.pdf incorporates decades of corrections
@@ -381,17 +381,17 @@ maintained successor.
 
 Direct refs for the eventual `Packet.Aprs` work, pinned by URL:
 
-- [`APRS12c.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/APRS12c.pdf) — primary spec.
-- [`Understanding-APRS-Packets.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/Understanding-APRS-Packets.pdf) — implementer's companion + common-bugs catalogue.
-- [`APRS-Symbols.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/APRS-Symbols.pdf) — full symbol table reference (when we render).
-- [`APRS-Digipeater-Algorithm.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/APRS-Digipeater-Algorithm.pdf) — for the digipeating logic when we eventually digipeat.
+- [`APRS12c.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/APRS12c.pdf) - primary spec.
+- [`Understanding-APRS-Packets.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/Understanding-APRS-Packets.pdf) - implementer's companion + common-bugs catalogue.
+- [`APRS-Symbols.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/APRS-Symbols.pdf) - full symbol table reference (when we render).
+- [`APRS-Digipeater-Algorithm.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/APRS-Digipeater-Algorithm.pdf) - for the digipeating logic when we eventually digipeat.
 
-## 2026-05-14 — Direwolf reference pipeline (276k lines, ~1 h capture)
+## 2026-05-14 - Direwolf reference pipeline (276k lines, ~1 h capture)
 
 First end-to-end pass of the corpus through direwolf's `decode_aprs`
 utility, persisted into a sibling `direwolf_decoded` table keyed by
 `line_id`. Lines are sanitised on the way in by stripping the APRS-IS
-q-construct path (`,qA.*:` → `:`) — the exact transformation the
+q-construct path (`,qA.*:` → `:`) - the exact transformation the
 direwolf man page recommends.
 
 **Throughput**: ~23,400 lines/sec on a single `decode_aprs` subprocess
@@ -413,7 +413,7 @@ full APRS payload validator rejects ~41 %. The disagreement set is the
 useful corpus.
 
 **Direwolf accepts, we reject (~26 % of direwolf-accept sample):**
-Almost entirely **lowercase callsigns** — `dl9mfl-6`, `iw0uwf-4`,
+Almost entirely **lowercase callsigns** - `dl9mfl-6`, `iw0uwf-4`,
 `vk4zu-13`, `kh6s-4`, `py5td-13`. Direwolf logs a "Source Address has
 lower case letters" warning but parses on. Our strict `Callsign` type
 refuses. Confirms the case for a separate permissive `AprsCallsign`
@@ -422,14 +422,14 @@ type in the eventual `Packet.Aprs` library.
 **We accept, direwolf rejects (~46 % of direwolf-reject sample):**
 Valid AX.25 envelopes carrying malformed APRS payloads. Examples:
 
-- `F4JHN-13>APSFWX:)Temp-JHN!4344.50NT00122.50WWSOUS` — direwolf:
+- `F4JHN-13>APSFWX:)Temp-JHN!4344.50NT00122.50WWSOUS` - direwolf:
   *"Unknown APRS Data Type Indicator '-'"*. The `)` is the Item DTI;
   direwolf's deeper validator catches an inconsistency further in.
-- `DM4XI-13>APRS:@140951z4921.32N/01204.07E_c197s004…` — direwolf:
+- `DM4XI-13>APRS:@140951z4921.32N/01204.07E_c197s004…` - direwolf:
   *"Unknown APRS Data Type Indicator '2'"* (an APRSdroid bug).
-- `SH6FHC-5>APDR16:=5801.78N/01248.40E<112/002/A=000…` — direwolf:
-  *"Invalid character in compressed longitude — must be in range '!' to '{'."*
-- `PJUWX-0` `PE2ETE-11` — DTI ' ' (space) — likely missing payload.
+- `SH6FHC-5>APDR16:=5801.78N/01248.40E<112/002/A=000…` - direwolf:
+  *"Invalid character in compressed longitude - must be in range '!' to '{'."*
+- `PJUWX-0` `PE2ETE-11` - DTI ' ' (space) - likely missing payload.
 
 ### Top error buckets across the corpus
 
@@ -445,7 +445,7 @@ The corpus is now a real **differential testing baseline**: for any
 future `Packet.Aprs` decoder, every frame has a direwolf interpretation
 in the same SQLite file. Diff outputs frame-by-frame → bug candidates.
 
-## 2026-05-14 — payload-type breakdown (181k lines, ~30 min capture)
+## 2026-05-14 - payload-type breakdown (181k lines, ~30 min capture)
 
 First run with the payload-type classifier wired in (Tier 0 unblocker).
 Bucketed by the first information-field byte per APRS101 §5 DTI.
@@ -470,25 +470,25 @@ Bucketed by the first information-field byte per APRS101 §5 DTI.
 **Highlights:**
 
 - **Positions dominate**: 4 variants total **61.80 %** of all corpus traffic.
-  The decoder ordering is now clear — start with `position_no_ts_no_msg`
+  The decoder ordering is now clear - start with `position_no_ts_no_msg`
   (the `!` DTI, simplest format), then `position_ts_*` (timestamp
   variants), then mic-E (compressed binary).
-- **Messages are 8.27 %** — a real chunk. Implementing them needs the
+- **Messages are 8.27 %** - a real chunk. Implementing them needs the
   ack/reject state machine (APRS messages have retry semantics on top of
   AX.25 UI frames).
-- **Mic-E is ~4.9 %** combined — smaller than I'd guessed. Mic-E is
+- **Mic-E is ~4.9 %** combined - smaller than I'd guessed. Mic-E is
   bigger on local RF than on the APRS-IS firehose (probably because
   Mic-E is more popular for mobile, and APRS-IS is sourced from igates
   globally).
 - **Zero `non_printable_*` or `empty`** rows means every TNC2 line we
-  captured had a printable-ASCII first byte of payload. Good signal —
+  captured had a printable-ASCII first byte of payload. Good signal -
   the corpus is "well-formed APRS as APRS-IS sees it".
 
 Reconstruct success rate held steady at **78.05 %** (was 77.60 % at
 the smaller sample). The 22 % miss rate is structural (APRS-vs-AX.25
 callsign conventions), not statistical noise.
 
-## 2026-05-14 — first 63k lines (~12 minutes of capture)
+## 2026-05-14 - first 63k lines (~12 minutes of capture)
 
 | Metric | Count | % of total |
 |---|--:|--:|
@@ -500,7 +500,7 @@ callsign conventions), not statistical noise.
 
 **Headline**: ~22 % of real APRS-IS traffic uses callsign/SSID patterns
 that aren't valid under the AX.25 spec. Of those failures, **99.91 % are
-invalid sources** — destinations and digipeaters are fine almost across
+invalid sources** - destinations and digipeaters are fine almost across
 the board.
 
 Of the lines that *do* reconstruct, every single one round-trips through
@@ -513,9 +513,9 @@ By inspecting top offenders against the 14,197 invalid-source failures:
 
 ### 1. Lowercase callsigns (~700 lines)
 
-Sources like `db0sda` (600 lines — a German DV repeater beaconing
+Sources like `db0sda` (600 lines - a German DV repeater beaconing
 constantly), `vk3mak-15`, `dl9mfl-6`, `iw0uwf-4`, `iz1wiy-3` etc. AX.25
-requires uppercase A–Z; APRS-IS happily passes them through.
+requires uppercase A-Z; APRS-IS happily passes them through.
 
 ### 2. Tactical / non-callsign source addresses (~480 lines)
 
@@ -523,10 +523,10 @@ requires uppercase A–Z; APRS-IS happily passes them through.
 Winlink RMS gateways advertise their packet presence using `WINLINK` as
 a tactical alias. None of these are valid AX.25 addresses.
 
-### 3. Multi-character / non-numeric SSIDs (~13,000 lines — the bulk)
+### 3. Multi-character / non-numeric SSIDs (~13,000 lines - the bulk)
 
 Patterns like `M0IQF-N4`, `DD9PX-77`, `BI4KVT-8G`, `BD8CMN-T`,
-`BA4QFV-O`. AX.25 spec allows SSIDs 0–15 numeric only. APRS uses:
+`BA4QFV-O`. AX.25 spec allows SSIDs 0-15 numeric only. APRS uses:
 
 - Letter SSIDs (`-A`, `-B`, `-T`, `-N`) for D-Star / DMR gateways, RMS
   stations, weather, etc.
@@ -534,35 +534,35 @@ Patterns like `M0IQF-N4`, `DD9PX-77`, `BI4KVT-8G`, `BD8CMN-T`,
   stations and APRS firmwares.
 - Combinations (`-8G`, `-N4`, `-N0`, `-S55MA`).
 
-This is the largest class and the most thorny — APRS conventions
+This is the largest class and the most thorny - APRS conventions
 genuinely vary by country and software. Worth filing as an upstream
 APRS-spec issue if "permitted SSID forms" aren't documented.
 
 ### 4. Long base callsigns (> 6 chars)
 
-`BD8AWU-18`, `BD8CMN-S/T/H`, `BI4KVT-8G`. Spec is strict 1–6 chars.
+`BD8AWU-18`, `BD8CMN-S/T/H`, `BI4KVT-8G`. Spec is strict 1-6 chars.
 Often overlaps category 3.
 
 ## Destination / digipeater failures (rare)
 
 - 5 invalid destinations seen (`AP4R132`, `APLRd1`, `APOT212`, `UQSWT63`):
-  long destination "to" calls — APRS software pads the destination with
+  long destination "to" calls - APRS software pads the destination with
   software-ID tokens that occasionally exceed 6 chars.
 - 8 invalid digipeaters: lowercase (`wide1-1`), letter SSIDs
   (`DO0SAS-L4`, `9M2VKA-L`), multi-digit SSIDs (`OK2ZAW-17`).
 
 ## What this tells us about the AX.25 parser
 
-The strict `Callsign.TryParse` is **correctly** rejecting these — the
-AX.25 spec is unambiguous about A–Z / 0–9 and SSID 0–15. Our parser is
+The strict `Callsign.TryParse` is **correctly** rejecting these - the
+AX.25 spec is unambiguous about A-Z / 0-9 and SSID 0-15. Our parser is
 behaving as designed.
 
 But for the *monitor* layer (e.g. a web UI showing live APRS-IS frames),
 strict rejection means ~22 % of traffic disappears. The right shape for
 the codebase is:
 
-- **`Callsign`** — strict AX.25 type. Stays as-is.
-- **`AprsCallsign`** — looser type accepting the APRS conventions above.
+- **`Callsign`** - strict AX.25 type. Stays as-is.
+- **`AprsCallsign`** - looser type accepting the APRS conventions above.
   Lives in the eventual `Packet.Aprs` library (SP-008).
 - **A boundary layer** that maps `AprsCallsign` → `Callsign` where
   possible (`-B` → `-11`, etc., per common D-Star practice), and surfaces
@@ -571,21 +571,21 @@ the codebase is:
 ## What this tells us about the corpus
 
 77.60 % clean parse is encouraging baseline. The remaining 22.40 % is
-exactly the kind of real-world data the spike was built to surface —
+exactly the kind of real-world data the spike was built to surface -
 each failure mode is now a documented edge case rather than a
 hypothetical.
 
 The corpus itself is feedstock for:
 
-- **SP-002** (direwolf-as-reference harness) — A/B our parser against
+- **SP-002** (direwolf-as-reference harness) - A/B our parser against
   direwolf on the same TNC2 lines.
-- **SP-003** (replay/regression harness) — once we have the
+- **SP-003** (replay/regression harness) - once we have the
   `Packet.Replay.AprsIs` library, every captured line becomes a regression
   test fixture.
-- **SP-004** (fuzz harness) — the corpus is a high-quality seed for
+- **SP-004** (fuzz harness) - the corpus is a high-quality seed for
   SharpFuzz against `Ax25Frame.TryParse` (real-world inputs > synthetic
   inputs at finding edge cases).
-- **SP-008** (full APRS library) — `AprsCallsign` design driven by what
+- **SP-008** (full APRS library) - `AprsCallsign` design driven by what
   we actually see, not what we *think* the APRS spec allows.
 
 ## How to re-run

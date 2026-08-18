@@ -5,7 +5,7 @@ namespace Packet.Ax25.Session;
 /// <summary>
 /// A request to send a UI (Unnumbered Information) frame. The dispatcher
 /// emits these in response to the figure-canonical <c>UI_command</c>
-/// signal_lower verb (figc4.1 / 4.2 / 4.3 / 4.4 / 4.6 — every state's
+/// signal_lower verb (figc4.1 / 4.2 / 4.3 / 4.4 / 4.6 - every state's
 /// DL_UNIT_DATA_request column).
 /// </summary>
 /// <param name="IsCommand">

@@ -6,7 +6,7 @@ namespace Packet.Tune.Core.Tests;
 /// <summary>
 /// Coordinator + responder end-to-end over the in-memory link pair with fake
 /// stations: the propose→confirm→commit→probe choreography, per-direction cells,
-/// the rejection path, and — the safety property — every failure mode ending with
+/// the rejection path, and - the safety property - every failure mode ending with
 /// BOTH stations back at the session's home mode/channel.
 /// <para>The two tests that turn on a timeout expiring (the confirm timeout and the
 /// responder's idle watchdog) run on a <see cref="FakeTimeProvider"/> and advance virtual
@@ -16,7 +16,7 @@ public class ModeCoordinationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
 
-    /// <summary>Near-zero timings — no radios to guard in a fake rig.</summary>
+    /// <summary>Near-zero timings - no radios to guard in a fake rig.</summary>
     private static ModeCoordOptions FastOptions => new()
     {
         HomeMode = 6,
@@ -26,7 +26,7 @@ public class ModeCoordinationTests
         ConfirmTimeout = TimeSpan.FromSeconds(3),
         ReportTimeout = TimeSpan.FromSeconds(5),
         PeerProbeTimeout = TimeSpan.FromSeconds(5),
-        // Non-zero: the peer's switch is asynchronous even on a fake rig — the
+        // Non-zero: the peer's switch is asynchronous even on a fake rig - the
         // settle is what covers it, exactly as on hardware.
         SwitchSettle = TimeSpan.FromMilliseconds(500),
         PreProbeDelay = TimeSpan.Zero,
@@ -99,7 +99,7 @@ public class ModeCoordinationTests
         coordinator.CurrentMode.Should().Be(6);
 
         // Regression (bench-found): the responder must open its home-verify
-        // probe window BEFORE applying home — a slow apply (blocked settle
+        // probe window BEFORE applying home - a slow apply (blocked settle
         // frame) must not lose the coordinator's verify probes.
         var events = rig.ResponderStation.Events;
         int homeVerifyCount = events.FindLastIndex(e => e.StartsWith("count:", StringComparison.Ordinal));
@@ -117,7 +117,7 @@ public class ModeCoordinationTests
         await using var coordinator = new ModeCoordinator(rig.CoordinatorLink, rig.CoordinatorStation, FastOptions);
         var responderRun = RunResponder(rig, out var responderCts);
 
-        var attempt = await coordinator.CoordinateAsync(15).WaitAsync(Timeout); // "Set from KISS" — not a real mode
+        var attempt = await coordinator.CoordinateAsync(15).WaitAsync(Timeout); // "Set from KISS" - not a real mode
 
         attempt.Outcome.Should().Be(ModeCoordOutcome.Rejected);
         attempt.Detail.Should().Be("unkmode");
@@ -249,7 +249,7 @@ public class ModeCoordinationTests
         var rig = FakeRig.Create();
         var options = FastOptions with { ReportTimeout = TimeSpan.FromMilliseconds(300) };
         // Drop the coordinator's FIRST C→R 'ProbesSent' announce: the responder never reports, so
-        // the attempt reverts both ends safely home — and CoordinateWithRetryAsync re-runs the whole
+        // the attempt reverts both ends safely home - and CoordinateWithRetryAsync re-runs the whole
         // (revert-safe) attempt, which succeeds the second time.
         var droppyLink = new DropFirstModeActionLink(rig.CoordinatorLink, ModeCoordAction.ProbesSent, 1);
         await using var coordinator = new ModeCoordinator(droppyLink, rig.CoordinatorStation, options);
@@ -265,7 +265,7 @@ public class ModeCoordinationTests
     }
 
     /// <summary>Delegates to the inner link but silently drops the first <c>count</c> sends whose
-    /// decoded <see cref="ModeCoordMessage"/> has the given action — the receipt-tolerant send
+    /// decoded <see cref="ModeCoordMessage"/> has the given action - the receipt-tolerant send
     /// "succeeds" but the peer never sees it, exercising the commit-phase retry.</summary>
     private sealed class DropFirstModeActionLink : ITuningLink
     {
@@ -345,7 +345,7 @@ public class ModeCoordinationTests
     }
 
     /// <summary>The shared RF path: probes transmitted by one station arrive at every
-    /// OTHER station — unless the sender's mode is dead, or the two ends sit on
+    /// OTHER station - unless the sender's mode is dead, or the two ends sit on
     /// different channels.</summary>
     private sealed class FakeEther
     {

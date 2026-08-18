@@ -11,7 +11,7 @@ namespace Packet.Node.Tests.Rigs;
 /// <c>PACKETNET_RIG_PORTS</c> override) and by-id symlinks: claimed marking through
 /// <see cref="ClaimedSerialDevices"/>, suggestion wiring through
 /// <see cref="RigDescriptorSuggestions"/> + <see cref="RigModelCatalogue"/>, and the
-/// bare-device round-trip. Entirely passive — no serial port is ever opened, so no hardware
+/// bare-device round-trip. Entirely passive - no serial port is ever opened, so no hardware
 /// (or Linux perms) is needed beyond symlink creation for the by-id tests.
 /// </summary>
 [Trait("Category", "Node")]
@@ -20,7 +20,7 @@ public sealed class RigScannerTests : IDisposable
     private const string Ic7300Descriptor =
         "usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_IC-7300_03001234-if00-port0";
 
-    // A trimmed verbatim `rigctl -l` (Hamlib 4.5.5) — enough for name→number resolution.
+    // A trimmed verbatim `rigctl -l` (Hamlib 4.5.5) - enough for name→number resolution.
     private const string CatalogueSample =
 """
  Rig #  Mfg                    Model                   Version         Status      Macro
@@ -31,9 +31,9 @@ public sealed class RigScannerTests : IDisposable
 
     private readonly string dir;
     private readonly string byIdDir;
-    private readonly string devKiss;   // stand-in /dev/ttyUSB0 — claimed by a serial-kiss port
-    private readonly string devRig;    // stand-in /dev/ttyUSB1 — an IC-7300 bridge (by-id link added in-test)
-    private readonly string devBare;   // stand-in /dev/ttyACM0 — free, anonymous
+    private readonly string devKiss;   // stand-in /dev/ttyUSB0 - claimed by a serial-kiss port
+    private readonly string devRig;    // stand-in /dev/ttyUSB1 - an IC-7300 bridge (by-id link added in-test)
+    private readonly string devBare;   // stand-in /dev/ttyACM0 - free, anonymous
 
     public RigScannerTests()
     {

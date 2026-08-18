@@ -15,7 +15,7 @@ namespace Packet.Node.Tests.Metrics;
 /// The MQTT frame-emission bucket of <c>/metrics</c> (#582): <c>pdn_mqtt_published_total</c> /
 /// <c>pdn_mqtt_publish_failures_total</c> / <c>pdn_mqtt_pending_messages</c>, read straight off the
 /// live <see cref="MqttFrameEmitter"/> counters (no second counter store) and driven here through a
-/// fake publish sink — no broker, no Kestrel.
+/// fake publish sink - no broker, no Kestrel.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class MqttMetricsExporterTests

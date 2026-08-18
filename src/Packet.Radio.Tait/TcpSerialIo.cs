@@ -4,7 +4,7 @@ namespace Packet.Radio.Tait;
 
 /// <summary>
 /// A TCP-backed <see cref="ISerialIo"/>: the Tait CCDI driver's byte seam pointed at a remote
-/// "head-end" that bridges a serial port as a raw binary TCP pipe (the split-station topology —
+/// "head-end" that bridges a serial port as a raw binary TCP pipe (the split-station topology -
 /// see <c>docs/research/split-station-rf-headend.md</c>). The socket carries the pure
 /// CCDI/PROGRESS byte stream unchanged, so the whole radio-control stack (transactions, DCD
 /// carrier-sense edges, SDM, telemetry) runs over the wire exactly as it does over a local
@@ -16,13 +16,13 @@ namespace Packet.Radio.Tait;
 /// <see cref="System.IO.Ports.SerialPort"/> semantics of <see cref="Read"/>: block up to a short
 /// finite timeout and throw <see cref="TimeoutException"/> when the line is idle (the pump
 /// swallows it and loops; the transaction engine's own deadline detects a no-response). This
-/// class reproduces that with the socket's <see cref="Socket.ReceiveTimeout"/> — a timed-out
+/// class reproduces that with the socket's <see cref="Socket.ReceiveTimeout"/> - a timed-out
 /// receive surfaces as <see cref="TimeoutException"/>, never as a 0-length read (which would
 /// hot-spin the pump) and never blocked forever.
 /// </para>
 /// <para>
 /// <b>Half-open detection.</b> Beyond the per-read pacing timeout, a longer read-idle budget
-/// guards against a silently dropped connection (peer rebooted, cable pulled — no FIN),
+/// guards against a silently dropped connection (peer rebooted, cable pulled - no FIN),
 /// mirroring <c>Packet.Kiss.KissTcpClient</c> (#464): once the link has produced no byte for
 /// that budget a receive timeout is escalated to an <see cref="IOException"/> so the pump faults
 /// the radio rather than pacing forever. OS TCP keepalive is enabled as the faster probe.
@@ -35,7 +35,7 @@ namespace Packet.Radio.Tait;
 /// </remarks>
 internal sealed class TcpSerialIo : ISerialIo
 {
-    /// <summary>Per-read pacing timeout — mirrors the local <see cref="System.IO.Ports.SerialPort.ReadTimeout"/>
+    /// <summary>Per-read pacing timeout - mirrors the local <see cref="System.IO.Ports.SerialPort.ReadTimeout"/>
     /// of 100 ms the driver opens with, so the pump wakes to check cancellation ~10×/s.</summary>
     public static readonly TimeSpan DefaultReadTimeout = TimeSpan.FromMilliseconds(100);
 
@@ -121,7 +121,7 @@ internal sealed class TcpSerialIo : ISerialIo
         catch (SocketException ex) when (ex.SocketErrorCode is SocketError.TimedOut or SocketError.WouldBlock)
         {
             // No byte within the per-read window. Normally this is the SerialPort.ReadTimeout
-            // contract the pump swallows and loops on — UNLESS the link has been entirely silent
+            // contract the pump swallows and loops on - UNLESS the link has been entirely silent
             // past the idle budget, in which case presume it half-open (dead) and fault the pump.
             if (readIdleTimeout > TimeSpan.Zero && readIdleTimeout != Timeout.InfiniteTimeSpan
                 && clock.GetUtcNow() - lastReadActivity >= readIdleTimeout)
@@ -159,7 +159,7 @@ internal sealed class TcpSerialIo : ISerialIo
         {
             // Normalise the callback's failure (typically an HTTP error against an unreachable
             // head-end) to the ISerialIo contract's IO failure, so callers' best-effort teardown
-            // paths — which catch IOException like any dead serial handle — behave the same here.
+            // paths - which catch IOException like any dead serial handle - behave the same here.
             throw new IOException($"line-control (baud) callback failed for {portName}", ex);
         }
     }
@@ -168,7 +168,7 @@ internal sealed class TcpSerialIo : ISerialIo
 
     // Ask the OS to probe a quiet peer so a half-open connection surfaces as a read error in
     // bounded time. Best-effort: keepalive knobs are platform-dependent and a failure to set them
-    // is non-fatal — the read-idle timeout is the portable backstop. Mirrors KissTcpClient.
+    // is non-fatal - the read-idle timeout is the portable backstop. Mirrors KissTcpClient.
     private static void EnableTcpKeepAlive(Socket socket)
     {
         try

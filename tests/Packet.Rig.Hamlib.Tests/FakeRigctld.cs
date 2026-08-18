@@ -7,7 +7,7 @@ using System.Text;
 namespace Packet.Rig.Hamlib.Tests;
 
 /// <summary>
-/// An in-process, scriptable NET-rigctl server — the seam the client tests drive, in the same
+/// An in-process, scriptable NET-rigctl server - the seam the client tests drive, in the same
 /// spirit as the scripted <c>ISerialIo</c> fakes elsewhere in the repo. Reply text mirrors the
 /// wire format captured from a real <c>rigctld</c> 4.5.5 dummy rig (see
 /// <c>docs/research/rig-control-spike.md</c>), so the parser is tested against bytes the real
@@ -33,7 +33,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
 
     internal bool VfoMode { get; }
 
-    // Rig state — the real dummy rig's fresh values.
+    // Rig state - the real dummy rig's fresh values.
     internal long FrequencyHz = 145_000_000;
     internal string Mode = "FM";
     internal int PassbandHz = 15_000;
@@ -47,21 +47,21 @@ internal sealed class FakeRigctld : IAsyncDisposable
         ["STRENGTH"] = -12,
     };
 
-    /// <summary>Every command line received, in order — lets tests assert exact wire syntax.</summary>
+    /// <summary>Every command line received, in order - lets tests assert exact wire syntax.</summary>
     internal readonly ConcurrentQueue<string> ReceivedCommands = new();
 
-    /// <summary>Connections accepted so far — reconnect assertions.</summary>
+    /// <summary>Connections accepted so far - reconnect assertions.</summary>
     internal int ConnectionCount;
 
     /// <summary>Scripted <c>RPRT -code</c> failures applied to upcoming rig commands (not to
     /// chk_vfo/dump_caps, so connects stay healthy).</summary>
     internal readonly ConcurrentQueue<int> FailNextWithCode = new();
 
-    /// <summary>When set, the next rig command's reply is swallowed (read, never answered) —
+    /// <summary>When set, the next rig command's reply is swallowed (read, never answered) -
     /// the client should time out.</summary>
     internal volatile bool SwallowNextReply;
 
-    /// <summary>When set, the connection is closed instead of answering the next rig command —
+    /// <summary>When set, the connection is closed instead of answering the next rig command -
     /// the client should surface a connection fault and redial on the following call.</summary>
     internal volatile bool DropBeforeNextReply;
 
@@ -70,7 +70,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
     /// shape that matters for PTT, where the rig ends up keyed with nobody sure of it.</summary>
     internal volatile bool ActOnNextCommandThenSwallowReply;
 
-    /// <summary>Replaces the canned <c>dump_caps</c> payload — capability-shaping tests.</summary>
+    /// <summary>Replaces the canned <c>dump_caps</c> payload - capability-shaping tests.</summary>
     internal string[]? DumpCapsOverride;
 
     private static readonly string[] DefaultDumpCaps =
@@ -125,7 +125,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
                 var reply = BuildReply(line);
                 if (reply is null)
                 {
-                    continue; // swallowed — client times out
+                    continue; // swallowed - client times out
                 }
 
                 if (reply.Length == 0)
@@ -138,7 +138,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException)
         {
-            // Connection torn down — fine either way.
+            // Connection torn down - fine either way.
         }
     }
 
@@ -158,7 +158,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
         // Connect-phase commands are exempt from fault injection so redials succeed.
         if (cmd == "\\chk_vfo")
         {
-            // 4.x wire shape: bare digit, no RPRT — ever.
+            // 4.x wire shape: bare digit, no RPRT - ever.
             return VfoMode ? "1\n" : "0\n";
         }
 

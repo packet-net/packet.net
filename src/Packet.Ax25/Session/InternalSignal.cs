@@ -2,14 +2,14 @@ namespace Packet.Ax25.Session;
 
 /// <summary>
 /// Base type for signals the data-link layer raises **internally** to
-/// neighbouring entities — the management data-link (MDL) and the
+/// neighbouring entities - the management data-link (MDL) and the
 /// internal I-frame queue. Emitted by the dispatcher when verbs with
 /// <c>kind: internal_out</c> fire.
 /// </summary>
 /// <remarks>
 /// Distinct from <see cref="DataLinkSignal"/> (upward to Layer 3) and
 /// <see cref="LinkMultiplexerSignal"/> (downward to the link multiplexer).
-/// These signals stay inside the data-link state machine module — the
+/// These signals stay inside the data-link state machine module - the
 /// MDL is a sibling state machine handling XID negotiation, and the
 /// I-frame queue is internal storage between the data-link and the
 /// link multiplexer.

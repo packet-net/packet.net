@@ -55,14 +55,14 @@ public class NinoTncTxTestFrameTests
     {
         var body = Encoding.ASCII.GetBytes("=FirmwareVr:3.44=BrdSwchMod:040F0002");
 
-        // Right command — succeeds.
+        // Right command - succeeds.
         var dataFrame = new KissFrame(0, KissCommand.Data, body);
         NinoTncTxTestFrame.TryParse(dataFrame, out var parsed).Should().BeTrue();
         parsed!.FirmwareVersionRaw.Should().Be("3.44");
         parsed.FirmwareVersion.Should().Be(new NinoTncFirmwareVersion(3, 44));
         parsed.RunningMode!.Value.Mode.Should().Be((byte)6); // 0x02 → mode 6, 1200 AFSK AX.25
 
-        // Wrong command — fails even if payload would parse.
+        // Wrong command - fails even if payload would parse.
         var paramFrame = new KissFrame(0, KissCommand.SetHardware, body);
         NinoTncTxTestFrame.TryParse(paramFrame, out var paramParsed).Should().BeFalse();
         paramParsed.Should().BeNull();
@@ -91,7 +91,7 @@ public class NinoTncTxTestFrameTests
     {
         // Firmware emits some garbage in the version field (firmware
         // regression, encoding mishap, whatever). The parser must NOT
-        // throw — it preserves the raw text and leaves the strong types
+        // throw - it preserves the raw text and leaves the strong types
         // null/Unknown so callers can detect and report rather than
         // crash.
         const string body = "=FirmwareVr:banana=BrdSwchMod:040F0002";
@@ -104,11 +104,11 @@ public class NinoTncTxTestFrameTests
     [Fact]
     public void Missing_FirmwareVr_Field_Leaves_Version_Null()
     {
-        // No =FirmwareVr: at all. The marker is the start of *parsing* —
+        // No =FirmwareVr: at all. The marker is the start of *parsing* -
         // without it, TryParse returns false. But if some future frame
         // shape has BrdSwchMod first and no firmware string, we'd want
         // graceful degradation. Today's parser fails outright, which is
-        // fine — but the regression test pins the behaviour so we
+        // fine - but the regression test pins the behaviour so we
         // notice if it changes.
         const string body = "=BrdSwchMod:040F0002";
         NinoTncTxTestFrame.TryParse(PayloadFor(body), out var parsed).Should().BeFalse();

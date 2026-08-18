@@ -7,38 +7,38 @@ namespace Packet.Tune.Core;
 /// <see cref="TuningVerb.ModeCoordination"/> telegram).</summary>
 public enum ModeCoordAction
 {
-    /// <summary><c>propose|&lt;mode&gt;[|&lt;channel&gt;]</c> — coordinator → responder:
+    /// <summary><c>propose|&lt;mode&gt;[|&lt;channel&gt;]</c> - coordinator → responder:
     /// let's switch the TNCs to this mode (and, when included, the radios to this
     /// channel).</summary>
     Propose,
 
-    /// <summary><c>confirm|&lt;mode&gt;[|&lt;channel&gt;]</c> — responder → coordinator:
+    /// <summary><c>confirm|&lt;mode&gt;[|&lt;channel&gt;]</c> - responder → coordinator:
     /// accepted; awaiting the commit.</summary>
     Confirm,
 
-    /// <summary><c>reject|&lt;mode&gt;[|&lt;reason&gt;]</c> — responder → coordinator:
+    /// <summary><c>reject|&lt;mode&gt;[|&lt;reason&gt;]</c> - responder → coordinator:
     /// refused (unknown mode, local policy…). Nothing changes at either end.</summary>
     Reject,
 
-    /// <summary><c>commit|&lt;mode&gt;[|&lt;channel&gt;]</c> — coordinator → responder:
+    /// <summary><c>commit|&lt;mode&gt;[|&lt;channel&gt;]</c> - coordinator → responder:
     /// switch now. The commit telegram's sequence number becomes the attempt tag
     /// carried by the verification probe frames. The responder switches on
     /// receipt; the coordinator switches once the side channel confirms
     /// delivery.</summary>
     Commit,
 
-    /// <summary><c>sent|&lt;count&gt;[|&lt;meanTxMs&gt;]</c> — either direction:
+    /// <summary><c>sent|&lt;count&gt;[|&lt;meanTxMs&gt;]</c> - either direction:
     /// "I have finished transmitting &lt;count&gt; probe frames on the link under
     /// test" (optionally with the sender-side mean send→TX-complete latency in
     /// whole ms). The receiver snapshots its probe counter and answers with a
     /// report.</summary>
     ProbesSent,
 
-    /// <summary><c>report|&lt;decoded&gt;/&lt;count&gt;</c> — either direction: how many
+    /// <summary><c>report|&lt;decoded&gt;/&lt;count&gt;</c> - either direction: how many
     /// of the announced probe frames were decoded here.</summary>
     ProbeReport,
 
-    /// <summary><c>revert[|&lt;reason&gt;]</c> — either direction: abandon the current
+    /// <summary><c>revert[|&lt;reason&gt;]</c> - either direction: abandon the current
     /// mode/channel and return to the session's home mode/channel. The revert
     /// telegram's sequence number tags the home-verification probes that
     /// follow.</summary>
@@ -46,7 +46,7 @@ public enum ModeCoordAction
 }
 
 /// <summary>
-/// One mode-coordination message — the payload of a
+/// One mode-coordination message - the payload of a
 /// <see cref="TuningVerb.ModeCoordination"/> (<c>MODE</c>) telegram. The full wire
 /// form is e.g. <c>V1|7|MODE|propose|2|1</c> (propose mode 2 on channel 1) and
 /// every form fits the 32-character SDM budget. Sequence numbering, dedupe and
@@ -54,7 +54,7 @@ public enum ModeCoordAction
 /// </summary>
 /// <remarks>
 /// The protocol these messages carry rides a radio side channel
-/// (<c>Packet.Radio.IRadioSideChannel</c>) that is mode- and channel-agnostic —
+/// (<c>Packet.Radio.IRadioSideChannel</c>) that is mode- and channel-agnostic -
 /// which is what breaks the chicken-and-egg of renegotiating the very link the
 /// negotiation would otherwise have to travel over. See <see cref="ModeCoordinator"/> /
 /// <see cref="ModeResponder"/> for the choreography.

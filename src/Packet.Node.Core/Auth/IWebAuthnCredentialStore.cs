@@ -9,13 +9,13 @@ namespace Packet.Node.Core.Auth;
 /// <para>
 /// Resilient like <see cref="IUserStore"/> / <see cref="IRefreshTokenStore"/> and the
 /// NET/ROM routing store: a backing-store fault logs and degrades (a lookup returns
-/// null/empty, a write returns false) — it never throws out to crash the node.
+/// null/empty, a write returns false) - it never throws out to crash the node.
 /// Implementations open a fresh pooled connection per call.
 /// </para>
 /// <para>
 /// <b>Credential ids are raw bytes</b> (the authenticator's handle). They are the
 /// primary key, and they carry on the wire base64url-encoded; the store deals only in
-/// the raw bytes — the endpoints do the base64url at the HTTP boundary.
+/// the raw bytes - the endpoints do the base64url at the HTTP boundary.
 /// </para>
 /// </remarks>
 public interface IWebAuthnCredentialStore
@@ -41,7 +41,7 @@ public interface IWebAuthnCredentialStore
 
     /// <summary>Advance a credential's signature counter + stamp its last-used time
     /// after a successful assertion. Best-effort: a fault is swallowed (a failed stamp
-    /// must never fail an otherwise-good assertion — but see the clone-detection note
+    /// must never fail an otherwise-good assertion - but see the clone-detection note
     /// in <see cref="WebAuthnCredentialRecord"/>; the counter check happens BEFORE this
     /// write, in the verify path).</summary>
     void UpdateSignCount(byte[] credentialId, uint newCount, DateTimeOffset whenUtc);

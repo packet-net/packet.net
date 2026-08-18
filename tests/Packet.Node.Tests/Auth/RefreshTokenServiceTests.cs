@@ -8,7 +8,7 @@ namespace Packet.Node.Tests.Auth;
 /// revokes the old; a rotated (old) token is rejected; reuse of a revoked token
 /// revokes the WHOLE family (a sibling then rejected); expired tokens are rejected;
 /// logout revokes the family; a store fault degrades (never throws). All on
-/// <see cref="FakeTimeProvider"/> — no wall-clock.
+/// <see cref="FakeTimeProvider"/> - no wall-clock.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class RefreshTokenServiceTests
@@ -107,9 +107,9 @@ public sealed class RefreshTokenServiceTests
     {
         // The real-world symptom: the legitimate client races itself (two tabs / a
         // retried silent refresh) and presents the SAME just-rotated token twice within
-        // a moment. This must NOT burn the family — it mints another successor and the
+        // a moment. This must NOT burn the family - it mints another successor and the
         // session survives. (Before the leeway, this logged the user out on every
-        // access-token expiry — see packet-net/packet.net auth audit, REUSE-DETECTED pairs.)
+        // access-token expiry - see packet-net/packet.net auth audit, REUSE-DETECTED pairs.)
         var (svc, store, clock) = Make();
         var first = svc.Issue("tom")!;
         var rot1 = svc.Rotate(first);             // first consumed, second minted
@@ -122,7 +122,7 @@ public sealed class RefreshTokenServiceTests
         rot2.Outcome.Should().Be(RefreshOutcome.Rotated);
         rot2.NewToken.Should().NotBe(second);
 
-        // The first successor is untouched and still usable — nothing was burned.
+        // The first successor is untouched and still usable - nothing was burned.
         store.FindByHash(RefreshTokenService.HashToken(second))!.Revoked.Should().BeFalse();
         svc.Rotate(second).IsSuccess.Should().BeTrue();
     }
@@ -267,7 +267,7 @@ public sealed class RefreshTokenServiceTests
 
         // Still valid inside the window.
         clock.Advance(TimeSpan.FromMinutes(9));
-        // (don't consume it — just check it would rotate, then re-issue for the expiry test)
+        // (don't consume it - just check it would rotate, then re-issue for the expiry test)
 
         var (svc2, _, clock2) = Make(TimeSpan.FromMinutes(10));
         var token2 = svc2.Issue("m0lte")!;

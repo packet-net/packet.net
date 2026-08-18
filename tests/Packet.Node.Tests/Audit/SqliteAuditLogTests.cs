@@ -62,7 +62,7 @@ public sealed class SqliteAuditLogTests : IDisposable
     [Fact]
     public void A_bad_db_path_degrades_without_throwing()
     {
-        // A path under a non-existent directory can't be opened — the store must log and
+        // A path under a non-existent directory can't be opened - the store must log and
         // carry on (auditing unavailable), never throw, so an action path is never taken down.
         var log = new SqliteAuditLog(Path.Combine("/nonexistent-pdn-dir", Guid.NewGuid().ToString("N"), "a.db"));
 

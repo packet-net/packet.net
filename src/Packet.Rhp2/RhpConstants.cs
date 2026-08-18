@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Packet.Rhp2;
 
 /// <summary>
-/// RHPv2 protocol families — the wire values of the <c>pfam</c> field.
+/// RHPv2 protocol families - the wire values of the <c>pfam</c> field.
 /// </summary>
 /// <remarks>
 /// String constants rather than an enum because the field is an open set:
@@ -27,7 +27,7 @@ public static class ProtocolFamily
 }
 
 /// <summary>
-/// RHPv2 socket modes — the wire values of the <c>mode</c> field.
+/// RHPv2 socket modes - the wire values of the <c>mode</c> field.
 /// </summary>
 /// <remarks>Open set on the wire; see <see cref="ProtocolFamily"/> for why these are strings.</remarks>
 public static class SocketMode
@@ -54,7 +54,7 @@ public static class SocketMode
     public const string Raw = "raw";
 }
 
-#pragma warning disable CA1711 // "...Flags" names are the right names here: both types model the wire `flags` fields of PWP-0222 and ARE [Flags] enums — the suffix is descriptive, not a misuse.
+#pragma warning disable CA1711 // "...Flags" names are the right names here: both types model the wire `flags` fields of PWP-0222 and ARE [Flags] enums - the suffix is descriptive, not a misuse.
 
 /// <summary>
 /// Bit flags for the <c>flags</c> field of <c>open</c>.
@@ -62,7 +62,7 @@ public static class SocketMode
 [Flags]
 public enum OpenFlags
 {
-    /// <summary>Passive open (listen). The wire default — no bits set.</summary>
+    /// <summary>Passive open (listen). The wire default - no bits set.</summary>
     Passive = 0x00,
 
     /// <summary>Report incoming frames (RAW / TRACE modes).</summary>
@@ -74,7 +74,7 @@ public enum OpenFlags
     /// <summary>Report supervisory frames (TRACE mode, AX.25).</summary>
     TraceSupervisory = 0x04,
 
-    /// <summary>Active open — initiate an outbound connection.</summary>
+    /// <summary>Active open - initiate an outbound connection.</summary>
     Active = 0x80,
 }
 
@@ -104,7 +104,7 @@ public enum StatusFlags
 /// RHPv2 <c>errCode</c> values and their canonical <c>errText</c> strings.
 /// </summary>
 /// <remarks>
-/// Codes 0–16 come from the published spec (PWP-0222 / PWP-0245).
+/// Codes 0-16 come from the published spec (PWP-0222 / PWP-0245).
 /// <see cref="NotConnected"/> (17) is XRouter-observed only: real XRouter
 /// returns it from <c>send</c> on a stream socket whose downlink hasn't
 /// (or has stopped) being connected. Ints rather than an enum so an
@@ -171,7 +171,7 @@ public static class RhpErrorCode
 
     /// <summary>
     /// Canonical <c>errText</c> for a code, matching the spec's wording
-    /// (including its inconsistent capitalisation — "No Route" but
+    /// (including its inconsistent capitalisation - "No Route" but
     /// "Operation not supported").
     /// </summary>
     public static string Text(int code) => code switch

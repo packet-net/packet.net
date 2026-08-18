@@ -11,7 +11,7 @@ namespace Packet.Ax25.Session;
 /// <para>
 /// The frame specs (<see cref="SupervisoryFrameSpec"/>, <see cref="UFrameSpec"/>,
 /// <see cref="UiFrameSpec"/>, <see cref="IFrameSpec"/>) describe what the
-/// dispatcher wants to send — frame type, control bits, payload — without
+/// dispatcher wants to send - frame type, control bits, payload - without
 /// any addressing. Addressing is per-session: it comes from the
 /// <see cref="Ax25SessionContext"/>'s <c>Local</c> / <c>Remote</c> /
 /// <c>Digipeaters</c> fields. The conversion lives here rather than on the
@@ -20,7 +20,7 @@ namespace Packet.Ax25.Session;
 /// </para>
 /// <para>
 /// Source is always <see cref="Ax25SessionContext.Local"/> and destination
-/// is always <see cref="Ax25SessionContext.Remote"/> — the dispatcher emits
+/// is always <see cref="Ax25SessionContext.Remote"/> - the dispatcher emits
 /// frames going outbound from us to the peer. The digipeater chain comes
 /// from the context too; in production it's set at session construction
 /// time from the link-level configuration.

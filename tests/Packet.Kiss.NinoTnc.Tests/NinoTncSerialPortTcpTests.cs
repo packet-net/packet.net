@@ -8,7 +8,7 @@ namespace Packet.Kiss.NinoTnc.Tests;
 /// Drives <see cref="NinoTncSerialPort"/> over the TCP-backed <c>ISerialPortIo</c>
 /// (<c>NinoTncSerialPort.OpenTcp</c> → <c>KissSerialModem.OpenTcp</c> → <c>TcpSerialPortIo</c>)
 /// against a loopback <see cref="TcpListener"/> standing in for the split-station head-end,
-/// proving the full-control NinoTNC surface (here GETVER) round-trips over a raw socket —
+/// proving the full-control NinoTNC surface (here GETVER) round-trips over a raw socket -
 /// distinct from the generic control-less <c>kiss-tcp</c> transport. Mirrors the scripted-IO
 /// style of <see cref="NinoTncSerialPortTests"/>.
 /// </summary>

@@ -13,17 +13,17 @@ namespace Packet.Node.Core.Transports;
 /// <remarks>
 /// <para>
 /// The settable set is intentionally the four standard KISS CSMA parameters
-/// the <see cref="ICsmaChannelParams"/> surface exposes — <c>txdelay</c>,
+/// the <see cref="ICsmaChannelParams"/> surface exposes - <c>txdelay</c>,
 /// <c>persist</c>, <c>slottime</c>, <c>txtail</c>. These take effect on the
 /// live KISS link with no port restart: the TNC applies the value to every
 /// subsequent transmission. Construction-time settings (e.g. ACKMODE, the
-/// transport kind) are deliberately <em>not</em> here — they need a port
+/// transport kind) are deliberately <em>not</em> here - they need a port
 /// restart and a different (config) path.
 /// </para>
 /// <para>
 /// All four are single-byte KISS parameters, so the valid range is 0..255.
 /// Out-of-range or unrecognised inputs are rejected with a clear message
-/// rather than silently clamped or dropped — a caller getting a
+/// rather than silently clamped or dropped - a caller getting a
 /// success-shaped response while nothing changed is the failure mode #466
 /// set out to kill.
 /// </para>
@@ -46,7 +46,7 @@ public static class KissParamWriter
     /// <param name="Accepted">True when the value validated and was dispatched to the modem.</param>
     /// <param name="RequiresRestart">
     /// Whether the change needs a port restart to take effect. Always false for the
-    /// live CSMA parameters this writer handles — they apply on the next transmission.
+    /// live CSMA parameters this writer handles - they apply on the next transmission.
     /// </param>
     /// <param name="Message">A human-readable result/error message.</param>
     public sealed record Result(bool Accepted, bool RequiresRestart, string Message);
@@ -80,8 +80,8 @@ public static class KissParamWriter
 
         // The CSMA params are an optional capability; a transport that doesn't expose
         // them honestly reports it has no such control rather than a no-op success.
-        // (Today every transport reaching here exposes ICsmaChannelParams — KISS natives
-        // and the AXUDP shim's no-ops — so this branch is unreached in practice.)
+        // (Today every transport reaching here exposes ICsmaChannelParams - KISS natives
+        // and the AXUDP shim's no-ops - so this branch is unreached in practice.)
         if (transport is not ICsmaChannelParams csma)
         {
             return Reject("this transport has no CSMA channel-access parameters to set.");

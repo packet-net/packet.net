@@ -120,8 +120,8 @@ public class NodeConfigValidatorTests
     }
 
     // #672: every KISS knob is a byte on the wire (0..255). They are int? on the config
-    // record so an out-of-range value is a NAMED validation failure — a 422 carrying the
-    // field and its units — instead of the bare 400 a byte? produced when JSON model
+    // record so an out-of-range value is a NAMED validation failure - a 422 carrying the
+    // field and its units - instead of the bare 400 a byte? produced when JSON model
     // binding refused it. The trap is thinking in milliseconds: 300 ms of TX delay is 30.
     [Theory]
     [InlineData(300)]   // the real report: milliseconds written into a 10 ms-unit byte
@@ -1354,7 +1354,7 @@ public class NodeConfigValidatorTests
     [Fact]
     public void Oarc_defaults_are_valid()
     {
-        // The default OARC block (disabled, OARC base URL, 300/60s) must validate — a stock node.
+        // The default OARC block (disabled, OARC base URL, 300/60s) must validate - a stock node.
         Validator.Validate(Valid()).IsValid.Should().BeTrue();
         Validator.Validate(Valid() with { Oarc = new OarcConfig() }).IsValid.Should().BeTrue();
     }
@@ -1390,7 +1390,7 @@ public class NodeConfigValidatorTests
     public void Oarc_shape_is_validated_even_when_disabled()
     {
         // A disabled-but-edited block must not be allowed to hold junk that would fail the day
-        // it is enabled — the URL/interval rules apply unconditionally (cf. RHP/Tailscale).
+        // it is enabled - the URL/interval rules apply unconditionally (cf. RHP/Tailscale).
         var config = Valid() with
         {
             Oarc = new OarcConfig { Enabled = false, BaseUrl = "not-a-url", StatusIntervalSecs = 0 },
@@ -1402,10 +1402,10 @@ public class NodeConfigValidatorTests
 
     [Theory]
     [InlineData(null, true)]       // unset → use the callsign for display + callsign base on the wire
-    [InlineData("LONDON", true)]   // 6 chars — the NET/ROM mnemonic shape
+    [InlineData("LONDON", true)]   // 6 chars - the NET/ROM mnemonic shape
     [InlineData("RDG", true)]
     [InlineData("A", true)]
-    [InlineData("LONDON1", false)] // 7 — exceeds the 6-octet NET/ROM alias field
+    [InlineData("LONDON1", false)] // 7 - exceeds the 6-octet NET/ROM alias field
     [InlineData("VERYLONGNAME", false)]
     public void Identity_alias_is_capped_at_six_characters(string? alias, bool expectValid)
     {

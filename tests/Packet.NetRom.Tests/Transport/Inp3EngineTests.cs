@@ -10,7 +10,7 @@ namespace Packet.NetRom.Tests.Transport;
 /// slice I-2) driven by a <see cref="FakeTimeProvider"/>: probe-fires-on-cadence,
 /// reflection-updates-SNTT, peer-probe-is-reflected, capability-learned, and the
 /// 180 s no-reflection reset fires <see cref="Inp3Engine.NeighbourDown"/> for an
-/// INP3-capable neighbour (and resets it) — plus the AMBIGUITY-I2-3 guard that a
+/// INP3-capable neighbour (and resets it) - plus the AMBIGUITY-I2-3 guard that a
 /// never-capable vanilla neighbour is dropped silently.
 /// </summary>
 public sealed class Inp3EngineTests
@@ -48,7 +48,7 @@ public sealed class Inp3EngineTests
         sent[0].Frame.Packet.Network.Origin.Should().Be(Local, "the probe carries our node as L3 origin");
         sent[0].Frame.Packet.Network.Destination.Base.Should().Be(Inp3L3RttFrame.L3RttBase);
 
-        // A probe is outstanding (AwaitingReflection) — no re-probe even past cadence.
+        // A probe is outstanding (AwaitingReflection) - no re-probe even past cadence.
         sent.Clear();
         clock.Advance(TimeSpan.FromSeconds(120));
         engine.Tick();
@@ -114,7 +114,7 @@ public sealed class Inp3EngineTests
         var clock = new FakeTimeProvider();
         using var engine = NewEngine(clock, NetRomInp3Options.Default, out var sent);
 
-        // A probe ORIGINATED BY THE PEER (its origin is the peer, not us) — we must
+        // A probe ORIGINATED BY THE PEER (its origin is the peer, not us) - we must
         // echo it back byte-for-byte, not treat it as a reflection / SNTT sample.
         var peerProbe = Inp3L3RttFrame.Build(Peer);
         engine.OnL3Rtt(Peer, peerProbe);
@@ -133,7 +133,7 @@ public sealed class Inp3EngineTests
         var clock = new FakeTimeProvider();
         using var engine = NewEngine(clock, NetRomInp3Options.Default, out _);
 
-        // The peer probes us with $N and $I4 — we learn it speaks INP3 and accepts IPv4.
+        // The peer probes us with $N and $I4 - we learn it speaks INP3 and accepts IPv4.
         var peerProbe = Inp3L3RttFrame.Build(Peer, ipAccept: 4);
         peerProbe.Inp3Capable.Should().BeTrue();
         peerProbe.IpAccept.Should().Be(4);
@@ -156,7 +156,7 @@ public sealed class Inp3EngineTests
         engine.NeighbourDown += (_, e) => downEvents.Add(e);
 
         // The peer proves it speaks INP3 (so the 180 s reset is allowed to raise
-        // NeighbourDown — the AMBIGUITY-I2-3 guard).
+        // NeighbourDown - the AMBIGUITY-I2-3 guard).
         engine.OnL3Rtt(Peer, Inp3L3RttFrame.Build(Peer));
         engine.Neighbours.Should().ContainSingle().Which.Inp3Capable.Should().BeTrue();
         sent.Clear();   // discard the reflection we sent
@@ -184,7 +184,7 @@ public sealed class Inp3EngineTests
     public void A_never_capable_vanilla_neighbour_is_dropped_silently_without_NeighbourDown()
     {
         // The AMBIGUITY-I2-3 guard: a neighbour that never reflects our optimistic
-        // probes (never proven INP3-capable) must NOT trigger a routing teardown —
+        // probes (never proven INP3-capable) must NOT trigger a routing teardown -
         // it is reachable by vanilla NODES, it just doesn't speak L3RTT. After the
         // reset window it is dropped from probing silently, no callback.
         var clock = new FakeTimeProvider();
@@ -204,7 +204,7 @@ public sealed class Inp3EngineTests
         sent.Should().ContainSingle("ProbeUnknownCapability probes a not-yet-known neighbour");
         engine.Neighbours.Should().ContainSingle().Which.Inp3Capable.Should().BeFalse();
 
-        // It never reflects. Past the reset window it is dropped — silently.
+        // It never reflects. Past the reset window it is dropped - silently.
         clock.Advance(TimeSpan.FromSeconds(181));
         engine.Tick();
 

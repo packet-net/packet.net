@@ -7,13 +7,13 @@ using Packet.Ax25.Session;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// Phase A1 — adversarial generative testing over the conformance harness.
+/// Phase A1 - adversarial generative testing over the conformance harness.
 /// FsCheck generates loss patterns; the invariant oracle judges. A failure is
 /// a shrinkable counterexample, automatically triaged engine-vs-figure by the
 /// Strict-vs-Default companion (future A2). This first property fuzzes the
 /// #231-class: a connected-mode transfer with a single dropped I-frame must
 /// always recover (everything delivered in order, windows empty) once the
-/// channel clears — for both REJ go-back-N and SREJ selective recovery.
+/// channel clears - for both REJ go-back-N and SREJ selective recovery.
 /// </summary>
 public class LossRecoveryProperties
 {
@@ -63,7 +63,7 @@ public class LossRecoveryProperties
         }
 
         // Channel is clean once the single drop is consumed; drive T1 recovery
-        // until the link converges (bounded — non-convergence is the bug we hunt).
+        // until the link converges (bounded - non-convergence is the bug we hunt).
         for (int r = 0; r < 40 && !Converged(h); r++)
         {
             h.AdvanceT1();
@@ -77,7 +77,7 @@ public class LossRecoveryProperties
     public bool A_finite_bidirectional_loss_burst_recovers(int seedN, int seedBudget, int seedPattern, bool srej, bool extended)
     {
         int n = 1 + Mod(seedN, 6);        // 1..6 I-frames
-        int budget = Mod(seedBudget, n + 1);   // 0..n total drops — finite, so the channel always clears
+        int budget = Mod(seedBudget, n + 1);   // 0..n total drops - finite, so the channel always clears
         int k = Math.Max(4, n);
         var rng = new Random(seedPattern);
 
@@ -123,8 +123,8 @@ public class LossRecoveryProperties
     // repeat forever. With Ax25Spec40DiscardOutOfWindowIFrames on (default), B
     // discards out-of-window frames instead of SREJ'ing them, so this moderate
     // selective-reject burst converges. (#242 regression. A heavier burst is still
-    // blocked by #246 — see the skipped Srej_heavy_bidirectional_loss_burst_recovers
-    // below — so keep this budget moderate.)
+    // blocked by #246 - see the skipped Srej_heavy_bidirectional_loss_burst_recovers
+    // below - so keep this budget moderate.)
     [Fact]
     public void Srej_bidirectional_loss_burst_recovers_with_window_guard()
     {
@@ -147,7 +147,7 @@ public class LossRecoveryProperties
     }
 
     // Convergence regression for the full SREJ recovery stack: this heavy burst
-    // needed all three figc4.x fixes — the ax25spec#40 duplicate-SREJ livelock
+    // needed all three figc4.x fixes - the ax25spec#40 duplicate-SREJ livelock
     // (window guard / #242), the ax25spec#41 SRT overflow (Karn guard / #241), and
     // ax25spec#42 (#246): figc4.4's multi-frame SREJ requested the just-arrived
     // frame (N(r):=N(s)) instead of the gap, so the receiver SREJ'd a frame it held
@@ -178,12 +178,12 @@ public class LossRecoveryProperties
     // ─── n ≥ 8 sequence-ring-wrap recovery (the mod-8 SREJ data-integrity bug) ──
     //
     // The properties above cap n at 1..6 from a single station and settle after
-    // every Submit, so N(S) never wraps the 0–7 ring mid-recovery. That hid a
+    // every Submit, so N(S) never wraps the 0-7 ring mid-recovery. That hid a
     // data-integrity bug: under mod-8 SREJ, a bulk transfer of ≥ 8 frames flying
     // together (so V(S) wraps 7→0) plus a loss pattern made the receiver re-deliver
     // already-delivered frames and desync permanently. Reference repro from
     // ax25-ts (mod-8 SREJ, k=7, 8 frames): a single drop yielded delivered
-    // [1..8, 1, 2] — frames 1 and 2 delivered twice. Root cause: the recovery path
+    // [1..8, 1, 2] - frames 1 and 2 delivered twice. Root cause: the recovery path
     // replayed I-frames from the sent-frame store even after they were
     // acknowledged; once V(R) wrapped past those numbers, the receiver took the
     // stale retransmits for new data. Fixed by gating selective replay on the live
@@ -240,7 +240,7 @@ public class LossRecoveryProperties
 
     /// <summary>Every drop position across an 8-frame mod-8 SREJ burst at k=7 (the
     /// worst case: k = modulus − 1, the whole ring in flight). Each must deliver
-    /// 1..8 exactly once and converge — no re-delivery, no desync, at any wrap
+    /// 1..8 exactly once and converge - no re-delivery, no desync, at any wrap
     /// offset.</summary>
     [Theory]
     [InlineData(0)]
@@ -352,7 +352,7 @@ public class LossRecoveryProperties
     /// <summary>Bidirectional / simultaneous wrapping bursts: both stations submit
     /// ≥ 8 frames at once (each ring wraps) and the channel drops a finite budget in
     /// either direction, then clears. Both directions must recover to exactly-once
-    /// in-order delivery and converge — the two-way analogue of the ring-wrap
+    /// in-order delivery and converge - the two-way analogue of the ring-wrap
     /// regime, mod-8 SREJ included.</summary>
     [Property(MaxTest = 300)]
     public bool Bidirectional_wrapping_bursts_recover(int seedBudget, int seedPattern, bool srej, bool extended)

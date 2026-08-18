@@ -5,7 +5,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
-/// Phase H — the rest of the normal-operation envelope beyond the basic
+/// Phase H - the rest of the normal-operation envelope beyond the basic
 /// happy path: mod-128 (extended), segmentation/reassembly, and RNR/busy
 /// flow control. Same oracle, same convergence requirement.
 /// </summary>

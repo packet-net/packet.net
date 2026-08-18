@@ -7,7 +7,7 @@ namespace Packet.AprsIs.Spike;
 /// </summary>
 /// <remarks>
 /// APRS uses the very first byte of the information field as a Data Type
-/// Identifier (DTI). The corpus passes us raw bytes — we map each to a
+/// Identifier (DTI). The corpus passes us raw bytes - we map each to a
 /// human-readable label so the analyser can bucket the corpus content.
 ///
 /// Designed for *coverage stats*, not for actual decoding. The labels
@@ -30,10 +30,10 @@ public static class AprsPayloadType
         return b switch
         {
             // ─── Position reports ────────────────────────────────────
-            (byte)'!' => "position_no_ts_no_msg",      // ! — no timestamp, no msg
-            (byte)'=' => "position_no_ts_msg",         // = — no timestamp, with msg
-            (byte)'/' => "position_ts_no_msg",         // / — with timestamp, no msg
-            (byte)'@' => "position_ts_msg",            // @ — with timestamp, with msg
+            (byte)'!' => "position_no_ts_no_msg",      // ! - no timestamp, no msg
+            (byte)'=' => "position_no_ts_msg",         // = - no timestamp, with msg
+            (byte)'/' => "position_ts_no_msg",         // / - with timestamp, no msg
+            (byte)'@' => "position_ts_msg",            // @ - with timestamp, with msg
 
             // ─── Mic-E ────────────────────────────────────────────────
             // Current Mic-E uses 0x60 (`) as DTI; legacy uses 0x27 (').
@@ -61,11 +61,11 @@ public static class AprsPayloadType
             (byte)'(' => "dtmf",
             (byte)',' => "invalid_or_test",
 
-            // Printable but unassigned — keep the raw char so we can
+            // Printable but unassigned - keep the raw char so we can
             // see what's actually appearing.
             >= 0x20 and <= 0x7E => $"other_printable_{(char)b}",
 
-            // Non-printable first byte — Mic-E proper, weather burst,
+            // Non-printable first byte - Mic-E proper, weather burst,
             // binary positions, or garbage. Bucket by high nibble for now.
             _ => $"non_printable_{b:x2}",
         };

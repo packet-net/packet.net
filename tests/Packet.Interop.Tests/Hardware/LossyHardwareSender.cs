@@ -11,23 +11,23 @@ namespace Packet.Interop.Tests.Hardware;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Drop happens before any bytes hit the serial port — so the dropped frame
+/// Drop happens before any bytes hit the serial port - so the dropped frame
 /// is invisible to the partner TNC, identical to an RF channel where the
 /// frame was corrupted into nothing.
 /// </para>
 /// <para>
 /// The loss is an <b>independent per-transmission Bernoulli draw against a
-/// non-seeded RNG</b> — deliberately <em>not</em> a replayed seeded sequence.
+/// non-seeded RNG</b> - deliberately <em>not</em> a replayed seeded sequence.
 /// A real channel's loss is uncorrelated with the protocol's send schedule:
 /// when a frame is retransmitted moments later, the channel gives it an
-/// independent fate. A replayed seeded sequence does not — because both the
+/// independent fate. A replayed seeded sequence does not - because both the
 /// loss stream and the protocol are deterministic, the combined system can
 /// settle into a limit cycle where the one frame that must get through (the
 /// retransmitted window head) lands on a "drop" every recovery cycle, so the
 /// link livelocks at high loss even though the protocol is correct (observed
 /// at 30 % bidirectional, #214). Fresh draws break that: a transient stall
 /// always escapes on the next cycle. The trade-off is that an exact run isn't
-/// bit-reproducible — acceptable, and unavoidable anyway, on a hardware bench
+/// bit-reproducible - acceptable, and unavoidable anyway, on a hardware bench
 /// whose own dropouts already vary run-to-run.
 /// </para>
 /// </remarks>

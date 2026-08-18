@@ -6,7 +6,7 @@ using Packet.Core;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Tests for <see cref="FrameSpecExtensions"/> — the bridge between
+/// Tests for <see cref="FrameSpecExtensions"/> - the bridge between
 /// dispatcher-emitted frame specs and <see cref="Ax25Frame"/> instances
 /// ready for wire serialisation.
 /// </summary>

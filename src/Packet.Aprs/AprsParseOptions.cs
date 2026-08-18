@@ -3,7 +3,7 @@ namespace Packet.Aprs;
 /// <summary>
 /// Per-call configuration for the APRS payload decoders. Each pragmatic
 /// accommodation beyond strict APRS101 compliance is a named,
-/// individually-toggleable flag — see
+/// individually-toggleable flag - see
 /// <c>docs/strict-vs-pragmatic-audit.md</c> for the inventory and
 /// rationale.
 /// </summary>
@@ -33,7 +33,7 @@ public sealed record AprsParseOptions
     /// </summary>
     /// <remarks>
     /// Strict APRS101 §16: "The text may contain any printable ASCII
-    /// characters except <c>|</c> or <c>~</c>" — i.e. codes 33–126
+    /// characters except <c>|</c> or <c>~</c>" - i.e. codes 33-126
     /// only. Driver: Chinese-station beacons in the APRS-IS firehose
     /// (and similar UTF-8 emitters).
     /// </remarks>
@@ -41,15 +41,15 @@ public sealed record AprsParseOptions
 
     /// <summary>
     /// Accept telemetry analog values that aren't 3-digit zero-padded
-    /// integers in the 000–255 range. Today the decoder parses each
+    /// integers in the 000-255 range. Today the decoder parses each
     /// channel as <c>double</c>, accepting variable-width integers
     /// (<c>0</c> instead of <c>000</c>) and floats (<c>3.2</c>).
     /// </summary>
     /// <remarks>
     /// Strict APRS101 §13: "five 8-bit unsigned analog data values
-    /// (expressed as 3-digit decimal numbers in the range 000–255)".
+    /// (expressed as 3-digit decimal numbers in the range 000-255)".
     /// Driver: real-world telemetry from SvxLink RepeaterLogic,
-    /// SimplexLogic, various BPQ-attached weather stations etc. — at
+    /// SimplexLogic, various BPQ-attached weather stations etc. - at
     /// least 30 % of corpus telemetry uses non-conforming widths or
     /// floating-point.
     /// </remarks>
@@ -62,12 +62,12 @@ public sealed record AprsParseOptions
     /// </summary>
     /// <remarks>
     /// Strict APRS101 §10 mentions <c>0x1C</c> / <c>0x1D</c> as
-    /// "Rev. 0 beta units only" — i.e. effectively deprecated. Real
+    /// "Rev. 0 beta units only" - i.e. effectively deprecated. Real
     /// early Kenwood TM-D700 firmware still emits them.
     /// </remarks>
     public bool AllowMicELegacyDtiBytes { get; init; } = true;
 
-    /// <summary>Strict APRS101 — all pragmatic accommodations disabled.</summary>
+    /// <summary>Strict APRS101 - all pragmatic accommodations disabled.</summary>
     public static AprsParseOptions Strict { get; } = new()
     {
         AllowNonAsciiStatusText = false,
@@ -91,7 +91,7 @@ public sealed record AprsParseOptions
     public static AprsParseOptions Direwolf { get; } = Lenient;
 
     /// <summary>
-    /// APRS-IS firehose preset — the wild-internet aggregate of every
+    /// APRS-IS firehose preset - the wild-internet aggregate of every
     /// station's emitter quirks. Today identical to <see cref="Lenient"/>.
     /// </summary>
     public static AprsParseOptions AprsIs { get; } = Lenient;

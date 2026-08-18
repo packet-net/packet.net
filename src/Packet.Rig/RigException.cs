@@ -1,7 +1,7 @@
 namespace Packet.Rig;
 
 /// <summary>Base for all rig-control failures, so callers can catch one type per rig.
-/// Capability misses are <em>not</em> <see cref="RigException"/>s — feature-probe-then-call
+/// Capability misses are <em>not</em> <see cref="RigException"/>s - feature-probe-then-call
 /// violations throw <see cref="NotSupportedException"/> (see <see cref="IRigControl"/>).</summary>
 public class RigException : Exception
 {
@@ -11,7 +11,7 @@ public class RigException : Exception
 }
 
 /// <summary>The control link is down or died mid-command: dial failure, socket fault, or the
-/// backend closed on us. The rig itself may be fine — retry/reconnect is a reasonable caller
+/// backend closed on us. The rig itself may be fine - retry/reconnect is a reasonable caller
 /// response, and backends re-dial automatically on the next command.</summary>
 public class RigConnectionException : RigException
 {
@@ -35,12 +35,12 @@ public class RigCommandException : RigException
     public RigCommandException(string message, int backendErrorCode) : base(message)
         => BackendErrorCode = backendErrorCode;
 
-    /// <summary>The backend's native error code — a hamlib error number (positive form of the
+    /// <summary>The backend's native error code - a hamlib error number (positive form of the
     /// <c>RPRT</c> value) or an XML-RPC fault code. Diagnostic only; meaning is per-backend.</summary>
     public int BackendErrorCode { get; }
 }
 
-/// <summary>The backend replied with something this library could not parse — protocol drift,
+/// <summary>The backend replied with something this library could not parse - protocol drift,
 /// a proxy in the path, or a bug. Carries the offending payload for diagnosis.</summary>
 public class RigProtocolException : RigException
 {

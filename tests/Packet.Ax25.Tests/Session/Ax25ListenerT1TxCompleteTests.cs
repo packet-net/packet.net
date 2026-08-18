@@ -59,16 +59,16 @@ public class Ax25ListenerT1TxCompleteTests
         await using var _ = listener;
 
         // One I-frame: goes out via ACKMODE (recorded, echo gated). T1 arms at
-        // enqueue — deadline t0 + 2 s on the fake clock.
+        // enqueue - deadline t0 + 2 s on the fake clock.
         listener.SendData(session, new byte[] { 0xAA });
         await modem.SentFrames.WaitForCountAsync(2, TimeSpan.FromSeconds(5)); // UA + I
 
-        // The echo arrives at t0+1.5 s — the frame only then cleared the air.
+        // The echo arrives at t0+1.5 s - the frame only then cleared the air.
         time.Advance(TimeSpan.FromMilliseconds(1500));
         modem.AckEchoGate!.Release();
         await Task.Delay(250); // let the re-arm continuation run (real time; fake clock is ours)
 
-        // Old deadline (t0+2 s) passes: T1 must NOT fire — the deadline moved to
+        // Old deadline (t0+2 s) passes: T1 must NOT fire - the deadline moved to
         // (echo + T1V) = t0+3.5 s. A fire would put an enquiry on the modem.
         time.Advance(TimeSpan.FromMilliseconds(1000)); // t0+2.5 s
         await Task.Delay(250);
@@ -93,7 +93,7 @@ public class Ax25ListenerT1TxCompleteTests
 
         listener.SendData(session, new byte[] { 0xAA });
         await modem.SentFrames.WaitForCountAsync(2, TimeSpan.FromSeconds(5));
-        modem.AckEchoGate!.Release(); // irrelevant — the plain path never waits on it
+        modem.AckEchoGate!.Release(); // irrelevant - the plain path never waits on it
 
         time.Advance(TimeSpan.FromMilliseconds(2100)); // past t0 + T1V
         await ListenerTestSupport.WaitFor(

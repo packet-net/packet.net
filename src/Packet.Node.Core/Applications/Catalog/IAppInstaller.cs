@@ -9,7 +9,7 @@ namespace Packet.Node.Core.Applications.Catalog;
 /// <see cref="InstallOutcome.Error"/>, never as a thrown exception.
 /// </summary>
 /// <remarks>
-/// These signatures are stable — slice 6b's HTTP/UI surface depends on them.
+/// These signatures are stable - slice 6b's HTTP/UI surface depends on them.
 /// </remarks>
 public interface IAppInstaller
 {
@@ -24,7 +24,7 @@ public interface IAppInstaller
     Task<InstallOutcome> InstallFromCatalogAsync(AppCatalogEntry entry, CancellationToken cancellationToken);
 
     /// <summary>Install an operator-supplied <c>.pdnapp</c> (a tar.gz of a package dir with the
-    /// manifest at root). There is no sha pin — the operator uploading the bytes IS the trust.
+    /// manifest at root). There is no sha pin - the operator uploading the bytes IS the trust.
     /// Path-traversal entries are rejected.</summary>
     Task<InstallOutcome> InstallFromUploadAsync(Stream pdnappTarGz, CancellationToken cancellationToken);
 
@@ -36,7 +36,7 @@ public interface IAppInstaller
     /// <summary>Read the install marker (<c>.pdn-install.json</c>) for <paramref name="id"/>
     /// from <c>&lt;appsRoot&gt;/&lt;id&gt;/</c>, or <c>null</c> when there is no marker (a
     /// hand-sideloaded or absent package). The marker's recorded version is the one to show
-    /// for an installed catalog/upload app — it pins the catalog version at install time, which
+    /// for an installed catalog/upload app - it pins the catalog version at install time, which
     /// avoids a spurious "update available" when the app's in-repo manifest version lags its
     /// release tag (O4 in <c>docs/app-catalog.md</c>). Total: an unreadable marker is null.</summary>
     InstalledApp? GetInstalled(string id);

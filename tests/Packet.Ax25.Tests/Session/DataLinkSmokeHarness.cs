@@ -15,7 +15,7 @@ namespace Packet.Ax25.Tests.Session;
 /// (e.g. <see cref="DataLink_Disconnected.Transitions"/>) through
 /// <see cref="AssertTransitionFiresAsDeclared"/> as a
 /// <c>[Theory]</c>+<c>[MemberData]</c> over the live <c>TransitionSpec.Id</c>s,
-/// so coverage is <i>derived from the table</i> — a transition added or renamed
+/// so coverage is <i>derived from the table</i> - a transition added or renamed
 /// upstream in <c>Packet.Ax25.Sdl</c> auto-appears (or fails) rather than
 /// silently slipping past a hand-maintained list.
 /// </summary>
@@ -28,7 +28,7 @@ namespace Packet.Ax25.Tests.Session;
 /// declared <c>Next</c> state having recorded the declared action sequence in
 /// order. Decisions/actions are stubbed (a recording dispatcher that mutates
 /// nothing, predicates bound to fixed booleans), so this catches orchestrator
-/// routing, guard evaluation, action order/kind, and next-state — but not whether
+/// routing, guard evaluation, action order/kind, and next-state - but not whether
 /// the YAML transcription faithfully reflects the figure (human review) nor that
 /// the actions do the right thing to live context (the behavioural conformance
 /// suite). The generalised form of the per-state pattern first written by hand in
@@ -131,7 +131,7 @@ internal static class DataLinkSmokeHarness
     /// <summary>
     /// Construct the runtime <see cref="Ax25Event"/> for a typed
     /// <see cref="SdlEvent"/>. The orchestrator routes by event type and the
-    /// smoke harness stubs every guard atom, so frame contents are immaterial —
+    /// smoke harness stubs every guard atom, so frame contents are immaterial -
     /// received-frame events all carry a stand-in UI frame. Covers the union of
     /// <c>on</c> events across all six data-link pages; an unmapped event throws
     /// so a new upstream event surfaces.

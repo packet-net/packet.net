@@ -18,7 +18,7 @@ public sealed class RigStatusMonitorTests
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
-        // Bounded poll for cross-task visibility (the loop runs on a Task.Run) — the fake clock
+        // Bounded poll for cross-task visibility (the loop runs on a Task.Run) - the fake clock
         // drives *when* ticks happen; this only waits for the tick's writes to land.
         for (var i = 0; i < 500 && !condition(); i++)
         {
@@ -158,7 +158,7 @@ public sealed class RigStatusMonitorTests
         clock.Advance(RigStatusMonitor.DefaultPollInterval);
         await WaitUntilAsync(() => monitor.Snapshot().ConnectionState == "faulted");
 
-        // Last-known-good values survive the outage — the UI keeps showing the dial.
+        // Last-known-good values survive the outage - the UI keeps showing the dial.
         monitor.Snapshot().FrequencyHz.Should().Be(14_074_000);
 
         rig.ReadFault = null;

@@ -8,7 +8,7 @@ namespace Packet.Kiss.NinoTnc;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Throwing — rather than returning <c>false</c> — is deliberate (#633). The
+/// Throwing - rather than returning <c>false</c> - is deliberate (#633). The
 /// entire complaint against fire-and-forget SETHW is that its failure is
 /// <em>silent</em>: a bool can be dropped on the floor with no compiler
 /// complaint, which reproduces exactly the bug this guards against, one call

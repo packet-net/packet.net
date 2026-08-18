@@ -22,7 +22,7 @@ public class Crc16CcittTests
     [Fact]
     public void Single_Byte_Vectors()
     {
-        // Sanity values to lock the bit-ordering — small but useful for
+        // Sanity values to lock the bit-ordering - small but useful for
         // catching reflected/non-reflected mix-ups.
         Crc16Ccitt.Compute(new byte[] { 0x00 }).Should().Be((ushort)0xF078);
         Crc16Ccitt.Compute(new byte[] { 0xFF }).Should().Be((ushort)0xFF00);

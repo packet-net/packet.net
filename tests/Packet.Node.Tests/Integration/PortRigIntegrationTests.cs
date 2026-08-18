@@ -125,7 +125,7 @@ public sealed class PortRigIntegrationTests
         rig.Disposed.Should().BeTrue();
         // The poller stopped (its Snapshot still answers from captured state, but the loop is
         // done): a disposed monitor must never read a disposed rig, which the ordering in
-        // RunningPort.DisposeAsync guarantees — poller first, rig last.
+        // RunningPort.DisposeAsync guarantees - poller first, rig last.
         var act = async () => await monitor.DisposeAsync(); // idempotent double-dispose
         await act.Should().NotThrowAsync();
     }
@@ -263,7 +263,7 @@ public sealed class PortRigIntegrationTests
         Skip.If(FindRigctld() is null, "rigctld not installed (apt install libhamlib-utils)");
 
         var bus = new SharedRadioBus();
-        // The hamlib dummy (model 1) — the device is ignored, everything else is the real path.
+        // The hamlib dummy (model 1) - the device is ignored, everything else is the real path.
         var rigConfig = new PortRigConfig { Kind = "hamlib", Device = "/dev/null", Model = 1 };
         var config = new TestConfigProvider(Config(PortWithManagedRig("hf", "/dev/pty-hf", rigConfig)));
         var transports = new FakeTransportFactory().Provide("serial-kiss:/dev/pty-hf", bus.Attach());
@@ -310,7 +310,7 @@ public sealed class PortRigIntegrationTests
         }
         catch (ArgumentException)
         {
-            return true;   // no such pid — fully reaped.
+            return true;   // no such pid - fully reaped.
         }
     }
 

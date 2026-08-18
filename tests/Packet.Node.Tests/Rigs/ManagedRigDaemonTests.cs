@@ -40,7 +40,7 @@ public sealed class ManagedRigDaemonTests : IDisposable
             .Select(d => Path.Combine(d, "rigctld"))
             .FirstOrDefault(File.Exists);
 
-    /// <summary>The dummy-rig (model 1) node-managed block — the ecosystem's standard client
+    /// <summary>The dummy-rig (model 1) node-managed block - the ecosystem's standard client
     /// test harness; the dummy ignores the device it is handed.</summary>
     private static PortRigConfig DummyRig() => new()
     {
@@ -153,7 +153,7 @@ public sealed class ManagedRigDaemonTests : IDisposable
         }
         catch (ArgumentException)
         {
-            return true;   // no such pid — fully reaped.
+            return true;   // no such pid - fully reaped.
         }
     }
 
@@ -196,7 +196,7 @@ public sealed class ManagedRigDaemonTests : IDisposable
             child.Kill();
         }
 
-        // The supervisor respawns it — a NEW pid, but the SAME allocated port, so the
+        // The supervisor respawns it - a NEW pid, but the SAME allocated port, so the
         // re-dialling clients recover without reconfiguration.
         await Wait.ForAsync(
             () => daemon.ChildPid is { } pid && pid != firstPid,
@@ -236,7 +236,7 @@ public sealed class ManagedRigDaemonTests : IDisposable
         await using var daemon = Start(DummyRig(), binaryPath: bin);
 
         // The exit-loop keeps respawning (that's its job), but nothing ever listens: the
-        // readiness probe must report false — the caller's degrade signal — never throw.
+        // readiness probe must report false - the caller's degrade signal - never throw.
         (await daemon.WaitUntilReadyAsync(TimeSpan.FromMilliseconds(700))).Should().BeFalse();
     }
 
@@ -247,7 +247,7 @@ public sealed class ManagedRigDaemonTests : IDisposable
 
         await using var daemon = Start(DummyRig(), binaryPath: Path.Combine(dir, "no-such-rigctld"));
 
-        // A launch that can't even start bails out of the readiness wait early — the whole
+        // A launch that can't even start bails out of the readiness wait early - the whole
         // 10 s budget must NOT be burned on a binary that will never appear.
         var sw = Stopwatch.StartNew();
         (await daemon.WaitUntilReadyAsync(TimeSpan.FromSeconds(10))).Should().BeFalse();

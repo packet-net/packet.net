@@ -136,7 +136,7 @@ internal static class SurfaceProbe
         return 0;
     }
 
-    /// <summary>One-shot FUNCTION 0/6 probe: f0601, capture, f0600, capture — revert to off.</summary>
+    /// <summary>One-shot FUNCTION 0/6 probe: f0601, capture, f0600, capture - revert to off.</summary>
     public static async Task<int> RunF06(string ccdiPort)
     {
         await using var radio = TaitCcdiRadio.Open(ccdiPort);

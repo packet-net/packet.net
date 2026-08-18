@@ -7,7 +7,7 @@ namespace Packet.Tune.Core.Tests;
 
 /// <summary>
 /// The pure pieces of the IL2P+CRC mode survey: mode selection (Tom's
-/// directive — "IL2P+CRC" exactly; plain IL2P and legacy AX.25 excluded),
+/// directive - "IL2P+CRC" exactly; plain IL2P and legacy AX.25 excluded),
 /// verdicts, deadlines, RSSI reduction, and the Markdown/JSON renderings.
 /// </summary>
 public class ModeSurveyTests
@@ -17,7 +17,7 @@ public class ModeSurveyTests
     {
         // Modes 1 and 3 (4FSK) joined the selection when the catalog names
         // were corrected to carry their IL2P+CRC protocol (OARC wiki,
-        // 2026-07-03) — there is no AX.25 variant of 4FSK.
+        // 2026-07-03) - there is no AX.25 variant of 4FSK.
         var modes = ModeSurvey.SelectIl2pCrcModes();
         modes.Select(m => m.Mode).Should().Equal(1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 14);
     }
@@ -63,7 +63,7 @@ public class ModeSurveyTests
         fast.Should().BeGreaterThan(TimeSpan.FromSeconds(4));
         slow.Should().BeLessThanOrEqualTo(TimeSpan.FromSeconds(20));
 
-        // Mode 15 ("Set from KISS") has no bit rate — falls back to the cap.
+        // Mode 15 ("Set from KISS") has no bit rate - falls back to the cap.
         ModeSurvey.ReceiveTimeout(NinoTncCatalog.ByMode[15]).Should().Be(TimeSpan.FromSeconds(20));
     }
 

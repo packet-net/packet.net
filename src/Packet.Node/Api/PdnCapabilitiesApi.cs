@@ -14,8 +14,8 @@ namespace Packet.Node.Api;
 /// forget through the host's <see cref="NodeHostedService.Capabilities"/> handle, 204/404).
 /// </summary>
 /// <remarks>
-/// Forgetting a cached capability is a deliberate operator action — it makes the next dial to
-/// that neighbour re-probe from the optimistic defaults — so, like the session/port/transmit
+/// Forgetting a cached capability is a deliberate operator action - it makes the next dial to
+/// that neighbour re-probe from the optimistic defaults - so, like the session/port/transmit
 /// actions, it is <c>operate</c>-gated and audited (<c>clear_capability</c>). The id is split
 /// on the FIRST ':' the same way a session id is (a callsign peer carries no ':'), reusing
 /// <see cref="PdnSessionsApi.TrySplitSessionId"/>. A malformed id, an absent cache (default-off
@@ -41,7 +41,7 @@ public static class PdnCapabilitiesApi
         // unknown record → 404, else 204. (Modelled on DELETE /sessions/{id}.)
         v1.MapDelete("/capabilities/{id}", (string id, HttpContext ctx, NodeHostedService host, IAuditLog audit, TimeProvider clock) =>
         {
-            // Forgetting a capability makes the next dial re-probe this neighbour — audit it.
+            // Forgetting a capability makes the next dial re-probe this neighbour - audit it.
             audit.RecordRest(ctx, clock, "clear_capability", id, "requested", "");
 
             if (host.Capabilities is null || !PdnSessionsApi.TrySplitSessionId(id, out var portId, out var peer))

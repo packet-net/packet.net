@@ -11,7 +11,7 @@ namespace Packet.Interop.Tests.Hardware;
 /// #576 regression on real hardware (RF-free): adopt a Tait radio through the split-station head-end
 /// with the production <see cref="RadioControlFactory"/> + <see cref="HeadEndDeviceResolver"/> +
 /// <see cref="ReconnectingRadioControl"/>, then bounce the head-end (kill + restart) and prove the
-/// facade detects the fault, re-resolves the inventory by-path device, re-clocks, and re-adopts —
+/// facade detects the fault, re-resolves the inventory by-path device, re-clocks, and re-adopts -
 /// control resumes on a freshly-swapped driver. Needs the head-end binary (headend/dist or the
 /// <c>PACKETNET_HEADEND_BIN</c> override) + a Tait radio for it to bridge.
 /// </summary>

@@ -7,7 +7,7 @@ namespace Packet.Tune;
 /// immediately exiting CCR mode (the CCR exit is a documented soft reset,
 /// ~6 s; TM8100-series only). The known use: un-wedging the radio's SDM
 /// auto-acknowledge engine after a PTT-vs-ack collision (see
-/// <see cref="Packet.Tune.Core.SdmTuningLink"/> remarks) — symptom: the
+/// <see cref="Packet.Tune.Core.SdmTuningLink"/> remarks) - symptom: the
 /// radio still receives SDMs but peers only ever see "not delivered".
 /// </summary>
 internal static class RadioResetCommand

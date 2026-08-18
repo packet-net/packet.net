@@ -17,7 +17,7 @@ using Xunit;
 namespace Packet.Interop.Tests.Linbpq;
 
 /// <summary>
-/// Connected-mode AXUDP interop against the real LinBPQ container — the gap
+/// Connected-mode AXUDP interop against the real LinBPQ container - the gap
 /// PR #299 left open. The node host's <see cref="AxudpFrameTransport"/> (a native
 /// <c>IAx25Transport</c> presenting <see cref="AxudpSocket"/> over UDP) was only
 /// ever exercised pdn↔pdn on loopback; AXUDP exists for real-peer interop and
@@ -35,7 +35,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <c>bpq32.cfg</c> AXIP port carries <c>AUTOADDQUIET</c> (auto-learn pdn's reply
 /// route from the first inbound frame, for the pdn→BPQ leg) and a static
 /// <c>MAP PNAX25-1 172.30.0.1 UDP 8190</c> (172.30.0.1 = the rfnet bridge
-/// gateway = the host, where pdn binds — used for the BPQ→pdn leg, where there
+/// gateway = the host, where pdn binds - used for the BPQ→pdn leg, where there
 /// is no prior inbound to auto-learn from).
 /// </para>
 /// <para>
@@ -44,7 +44,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// FCS on every datagram: <c>bpqaxip.c</c>'s UDP receive path computes the FCS
 /// over the whole datagram and drops anything whose residue isn't <c>0xf0b8</c>
 /// ("BPQAXIP Invalid CRC"), and its send path appends the FCS. There is no
-/// per-MAP "no CRC" knob. AXUDP therefore unconditionally carries the FCS —
+/// per-MAP "no CRC" knob. AXUDP therefore unconditionally carries the FCS -
 /// settled by a citation survey that found FCS-on is the de-facto AXIP/AXUDP wire
 /// form everywhere (RFC 1226 + ax25ipd + BPQAXIP + XRouter + JNOS) and FCS-less is
 /// pdn-only (the pre-#299 docs wrongly claimed FCS-less "matches BPQAXIP", and an
@@ -79,20 +79,20 @@ public sealed class LinbpqViaAxudpConnectedMode
     private static readonly Callsign PdnMappedCall = new("PNAX25", 1);
 
     // BPQ's AXIP port is the 2nd PORT block in bpq32.cfg (Telnet=1, AXIP=2,
-    // netsim=3) — the order is fixed in the fixture, so the AXIP port number is
+    // netsim=3) - the order is fixed in the fixture, so the AXIP port number is
     // stable. BPQ's `C <port> <call>` dials out on that port.
     private const int BpqAxipPortNum = 2;
 
     private static readonly Callsign BpqCall = new("PN0TST", 0);   // BPQ NODECALL
 
-    // Directions A and the FCS guard don't need the static MAP — BPQ's AUTOADDQUIET
+    // Directions A and the FCS guard don't need the static MAP - BPQ's AUTOADDQUIET
     // auto-learns their reply route from the inbound SABM (verified). They each use
     // a DISTINCT callsign and a DISTINCT, FIXED local port. Distinct callsigns make
     // BPQ track three independent links, so the shared daemon can't leak link/MH
     // state between tests; FIXED ports keep BPQ's AUTOADD cache valid across re-runs
     // (bpqaxip.c's auto-added ARP entry pins the call→port it first saw and never
     // updates it for AUTOADD entries, so a CHANGING ephemeral port would make BPQ
-    // reply to a dead port on the second run — source-verified, learned the hard
+    // reply to a dead port on the second run - source-verified, learned the hard
     // way). The three ports are distinct so the serialised tests never contend.
     private const int PdnDialOutPort = 8191;
     private const int PdnFcsPort = 8192;
@@ -100,12 +100,12 @@ public sealed class LinbpqViaAxudpConnectedMode
     private static readonly Callsign PdnFcsCall = new("PNAXFC", 1);   // FCS guard
 
     /// <summary>
-    /// Direction A — pdn → LinBPQ. A pdn node host with an AXUDP port dials BPQ's
+    /// Direction A - pdn → LinBPQ. A pdn node host with an AXUDP port dials BPQ's
     /// NODECALL through its own outbound connector (the exact path the node
     /// console's <c>Connect</c> command uses):
     /// SABM crosses the UDP tunnel, BPQ replies UA (the connect only returns on
-    /// DL-CONNECT-confirm), then an I-frame round-trip — we send the <c>P</c>
-    /// (ports) command and read BPQ's reply back over the tunnel — and a clean
+    /// DL-CONNECT-confirm), then an I-frame round-trip - we send the <c>P</c>
+    /// (ports) command and read BPQ's reply back over the tunnel - and a clean
     /// teardown on dispose. Exercises the full send/receive FCS handling,
     /// including BPQ's RR S-frame acks (which an unstripped FCS tail would break).
     /// </summary>
@@ -137,7 +137,7 @@ public sealed class LinbpqViaAxudpConnectedMode
         // ── I-frame round-trip ──────────────────────────────────────────
         // BPQ sends its CTEXT welcome banner as an eager I-frame right after UA.
         // Drain it (read until the indication stream goes quiet) so it can't be
-        // mistaken for — or swallow the start of — our command's response, then
+        // mistaken for - or swallow the start of - our command's response, then
         // send "P\r" (the Ports command: short, deterministically non-empty, no
         // side effects on BPQ state) and read BPQ's reply.
         await DrainUntilQuietAsync(toBpq, quietFor: TimeSpan.FromSeconds(1.5), budget: TimeSpan.FromSeconds(15), cts.Token);
@@ -154,7 +154,7 @@ public sealed class LinbpqViaAxudpConnectedMode
     }
 
     /// <summary>
-    /// Direction B — LinBPQ → pdn. A pdn node host listens as PNAX25-1 on the
+    /// Direction B - LinBPQ → pdn. A pdn node host listens as PNAX25-1 on the
     /// AXUDP port; we then drive BPQ's own telnet node prompt to
     /// <c>C 2 PNAX25-1</c> (connect out on its AXIP port to pdn). BPQ
     /// originates the SABM over AXIP, pdn accepts it (its <c>SessionAccepted</c>
@@ -173,7 +173,7 @@ public sealed class LinbpqViaAxudpConnectedMode
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         // BPQ originates this connect, so pdn MUST be at the static MAP target
-        // (callsign + fixed port) — there's no inbound for AUTOADDQUIET to learn.
+        // (callsign + fixed port) - there's no inbound for AUTOADDQUIET to learn.
         await using var pdn = BuildPdn(
             call: PdnMappedCall,
             localPort: PdnMappedPort,
@@ -218,7 +218,7 @@ public sealed class LinbpqViaAxudpConnectedMode
     /// The FCS-less leg is sent via <see cref="AxudpSocket.SendRawAsync"/> (the raw
     /// escape hatch, which appends no FCS) since <see cref="AxudpSocket.SendAsync"/>
     /// always appends the FCS. The FCS-bearing reply is received through
-    /// <see cref="AxudpSocket.ReceiveAsync"/>, which strips + validates the FCS — so
+    /// <see cref="AxudpSocket.ReceiveAsync"/>, which strips + validates the FCS - so
     /// a non-null result already proves BPQ's reply carried a valid FCS.
     /// </remarks>
     [SkippableFact]
@@ -237,7 +237,7 @@ public sealed class LinbpqViaAxudpConnectedMode
         // Drain any stray datagram already queued before we start (belt + braces).
         await DrainDatagramsAsync(sock, TimeSpan.FromMilliseconds(300), cts.Token);
 
-        // FCS-less SABM (raw send — no FCS appended) → BPQ drops it as "Invalid CRC"
+        // FCS-less SABM (raw send - no FCS appended) → BPQ drops it as "Invalid CRC"
         // → no reply.
         var sabm = Ax25Frame.Sabm(destination: BpqCall, source: PdnFcsCall, pollBit: true);
         await sock.SendRawAsync(bpq, sabm.ToBytes(), cts.Token);
@@ -248,7 +248,7 @@ public sealed class LinbpqViaAxudpConnectedMode
         // FCS-bearing SABM (SendAsync always appends the FCS) → BPQ accepts it →
         // replies UA. ReceiveAsync strips + validates the FCS, so a non-null body
         // already proves BPQ's UA carried a valid FCS (an unstripped tail would
-        // otherwise make TryParse reject acks — the whole reason AXUDP strips it).
+        // otherwise make TryParse reject acks - the whole reason AXUDP strips it).
         await sock.SendAsync(bpq, sabm, cts.Token);
         var fcsReply = await ReceiveOneAsync(sock, TimeSpan.FromSeconds(10), cts.Token);
         fcsReply.Should().NotBeNull(
@@ -290,7 +290,7 @@ public sealed class LinbpqViaAxudpConnectedMode
                     },
                 },
             ],
-            // No telnet management listener — we drive BPQ's telnet, not pdn's.
+            // No telnet management listener - we drive BPQ's telnet, not pdn's.
             Management = new ManagementConfig { Telnet = new TelnetConfig { Enabled = false } },
         };
 
@@ -318,7 +318,7 @@ public sealed class LinbpqViaAxudpConnectedMode
     // Wait up to <paramref name="budget"/> for one valid datagram; null on timeout.
     // AxudpSocket.ReceiveAsync has already stripped + validated the FCS, so the
     // returned bytes are the bare AX.25 frame body (and a bad-FCS datagram never
-    // surfaces — it's dropped inside ReceiveAsync).
+    // surfaces - it's dropped inside ReceiveAsync).
     private static async Task<byte[]?> ReceiveOneAsync(AxudpSocket sock, TimeSpan budget, CancellationToken outer)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
@@ -373,7 +373,7 @@ public sealed class LinbpqViaAxudpConnectedMode
             }
             catch (OperationCanceledException) when (quietCts.IsCancellationRequested && !outerCts.IsCancellationRequested)
             {
-                return;   // quiet window elapsed with no new bytes — banner drained
+                return;   // quiet window elapsed with no new bytes - banner drained
             }
             catch (OperationCanceledException) { return; }
         }
@@ -507,7 +507,7 @@ public sealed class LinbpqViaAxudpConnectedMode
                     }
                 }
             }
-            catch (IOException) { /* connection torn down — return what we have */ }
+            catch (IOException) { /* connection torn down - return what we have */ }
             return sb.ToString();
         }
 
@@ -523,7 +523,7 @@ public sealed class LinbpqViaAxudpConnectedMode
                 }
                 if (i + 2 >= n)
                 {
-                    break;   // partial IAC at the tail — drop
+                    break;   // partial IAC at the tail - drop
                 }
 
                 byte verb = buf[i + 1];

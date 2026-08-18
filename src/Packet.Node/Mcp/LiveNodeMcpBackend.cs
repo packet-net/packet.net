@@ -11,7 +11,7 @@ using Packet.Rig;
 namespace Packet.Node.Mcp;
 
 /// <summary>
-/// The in-process <see cref="INodeMcpBackend"/> — reads live node state straight
+/// The in-process <see cref="INodeMcpBackend"/> - reads live node state straight
 /// from <see cref="NodeHostedService"/> and reuses <see cref="PdnReadApi"/>'s
 /// projection helpers so the MCP tools never drift from what <c>/api/v1</c>
 /// reports. This is what the in-process SSE transport serves. Write actions run
@@ -99,7 +99,7 @@ public sealed class LiveNodeMcpBackend(
     private McpLinkQuality BuildLinkQuality(Packet.Node.Core.Telemetry.LinkSnapshot link)
     {
         // SmoothedRttMs + Retries are read from the live session's timer state (the
-        // monitor-v2 seam, #173) — 0 when no connected-mode session backs this link.
+        // monitor-v2 seam, #173) - 0 when no connected-mode session backs this link.
         var (rttMs, retries) = PdnReadApi.SessionTimers(host.Supervisor, link.PortId, link.Peer);
         return new McpLinkQuality(link.PortId, link.Peer, rttMs, retries, link.RejCount,
             link.SrejCount, link.FramesIn, link.FramesOut, Unknown: false);
@@ -129,7 +129,7 @@ public sealed class LiveNodeMcpBackend(
 
     public Task<IReadOnlyList<McpRigStatus>> RigStatusAsync(string? portId = null, CancellationToken ct = default)
     {
-        // Same projections as GET /api/v1/rigs and /ports/{id}/rig (RigReadModels — no rig I/O
+        // Same projections as GET /api/v1/rigs and /ports/{id}/rig (RigReadModels - no rig I/O
         // on the request path; attached rigs report their monitor's latest poll-tick snapshot).
         IReadOnlyList<Packet.Node.Core.Api.RigStatus> statuses = portId is null
             ? RigReadModels.All(host.Supervisor, config.Current)

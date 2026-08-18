@@ -9,7 +9,7 @@ namespace Packet.NetRom.Tests.Routing;
 
 /// <summary>
 /// Tests for INP3 RIF ingestion into the routing table
-/// (<see cref="NetRomRoutingTable.IngestRif(Callsign, Callsign, uint, Inp3Rif, int)"/>) —
+/// (<see cref="NetRomRoutingTable.IngestRif(Callsign, Callsign, uint, Inp3Rif, int)"/>) -
 /// the second metric space (measured target time, lowest-best) learned alongside the
 /// NODES quality space. The locked ingestion math is
 /// <c>localTargetTimeMs = rip.TargetTimeMs + neighbourSnttMs + 10</c>,
@@ -122,7 +122,7 @@ public sealed class Inp3IngestTests
     public void Full_millisecond_precision_is_kept_not_requantised_to_the_ten_ms_granule()
     {
         var table = NewTable();
-        // Wire target time is always a 10 ms multiple, but the SNTT need not be — 73 ms here.
+        // Wire target time is always a 10 ms multiple, but the SNTT need not be - 73 ms here.
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 73, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
 
         var route = RouteVia(table, DestSot, NbrA);
@@ -191,7 +191,7 @@ public sealed class Inp3IngestTests
         both.Quality.Should().BeGreaterThan(0);
         both.Inp3.Should().NotBeNull();
 
-        // Withdraw via the horizon — the quality route must survive, the INP3 metric cleared.
+        // Withdraw via the horizon - the quality route must survive, the INP3 metric cleared.
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: Inp3Rip.HorizonMs)));
 
         var after = RouteVia(table, DestSot, NbrA);
@@ -207,7 +207,7 @@ public sealed class Inp3IngestTests
         // A NODES quality route exists; no SNTT measured for this link yet.
         table.Ingest(NbrA, Me, "vhf", Nodes("RDG", (DestSot, "SOT", NbrA, 200)));
 
-        // A non-horizon RIP arrives but the link is un-probed: skip — do NOT withdraw.
+        // A non-horizon RIP arrives but the link is un-probed: skip - do NOT withdraw.
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: Inp3Sntt.Unset, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
 
         var route = RouteVia(table, DestSot, NbrA);
@@ -304,7 +304,7 @@ public sealed class Inp3IngestTests
         var options = NetRomRoutingOptions.Default with { MaxRoutesPerDestination = 1 };
         var table = NewTable(options);
         // A quality route via NbrA, then an INP3-only route via NbrB: cap 1 keeps the
-        // higher-quality (NbrA) route — eviction is quality-first (AMBIGUITY-I3-2).
+        // higher-quality (NbrA) route - eviction is quality-first (AMBIGUITY-I3-2).
         table.Ingest(NbrA, Me, "vhf", Nodes("RDG", (DestSot, "SOT", NbrA, 200)));
         table.IngestRif(NbrB, Port, Me, neighbourSnttMs: 10, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 1)));
 
@@ -342,7 +342,7 @@ public sealed class Inp3IngestTests
         table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
         RouteVia(table, DestSot, NbrA)!.Inp3.Should().NotBeNull();
 
-        // A later NODES broadcast refreshes the quality — the time metric must survive.
+        // A later NODES broadcast refreshes the quality - the time metric must survive.
         table.Ingest(NbrA, Me, "vhf", Nodes("RDG", (DestSot, "SOT", NbrA, 100)));
 
         var route = RouteVia(table, DestSot, NbrA)!;

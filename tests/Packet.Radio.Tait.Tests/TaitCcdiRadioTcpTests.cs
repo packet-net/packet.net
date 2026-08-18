@@ -58,7 +58,7 @@ public class TaitCcdiRadioTcpTests
         };
 
         // A PROGRESS "receiver busy" byte sequence pushed by the head-end (unsolicited, no command
-        // first) is the DCD carrier-sense edge — it must raise the event and flip the cached bool.
+        // first) is the DCD carrier-sense edge - it must raise the event and flip the cached bool.
         await server.SendAsync(Latin1(".p0205C9\r."));
         (await seen.WaitAsync(Timeout)).Should().BeTrue();
         radio.ChannelBusy.Should().BeTrue();

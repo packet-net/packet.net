@@ -3,14 +3,14 @@ using System.Globalization;
 namespace Packet.Tune.Core;
 
 /// <summary>
-/// The meter end's per-burst measurement — the payload of an <c>MS</c>
+/// The meter end's per-burst measurement - the payload of an <c>MS</c>
 /// telegram. The bracketing signals are always attempted: decoded-frame
 /// count vs sent, the GETALL delta of IL2P FEC-corrected bytes (register 11
-/// — only meaningful in IL2P modes, so prefer mode 7 for tuning sessions),
+/// - only meaningful in IL2P modes, so prefer mode 7 for tuning sessions),
 /// the lost-ADC-sample delta (clipping = gross over-deviation), and the
 /// Tait CCDI RSSI as the constant RF-path check. On firmware 3.41 the
 /// GETRSSI RX-audio level meter also exists (REMOVED in 3.44) and rides
-/// along as the optional <see cref="AudioLevelDb"/> — a continuous
+/// along as the optional <see cref="AudioLevelDb"/> - a continuous
 /// deviation meter that enriches the guidance without replacing the
 /// bracketing verdicts.
 /// </summary>
@@ -21,11 +21,11 @@ namespace Packet.Tune.Core;
 /// doesn't carry it / the mode is not IL2P.</param>
 /// <param name="LostAdcSamplesDelta">Lost-ADC-sample delta across the burst
 /// (labelled <c>LostADCSmp</c>), or <c>null</c> when unavailable. Positive =
-/// the RX audio clipped — gross over-deviation.</param>
+/// the RX audio clipped - gross over-deviation.</param>
 /// <param name="RssiDbm">Median Tait CCDI RSSI during the burst in dBm, or
 /// <c>null</c> when no CCDI radio is attached at the meter end.</param>
 /// <param name="AudioLevelDb">RX-audio RMS level at the meter's TNC during the
-/// burst, in dB (GETRSSI — <b>firmware 3.41-era only; REMOVED in 3.44</b>).
+/// burst, in dB (GETRSSI - <b>firmware 3.41-era only; REMOVED in 3.44</b>).
 /// A carrier <em>quiets</em> the demodulated audio, so lower (more negative)
 /// = more quieting = signal present. <c>null</c> when the firmware has no
 /// GETRSSI or the fast path was not probed. Old peers that predate this
@@ -121,7 +121,7 @@ public sealed record MeterReport(
             }
             else
             {
-                return false; // unknown field — not an MS args string
+                return false; // unknown field - not an MS args string
             }
         }
 

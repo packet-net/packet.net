@@ -3,12 +3,12 @@ using System.Collections.Concurrent;
 namespace Packet.Node.Core.Auth;
 
 /// <summary>
-/// An in-memory sliding-window failure counter that rate-limits login attempts —
+/// An in-memory sliding-window failure counter that rate-limits login attempts -
 /// the login-hardening component. Tracked independently per key (the host registers
 /// a failure under BOTH the username AND the source IP, so neither a single
 /// hammered account nor a single hostile IP can keep guessing): once a key
 /// accumulates <see cref="MaxFailures"/> failures within <see cref="Window"/>, it is
-/// locked out for the remainder of the window — further attempts under that key are
+/// locked out for the remainder of the window - further attempts under that key are
 /// refused (the host returns 429) without even reaching the password verify.
 /// </summary>
 /// <remarks>
@@ -18,7 +18,7 @@ namespace Packet.Node.Core.Auth;
 /// a failure or a lockout check first drops the timestamps older than
 /// <see cref="Window"/>, so the count is always "failures in the last window". When
 /// the count reaches the threshold the key is locked until its oldest in-window
-/// failure ages out — a self-healing cooldown, no separate timer.
+/// failure ages out - a self-healing cooldown, no separate timer.
 /// </para>
 /// <para>
 /// <b>Success resets.</b> A successful login clears the key's failure history
@@ -28,7 +28,7 @@ namespace Packet.Node.Core.Auth;
 /// <para>
 /// <b>Bounded memory.</b> Keys whose entire history has aged out are pruned
 /// opportunistically on each touch, and a global sweep runs when the map grows past
-/// a soft cap — so a flood of distinct usernames/IPs cannot leak memory.
+/// a soft cap - so a flood of distinct usernames/IPs cannot leak memory.
 /// </para>
 /// <para>
 /// Thread-safe (a <see cref="ConcurrentDictionary{TKey,TValue}"/> of per-key entries
@@ -58,7 +58,7 @@ public sealed class LoginThrottle
     /// <summary>
     /// Construct with the clock and (optionally) the threshold + window.
     /// </summary>
-    /// <param name="clock">The injected clock — all timing rides this (no wall-clock).</param>
+    /// <param name="clock">The injected clock - all timing rides this (no wall-clock).</param>
     /// <param name="maxFailures">Failures within the window before lockout (default
     /// <see cref="DefaultMaxFailures"/> = 5).</param>
     /// <param name="window">The sliding window / max cooldown (default 5 minutes).</param>
@@ -120,7 +120,7 @@ public sealed class LoginThrottle
         }
     }
 
-    /// <summary>Clear a key's failure history — call on a successful login so a good
+    /// <summary>Clear a key's failure history - call on a successful login so a good
     /// login resets the counter for that username (and its source IP).</summary>
     public void Reset(string key)
     {
@@ -129,7 +129,7 @@ public sealed class LoginThrottle
     }
 
     // When the map grows past the soft cap, drop keys whose entire failure history has
-    // aged out of the window — bounding memory under a flood of distinct keys.
+    // aged out of the window - bounding memory under a flood of distinct keys.
     private void MaybeSweep(DateTimeOffset now)
     {
         if (entries.Count <= PruneThreshold)

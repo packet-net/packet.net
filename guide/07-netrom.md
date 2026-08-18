@@ -2,12 +2,12 @@
 
 AX.25 connects two stations that can hear each other. **NET/ROM** is the layer
 that lets stations that *can't* hear each other talk anyway, by hopping through
-intermediate nodes — it's the network (L3) and transport (L4) layer that turns a
+intermediate nodes - it's the network (L3) and transport (L4) layer that turns a
 scattering of nodes into a routed mesh. `Packet.NetRom` gives you the pieces:
 the wire formats, a routing table fed by NODES broadcasts, a forwarding decision
 function, and an end-to-end virtual-circuit layer.
 
-This is the top of the cake. It rides entirely on what you already have —
+This is the top of the cake. It rides entirely on what you already have -
 NET/ROM packets travel as the info field of AX.25 frames (UI frames for routing
 broadcasts, connected-mode I-frames for circuit data, PID `0xCF` throughout).
 
@@ -30,8 +30,8 @@ The four moving parts:
 
 ## Learning the network: NODES broadcasts → routing table
 
-Nodes periodically broadcast a **NODES** frame — a UI frame, PID `0xCF`, AX.25
-destination the literal callsign `NODES` — advertising the destinations they can
+Nodes periodically broadcast a **NODES** frame - a UI frame, PID `0xCF`, AX.25
+destination the literal callsign `NODES` - advertising the destinations they can
 reach and at what quality. Your routing table is built by feeding it every NODES
 broadcast you hear.
 
@@ -79,8 +79,8 @@ carries the port it forwards over (`NetRomRoute.PortId`). Look one up with
 reaches the wire: a NODES entry has no port field, so a mixed fleet is unaffected.
 See [`docs/netrom-multiport-neighbours.md`](../docs/netrom-multiport-neighbours.md).
 
-To use the table, take a `Snapshot()` — an immutable, point-in-time view safe to
-read from any thread — and resolve a destination by alias or callsign:
+To use the table, take a `Snapshot()` - an immutable, point-in-time view safe to
+read from any thread - and resolve a destination by alias or callsign:
 
 ```csharp
 NetRomRoutingSnapshot snap = routing.Snapshot();
@@ -121,13 +121,13 @@ else
 ```
 
 It handles TTL decrement, loop detection, and next-hop selection (deterministic
-best-route or per-flow load balancing). Being pure, it's trivial to unit-test —
+best-route or per-flow load balancing). Being pure, it's trivial to unit-test -
 no I/O, no mocks.
 
 ## End-to-end circuits
 
 The transport layer (L4) gives applications a **reliable, ordered byte pipe**
-across the mesh — NET/ROM's answer to a TCP connection. `CircuitManager`
+across the mesh - NET/ROM's answer to a TCP connection. `CircuitManager`
 multiplexes circuits; `NetRomCircuit` is one circuit's state machine.
 
 The manager talks to the rest of your stack through two seams: a `SendPacket`
@@ -166,17 +166,17 @@ c.Connect(originatingUser: myUser);
 ```
 
 `NetRomCircuit` handles the sliding window, fragmentation into ≤236-byte pieces,
-sequencing, and reassembly — the same division of labour as `Ax25Session` one
+sequencing, and reassembly - the same division of labour as `Ax25Session` one
 layer down: you `Send` bytes and handle `DataReceived`, it owns the protocol.
 
 ## Wiring it onto your AX.25 stack
 
 The pieces above are pure NET/ROM logic; they don't know about AX.25. Three short
-bits of glue connect them to the `Ax25Listener` from chapters 5–6. NET/ROM L3
+bits of glue connect them to the `Ax25Listener` from chapters 5-6. NET/ROM L3
 rides **connected-mode I-frames with PID `0xCF`** between adjacent nodes, so the
 glue is all about that boundary.
 
-**Inbound — turn a session's data into a `NetRomPacket`.** On every AX.25 session
+**Inbound - turn a session's data into a `NetRomPacket`.** On every AX.25 session
 the node accepts (chapter 6), watch for NET/ROM payloads and feed them to the L4
 circuit layer (or to forwarding, for transit traffic):
 
@@ -192,10 +192,10 @@ session.DataLinkSignalEmitted += (_, signal) =>
 };
 ```
 
-**Outbound — put a `NetRomPacket` back on the wire.** The `SendPacket` sink ships
+**Outbound - put a `NetRomPacket` back on the wire.** The `SendPacket` sink ships
 a packet to its next-hop neighbour. A neighbour link (an *interlink*) is just an
-ordinary connected-mode AX.25 session to that node — opened with `ConnectAsync`
-(chapter 5) and held up — so you transmit by sending the packet's bytes as a
+ordinary connected-mode AX.25 session to that node - opened with `ConnectAsync`
+(chapter 5) and held up - so you transmit by sending the packet's bytes as a
 PID-`0xCF` I-frame over it:
 
 ```csharp
@@ -215,7 +215,7 @@ circuits.SendPacket = packet =>
     ([chapter 8](08-beyond.md)). Everything else on this page is complete; this is
     the seam where you either write that management or adopt the host's.
 
-**Advertising — broadcast what you can reach.** A node that participates (rather
+**Advertising - broadcast what you can reach.** A node that participates (rather
 than only observing) periodically sends its own NODES broadcast, built from the
 table. `Build` returns one or more UI-frame payloads (a NODES frame caps at 11
 entries, so a large table spills across several):
@@ -248,12 +248,12 @@ IAx25Transport (ch.2)
 Each layer does its one job and hands off through a narrow seam, exactly as
 [chapter 1](01-architecture.md) promised. You can build this incrementally:
 listen-only NODES ingestion first (a routing observer), then advertising, then
-forwarding, then circuits — each stage useful and testable on its own.
+forwarding, then circuits - each stage useful and testable on its own.
 
 This is precisely the assembly the packet.net node host performs in its
-`NetRomService` — which we look at next, alongside the other production concerns
+`NetRomService` - which we look at next, alongside the other production concerns
 `Packet.Node.Core` will hand you for free.
 
 ---
 
-Next: [beyond — segmentation, XID, quirks, and the node host's building blocks →](08-beyond.md)
+Next: [beyond - segmentation, XID, quirks, and the node host's building blocks →](08-beyond.md)

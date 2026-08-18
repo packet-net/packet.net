@@ -6,7 +6,7 @@ namespace Packet.Node.Tests.Auth;
 
 /// <summary>
 /// JWT issue → validate: a fresh token validates and carries sub + scope; a tampered
-/// token is rejected; an expired token is rejected (driven by the fake clock — no
+/// token is rejected; an expired token is rejected (driven by the fake clock - no
 /// wall-clock).
 /// </summary>
 [Trait("Category", "Node")]
@@ -61,7 +61,7 @@ public class JwtTokenServiceTests
     public async Task The_audience_overload_stamps_the_mcp_audience_and_still_validates()
     {
         // An MCP-audience token validates through the same parameters (both audiences
-        // are accepted at the middleware) — the segregation is enforced at the policy,
+        // are accepted at the middleware) - the segregation is enforced at the policy,
         // not by rejecting the token outright.
         var svc = Make(new FakeTimeProvider());
         var (token, _) = svc.Issue("mcp:m0lte", AuthScopes.Read, TimeSpan.FromDays(90), JwtTokenService.McpAudience);

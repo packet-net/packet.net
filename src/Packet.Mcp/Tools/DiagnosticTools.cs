@@ -7,7 +7,7 @@ namespace Packet.Mcp.Tools;
 /// <summary>
 /// MCP tools that need no node state. <c>decode_frame</c> is pure (parser
 /// libraries only), so it works over stdio against a node that isn't even
-/// running — and is the natural test/wiring anchor for the whole surface.
+/// running - and is the natural test/wiring anchor for the whole surface.
 /// </summary>
 [McpServerToolType]
 public sealed class DiagnosticTools

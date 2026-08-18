@@ -7,7 +7,7 @@ namespace Packet.NetRom.Transport;
 /// One end of a NET/ROM L4 virtual circuit: a hand-written, end-to-end
 /// sliding-window transport (connect / info / disconnect with negotiated window,
 /// 8-bit sequence numbers, choke flow control, selective-NAK retransmit, and L4
-/// fragment/reassembly at 236 bytes). It runs <em>above</em> the AX.25 interlink —
+/// fragment/reassembly at 236 bytes). It runs <em>above</em> the AX.25 interlink -
 /// it emits <see cref="NetRomPacket"/>s through a sink the host wires to
 /// <c>Ax25Listener.SendData(…, pid 0xCF)</c>, and is fed inbound datagrams via
 /// <see cref="OnPacket"/>; it knows nothing about AX.25 itself, keeping
@@ -61,7 +61,7 @@ public sealed class NetRomCircuit
     // Negotiated window (set at connect time).
     private int window;
 
-    // Send side — 8-bit sequence space (mod 256).
+    // Send side - 8-bit sequence space (mod 256).
     private byte vs;                                       // next send sequence to allocate
     private byte va;                                       // oldest unacknowledged sequence
     private readonly Queue<Fragment> sendQueue = new();    // fragments waiting for window room
@@ -77,7 +77,7 @@ public sealed class NetRomCircuit
     private int pendingDeliveries;                      // received-but-not-yet-delivered count
 
     // Compression negotiation (BPQ L4Compress). `compressionEnabled` is the settled
-    // per-circuit result — true only when BOTH ends advertised compression at connect
+    // per-circuit result - true only when BOTH ends advertised compression at connect
     // time. Until then it is false, so the always-safe path (send raw) is the default
     // and we never emit a compressed frame a peer can't read. `reassemblyCompressed`
     // tracks whether the more-follows fragments currently being accumulated were
@@ -85,7 +85,7 @@ public sealed class NetRomCircuit
     private bool compressionEnabled;
     private bool reassemblyCompressed;
 
-    /// <summary>The cap on a single decompressed logical frame — generous headroom over
+    /// <summary>The cap on a single decompressed logical frame - generous headroom over
     /// the 236-byte fragment size, matching LinBPQ's 8 KB inflate buffer. A compressed
     /// frame that expands past this is treated as corrupt and dropped.</summary>
     private const int MaxDecompressedFrame = 8192;
@@ -106,7 +106,7 @@ public sealed class NetRomCircuit
     public Action<NetRomPacket>? SendPacket { get; set; }
 
     /// <summary>Raised with reassembled user data to deliver upward (one event per
-    /// completed logical frame — fragments are joined first). An <c>event</c> so the
+    /// completed logical frame - fragments are joined first). An <c>event</c> so the
     /// manager and the consumer can both observe without clobbering each other.</summary>
     public event Action<ReadOnlyMemory<byte>>? DataReceived;
 
@@ -118,7 +118,7 @@ public sealed class NetRomCircuit
     /// <summary>Raised once when the circuit reaches
     /// <see cref="NetRomCircuitState.Disconnected"/>, with the reason. The manager
     /// subscribes this to deregister the circuit; consumers subscribe it for the
-    /// close notification — both fire because it is an <c>event</c>.</summary>
+    /// close notification - both fire because it is an <c>event</c>.</summary>
     public event Action<NetRomCircuitCloseReason>? Closed;
 
     /// <summary>Construct a circuit end. The owner allocates the local index/id and
@@ -153,7 +153,7 @@ public sealed class NetRomCircuit
     public int Window { get { lock (gate) { return window; } } }
 
     /// <summary>True once the circuit is connected and <em>both</em> ends negotiated
-    /// LinBPQ-style L4 payload compression — i.e. outbound data on this circuit is being
+    /// LinBPQ-style L4 payload compression - i.e. outbound data on this circuit is being
     /// zlib-compressed and flagged <see cref="NetRomTransportFlags.Compressed"/>. False
     /// (the safe default) when either end declined, in which case data is sent raw.</summary>
     public bool CompressionNegotiated { get { lock (gate) { return compressionEnabled; } } }
@@ -209,7 +209,7 @@ public sealed class NetRomCircuit
             // compressed frame carries the Compressed flag; the receiver reassembles all
             // its more-follows fragments and inflates the concatenation once (mirroring
             // LinBPQ's L4COMP / L4MORE framing). Falls back to raw on the (rare) case
-            // that compression would not shrink the data — BPQ does the same ("if
+            // that compression would not shrink the data - BPQ does the same ("if
             // complen >= dataLen … just send"): no point paying the zlib header for an
             // expansion, and raw is always decodable.
             ReadOnlyMemory<byte> body = data;
@@ -251,7 +251,7 @@ public sealed class NetRomCircuit
     public void Disconnect()
     {
         // try/finally so the queued Disconnect Request is flushed even though the
-        // switch returns from inside the lock (see FlushSends — deadlock fix).
+        // switch returns from inside the lock (see FlushSends - deadlock fix).
         try
         {
             lock (gate)
@@ -262,7 +262,7 @@ public sealed class NetRomCircuit
                     case NetRomCircuitState.Disconnecting:
                         return;
                     case NetRomCircuitState.Connecting:
-                        // Never established — close locally; nothing to disconnect-ack.
+                        // Never established - close locally; nothing to disconnect-ack.
                         Close(NetRomCircuitCloseReason.Normal);
                         return;
                     case NetRomCircuitState.Connected:
@@ -285,7 +285,7 @@ public sealed class NetRomCircuit
     /// <summary>
     /// Feed an inbound datagram (already parsed from an interlink I-frame's info
     /// field) addressed to this circuit. Drives the FSM: connect/ack, info (with
-    /// ack + choke + NAK + reassembly), disconnect/ack. Tolerant of any opcode —
+    /// ack + choke + NAK + reassembly), disconnect/ack. Tolerant of any opcode -
     /// an unexpected message for the current state is ignored, never throws.
     /// </summary>
     public void OnPacket(NetRomPacket packet)
@@ -315,7 +315,7 @@ public sealed class NetRomCircuit
                     OnInformationAcknowledge(t);
                     break;
                 default:
-                    // Unknown opcode — ignore.
+                    // Unknown opcode - ignore.
                     break;
             }
         }
@@ -376,7 +376,7 @@ public sealed class NetRomCircuit
     public void Tick()
     {
         // try/finally so queued retransmits are flushed even on the timeout-Close
-        // early returns from inside the lock (see FlushSends — deadlock fix).
+        // early returns from inside the lock (see FlushSends - deadlock fix).
         try
         {
             lock (gate)
@@ -401,7 +401,7 @@ public sealed class NetRomCircuit
                     ArmControlTimer();
                 }
 
-                // Information retransmit — oldest unacked first.
+                // Information retransmit - oldest unacked first.
                 if (state == NetRomCircuitState.Connected && unacked.Count > 0)
                 {
                     var oldest = unacked[0];
@@ -413,7 +413,7 @@ public sealed class NetRomCircuit
                             return;
                         }
                         // Retransmit every in-flight frame from the oldest (go-back style),
-                        // bumping their timers — NET/ROM has no cumulative-ack guarantee
+                        // bumping their timers - NET/ROM has no cumulative-ack guarantee
                         // the peer kept later frames after a gap.
                         for (int i = 0; i < unacked.Count; i++)
                         {
@@ -533,7 +533,7 @@ public sealed class NetRomCircuit
     {
         if (state != NetRomCircuitState.Connected)
         {
-            // Information before connect / after disconnect — drop, but if we're
+            // Information before connect / after disconnect - drop, but if we're
             // disconnecting still ack-progress isn't needed.
             return;
         }
@@ -567,7 +567,7 @@ public sealed class NetRomCircuit
 
             if (!t.MoreFollows && reassembly.Count > 0)
             {
-                // Logical frame complete — deliver upward, inflating first if it was
+                // Logical frame complete - deliver upward, inflating first if it was
                 // sent compressed. A corrupt/undecodable compressed stream is dropped
                 // (fail closed) rather than delivered as garbage or throwing.
                 var assembled = reassembly.ToArray();
@@ -580,7 +580,7 @@ public sealed class NetRomCircuit
                 {
                     if (!NetRomCompression.TryDecompress(assembled, MaxDecompressedFrame, out whole))
                     {
-                        // Undecodable compressed payload — drop it but still ack so the
+                        // Undecodable compressed payload - drop it but still ack so the
                         // sender advances (a NAK can't recover a corrupt zlib stream).
                         SendInformationAcknowledge(nak: false);
                         return;
@@ -645,7 +645,7 @@ public sealed class NetRomCircuit
     {
         // Connect Request: index/id are OUR own (so the peer learns how to address
         // us). The PROPOSED WINDOW and the originating user/node callsigns travel in
-        // the INFO field, NOT the transport header — see ConnectRequestInfo for the
+        // the INFO field, NOT the transport header - see ConnectRequestInfo for the
         // wire layout (this is the de-facto NET/ROM form LinBPQ originates + accepts,
         // verified on the wire; #308 interop follow-up).
         var t = new NetRomTransportHeader
@@ -792,7 +792,7 @@ public sealed class NetRomCircuit
         };
         var packet = new NetRomPacket { Network = network, Transport = transport, Payload = payload };
         // Queue, don't send: the caller holds the gate. FlushSends ships these to the
-        // sink once the gate is released (deadlock fix — see pendingSends).
+        // sink once the gate is released (deadlock fix - see pendingSends).
         pendingSends.Add(packet);
     }
 
@@ -862,7 +862,7 @@ public sealed class NetRomCircuit
         unacked.RemoveAll(u => SeqAcked(u.Sequence, expected));
         va = expected;
 
-        // Window opened up — try to send more.
+        // Window opened up - try to send more.
         PumpSendQueue();
     }
 
@@ -911,7 +911,7 @@ public sealed class NetRomCircuit
         else if (!choke && peerChoked)
         {
             peerChoked = false;
-            PumpSendQueue();   // peer released choke — resume sending
+            PumpSendQueue();   // peer released choke - resume sending
         }
     }
 

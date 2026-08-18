@@ -9,14 +9,14 @@ namespace Packet.Aprs;
 /// <para>
 /// Layout (DTI optional):
 /// <code>
-///   )NAME!POSITION_DATAcomment   (live item, name 3–9 chars)
+///   )NAME!POSITION_DATAcomment   (live item, name 3-9 chars)
 ///   )NAME_POSITION_DATAcomment   (killed item)
 /// </code>
-/// The name is variable-length (3–9 characters) and is terminated by
+/// The name is variable-length (3-9 characters) and is terminated by
 /// the indicator byte <c>!</c> (live) or <c>_</c> (killed). Per spec
 /// neither character may appear inside the name, so the first
 /// occurrence in the right offset range is unambiguous. The position
-/// bytes follow exactly as for an object — uncompressed (§8) or
+/// bytes follow exactly as for an object - uncompressed (§8) or
 /// compressed (§9), with no separating timestamp.
 /// </para>
 /// </remarks>

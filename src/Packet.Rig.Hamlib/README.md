@@ -1,7 +1,7 @@
 # Packet.Rig.Hamlib
 
 [`IRigControl`](https://www.nuget.org/packages/Packet.Rig) over **hamlib's NET rigctl
-protocol** — the TCP text protocol served by `rigctld` (default port 4532). Pure managed
+protocol** - the TCP text protocol served by `rigctld` (default port 4532). Pure managed
 sockets; **no native libhamlib dependency**, so no ABI churn, no per-RID native packaging, and
 one client reaches every rig hamlib supports plus the ecosystem of rigctld-protocol emulators
 (wfview, SDR++, GQRX, SparkSDR, skycatd, nCAT, …; only real rigctld is tested today).
@@ -32,16 +32,16 @@ var vfo = await rig.TransactRawAsync("v");
   terminators). `\chk_vfo` is probed at connect, so daemons running `--vfo` work transparently
   (`currVFO` is injected).
 - Capabilities and identity come from `\dump_caps` at connect. Advertised capabilities are the
-  backend's statement of intent — a rig can still reject at runtime, surfacing as
+  backend's statement of intent - a rig can still reject at runtime, surfacing as
   `RigCommandException` with the hamlib error name (`RIG_ENAVAIL (-11)` …).
 - `ReadSignalStrengthDbmAsync` converts hamlib's `STRENGTH` level (calibrated dB relative to
   S9) to dBm by adding `RigctldRigOptions.S9ReferenceDbm`. The default −73 dBm is the IARU
-  Region 1 HF convention; VHF/UHF stations conventionally use −93 — set the option accordingly.
+  Region 1 HF convention; VHF/UHF stations conventionally use −93 - set the option accordingly.
 - One TCP connection, commands serialised in arrival order. On any transport fault, timeout, or
-  cancellation mid-command the connection is dropped and the **next command re-dials** —
+  cancellation mid-command the connection is dropped and the **next command re-dials** -
   rigctld holds all rig state, so redial is free.
 - If this client keyed the transmitter, disposal sends a best-effort unkey (`T 0`) first.
-- rigctld has **no authentication** — the default host is loopback on purpose.
+- rigctld has **no authentication** - the default host is loopback on purpose.
 
 ## Testing your consumer
 

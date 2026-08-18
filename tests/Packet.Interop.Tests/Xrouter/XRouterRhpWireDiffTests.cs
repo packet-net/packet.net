@@ -14,7 +14,7 @@ namespace Packet.Interop.Tests.Xrouter;
 /// <c>ghcr.io/packethacking/xrouter</c>, <c>RHPPORT=9000</c> → host 127.0.0.1:8900) and
 /// <b>pdn's</b> <see cref="RhpServer"/> with the <em>same</em> protocol-level scenarios, and
 /// compare the wire shapes. XRouter is the only complete RHPv2 implementation, so this is the
-/// independent oracle — anything it disagrees with us about is either a bug here or a new row
+/// independent oracle - anything it disagrees with us about is either a bug here or a new row
 /// for <c>docs/rhp2-server.md</c>'s tables, never silent. Scenarios are deliberately
 /// protocol-shape only (no radio behaviour), so they are deterministic against both servers.
 /// </summary>
@@ -87,7 +87,7 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     }
 
     // Protocol-shape scenarios never reach the radio; this stand-in mirrors the REAL gateway's
-    // contracts (SupervisorRhpGateway): opens fail NoRoute, and one listener per callsign —
+    // contracts (SupervisorRhpGateway): opens fail NoRoute, and one listener per callsign -
     // a second registration raises the wire's Duplicate (9), exactly like the supervisor.
     private sealed class NullGateway : IRhpGateway
     {
@@ -133,7 +133,7 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     }
 
     // The shape we diff: the discriminator, the errCode value, whether the request id was
-    // echoed, and the exact error-field casing — the contracts a client keys off.
+    // echoed, and the exact error-field casing - the contracts a client keys off.
     private static (string type, int? errCode, int? id, bool capitalErrCode, bool lowercaseErrCode) Shape(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -197,13 +197,13 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var xrouter = await XRouterAsync();
         var pdn = await PdnAsync();
 
-        // socket(ax25, stream) — both allocate a handle with errCode 0, capital casing.
+        // socket(ax25, stream) - both allocate a handle with errCode 0, capital casing.
         var (xrSock, pdnSock) = await DiffAsync(xrouter, pdn,
             """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
         xrSock.Should().Be(("socketReply", (int?)RhpErrorCode.Ok, (int?)1, true, false));
         pdnSock.Should().Be(xrSock);
 
-        // The allocated handles differ numerically — extract each side's own.
+        // The allocated handles differ numerically - extract each side's own.
         var xrHandle = await HandleOf(xrouter, """{"type":"socket","id":2,"pfam":"ax25","mode":"stream"}""");
         var pdnHandle = await HandleOf(pdn, """{"type":"socket","id":2,"pfam":"ax25","mode":"stream"}""");
 
@@ -214,14 +214,14 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         xrBind.Should().Be(("bindReply", (int?)RhpErrorCode.Ok, (int?)3, true, false));
         pdnBind.Should().Be(xrBind);
 
-        // listen — both Ok.
+        // listen - both Ok.
         var (xrListen, pdnListen) = (
             Shape(await Send(xrouter, $$"""{"type":"listen","id":4,"handle":{{xrHandle}},"flags":0}""")),
             Shape(await Send(pdn, $$"""{"type":"listen","id":4,"handle":{{pdnHandle}},"flags":0}""")));
         xrListen.Should().Be(("listenReply", (int?)RhpErrorCode.Ok, (int?)4, true, false));
         pdnListen.Should().Be(xrListen);
 
-        // Re-listen on the SAME socket: idempotent Ok on both (observed XRouter wire — the
+        // Re-listen on the SAME socket: idempotent Ok on both (observed XRouter wire - the
         // diff oracle corrected our initial 9 here).
         var (xrAgain, pdnAgain) = (
             Shape(await Send(xrouter, $$"""{"type":"listen","id":5,"handle":{{xrHandle}},"flags":0}""")),
@@ -229,10 +229,10 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         pdnAgain.Should().Be(xrAgain);
         xrAgain.Item2.Should().Be(RhpErrorCode.Ok);
 
-        // A SECOND SOCKET claiming the same callsign — a DELIBERATE divergence (deviation D5,
+        // A SECOND SOCKET claiming the same callsign - a DELIBERATE divergence (deviation D5,
         // docs/rhp2-server.md): the live XRouter (this pinned build, null-port binds) answers
         // Ok, leaving accept routing AMBIGUOUS between two listeners; pdn refuses the second
-        // with 9 ("Duplicate socket" — the spec's own error) so accepts are deterministic.
+        // with 9 ("Duplicate socket" - the spec's own error) so accepts are deterministic.
         // Asserted on BOTH sides so a change in either behaviour surfaces here, never silently.
         var xrHandle2 = await HandleOf(xrouter, """{"type":"socket","id":6,"pfam":"ax25","mode":"stream"}""");
         var pdnHandle2 = await HandleOf(pdn, """{"type":"socket","id":6,"pfam":"ax25","mode":"stream"}""");
@@ -263,7 +263,7 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     public async Task Idless_success_requests_are_still_replied_to_without_an_id()
     {
         // The spec says a server only replies ON ERROR when id is omitted; the live wire
-        // replies to everything, success included — the id is simply absent from the
+        // replies to everything, success included - the id is simply absent from the
         // reply. pdn matches the wire (wire-fidelity row 10, docs/rhp2-server.md).
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"socket","pfam":"ax25","mode":"stream"}""");
@@ -296,7 +296,7 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     [InlineData("""{"type":"sendto","id":17,"data":"x"}""", "sendtoReply")]
     public async Task An_absent_handle_is_bad_parameter_12_on_both_sides(string request, string expectedReplyType)
     {
-        // RHPTEST: a missing handle is 12, "not 3 — 3 is for handles that are well-formed
+        // RHPTEST: a missing handle is 12, "not 3 - 3 is for handles that are well-formed
         // but unknown". Verified per-op against the live wire (errText "Missing handle").
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(), request);
 
@@ -308,7 +308,7 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     [Fact]
     public async Task Send_with_data_absent_on_a_fresh_socket_is_bad_parameter_12_on_both_sides()
     {
-        // RHPTEST: send.data is mandatory even when empty — absence is a protocol
+        // RHPTEST: send.data is mandatory even when empty - absence is a protocol
         // violation (12); the live wire answers errText "Missing data".
         var xrouter = await XRouterAsync();
         var pdn = await PdnAsync();
@@ -345,8 +345,8 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     [Fact]
     public async Task Send_on_a_listening_socket_xrouter_answers_17_pdn_answers_16_deliberately()
     {
-        // A DELIBERATE divergence (deviation D9, docs/rhp2-server.md): RHPTEST — the
-        // protocol author's own harness, asserted against XRouter v505d — says a listener
+        // A DELIBERATE divergence (deviation D9, docs/rhp2-server.md): RHPTEST - the
+        // protocol author's own harness, asserted against XRouter v505d - says a listener
         // rejects everything but accept/close with 16; the pinned live container (image
         // label 505c) still answers 17, indistinguishable from a plain unconnected socket.
         // pdn implements the author's documented intent. Both sides asserted explicitly so
@@ -376,10 +376,10 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     public async Task Alphabetic_ssid_bind_xrouter_accepts_pdn_refuses_6_deliberately()
     {
         // A DELIBERATE divergence (deviation D7, docs/rhp2-server.md): XRouter accepts a
-        // bind to the invalid callsign G9DUM-S — and a subsequent connect from it "Ok"s,
+        // bind to the invalid callsign G9DUM-S - and a subsequent connect from it "Ok"s,
         // then wedges the node in background SABM retries (rhp2lib field notes). pdn
-        // refuses the bind itself with a clean 6. NOTE: bind-only on the XRouter side —
-        // deliberately no connect — so this scenario can never wedge the shared container.
+        // refuses the bind itself with a clean 6. NOTE: bind-only on the XRouter side -
+        // deliberately no connect - so this scenario can never wedge the shared container.
         var xrouter = await XRouterAsync();
         var pdn = await PdnAsync();
         var xrHandle = await HandleOf(xrouter, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
@@ -399,9 +399,9 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     public async Task Hello_is_answered_with_the_unknown_type_fallback_identically()
     {
         // The `hello`/`helloReply` capability-discovery surface was REMOVED (proposed in
-        // the rhp2lib field notes but never agreed — packet-net/packet.net#449). pdn now
+        // the rhp2lib field notes but never agreed - packet-net/packet.net#449). pdn now
         // treats `hello` like any other unsupported type, so it matches XRouter exactly:
-        // the unknown-type fallback — helloReply errCode 2 ("Bad or missing type").
+        // the unknown-type fallback - helloReply errCode 2 ("Bad or missing type").
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"hello","id":18}""");
 

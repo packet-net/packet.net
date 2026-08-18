@@ -12,23 +12,23 @@ namespace Packet.Node.Core.Radios;
 /// The production <see cref="IHeadEndRadioScanner"/>. Merges the configured head-end list with an
 /// mDNS browse, resolves each instance's address (config wins; a duplicate-id discovery with no
 /// config address is a conflict, not a guess), fetches its inventory, and reaches through each
-/// <b>free</b> device's raw pipe to classify it — NinoTNC via GETVER, Tait via MODEL with a CCDI
+/// <b>free</b> device's raw pipe to classify it - NinoTNC via GETVER, Tait via MODEL with a CCDI
 /// baud sweep when the current clock is wrong. Devices already bound to a configured port are skipped
-/// (the head-end is single-client-per-pipe — probing a bound device would fight the running port).
+/// (the head-end is single-client-per-pipe - probing a bound device would fight the running port).
 /// </summary>
 /// <remarks>
 /// USB VID hints pick the likely probe first (NinoTNC ≈ Microchip <c>04d8</c>; Tait CP2102 ≈ SiLabs
-/// <c>10c4</c>), then the other confirms — so a mislabelled or hint-less device still identifies, just
+/// <c>10c4</c>), then the other confirms - so a mislabelled or hint-less device still identifies, just
 /// a beat slower. Everything is bounded (per-probe timeouts) and total: any device/instance failure
 /// degrades that row, never the scan.
 /// </remarks>
 public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
 {
     /// <summary>The standard CCDI line rates the Tait sweep tries, in likelihood order (the factory
-    /// default first). Capped deliberately — a handful of rates clock-and-identify in one pass.</summary>
+    /// default first). Capped deliberately - a handful of rates clock-and-identify in one pass.</summary>
     public static readonly IReadOnlyList<int> SweepBaudRates = [28800, 19200, 9600, 38400, 57600];
 
-    /// <summary>A NinoTNC's KISS serial rate is a fixed <b>57600</b> — it never changes and there is
+    /// <summary>A NinoTNC's KISS serial rate is a fixed <b>57600</b> - it never changes and there is
     /// nothing to sweep (#567). The head-end line is clocked to this before the GETVER reach-through
     /// so the raw pipe always speaks at the rate the NinoTNC expects.</summary>
     public const int NinoTncKissBaud = 57600;
@@ -68,7 +68,7 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
     /// <inheritdoc/>
     /// <remarks>Single-flight with keyup pairing (#581): a scan's Tait baud sweep re-clocks lines
     /// under a pairing run's PTT watchers (and the head-end queues, not rejects, a second pipe
-    /// client), so the two probe actions serialise on the shared <see cref="HeadEndProbeGate"/> —
+    /// client), so the two probe actions serialise on the shared <see cref="HeadEndProbeGate"/> -
     /// a concurrent caller waits (bounded) rather than corrupting the in-flight run's results.</remarks>
     public async Task<HeadEndScan> ScanAsync(NodeConfig config, CancellationToken cancellationToken = default)
     {
@@ -126,7 +126,7 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
             var config = headEnds.FirstOrDefault(h => string.Equals(h.Id, id, StringComparison.Ordinal));
             var hits = discovered.Where(d => string.Equals(d.InstanceId, id, StringComparison.Ordinal)).ToList();
 
-            // Config address wins — an operator pinned it, so no discovery clash can override it.
+            // Config address wins - an operator pinned it, so no discovery clash can override it.
             if (config is not null && !string.IsNullOrWhiteSpace(config.Address)
                 && HeadEndAddress.TryParse(config.Address, out var host, out var port))
             {
@@ -190,7 +190,7 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
             {
                 // Legacy-binding fallback (#578): a config adopted against head-end ≤0.1.2 binds
                 // the by-id basename; 0.1.3's ids are by-path. Without this, the scan would treat
-                // a bound device as free and probe it — fighting the running port for the pipe.
+                // a bound device as free and probe it - fighting the running port for the pipe.
                 var legacyId = HeadEndDeviceResolver.ByIdBasename(port.ById);
                 if (bound.TryGetValue((instance.InstanceId, legacyId), out boundKind))
                 {
@@ -199,7 +199,7 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
             }
             if (boundKind is not null)
             {
-                // Already bound to a running/configured port — don't probe (single-client-per-pipe).
+                // Already bound to a running/configured port - don't probe (single-client-per-pipe).
                 // Its role is known from the binding, so still surface it (marked not-free).
                 devices.Add(new HeadEndDeviceScan(port.Id, boundKind, Model: null, Version: null,
                     Serial: null, Baud: port.Baud, Free: false,
@@ -219,7 +219,7 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
     }
 
     // Reach through the raw pipe to classify one free device. USB VID hint picks the likely probe
-    // first; the other confirms. Total — a probe failure just means "not that kind".
+    // first; the other confirms. Total - a probe failure just means "not that kind".
     private async Task<HeadEndDeviceScan> IdentifyDeviceAsync(
         string host, HeadEndPortInfo port, HeadEndClient lineClient, CancellationToken cancellationToken)
     {

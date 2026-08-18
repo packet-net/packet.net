@@ -7,7 +7,7 @@ namespace Packet.Node.Tests.Auth;
 /// The security properties of the pending-TOTP-enrolment cache: single-use (a take consumes
 /// the entry), expiry on the injected clock (an abandoned begin can't be completed later),
 /// and the per-user key binding (one user's pending secret can't be completed as another).
-/// All driven by <see cref="FakeTimeProvider"/> — no wall-clock. Mirrors
+/// All driven by <see cref="FakeTimeProvider"/> - no wall-clock. Mirrors
 /// <see cref="WebAuthnChallengeCacheTests"/>.
 /// </summary>
 [Trait("Category", "Node")]
@@ -26,7 +26,7 @@ public sealed class TotpEnrollmentCacheTests
         cache.Put("alice", "JBSWY3DPEHPK3PXP");
 
         cache.Take("alice").Should().Be("JBSWY3DPEHPK3PXP");
-        // Consumed — a second take (a replay / double-submit) finds nothing.
+        // Consumed - a second take (a replay / double-submit) finds nothing.
         cache.Take("alice").Should().BeNull();
     }
 

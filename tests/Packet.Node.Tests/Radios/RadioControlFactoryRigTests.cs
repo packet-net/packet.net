@@ -11,7 +11,7 @@ namespace Packet.Node.Tests.Radios;
 /// The kind-<c>rig</c> arm of <see cref="RadioControlFactory"/>: dispatch to the
 /// <see cref="Packet.Node.Core.Rigs.IRigControlFactory"/> collaborator, the owning
 /// <see cref="RigRadioControl"/> wrap (disposing the returned radio disposes the dedicated rig
-/// connection it dialled), and the failure paths — a refused daemon propagates (the supervisor's
+/// connection it dialled), and the failure paths - a refused daemon propagates (the supervisor's
 /// degrade path), a rig advertising nothing the radio seam can use is disposed rather than
 /// leaked, and a missing <c>rig:</c> block (unreachable for validated config) fails clearly.
 /// </summary>
@@ -59,7 +59,7 @@ public sealed class RadioControlFactoryRigTests
     {
         var rig = new FakeRigControl
         {
-            // No DcdRead / SignalStrengthRead / PttSet — the bridge rejects it at construction.
+            // No DcdRead / SignalStrengthRead / PttSet - the bridge rejects it at construction.
             Capabilities = RigCapabilities.FrequencyGet | RigCapabilities.ModeGet,
         };
         var rigs = new FakeRigControlFactory().Provide(rig);

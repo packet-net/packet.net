@@ -5,7 +5,7 @@ using Packet.Node.Core.SelfUpdate;
 namespace Packet.Node.Core.Rigs;
 
 /// <summary>
-/// The hamlib rig model catalogue, read once from <c>rigctl -l</c> — the table behind
+/// The hamlib rig model catalogue, read once from <c>rigctl -l</c> - the table behind
 /// <c>GET /api/v1/rigs/models</c> and the number-resolution tier of the rig scan's suggestions.
 /// The catalogue is static per hamlib install, so the parsed list is cached for the process
 /// lifetime (thread-safe lazy); rigctl runs through the guarded <see cref="IProcessRunner"/>
@@ -45,7 +45,7 @@ public sealed class RigModelCatalogue
     public IReadOnlyList<RigCatalogueModel> Models => state.Value.Models;
 
     /// <summary>
-    /// The model number for a (manufacturer, model) pair — the runtime name→number resolution the
+    /// The model number for a (manufacturer, model) pair - the runtime name→number resolution the
     /// suggestion tier uses, so suggestions survive hamlib version skew. Exact-ish match:
     /// case-insensitive on both fields, trimmed. Null on no match, more than one match (refuse to
     /// guess), or an unavailable catalogue.
@@ -67,7 +67,7 @@ public sealed class RigModelCatalogue
             {
                 if (number is not null)
                 {
-                    return null; // ambiguous — two rows claim the same name
+                    return null; // ambiguous - two rows claim the same name
                 }
                 number = row.Number;
             }
@@ -113,7 +113,7 @@ public sealed class RigModelCatalogue
                     || mfgStart < 0 || modelStart <= mfgStart
                     || versionStart <= modelStart || statusStart <= versionStart)
                 {
-                    mfgStart = -1; // not the header — keep looking
+                    mfgStart = -1; // not the header - keep looking
                 }
                 continue;
             }
@@ -122,7 +122,7 @@ public sealed class RigModelCatalogue
                 || !int.TryParse(line[..mfgStart], NumberStyles.Integer, CultureInfo.InvariantCulture,
                         out var number))
             {
-                continue; // blank / footer / malformed — skip defensively
+                continue; // blank / footer / malformed - skip defensively
             }
 
             var manufacturer = Slice(line, mfgStart, modelStart);

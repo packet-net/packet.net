@@ -7,8 +7,8 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Regression coverage for packet-net/packet.net#327 — the figc4.x delayed
-/// acknowledgement must actually reach the wire in the production wiring —
+/// Regression coverage for packet-net/packet.net#327 - the figc4.x delayed
+/// acknowledgement must actually reach the wire in the production wiring -
 /// updated for the §6.7.1.2 T2 acknowledge delay (packet-net/packet.net#385).
 ///
 /// The SDL's only path to a non-piggybacked ack runs through the link
@@ -35,7 +35,7 @@ public class Ax25ListenerDelayedAckTests
     /// <summary>
     /// The marquee repro: peer connects, peer sends one I-frame (P=0),
     /// the local side has nothing to say back. An RR response with
-    /// N(R)=1 must still go out — after the T2 acknowledge delay, with
+    /// N(R)=1 must still go out - after the T2 acknowledge delay, with
     /// no per-frame RR before it. Red on the stubbed sendLinkMux: only
     /// the UA ever reaches the modem and the peer would retry into link
     /// failure.
@@ -89,9 +89,9 @@ public class Ax25ListenerDelayedAckTests
     /// <summary>
     /// Same shape, two back-to-back I-frames before any ack flushes: the
     /// second frame arrives with an ack already pending (figc4.3 runs the
-    /// seize path only once — t26's AckPending guard), and the T2-deferred
+    /// seize path only once - t26's AckPending guard), and the T2-deferred
     /// grant (#385) coalesces them, so exactly ONE RR with the cumulative
-    /// N(R)=2 goes out when T2 expires — not one per frame.
+    /// N(R)=2 goes out when T2 expires - not one per frame.
     /// </summary>
     [Fact]
     public async Task Back_to_back_idle_I_frames_get_one_cumulative_ack()

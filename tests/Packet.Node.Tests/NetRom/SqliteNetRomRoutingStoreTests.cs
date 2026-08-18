@@ -9,7 +9,7 @@ namespace Packet.Node.Tests.NetRom;
 
 /// <summary>
 /// The SQLite routing store (<c>pdn.db</c>): save/load round-trip, snapshot-replace,
-/// cross-instance durability (the "restart"), and the resilience contract — a store
+/// cross-instance durability (the "restart"), and the resilience contract - a store
 /// it cannot open must degrade (no throw on construct, null Load, no-op Save) rather
 /// than take the node down.
 /// </summary>
@@ -98,7 +98,7 @@ public sealed class SqliteNetRomRoutingStoreTests : IDisposable
     public void A_store_it_cannot_open_degrades_instead_of_throwing()
     {
         // A db path whose parent directory does not exist: schema init fails, but
-        // construction must not throw, Load returns null, and Save is a no-op —
+        // construction must not throw, Load returns null, and Save is a no-op -
         // persistence is simply disabled for the run, the node keeps running.
         var bad = Path.Combine(TestPaths.NewPath("no-such-dir"), "pdn.db");
 

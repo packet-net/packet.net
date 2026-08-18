@@ -9,11 +9,11 @@ namespace Packet.Node.Core.Radios;
 
 /// <summary>
 /// The stable <see cref="IRadioControl"/> facade that gives a head-end-bound radio-control channel
-/// reconnect supervision (#576) — the control-plane sibling of
+/// reconnect supervision (#576) - the control-plane sibling of
 /// <see cref="Transports.ReconnectingKissModem"/>. Everything on the port holds THIS object for the
 /// port's whole life (the RSSI-tagging transport, the carrier-sense gate, the status monitor); when
-/// the inner driver faults — the head-end bounced, the socket died, the radio stopped answering
-/// probes — the facade disposes the dead driver and re-opens through the
+/// the inner driver faults - the head-end bounced, the socket died, the radio stopped answering
+/// probes - the facade disposes the dead driver and re-opens through the
 /// <see cref="IRadioControlFactory"/> with capped exponential backoff, swapping the fresh driver in
 /// underneath without disturbing any consumer.
 /// </summary>
@@ -24,12 +24,12 @@ namespace Packet.Node.Core.Radios;
 /// moved after a replug is picked up; the factory's create path also re-clocks the line to the
 /// CONFIGURED CCDI rate and re-runs the progress-messages enable, so DCD events flow again without
 /// any operator action. While the link is down, <see cref="ChannelBusy"/> reads <c>null</c> (the
-/// faulted driver cleared it — unknown fails the CSMA gate open) and RSSI polls fail fast; AX.25
+/// faulted driver cleared it - unknown fails the CSMA gate open) and RSSI polls fail fast; AX.25
 /// traffic on the co-located data pipe is unaffected.
 /// </para>
 /// <para>
 /// Consumers that need the concrete driver (tuning, hail, the capability doctor) must not cache the
-/// inner across operations — they resolve the LIVE driver per operation via
+/// inner across operations - they resolve the LIVE driver per operation via
 /// <see cref="RadioControls.LiveTait"/>. <see cref="InnerChanged"/> announces each swap (the
 /// status monitor rebuilds its health sampling against the fresh driver on it).
 /// </para>
@@ -52,7 +52,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
     private int disposed;
 
     /// <summary>
-    /// Wrap <paramref name="initial"/> (an already-open driver — the eager first open stays with
+    /// Wrap <paramref name="initial"/> (an already-open driver - the eager first open stays with
     /// the caller so first-open fault isolation is unchanged). <paramref name="resolverFactory"/>
     /// builds a fresh head-end resolver per reopen attempt so the address/inventory is re-resolved
     /// from live config each time.
@@ -79,7 +79,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
         this.maxBackoff = maxBackoff ?? TimeSpan.FromSeconds(30);
         Attach(initial);
         // A fault that landed BETWEEN the factory open and this subscription fired its
-        // ConnectionStateChanged with no listener (the driver only raises on a transition) —
+        // ConnectionStateChanged with no listener (the driver only raises on a transition) -
         // re-check now so a driver that died mid-bring-up is reopened, not adopted dead.
         if (initial is TaitCcdiRadio { ConnectionState: TaitConnectionState.Faulted })
         {
@@ -87,12 +87,12 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
         }
     }
 
-    /// <summary>The live inner driver. Swapped on reconnect — do not cache across operations
+    /// <summary>The live inner driver. Swapped on reconnect - do not cache across operations
     /// (resolve per operation via <see cref="RadioControls.Live"/>).</summary>
     public IRadioControl Inner => inner;
 
     /// <summary>Raised after a reopen swaps a fresh driver in (the argument). Handlers run on the
-    /// reconnect task — keep them fast; rebuild against the new driver, don't block.</summary>
+    /// reconnect task - keep them fast; rebuild against the new driver, don't block.</summary>
     public event EventHandler<IRadioControl>? InnerChanged;
 
     /// <inheritdoc/>
@@ -104,7 +104,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
 
     /// <inheritdoc/>
     /// <remarks><c>null</c> while the control channel is down (the faulted driver clears its
-    /// busy state — unknown fails the CSMA gate open).</remarks>
+    /// busy state - unknown fails the CSMA gate open).</remarks>
     public bool? ChannelBusy => inner.ChannelBusy;
 
     /// <inheritdoc/>
@@ -136,7 +136,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
     private void ForwardCarrierSense(object? sender, CarrierSenseChange e) =>
         CarrierSenseChanged?.Invoke(this, e);
 
-    // Fires on the driver's pump/watchdog — never block here. Single-flight: one reconnect loop
+    // Fires on the driver's pump/watchdog - never block here. Single-flight: one reconnect loop
     // at a time; a fresh fault during a swap is caught by the post-loop re-check below.
     private void OnConnectionStateChanged(object? sender, TaitConnectionState state)
     {
@@ -172,7 +172,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
                 {
                     // The factory re-resolves the head-end (fresh resolver: live config address /
                     // mDNS + a fresh inventory fetch, so a moved tcpPort is found), re-clocks the
-                    // line to the CONFIGURED baud, and re-enables progress messages — the full
+                    // line to the CONFIGURED baud, and re-enables progress messages - the full
                     // bring-up, not a bare re-dial.
                     var fresh = await factory
                         .CreateAsync(config, time, resolverFactory(), rig: null, ct).ConfigureAwait(false);
@@ -202,7 +202,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
                 catch (Exception ex)
                 {
                     // Includes HttpClient's TaskCanceledException timeout (an OCE with OUR token
-                    // not cancelled — the black-holed-head-end case): it must take the backoff
+                    // not cancelled - the black-holed-head-end case): it must take the backoff
                     // path, not be mistaken for shutdown.
                     LogRadioReopenFailed(portId, (int)Math.Ceiling(backoff.TotalSeconds), ex.Message);
                 }
@@ -222,7 +222,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
         {
             Volatile.Write(ref reconnecting, 0);
             // A fault that landed between the swap-in and the flag reset was dropped by the
-            // single-flight guard — re-check so a dead fresh driver is not left unsupervised.
+            // single-flight guard - re-check so a dead fresh driver is not left unsupervised.
             if (Volatile.Read(ref disposed) == 0 &&
                 inner is TaitCcdiRadio { ConnectionState: TaitConnectionState.Faulted })
             {
@@ -239,7 +239,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
         }
         catch
         {
-            // best-effort — the driver is being discarded
+            // best-effort - the driver is being discarded
         }
     }
 
@@ -277,7 +277,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
 /// <summary>
 /// How consumers resolve the concrete radio driver behind a port's <see cref="IRadioControl"/>
 /// handle, which may be the stable <see cref="ReconnectingRadioControl"/> facade (head-end-bound
-/// radios) or the bare driver (local-serial radios). Resolve per operation — never cache the
+/// radios) or the bare driver (local-serial radios). Resolve per operation - never cache the
 /// unwrapped driver across a facade swap.
 /// </summary>
 public static class RadioControls

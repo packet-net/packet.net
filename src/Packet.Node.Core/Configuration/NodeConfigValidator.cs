@@ -7,12 +7,12 @@ namespace Packet.Node.Core.Configuration;
 /// FluentValidation rules for a candidate <see cref="NodeConfig"/>. Run by the
 /// config provider <b>before</b> a candidate is allowed to become
 /// <see cref="IConfigProvider.Current"/>; a failing candidate is rejected whole
-/// (atomic apply — see <see cref="FileConfigProvider"/>).
+/// (atomic apply - see <see cref="FileConfigProvider"/>).
 /// </summary>
 /// <remarks>
 /// The callsign is validated by round-tripping through
-/// <c>Packet.Core.Callsign.TryParse</c> — which is exactly where the
-/// 1–6-char base + SSID 0–15 rules live — rather than re-encoding them here.
+/// <c>Packet.Core.Callsign.TryParse</c> - which is exactly where the
+/// 1-6-char base + SSID 0-15 rules live - rather than re-encoding them here.
 /// Empty <see cref="NodeConfig.Ports"/> is legal (an idle node).
 /// </remarks>
 public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
@@ -36,7 +36,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
             .WithMessage("Identity is required.")
             .SetValidator(new IdentityValidator());
 
-        // Empty ports is legal — an idle node still answers telnet + /healthz.
+        // Empty ports is legal - an idle node still answers telnet + /healthz.
         RuleForEach(c => c.Ports).SetValidator(new PortConfigValidator());
 
         RuleFor(c => c.Ports)
@@ -48,7 +48,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         // Split-station head-end fleet (docs/research/split-station-rf-headend.md). Empty is the
         // default (a purely-local station). Each entry is validated (id + address), ids are unique
         // (the binding key), and every head-end a port references (radio or nino-tnc-tcp) must be
-        // declared here — a dangling reference is a config error, not a silent bring-up degrade.
+        // declared here - a dangling reference is a config error, not a silent bring-up degrade.
         RuleForEach(c => c.HeadEnds).SetValidator(new HeadEndConfigValidator());
 
         RuleFor(c => c.HeadEnds)
@@ -63,8 +63,8 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
                 "Add a head-end with that id, or fix the binding.");
 
         // A head-end device is SINGLE-CLIENT: the bridge admits one connection per pipe, so a second
-        // binding of the same (headEndId, deviceId) — whether by another port's transport, another
-        // port's radio, or a port's own transport+radio naming one device — would silently queue
+        // binding of the same (headEndId, deviceId) - whether by another port's transport, another
+        // port's radio, or a port's own transport+radio naming one device - would silently queue
         // behind the first at bring-up. Reject the collision at config time instead (#586).
         RuleFor(c => c)
             .Must(c => DuplicateHeadEndDeviceBindings(c).Count == 0)
@@ -77,7 +77,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         RuleFor(c => c.Management).NotNull().SetValidator(new ManagementValidator());
 
         // Security: the MCP OAuth authorization server mints access tokens, but a token
-        // is only ENFORCED when management.auth.enabled is on — the scope gate passes
+        // is only ENFORCED when management.auth.enabled is on - the scope gate passes
         // through entirely when auth is off. Enabling the OAuth connector with auth off
         // would stand up a working login/consent/token flow whose tokens are never
         // checked, leaving /mcp and the REST API open to anyone who can reach them.
@@ -116,7 +116,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
 
         // The apps: package-override list (docs/app-packages.md § Owner state). The validator
         // has no filesystem access, so whether an id matches a discovered package is the
-        // catalog's concern (an unmatched entry is tolerated — the package may be installed
+        // catalog's concern (an unmatched entry is tolerated - the package may be installed
         // later); here we only require well-formed, unique ids.
         RuleForEach(c => c.Apps).SetValidator(new AppOverrideConfigValidator());
 
@@ -128,7 +128,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         // pinned callsign or a NET/ROM alias must be unique across all apps (inline + package
         // overrides) and must not collide with the node's own callsign / alias. Auto-assigned
         // callsigns can't collide by construction (the resolver probes a free SSID), so only
-        // EXPLICIT pins are checked here — and the validator has no filesystem, so package
+        // EXPLICIT pins are checked here - and the validator has no filesystem, so package
         // pins/aliases participate via their apps[] override, the inline apps via applications[].
         RuleFor(c => c)
             .Must(HaveUniqueAppCallsigns)
@@ -156,9 +156,9 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         return headEnds.All(h => string.IsNullOrWhiteSpace(h.Id) || seen.Add(h.Id));
     }
 
-    /// <summary>Every head-end id a port references — a head-end-bound <c>radio:</c>, a
+    /// <summary>Every head-end id a port references - a head-end-bound <c>radio:</c>, a
     /// <c>nino-tnc-tcp</c> transport, or a head-end-bound <c>tait-transparent</c> transport
-    /// (#585) — that is NOT declared in <see cref="NodeConfig.HeadEnds"/>.
+    /// (#585) - that is NOT declared in <see cref="NodeConfig.HeadEnds"/>.
     /// Empty ⇒ every reference resolves. Drives both the pass/fail verdict and the error message.</summary>
     private static List<string> UnresolvedHeadEndReferences(NodeConfig c)
     {
@@ -190,7 +190,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
     /// <summary>Every <c>(headEndId, deviceId)</c> bound more than once across all ports' transports
     /// and head-end-bound radios, as <c>headEndId/deviceId</c> keys. Empty ⇒ every device has one
     /// client. Case-insensitive, matching the transport-endpoint uniqueness rule; incomplete bindings
-    /// (a blank half) are skipped — their own validators report those.</summary>
+    /// (a blank half) are skipped - their own validators report those.</summary>
     private static List<string> DuplicateHeadEndDeviceBindings(NodeConfig c)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -203,7 +203,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
                     Check(t.HeadEndId, t.DeviceId);
                     break;
                 case TaitTransparentTransportConfig { IsHeadEndBound: true } tt:
-                    Check(tt.HeadEndId, tt.DeviceId);   // #585 — same single-client pipe rule
+                    Check(tt.HeadEndId, tt.DeviceId);   // #585 - same single-client pipe rule
                     break;
             }
             if (port.Radio is { IsHeadEndBound: true } radio)
@@ -263,11 +263,11 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         {
             if (string.IsNullOrWhiteSpace(pin))
             {
-                continue;   // auto-assign — can't collide by construction.
+                continue;   // auto-assign - can't collide by construction.
             }
             if (!Applications.Packages.AppCallsignResolver.TryResolvePin(pin, node.Base, out var call, out _))
             {
-                continue;   // unparsable pin — flagged elsewhere; not a uniqueness verdict.
+                continue;   // unparsable pin - flagged elsewhere; not a uniqueness verdict.
             }
             if (!seen.Add(call.ToString()))
             {
@@ -305,7 +305,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
     private static bool HaveUniqueEndpoints(IReadOnlyList<PortConfig> ports)
     {
         // Two ports pointing at the same physical device / TCP endpoint can't
-        // both own it — flag the collision regardless of Enabled, so toggling a
+        // both own it - flag the collision regardless of Enabled, so toggling a
         // disabled twin on later doesn't suddenly conflict.
         // EndpointKey, not DescribeEndpoint: the key is the exclusive resource, the
         // description is display text. They differ for soundmodem (C074), where the mode
@@ -315,7 +315,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
     }
 }
 
-/// <summary>Validates <see cref="Identity"/> — the callsign must parse.</summary>
+/// <summary>Validates <see cref="Identity"/> - the callsign must parse.</summary>
 public sealed class IdentityValidator : AbstractValidator<Identity>
 {
     public IdentityValidator()
@@ -328,7 +328,7 @@ public sealed class IdentityValidator : AbstractValidator<Identity>
                 "(1-6 uppercase alphanumerics, optional -SSID in 0-15).");
 
         // The node alias is the single node-name concept (the BPQ NODEALIAS). It is also the alias
-        // advertised in the NODES broadcast, whose wire field is 6 octets — so it is capped at 6
+        // advertised in the NODES broadcast, whose wire field is 6 octets - so it is capped at 6
         // chars. Optional (null/blank = use the callsign for display + the callsign base on the wire).
         RuleFor(i => i.Alias!)
             .Must(a => a.Trim().Length is >= 1 and <= 6)

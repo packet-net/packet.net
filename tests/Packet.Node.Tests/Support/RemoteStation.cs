@@ -28,7 +28,7 @@ public sealed class RemoteStation : IAsyncDisposable
             // Small N2 bounds ConnectAsync's (N2+1)·T1V backstop at 30 s instead of
             // the 66 s spec default, so a starved handshake fails fast instead of
             // hanging the CI job. T1V stays the spec default (see TestAx25Timing /
-            // Wait.cs — the #47 flake).
+            // Wait.cs - the #47 flake).
             N2 = TestAx25Timing.StationN2,
         }, TimeProvider.System);
     }
@@ -47,7 +47,7 @@ public sealed class RemoteStation : IAsyncDisposable
     {
         session = await listener.ConnectAsync(nodeCall, ct).ConfigureAwait(false);
         // ConnectAsync attaches via ConfigureSession only for sessions IT builds;
-        // make sure our handler is attached (idempotent — duplicate handlers would
+        // make sure our handler is attached (idempotent - duplicate handlers would
         // double-count, so attach exactly once here for the outbound session).
         session.DataLinkSignalEmitted -= OnSignal;
         session.DataLinkSignalEmitted += OnSignal;

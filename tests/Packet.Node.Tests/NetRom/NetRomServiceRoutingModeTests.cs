@@ -8,11 +8,11 @@ namespace Packet.Node.Tests.NetRom;
 /// <see cref="NetRomService"/> gates its connected-mode behaviours on the resolved
 /// <see cref="NetRomRouting"/> role:
 /// <list type="bullet">
-/// <item><see cref="NetRomRouting.None"/> — passive: no interlinks (no
+/// <item><see cref="NetRomRouting.None"/> - passive: no interlinks (no
 /// <see cref="NetRomService.Circuits"/>), no transit forwarding.</item>
-/// <item><see cref="NetRomRouting.Endpoint"/> — interlinks/circuits are built (our own
+/// <item><see cref="NetRomRouting.Endpoint"/> - interlinks/circuits are built (our own
 /// <c>connect &lt;alias&gt;</c>), but transit forwarding is OFF.</item>
-/// <item><see cref="NetRomRouting.Transit"/> — both interlinks AND transit forwarding.</item>
+/// <item><see cref="NetRomRouting.Transit"/> - both interlinks AND transit forwarding.</item>
 /// </list>
 /// These are the same gates the old <c>connect</c>/<c>forward</c> bools drove, expressed
 /// against the new single knob (and verified to hold via the legacy back-compat mapping too).

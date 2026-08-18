@@ -5,7 +5,7 @@ namespace Packet.Tune;
 
 /// <summary>
 /// <c>radio-channel</c>: report a Tait radio's current channel (FUNCTION
-/// 0/5/2), or — with a channel argument — GO_TO_CHANNEL and verify the switch.
+/// 0/5/2), or - with a channel argument - GO_TO_CHANNEL and verify the switch.
 /// </summary>
 internal static class RadioChannelCommand
 {

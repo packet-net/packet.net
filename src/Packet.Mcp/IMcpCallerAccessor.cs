@@ -13,7 +13,7 @@ public interface IMcpCallerAccessor
     McpCaller Current { get; }
 }
 
-/// <summary>The default accessor — always the local stdio user.</summary>
+/// <summary>The default accessor - always the local stdio user.</summary>
 public sealed class LocalStdioCallerAccessor : IMcpCallerAccessor
 {
     /// <inheritdoc />

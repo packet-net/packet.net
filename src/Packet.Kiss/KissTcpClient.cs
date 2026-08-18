@@ -19,7 +19,7 @@ namespace Packet.Kiss;
 /// <see cref="ReadAvailableAsync"/>) and never surfaces to frame consumers;
 /// ordinary inbound frames pass through unchanged. Plain
 /// <see cref="SendFrameAsync"/> stays fire-and-forget (KISS Data, cmd 0x00)
-/// and is unaffected — ACKMODE is opt-in.
+/// and is unaffected - ACKMODE is opt-in.
 /// </para>
 /// <para>
 /// Sends and the RX pump run on different tasks concurrently. Pending-ack
@@ -41,8 +41,8 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     private static readonly TimeSpan DefaultAckTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Default read-idle budget. A half-open TCP connection — the peer rebooted,
-    /// the cable was pulled, net-sim was restarted — sends no FIN, so a plain
+    /// Default read-idle budget. A half-open TCP connection - the peer rebooted,
+    /// the cable was pulled, net-sim was restarted - sends no FIN, so a plain
     /// <c>ReadAsync</c> blocks forever and the port silently dies (#464). If no
     /// byte arrives within this window the link is treated as dead and the read
     /// stream ends, which drives <c>ReconnectingKissModem</c> to re-dial. The
@@ -51,7 +51,7 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     /// the faster probe, this is the backstop that also covers stacks/peers that
     /// drop keepalive probes. <see cref="TimeSpan.Zero"/> (or
     /// <see cref="Timeout.InfiniteTimeSpan"/>) disables idle detection entirely
-    /// — the pre-#464 block-forever behaviour.
+    /// - the pre-#464 block-forever behaviour.
     /// </summary>
     public static readonly TimeSpan DefaultReadIdleTimeout = TimeSpan.FromMinutes(5);
 
@@ -158,7 +158,7 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     // Ask the OS to probe a quiet peer so a half-open connection (peer rebooted
     // without a FIN) surfaces as a read error in bounded time rather than hanging
     // forever. Best-effort: keepalive knobs are platform-dependent and a failure
-    // to set them is non-fatal — the read-idle timeout is the portable backstop.
+    // to set them is non-fatal - the read-idle timeout is the portable backstop.
     private static void EnableTcpKeepAlive(TcpClient tcp)
     {
         try
@@ -210,7 +210,7 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     /// <summary>
     /// Read available bytes from the socket and return any KISS frames that
     /// have now completed. Returns an empty list if the socket has data
-    /// pending but no frame finished yet — callers should loop.
+    /// pending but no frame finished yet - callers should loop.
     /// </summary>
     /// <remarks>
     /// ACKMODE TX-completion echoes are intercepted here: a decoded echo
@@ -233,7 +233,7 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     // Read from the stream, but presume the link dead if no byte arrives within
     // the read-idle budget. A half-open TCP connection (peer rebooted, no FIN)
     // would otherwise block here forever and silently kill the port (#464); on
-    // idle we throw IOException — the SAME signal a graceful close produces — so
+    // idle we throw IOException - the SAME signal a graceful close produces - so
     // ReadFramesAsync ends the stream and a supervisor reconnects. The caller's
     // own cancellation still propagates as OperationCanceledException untouched.
     private async Task<int> ReadWithIdleTimeoutAsync(CancellationToken cancellationToken)
@@ -389,7 +389,7 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     /// <see cref="TxCompletion"/> carrying the round-trip timing when the
     /// echo arrives. Throws <see cref="TimeoutException"/> if no echo arrives
     /// within <paramref name="timeout"/> (default 30 s) and
-    /// <see cref="OperationCanceledException"/> on caller cancellation — the
+    /// <see cref="OperationCanceledException"/> on caller cancellation - the
     /// same contract as the NinoTNC and serial drivers, so the adaptive layer
     /// records <see cref="Adaptive.FrameOutcome.AckModeTimedOut"/> uniformly.
     /// This is the KISS-specific entry point that lets a caller pin the 16-bit

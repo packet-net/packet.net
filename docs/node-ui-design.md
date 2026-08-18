@@ -1,41 +1,41 @@
-# Node UI design — Phase 4 Slice 3 (REST API + auth) + Phase 5 (web UI)
+# Node UI design - Phase 4 Slice 3 (REST API + auth) + Phase 5 (web UI)
 
 > **Status:** draft / design spike (Slice 2.5). This doc is the *consumer-first* design that shapes the Slice-3 API. It is produced **before** any Slice-3 endpoint code, deliberately: the API should fall out of the interaction model, not the other way around (build endpoints blind to the screens and you get over-/under-fetching, the wrong real-time model, and payloads shaped for the data store instead of the view).
 >
 > It serves two audiences at once:
-> 1. **The in-repo spec** — the screen inventory, the real data shapes, and the derived API contract that Slice 3 (backend) and Slice 5 (React UI) both build against. Single source of truth, no drift.
-> 2. **A Claude Design brief** — §8 is a paste-ready brief for [Claude Design](https://www.anthropic.com/news/claude-design-anthropic-labs) (claude.ai → palette icon). Take the screen inventory + the data shapes into Claude Design, generate interactive mockups, iterate on look/feel/flow visually, then fold the agreed design back here and lock §7 (the API contract) before implementation.
+> 1. **The in-repo spec** - the screen inventory, the real data shapes, and the derived API contract that Slice 3 (backend) and Slice 5 (React UI) both build against. Single source of truth, no drift.
+> 2. **A Claude Design brief** - §8 is a paste-ready brief for [Claude Design](https://www.anthropic.com/news/claude-design-anthropic-labs) (claude.ai → palette icon). Take the screen inventory + the data shapes into Claude Design, generate interactive mockups, iterate on look/feel/flow visually, then fold the agreed design back here and lock §7 (the API contract) before implementation.
 
-## 1. Context — what the node is today, and the gap
+## 1. Context - what the node is today, and the gap
 
-`pdn` (the `packetnet` host) is a real, deployed packet-radio node: a Generic Host owning a `PortSupervisor` (one `Ax25Listener` per AX.25 port) + a transport-agnostic console, all driven by a hot-reloadable `NodeConfig` behind `IConfigProvider`. The protocol layers underneath are feature-complete — AX.25 v2.2 (mod-128/SABME/XID/segmentation), full NET/ROM L3+L4 with transit forwarding, per-flow load-balancing, and the INP3 time-routing overlay, all proven on hardware.
+`pdn` (the `packetnet` host) is a real, deployed packet-radio node: a Generic Host owning a `PortSupervisor` (one `Ax25Listener` per AX.25 port) + a transport-agnostic console, all driven by a hot-reloadable `NodeConfig` behind `IConfigProvider`. The protocol layers underneath are feature-complete - AX.25 v2.2 (mod-128/SABME/XID/segmentation), full NET/ROM L3+L4 with transit forwarding, per-flow load-balancing, and the INP3 time-routing overlay, all proven on hardware.
 
-What's missing is the **operator-facing control plane**. Today the node is headless: you configure it by SSH-editing a YAML file and observe it through a telnet/AX.25 console (`Connect`/`Nodes`/`Info`/`Bye`/`Help`) and `journald`. The web server exists but is **inert** — the only mapped route is `GET /healthz`.
+What's missing is the **operator-facing control plane**. Today the node is headless: you configure it by SSH-editing a YAML file and observe it through a telnet/AX.25 console (`Connect`/`Nodes`/`Info`/`Bye`/`Help`) and `journald`. The web server exists but is **inert** - the only mapped route is `GET /healthz`.
 
 Slice 3 makes that web server live (REST API + auth); Slice 5 puts a React UI on top of it. This doc designs both from the operator's screens inward.
 
 ## 2. Design constraints
 
-- **Stack (locked, plan §3 / §5.5):** Vite + React + TypeScript + Tailwind + shadcn/ui. **This matters for the design tool**: Claude Design outputs in exactly this space and can establish + apply a design system, so its mockups are not throwaway — they can seed the real Slice-5 components.
+- **Stack (locked, plan §3 / §5.5):** Vite + React + TypeScript + Tailwind + shadcn/ui. **This matters for the design tool**: Claude Design outputs in exactly this space and can establish + apply a design system, so its mockups are not throwaway - they can seed the real Slice-5 components.
 - **Deployment reality:** the UI is served *by the node itself* (Kestrel, bound from `management.http`, default `127.0.0.1:8080`). It runs on a small box (often a Pi) on a LAN, usually one operator, occasionally remote. So: lightweight, fast on a Pi, works over a tunnel, no heavy client deps, good on a phone (operators check their node from the sofa).
 - **Auth-gated:** every screen except first-run setup + login sits behind auth (Slice 3 = Argon2id local users + WebAuthn/passkeys + JWT scopes; first-start admin bootstrap via a one-time `/setup?token=…`).
-- **Real-time model: SSE, not WebSocket.** The live data (frames, session-state changes, route updates, link stats) is one-way server→client; control actions are discrete `POST`s. Server-Sent Events are simpler, reverse-proxy-friendly, and auto-reconnecting. WebSocket only if a screen needs true bidirectional streaming — none identified.
+- **Real-time model: SSE, not WebSocket.** The live data (frames, session-state changes, route updates, link stats) is one-way server→client; control actions are discrete `POST`s. Server-Sent Events are simpler, reverse-proxy-friendly, and auto-reconnecting. WebSocket only if a screen needs true bidirectional streaming - none identified.
 - **Config writes ride the existing reconcile path.** A config edit from the API drives the *same* `IConfigProvider.OnChange` → `ReconcilePlanner` → `PortSupervisor` delta the YAML file-watch already uses. Hot-vs-restart scope is already solved (KISS + the six AX.25 params apply live via `UpdateSessionParameters`; transport change = single-port restart; identity = node-wide reset). The UI must *surface* which edits are hot vs disruptive, but the backend behaviour is built.
-- **v1 UI scope:** observe + configure + basic session control (view/initiate/drop connects, trigger a beacon). Full link-troubleshooting visualisation is Phase 8 (MCP + monitor v2) — not pulled forward.
+- **v1 UI scope:** observe + configure + basic session control (view/initiate/drop connects, trigger a beacon). Full link-troubleshooting visualisation is Phase 8 (MCP + monitor v2) - not pulled forward.
 
-## 3. Operator — jobs to be done
+## 3. Operator - jobs to be done
 
 1. **Get the node running** (first run): set callsign + identity, add a port, create an admin login.
 2. **Know it's healthy at a glance**: is it up, which ports are live, who's connected, is it hearing the network.
 3. **Watch the air**: see frames flowing in/out, per-link health (RTT, retries, REJ/SREJ).
 4. **Manage connections**: see active AX.25/NET/ROM sessions; initiate a `connect <call/alias>`; drop one.
-5. **See the network**: the NET/ROM routing table — neighbours + destinations, quality, and the INP3 time-metric.
+5. **See the network**: the NET/ROM routing table - neighbours + destinations, quality, and the INP3 time-metric.
 6. **Reconfigure safely**: edit ports/identity/NET/ROM/INP3 without SSH; understand what an edit will disrupt before applying.
 7. **Manage access**: add/remove operators, enrol passkeys.
 
 ## 4. Screen inventory
 
-Each screen lists **reads** (data shown — real shapes in §6), **writes** (actions), **realtime** (SSE needs), and **notes**. `→ §7.x` points at the API endpoints that fall out.
+Each screen lists **reads** (data shown - real shapes in §6), **writes** (actions), **realtime** (SSE needs), and **notes**. `→ §7.x` points at the API endpoints that fall out.
 
 ### 4.1 First-run setup (unauthenticated, one-time)
 - **Purpose:** bring a fresh node from "no config / no admin" to operational. Reached via the one-time `/setup?token=…` printed to the node log on first boot.
@@ -50,12 +50,12 @@ Each screen lists **reads** (data shown — real shapes in §6), **writes** (act
 - **Notes:** passkey-first with password fallback. → §7.5.
 
 ### 4.3 Dashboard (home)
-- **Purpose:** the at-a-glance health screen — the default landing page.
+- **Purpose:** the at-a-glance health screen - the default landing page.
 - **Reads:** node identity + uptime + build/version; per-port status (up/down, transport, peer count); active-session count; NET/ROM summary (neighbour count, destination count, INP3 on/off); recent log tail.
 - **Realtime:** live counters (sessions, frames/sec, port up/down) via SSE.
-- **Notes:** cards — one per concern, each linking to its detail screen. → §7.1 (status), §7.6 (events SSE).
+- **Notes:** cards - one per concern, each linking to its detail screen. → §7.1 (status), §7.6 (events SSE).
 
-### 4.4 Ports — list + detail/edit
+### 4.4 Ports - list + detail/edit
 - **Purpose:** see and manage AX.25 ports.
 - **Reads (list):** each port's `id`, enabled, transport descriptor (`kiss-tcp`/`serial-kiss`/`nino-tnc`/`axudp` + endpoint), live state (up/down/faulted), peer/session count, profile.
 - **Reads (detail):** the full `PortConfig` (transport fields, `Ax25PortParams`, `KissParams`, profile) + live link stats for that port.
@@ -64,7 +64,7 @@ Each screen lists **reads** (data shown — real shapes in §6), **writes** (act
 - **Notes:** the transport editor is a discriminated form keyed on `kind`. → §7.2 (ports), §7.4 (config).
 
 ### 4.5 Live monitor
-- **Purpose:** watch frames on the air — the marquee real-time screen.
+- **Purpose:** watch frames on the air - the marquee real-time screen.
 - **Reads:** a rolling stream of `MonitorEvent` (per `Ax25Listener.FrameTraced`): timestamp, port, direction (in/out), source→dest, frame type (UI/SABM/I/RR/REJ/SREJ/…), PID, length, decoded summary. Plus per-link rollups (RTT, retries, REJ/SREJ counts).
 - **Writes:** filter (by port / callsign / frame type); pause/resume; clear.
 - **Realtime:** **this is the SSE feed.** High-rate; client-side ring buffer + filtering.
@@ -73,18 +73,18 @@ Each screen lists **reads** (data shown — real shapes in §6), **writes** (act
 ### 4.6 Sessions
 - **Purpose:** see and control active connections (AX.25 L2 + NET/ROM L4 circuits).
 - **Reads:** each active `SessionInfo`: port, peer callsign, role (user console / interlink / bridge), state (Connected/TimerRecovery/…), V(S)/V(R), window, uptime, bytes in/out, last-activity.
-- **Writes:** **connect out** (`connect <call|alias>` — same as the console command, now from the UI); **disconnect** a session; (maybe) send a line into a session.
+- **Writes:** **connect out** (`connect <call|alias>` - same as the console command, now from the UI); **disconnect** a session; (maybe) send a line into a session.
 - **Realtime:** session add/remove/state-change.
 - **Notes:** "connect out" needs the NET/ROM destination list (alias resolution) from §4.7's data. → §7.3 (sessions), §7.6 (events).
 - **The via-port picker means something specific.** `POST /sessions` treats a named `portId` as a **direct AX.25 dial on that port** - the same thing the console's `C <port> <call>` means, never NET/ROM-wrapped. Omitting `portId` is what asks the node to route: it resolves its default connector, which is NET/ROM-wrapped when NET/ROM connect routing is on, so an alias or a distant destination goes over the network. The dialog's first option is therefore **Auto (NET/ROM routing)**, with value `""`, and it is the default whenever the loaded config has NET/ROM connect routing on; when it is off the default is the node's first live port, as before. The Routes screen's per-destination Connect hands off with no port for the same reason (a *neighbour* is heard directly, so naming its port would be right there - but only the destinations table carries a Connect button).
 - **Why it is spelled out.** node-v0.41.0 gave `portId` its direct-dial meaning (#694 C060) while the dialog still always sent one, so every NET/ROM connect from the panel became a raw SABM on an RF port the far station was not on, and timed out with a 504 after 30 s (packet.net#727 item 1).
 
 ### 4.7 NET/ROM routes
-- **Purpose:** the network view — what this node knows. The web analogue of the `Nodes` console command we just built (incl. the INP3 metric).
-- **Reads:** `NetRomRoutingSnapshot` — `Neighbours[]` (callsign, alias, port, path-quality, last-heard) and `Destinations[]` (callsign, alias, best route + all routes: via-neighbour, quality, obsolescence, and `Inp3 {targetTimeMs, hopCount}` when present).
+- **Purpose:** the network view - what this node knows. The web analogue of the `Nodes` console command we just built (incl. the INP3 metric).
+- **Reads:** `NetRomRoutingSnapshot` - `Neighbours[]` (callsign, alias, port, path-quality, last-heard) and `Destinations[]` (callsign, alias, best route + all routes: via-neighbour, quality, obsolescence, and `Inp3 {targetTimeMs, hopCount}` when present).
 - **Writes:** none in v1 (read-only view); a "connect" affordance per destination hands off to §4.6 **without a port**, so the dial routes over NET/ROM rather than dialling the via-neighbour's RF port directly (see §4.6).
-- **Realtime:** table refresh on sweep/ingest (low rate — a periodic SSE nudge or poll is fine).
-- **Notes:** show both metric spaces side by side (quality *and* INP3 time) — the dual surfacing the lab demo proved. → §7.7.
+- **Realtime:** table refresh on sweep/ingest (low rate - a periodic SSE nudge or poll is fine).
+- **Notes:** show both metric spaces side by side (quality *and* INP3 time) - the dual surfacing the lab demo proved. → §7.7.
 
 ### 4.8 Config editor
 - **Purpose:** edit the whole `NodeConfig` without SSH. **The biggest API-shape driver.**
@@ -92,7 +92,7 @@ Each screen lists **reads** (data shown — real shapes in §6), **writes** (act
 - **Reads:** current `NodeConfig` (+ a JSON-schema/field-metadata descriptor for the forms); the raw YAML text.
 - **Writes:** validated field/section updates **or** a full raw-YAML replace; every write returns the **reconcile preview** (what will be hot-applied vs which ports restart vs node-reset) and applies atomically (validate-before-swap; a bad edit never reaches consumers).
 - **Realtime:** none (but a config change emits an event others' screens react to).
-- **Notes:** the validate-before-apply + reconcile-preview is the safety story — surface it prominently. → §7.4.
+- **Notes:** the validate-before-apply + reconcile-preview is the safety story - surface it prominently. → §7.4.
 
 ### 4.9 Users & access
 - **Purpose:** manage operators.
@@ -117,7 +117,7 @@ Each screen lists **reads** (data shown — real shapes in §6), **writes** (act
 
 ## 6. Real data shapes (ground truth)
 
-These are the **actual** records in the codebase today (config + NET/ROM), plus the **new read models** Slice 3 must expose (the runtime data exists — `PortSupervisor` owns the listeners, `Ax25Listener` raises `FrameTraced`/`SessionAccepted` — but there's no read API yet). Claude Design should use these field names so mockups stay honest.
+These are the **actual** records in the codebase today (config + NET/ROM), plus the **new read models** Slice 3 must expose (the runtime data exists - `PortSupervisor` owns the listeners, `Ax25Listener` raises `FrameTraced`/`SessionAccepted` - but there's no read API yet). Claude Design should use these field names so mockups stay honest.
 
 ### 6.1 Config tree (`Packet.Node.Core.Configuration`, exists)
 
@@ -180,7 +180,7 @@ LinkStats   { portId, peer, smoothedRttMs, retries, rejCount, srejCount, framesI
 
 ## 7. API contract sketch (to be locked after the Claude Design pass)
 
-REST + JSON, JWT bearer, scoped. SSE for the live feed. Versioned under `/api/v1`. **This is a sketch** — the Claude Design mockups will confirm exact payload shapes (what each screen needs in one call); finalise as an OpenAPI document before implementation.
+REST + JSON, JWT bearer, scoped. SSE for the live feed. Versioned under `/api/v1`. **This is a sketch** - the Claude Design mockups will confirm exact payload shapes (what each screen needs in one call); finalise as an OpenAPI document before implementation.
 
 | # | Method + path | Purpose | Screen |
 |---|---|---|---|
@@ -200,17 +200,17 @@ REST + JSON, JWT bearer, scoped. SSE for the live feed. Versioned under `/api/v1
 
 > **Project:** Web control panel for `pdn`, an amateur-radio packet node (AX.25 / NET/ROM). Served by the node itself; runs on a small Linux box on a LAN; one operator, sometimes on a phone, sometimes over a tunnel.
 >
-> **Stack to target:** React + TypeScript + Tailwind + **shadcn/ui**. Establish a cohesive design system (dark-first; a calm, technical, "ops dashboard meets ham-radio terminal" feel — think a modern Grafana/Tailscale-admin, not a consumer app). Output should be reusable as real shadcn components.
+> **Stack to target:** React + TypeScript + Tailwind + **shadcn/ui**. Establish a cohesive design system (dark-first; a calm, technical, "ops dashboard meets ham-radio terminal" feel - think a modern Grafana/Tailscale-admin, not a consumer app). Output should be reusable as real shadcn components.
 >
 > **Build interactive mockups for these screens** (data shapes + actions below; use these exact field names):
-> 1. **Dashboard** — health-at-a-glance cards: identity + uptime + version; per-port up/down; active sessions; NET/ROM summary (neighbours, destinations, INP3 on); recent log tail. Live counters.
-> 2. **Live monitor** — a streaming frame table (timestamp, port, in/out arrow, source→dest, type badge [UI/SABM/I/RR/REJ/SREJ/…], PID, length, one-line summary), with filters (port/callsign/type), pause/resume, and a per-link stats strip (RTT, retries, REJ/SREJ). High-rate; design for readability under flow.
-> 3. **Sessions** — table of active connections (port, peer, role, state [Connected/TimerRecovery], V(S)/V(R), window, uptime, bytes in/out); actions: Connect-out (callsign or NET/ROM alias, with autocomplete from the routes list), Disconnect.
-> 4. **NET/ROM routes** — neighbours table (callsign, alias, port, quality, last-heard) + destinations table (callsign, alias, best route → via-neighbour, quality, obsolescence, **and an INP3 time column [targetTimeMs / hopCount] shown when present**). Show quality and INP3-time as two parallel metrics. A "connect" affordance per destination.
-> 5. **Ports** — list (id, transport kind+endpoint, up/down/faulted, peer count, profile) + a detail/edit drawer: a transport editor that switches fields by kind (kiss-tcp host/port · serial-kiss device/baud · nino-tnc device/baud/mode · axudp host/port/localPort), optional AX.25 params (t1/t2/t3/n2/window/maxCachedPeers) and KISS params (txDelay/persistence/slotTime/txTail), and **per-field badges showing apply-impact: "live" vs "port restart" vs "node reset."** Bring-up/restart/down buttons.
-> 6. **Config editor** — tabbed forms (Identity · Services · Management · NET/ROM + INP3 · Ports) **plus** a raw-YAML advanced tab with live validation; every save shows a **reconcile preview** ("X applies live, port Y restarts") and an atomic apply/cancel.
-> 7. **First-run setup** — a 3-step wizard (station identity → create admin [password + optional passkey] → add first port) reached from a one-time setup link.
-> 8. **Login** — passkey-first, password fallback.
+> 1. **Dashboard** - health-at-a-glance cards: identity + uptime + version; per-port up/down; active sessions; NET/ROM summary (neighbours, destinations, INP3 on); recent log tail. Live counters.
+> 2. **Live monitor** - a streaming frame table (timestamp, port, in/out arrow, source→dest, type badge [UI/SABM/I/RR/REJ/SREJ/…], PID, length, one-line summary), with filters (port/callsign/type), pause/resume, and a per-link stats strip (RTT, retries, REJ/SREJ). High-rate; design for readability under flow.
+> 3. **Sessions** - table of active connections (port, peer, role, state [Connected/TimerRecovery], V(S)/V(R), window, uptime, bytes in/out); actions: Connect-out (callsign or NET/ROM alias, with autocomplete from the routes list), Disconnect.
+> 4. **NET/ROM routes** - neighbours table (callsign, alias, port, quality, last-heard) + destinations table (callsign, alias, best route → via-neighbour, quality, obsolescence, **and an INP3 time column [targetTimeMs / hopCount] shown when present**). Show quality and INP3-time as two parallel metrics. A "connect" affordance per destination.
+> 5. **Ports** - list (id, transport kind+endpoint, up/down/faulted, peer count, profile) + a detail/edit drawer: a transport editor that switches fields by kind (kiss-tcp host/port · serial-kiss device/baud · nino-tnc device/baud/mode · axudp host/port/localPort), optional AX.25 params (t1/t2/t3/n2/window/maxCachedPeers) and KISS params (txDelay/persistence/slotTime/txTail), and **per-field badges showing apply-impact: "live" vs "port restart" vs "node reset."** Bring-up/restart/down buttons.
+> 6. **Config editor** - tabbed forms (Identity · Services · Management · NET/ROM + INP3 · Ports) **plus** a raw-YAML advanced tab with live validation; every save shows a **reconcile preview** ("X applies live, port Y restarts") and an atomic apply/cancel.
+> 7. **First-run setup** - a 3-step wizard (station identity → create admin [password + optional passkey] → add first port) reached from a one-time setup link.
+> 8. **Login** - passkey-first, password fallback.
 >
 > **Cross-cutting:** an authed app shell (top bar: node callsign + a status dot + uptime; left nav per §5); responsive down to phone; empty/loading/error states; a "what will this disrupt?" confirmation pattern for config writes.
 >
@@ -218,11 +218,11 @@ REST + JSON, JWT bearer, scoped. SSE for the live feed. Versioned under `/api/v1
 
 ## 9. Open questions for the design pass to settle
 
-1. **Config editor** — confirm form-first-with-YAML-escape-hatch (recommended) vs one or the other. Drives whether the API serves a forms schema (`/config/schema`) or just text+validate.
-2. **Monitor depth in v1** — type + addresses + length + one-line summary (recommended) vs full frame decode (defer to Phase 8).
-3. **Session "send a line"** — include a minimal send-into-session affordance in v1, or view/connect/disconnect only?
-4. **Aesthetic** — dark-first ops-dashboard is my lean; confirm the vibe (and any existing pdn/M0LTE visual identity to carry).
-5. **Multi-user in Slice 3** — single admin only, or the full users CRUD now?
+1. **Config editor** - confirm form-first-with-YAML-escape-hatch (recommended) vs one or the other. Drives whether the API serves a forms schema (`/config/schema`) or just text+validate.
+2. **Monitor depth in v1** - type + addresses + length + one-line summary (recommended) vs full frame decode (defer to Phase 8).
+3. **Session "send a line"** - include a minimal send-into-session affordance in v1, or view/connect/disconnect only?
+4. **Aesthetic** - dark-first ops-dashboard is my lean; confirm the vibe (and any existing pdn/M0LTE visual identity to carry).
+5. **Multi-user in Slice 3** - single admin only, or the full users CRUD now?
 
 ## 10. Workflow + next steps
 

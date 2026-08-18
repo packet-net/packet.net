@@ -6,14 +6,14 @@ namespace Packet.NetRom.Wire;
 /// A complete NET/ROM L3 datagram as carried in one connected-mode AX.25
 /// interlink I-frame (PID 0xCF): a 15-octet <see cref="NetRomNetworkHeader"/>, a
 /// 5-octet <see cref="NetRomTransportHeader"/>, and the transport payload (0..236
-/// octets — empty for the control opcodes; user data for Information).
+/// octets - empty for the control opcodes; user data for Information).
 /// </summary>
 /// <remarks>
 /// <para>
 /// This is the unit a node sends/receives/forwards: the AX.25 layer delivers the
 /// I-frame's information field, this parses it into header + header + payload, and
 /// the circuit layer acts on it. The repo's own BPQ corpus observed PID-0xCF
-/// I-frames "always exactly 20 B" — that is exactly this with an empty payload
+/// I-frames "always exactly 20 B" - that is exactly this with an empty payload
 /// (15 + 5).
 /// </para>
 /// <para>
@@ -22,7 +22,7 @@ namespace Packet.NetRom.Wire;
 /// </remarks>
 public sealed record NetRomPacket
 {
-    /// <summary>Maximum transport payload (user data) one datagram carries — the
+    /// <summary>Maximum transport payload (user data) one datagram carries - the
     /// canonical 256-octet NET/ROM frame minus the 20 octets of L3+L4 header. A
     /// larger logical frame is fragmented across several Information datagrams via
     /// the more-follows flag.</summary>
@@ -56,7 +56,7 @@ public sealed record NetRomPacket
     /// field. Returns <c>false</c> (never throws) if the field is shorter than the
     /// 20-octet fixed header or either header fails to decode. A payload longer
     /// than <see cref="MaxPayload"/> still parses (the circuit layer decides what
-    /// to do with an over-long fragment — being total here keeps a malformed peer
+    /// to do with an over-long fragment - being total here keeps a malformed peer
     /// from sinking the parser).
     /// </summary>
     public static bool TryParse(ReadOnlySpan<byte> info, [NotNullWhen(true)] out NetRomPacket? packet)

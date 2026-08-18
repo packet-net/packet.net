@@ -4,7 +4,7 @@ namespace Packet.Core;
 
 /// <summary>
 /// An amateur-radio callsign with an optional secondary station identifier
-/// (SSID, 0–15). The base callsign is 0–6 uppercase ASCII alphanumerics —
+/// (SSID, 0-15). The base callsign is 0-6 uppercase ASCII alphanumerics -
 /// the encoded form AX.25 allows.
 /// </summary>
 /// <remarks>
@@ -14,30 +14,30 @@ namespace Packet.Core;
 /// <see cref="Ax25Address"/>.
 /// </para>
 /// <para>
-/// Length range is 0–6. Zero-length is permitted because AX.25 v2.2 §3.12.2
+/// Length range is 0-6. Zero-length is permitted because AX.25 v2.2 §3.12.2
 /// says "If the call sign contains fewer than six characters, it is padded
 /// with ASCII spaces between the last call sign character and the SSID
-/// octet" — without specifying a minimum — and §6.1.1 acknowledges that
+/// octet" - without specifying a minimum - and §6.1.1 acknowledges that
 /// "operation with destination addresses other than actual amateur call
 /// signs is a subject for further study." In practice some implementations
 /// (BPQ's own ID beacon, some station QRV broadcasts) emit UI frames with
 /// an all-space dest or source slot; this represents that on-wire state.
 /// Note: <see cref="Parse"/> and <see cref="TryParse"/> over a text string
-/// remain strict (≥1 char) — that path is for user-typed input where empty
+/// remain strict (≥1 char) - that path is for user-typed input where empty
 /// is a typo, not a legitimate value.
 /// </para>
 /// </remarks>
 public readonly struct Callsign : IEquatable<Callsign>
 {
-    /// <summary>The base callsign, e.g. "G7XYZ". Always uppercase A–Z / 0–9; can be empty.</summary>
+    /// <summary>The base callsign, e.g. "G7XYZ". Always uppercase A-Z / 0-9; can be empty.</summary>
     public string Base { get; }
 
-    /// <summary>Secondary Station Identifier, 0–15.</summary>
+    /// <summary>Secondary Station Identifier, 0-15.</summary>
     public byte Ssid { get; }
 
     /// <summary>
-    /// Create a callsign from its parts. Base must be 0–6 uppercase
-    /// A–Z / 0–9 characters; empty is permitted (see remarks on
+    /// Create a callsign from its parts. Base must be 0-6 uppercase
+    /// A-Z / 0-9 characters; empty is permitted (see remarks on
     /// <see cref="Callsign"/>).
     /// </summary>
     /// <exception cref="ArgumentException">Base or SSID out of range.</exception>

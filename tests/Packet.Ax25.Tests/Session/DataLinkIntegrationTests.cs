@@ -30,7 +30,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <para>
 /// Test-time guards are mutated between hops via <see cref="MutableGuards"/>,
 /// since the recording dispatcher records action verbs but doesn't actually
-/// execute them — context variables stay frozen at their initial values.
+/// execute them - context variables stay frozen at their initial values.
 /// Tests manually align <see cref="MutableGuards"/> with what the figure
 /// would have done at each step.
 /// </para>
@@ -71,7 +71,7 @@ public class DataLinkIntegrationTests
         public bool POrFEq1 { get; set; }
         public bool T1Running { get; set; }
         public bool Command { get; set; }
-        public bool InfoFieldValid { get; set; } = true;    // valid by default — invalid is the error path
+        public bool InfoFieldValid { get; set; } = true;    // valid by default - invalid is the error path
         public bool NsEqVr { get; set; } = true;            // assume in-order receive by default
         public bool NsGtVrPlus1 { get; set; }
         public bool NrInWindow { get; set; } = true;
@@ -201,11 +201,11 @@ public class DataLinkIntegrationTests
     // (t11_dm_received_no) passively drops to AwaitingConnection, F=1
     // (t11_dm_received_yes) treats the DM as a §975 refusal and TEARS DOWN to
     // Disconnected with no fallback. But a peer that DMs our *polled* SABME (P=1)
-    // — XRouter does exactly this on the wire — correctly answers F=1, so a real
+    // - XRouter does exactly this on the wire - correctly answers F=1, so a real
     // non-v2.2 peer hits the teardown branch and our v2.2-preferred connect dies
     // with IsExtended stuck true. Ax25Spec48DmRejectionDegradesToV20 (default on)
     // makes EITHER F-branch degrade to v2.0 + re-establish via SABM, exactly like
-    // the FRMR fallback (Ax25Spec45) — any DM to our SABME means "peer can't do
+    // the FRMR fallback (Ax25Spec45) - any DM to our SABME means "peer can't do
     // v2.2, retry mod-8", never a refusal.
 
     [Fact(DisplayName = "Ax25Spec48: DM(F=1) to our SABME degrades to v2.0 + re-establishes via SABM (not Disconnected)")]
@@ -323,7 +323,7 @@ public class DataLinkIntegrationTests
     public void Cross_disc_during_awaiting_release_stays()
     {
         // figc4.3 t14: we sent DISC, peer also sent DISC. Figure says respond UA, stay.
-        // (Only direwolf follows this — see SI-08.)
+        // (Only direwolf follows this - see SI-08.)
         var (s, _, _) = NewSession("AwaitingRelease");
 
         s.PostEvent(new DiscReceived(Frame()));

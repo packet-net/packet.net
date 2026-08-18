@@ -41,7 +41,7 @@ public class FramingTests
     [Fact]
     public async Task ReadFrameAsync_returns_null_at_clean_end_of_stream()
     {
-        // Peer hung up between frames — the normal end of a conversation.
+        // Peer hung up between frames - the normal end of a conversation.
         using var empty = new MemoryStream();
         var got = await RhpFraming.ReadFrameAsync(empty);
         got.Should().BeNull();
@@ -118,7 +118,7 @@ public class FramingTests
     [Fact]
     public async Task ReadFrameAsync_times_out_when_a_started_frame_stalls()
     {
-        // A peer sends the first byte of a frame and then never sends the rest —
+        // A peer sends the first byte of a frame and then never sends the rest -
         // the slowloris shape. With an in-frame timeout the reader gives up rather
         // than waiting forever. The deadline runs on the INJECTED clock (docs/plan.md
         // §2.7), so this asserts the drop by advancing time, not by waiting for it
@@ -156,7 +156,7 @@ public class FramingTests
     [Fact]
     public async Task ReadFrameAsync_does_not_time_out_while_idle_before_a_frame()
     {
-        // The first byte of a frame is NOT time-bounded — an idle multiplexed
+        // The first byte of a frame is NOT time-bounded - an idle multiplexed
         // connection may wait arbitrarily long. Here the first byte only arrives
         // after the (short) timeout window, yet the whole frame still reads.
         var payload = Encoding.UTF8.GetBytes("""{"type":"close","handle":3}""");
@@ -183,7 +183,7 @@ public class FramingTests
     }
 
     /// <summary>Yields the given bytes once, then blocks every subsequent read until
-    /// cancelled — models a peer that starts a frame and then stalls.</summary>
+    /// cancelled - models a peer that starts a frame and then stalls.</summary>
     private sealed class StallAfterStream(byte[] yield) : Stream
     {
         private int position;
@@ -201,7 +201,7 @@ public class FramingTests
             }
             Stalling.TrySetResult();
             await Task.Delay(System.Threading.Timeout.Infinite, ct).ConfigureAwait(false);
-            return 0;   // unreachable — the delay only ends by cancellation
+            return 0;   // unreachable - the delay only ends by cancellation
         }
 
         public override bool CanRead => true;
@@ -217,7 +217,7 @@ public class FramingTests
     }
 
     /// <summary>Delays the very first read by <paramref name="firstDelay"/>, then serves
-    /// the buffer normally — models an idle connection whose next frame arrives late.</summary>
+    /// the buffer normally - models an idle connection whose next frame arrives late.</summary>
     private sealed class DelayFirstReadStream(byte[] bytes, TimeSpan firstDelay) : Stream
     {
         private int position;

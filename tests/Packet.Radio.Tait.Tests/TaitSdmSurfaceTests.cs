@@ -55,7 +55,7 @@ public class TaitSdmSurfaceTests
     [Fact]
     public async Task Binary_Sdm_Sends_Gfi1_Bytes_Verbatim()
     {
-        // Bench capture: a1105100PDN00001<01>B<7F><FE>B4 — delivered verbatim over air.
+        // Bench capture: a1105100PDN00001<01>B<7F><FE>B4 - delivered verbatim over air.
         using var io = new FakeSerialIo();
         io.RespondTo("a1105100PDN00001\u0001B\u007F\u00FEB4", Prompt);
         await using var radio = TaitCcdiRadio.OpenForTest(io);
@@ -81,7 +81,7 @@ public class TaitSdmSurfaceTests
     }
 
     [Theory]
-    [InlineData(0x0D)] // CR — CCDI frame terminator
+    [InlineData(0x0D)] // CR - CCDI frame terminator
     [InlineData(0x0A)] // LF
     [InlineData(0x11)] // XON
     [InlineData(0x13)] // XOFF
@@ -100,7 +100,7 @@ public class TaitSdmSurfaceTests
     [Fact]
     public async Task Legacy_Sdm_Sends_The_S_Command()
     {
-        // Bench capture: s1205PDN00001LEGACY-SBD — delivered, RINGed, auto-acknowledged.
+        // Bench capture: s1205PDN00001LEGACY-SBD - delivered, RINGed, auto-acknowledged.
         using var io = new FakeSerialIo();
         io.RespondTo("s1205PDN00001LEGACY-SBD", Prompt);
         await using var radio = TaitCcdiRadio.OpenForTest(io);

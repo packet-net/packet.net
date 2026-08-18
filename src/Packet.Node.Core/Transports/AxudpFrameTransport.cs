@@ -13,13 +13,13 @@ namespace Packet.Node.Core.Transports;
 /// </summary>
 /// <remarks>
 /// <para>
-/// AXUDP is <b>not KISS</b> — there is no SLIP framing, no command byte, no CSMA. A
+/// AXUDP is <b>not KISS</b> - there is no SLIP framing, no command byte, no CSMA. A
 /// datagram's payload <em>is</em> the AX.25 frame body, followed by the 2-octet AX.25 FCS
-/// (the RFC-1226 AXIP/AXUDP wire form — always present). So this transport implements ONLY
+/// (the RFC-1226 AXIP/AXUDP wire form - always present). So this transport implements ONLY
 /// the neutral <see cref="IAx25Transport"/>: no <see cref="ICsmaChannelParams"/> (a UDP link
 /// has no carrier to sense or slot timing) and no <see cref="ITxCompletionTransport"/> (there
 /// is no TNC to echo a TX-completion). A consumer that wants either capability feature-detects
-/// its absence and degrades — it is never offered a no-op. This is the transport whose mere
+/// its absence and degrades - it is never offered a no-op. This is the transport whose mere
 /// existence proves KISS is one implementation behind the seam, not a property of it: it
 /// constructs no KISS object at all.
 /// </para>
@@ -28,19 +28,19 @@ namespace Packet.Node.Core.Transports;
 /// go straight into a datagram to the configured remote with the CRC-16-CCITT FCS (low byte
 /// first) appended.</item>
 /// <item><b>Receive</b>: <see cref="AxudpSocket"/> strips + validates the trailing FCS and
-/// surfaces the bare AX.25 frame body, yielded directly as an <see cref="Ax25InboundFrame"/> —
+/// surfaces the bare AX.25 frame body, yielded directly as an <see cref="Ax25InboundFrame"/> -
 /// no KISS envelope to wrap or unwrap.</item>
 /// </list>
 /// <para>
 /// Unlike a shared RF channel (or the broadcast in-memory bus), AXUDP is a point-to-point
 /// tunnel: every outbound frame goes to the one configured <see cref="remote"/>. A frame
 /// addressed to a third station is still sent to the configured peer (which the peer's AX.25
-/// layer then ignores by address) — same as pointing a serial KISS link at one modem.
+/// layer then ignores by address) - same as pointing a serial KISS link at one modem.
 /// </para>
 /// <para>
-/// <b>AXUDP unconditionally carries the 2-octet AX.25 FCS — the de-facto wire format.</b> A
+/// <b>AXUDP unconditionally carries the 2-octet AX.25 FCS - the de-facto wire format.</b> A
 /// citation survey of every real AXIP/AXUDP implementation (RFC 1226 + rfc1226-bis, ax25ipd,
-/// LinBPQ's BPQAXIP, XRouter — see <c>docs/strict-vs-pragmatic-audit.md</c>) found the FCS
+/// LinBPQ's BPQAXIP, XRouter - see <c>docs/strict-vs-pragmatic-audit.md</c>) found the FCS
 /// mandatory in all of them and FCS-less accepted by none, so an AXUDP port talks to
 /// LinBPQ/XRouter/ax25ipd/JNOS out of the box. Stripping + validating the FCS on receive (in
 /// <see cref="AxudpSocket.ReceiveAsync"/>) is mandatory, not cosmetic:
@@ -76,7 +76,7 @@ public sealed class AxudpFrameTransport : IAx25Transport
     /// <inheritdoc/>
     public async Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
     {
-        // The listener hands us the AX.25 frame body (no FCS) — that is the AXUDP datagram
+        // The listener hands us the AX.25 frame body (no FCS) - that is the AXUDP datagram
         // payload. Append the 2-octet FCS (low byte first, matching Ax25Frame.WriteToWithFcs);
         // AXUDP always carries it.
         var body = ax25.Span;
@@ -105,12 +105,12 @@ public sealed class AxudpFrameTransport : IAx25Transport
             }
             catch (ObjectDisposedException)
             {
-                // Socket disposed out from under us (shutdown) — end the stream.
+                // Socket disposed out from under us (shutdown) - end the stream.
                 yield break;
             }
 
             // AxudpSocket.ReceiveAsync has already stripped + validated the FCS and dropped any
-            // bad-FCS datagram, so result.RawFrame is the bare AX.25 frame body — yield it
+            // bad-FCS datagram, so result.RawFrame is the bare AX.25 frame body - yield it
             // directly. No KISS object is ever constructed.
             yield return new Ax25InboundFrame(result.RawFrame, PortId: 0, ReceivedAt: clock.GetUtcNow());
         }

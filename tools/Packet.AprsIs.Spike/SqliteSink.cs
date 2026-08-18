@@ -13,7 +13,7 @@ namespace Packet.AprsIs.Spike;
 /// preserved verbatim, denormalised top-level fields populated on ingest so
 /// queries don't have to re-parse the line.
 ///
-/// Not thread-safe — single producer (the consumer task in
+/// Not thread-safe - single producer (the consumer task in
 /// <see cref="CollectMode"/>) serialises calls.
 /// </remarks>
 public sealed class SqliteSink : IAsyncDisposable

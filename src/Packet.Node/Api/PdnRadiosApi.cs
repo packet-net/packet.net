@@ -29,7 +29,7 @@ public static class PdnRadiosApi
 
         var v1 = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Read);
         var operate = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Operate);
-        // Admin gates the RF-emitting action (keyup pairing keys transmitters on-air) — matching every
+        // Admin gates the RF-emitting action (keyup pairing keys transmitters on-air) - matching every
         // other transmitting endpoint in the node (hail / tuning / doctor are all admin-scoped).
         var admin = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Admin);
 
@@ -46,7 +46,7 @@ public static class PdnRadiosApi
 
         // Bus scan: probe candidate serial ports for attached radios, keyed by CCDI serial (the
         // stable identity) with the /dev/serial/by-id symlink where unambiguous. Read-scope, but it
-        // opens serial ports transiently — the scanner keeps it bounded (timeout) + single-flight.
+        // opens serial ports transiently - the scanner keeps it bounded (timeout) + single-flight.
         // The scanner is unregistered only in a stripped embedder; then an empty array is honest.
         v1.MapGet("/radios/scan", async ([FromServices] IRadioScanner? scanner, CancellationToken ct) =>
         {
@@ -58,9 +58,9 @@ public static class PdnRadiosApi
 
         // Split-station head-end fleet scan/preview: enumerate every head-end instance (config ∪
         // mDNS), reach through each free device to identify + baud-lock it, and propose the matched
-        // TNC↔radio pairs — plus any duplicate-instance-id conflicts. Read-scope: it opens remote
+        // TNC↔radio pairs - plus any duplicate-instance-id conflicts. Read-scope: it opens remote
         // pipes transiently but mutates nothing. Absent scanner (stripped embedder) ⇒ empty scan.
-        // Each instance is enriched with the background health poller's live view (#583 —
+        // Each instance is enriched with the background health poller's live view (#583 -
         // reachableNow/lastSeen, an in-memory join, never a probe); absent monitor ⇒ fields null.
         v1.MapGet("/radios/headends",
             async ([FromServices] IHeadEndRadioScanner? scanner,
@@ -75,7 +75,7 @@ public static class PdnRadiosApi
 
         // Adopt a chosen head-end pairing: create ONE matched port (a nino-tnc-tcp transport + a
         // head-end-bound tait-ccdi radio on the same instance) through the SAME validate→preview→apply
-        // seam the ports API uses — operator-confirmed, not silent auto-create. The head-end is
+        // seam the ports API uses - operator-confirmed, not silent auto-create. The head-end is
         // declared in config if not already present (discover mode unless an address is supplied).
         operate.MapPost("/radios/headends/{instanceId}/adopt",
             (string instanceId, HeadEndAdoptRequest body, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock) =>
@@ -93,8 +93,8 @@ public static class PdnRadiosApi
         });
 
         // Keyup pairing: discover the PHYSICAL modem↔radio map on a head-end by briefly KEYING each
-        // free NinoTNC (RF is emitted) and watching which co-located Tait reports its PTT — ground
-        // truth that replaces the passive scan's co-location guess. Admin-scope (it transmits — the same
+        // free NinoTNC (RF is emitted) and watching which co-located Tait reports its PTT - ground
+        // truth that replaces the passive scan's co-location guess. Admin-scope (it transmits - the same
         // bar as hail/tuning/doctor) + an RF caveat on the response; never folded into the passive GET
         // scan. Absent pairer (stripped embedder) ⇒ an honest not-available result.
         admin.MapPost("/radios/headends/{instanceId}/pair-by-keyup",

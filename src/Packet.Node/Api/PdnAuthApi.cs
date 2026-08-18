@@ -17,7 +17,7 @@ namespace Packet.Node.Api;
 /// <para>
 /// <b>Always-open (never gated):</b> <c>GET /setup/state</c>, <c>POST /auth/login</c>,
 /// <c>POST /auth/refresh</c>, <c>POST /auth/logout</c> and <c>POST /setup</c> are
-/// reachable without a token — they are the bootstrap / session-lifecycle path (you
+/// reachable without a token - they are the bootstrap / session-lifecycle path (you
 /// cannot present a bearer access token to refresh or log out a session that has, by
 /// definition, an expired/absent one). They are mapped here without any
 /// <c>.RequireAuthorization</c>. <c>/users</c> is gated <c>admin</c> (via the
@@ -28,7 +28,7 @@ namespace Packet.Node.Api;
 /// bad password take the same code path and the same time: an unknown user is
 /// verified against a fixed decoy Argon2 hash so the (expensive, dominant)
 /// Argon2 derivation runs either way, and both failures return the identical
-/// generic 401 — no oracle for "does this user exist?".
+/// generic 401 - no oracle for "does this user exist?".
 /// </para>
 /// <para>
 /// <b>Login hardening (lockout).</b> A <see cref="LoginThrottle"/> counts failures in
@@ -48,15 +48,15 @@ namespace Packet.Node.Api;
 /// <para>
 /// <b>Audit log (no secrets).</b> Login success/failure, lockout, refresh success,
 /// refresh rejection, reuse-detection and logout each emit one structured log line
-/// via <see cref="LoggerMessage"/> — carrying the username / source IP / outcome but
+/// via <see cref="LoggerMessage"/> - carrying the username / source IP / outcome but
 /// never a password, token, or token hash.
 /// </para>
 /// <para>
 /// <b>Setup is one-shot:</b> <c>POST /setup</c> only succeeds while zero users
 /// exist; once an admin exists it returns 409. It creates the admin
 /// (<c>admin</c> scope) and applies the station identity (+ optional first port)
-/// through the existing <see cref="IWritableConfigProvider.TryApply"/> seam — the
-/// same validate→persist→reconcile path the config editor uses — rather than
+/// through the existing <see cref="IWritableConfigProvider.TryApply"/> seam - the
+/// same validate→persist→reconcile path the config editor uses - rather than
 /// reinventing a config write.
 /// </para>
 /// <para>
@@ -68,13 +68,13 @@ namespace Packet.Node.Api;
 public static class PdnAuthApi
 {
     // Minimum admin/user password length enforced on setup + user-create. A floor,
-    // not a policy engine — keep the bar simple but non-trivial.
+    // not a policy engine - keep the bar simple but non-trivial.
     private const int MinPasswordLength = 8;
 
     // A fixed, well-formed decoy Argon2id hash verified against when the username is
     // unknown, so an unknown-user login still pays the full Argon2 cost (constant-time
     // w.r.t. user existence). Generated once at module load from a random password the
-    // caller can never know — its only purpose is to burn the same CPU as a real verify.
+    // caller can never know - its only purpose is to burn the same CPU as a real verify.
     private static readonly string DecoyHash = PasswordHasher.Hash(Guid.NewGuid().ToString("N"));
 
     /// <summary>
@@ -92,7 +92,7 @@ public static class PdnAuthApi
 
         // --- Always-open bootstrap endpoints --------------------------------------
 
-        // Whether first-run setup is still required (zero users). Unauthenticated —
+        // Whether first-run setup is still required (zero users). Unauthenticated -
         // it is the probe the setup wizard hits before any account exists.
         // A store fault reads as "setup is over", never as "zero users": zero is the open
         // gate for POST /setup below (C026).
@@ -128,10 +128,10 @@ public static class PdnAuthApi
 
             var username = body?.Username ?? string.Empty;
             // Precompute the redacted username (a method call inline in a log argument
-            // trips CA1873 — the logging rule wants non-trivial args precomputed).
+            // trips CA1873 - the logging rule wants non-trivial args precomputed).
             var auditUser = Redact(username);
 
-            // Lockout check FIRST — before the user lookup / password verify — so a
+            // Lockout check FIRST - before the user lookup / password verify - so a
             // locked account or IP can't keep guessing (and stops burning Argon2 CPU).
             // Checked per-username AND per-IP; the username key is empty-safe.
             string userKey = UserKey(username);
@@ -529,7 +529,7 @@ public static class PdnAuthApi
         name.Length is > 0 and <= MaxServiceNameLength
         && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 
-    // The identical generic 401 every login failure returns — no detail on which of
+    // The identical generic 401 every login failure returns - no detail on which of
     // username/password was wrong. Reused by /auth/refresh so an invalid refresh and a
     // bad login are indistinguishable to a probe.
     private static IResult Unauthorized() =>
@@ -575,7 +575,7 @@ public static class PdnAuthApi
     /// <summary>The <c>/auth/login</c> + <c>/auth/refresh</c> (and passkey-assert) success
     /// body. <c>Scopes</c> is the single granted scope string; <c>RefreshToken</c> is the
     /// opaque token the client stores + presents to <c>/auth/refresh</c> (null only if the
-    /// refresh-token store could not persist it — the access token still works until it
+    /// refresh-token store could not persist it - the access token still works until it
     /// expires); <c>Username</c> is the authenticated account, so the client need not
     /// derive it (a passwordless passkey sign-in has no typed username to fall back on).</summary>
     public sealed record LoginResponse(string Token, DateTimeOffset ExpiresAt, string Scopes, string? RefreshToken, string Username);

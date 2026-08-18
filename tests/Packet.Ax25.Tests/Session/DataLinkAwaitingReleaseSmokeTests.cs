@@ -3,7 +3,7 @@ using Packet.Ax25.Sdl;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// End-to-end smoke test for figc4.3 (Awaiting Release — the DISC/UA disconnect
+/// End-to-end smoke test for figc4.3 (Awaiting Release - the DISC/UA disconnect
 /// handshake): drives every committed transition in
 /// <see cref="DataLink_AwaitingRelease"/> through <see cref="Ax25Session"/> with a
 /// recording dispatcher and stubbed decision predicates, asserting each lands on

@@ -8,9 +8,9 @@ namespace Packet.Aprs;
 /// </summary>
 /// <param name="Latitude">Decimal-degree latitude, positive north.</param>
 /// <param name="Longitude">Decimal-degree longitude, positive east.</param>
-/// <param name="SpeedKnots">Decoded speed 0–799 kn.</param>
+/// <param name="SpeedKnots">Decoded speed 0-799 kn.</param>
 /// <param name="CourseDegrees">
-/// Decoded course 0–360 °. Per §10 a value of 0 means "unknown or
+/// Decoded course 0-360 °. Per §10 a value of 0 means "unknown or
 /// indefinite" and 360 means "due north".
 /// </param>
 /// <param name="SymbolTable">
@@ -21,7 +21,7 @@ namespace Packet.Aprs;
 /// <param name="SymbolCode">Symbol code byte from info[7].</param>
 /// <param name="MessageType">Decoded standard / custom / emergency message identifier.</param>
 /// <param name="Comment">
-/// Free-form bytes after the 9-byte information-field header — may
+/// Free-form bytes after the 9-byte information-field header - may
 /// contain altitude, status text, Maidenhead locator, telemetry. The
 /// decoder doesn't interpret it.
 /// </param>
@@ -37,12 +37,12 @@ public readonly record struct AprsMicE(
 
 /// <summary>
 /// Mic-E message-bits result per APRS101 §10. The 3 message-identifier
-/// bits in the destination address bytes 1–3 select one of 15
+/// bits in the destination address bytes 1-3 select one of 15
 /// pre-defined types plus an Emergency code.
 /// </summary>
 public enum MicEMessageType
 {
-    /// <summary>All three message bits zero — the emergency code.</summary>
+    /// <summary>All three message bits zero - the emergency code.</summary>
     Emergency,
     StandardM0OffDuty,
     StandardM1EnRoute,
@@ -60,7 +60,7 @@ public enum MicEMessageType
     CustomC6,
     /// <summary>
     /// Mix of "1 (Std)" and "1 (Custom)" message-bit characters in the
-    /// destination — spec §10 explicitly calls this out as "unknown".
+    /// destination - spec §10 explicitly calls this out as "unknown".
     /// </summary>
     Unknown,
 }

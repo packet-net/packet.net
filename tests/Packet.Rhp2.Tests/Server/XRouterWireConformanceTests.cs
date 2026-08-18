@@ -12,7 +12,7 @@ namespace Packet.Rhp2.Tests.Server;
 /// made against the raw JSON TEXT the server emits, never via deserialized DTOs. The codec
 /// reads case-insensitively, so the sibling suites (<see cref="RhpServerTests"/> /
 /// <see cref="RhpServerPassiveTests"/>) would still pass if the server regressed to, say,
-/// lowercase <c>errcode</c> — a break every real XRouter client would feel. Each fact names
+/// lowercase <c>errcode</c> - a break every real XRouter client would feel. Each fact names
 /// the rhp2lib reference assertion it mirrors (<c>packet-net/rhp2lib-net</c>:
 /// <c>tests/RhpV2.Client.IntegrationTests</c> + <c>docs/protocol.md</c>), which were pinned
 /// against live XRouter.
@@ -37,7 +37,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         // EVERY reply type, although the published spec implies lowercase except on authReply.
         var raws = new List<string>();
 
-        // authReply — a failing auth (RequireAuth + always-deny validator).
+        // authReply - a failing auth (RequireAuth + always-deny validator).
         var (authServer, _) = await StartServerAsync(requireAuth: true, auth: (_, _) => false);
         var authClient = await ConnectAsync(authServer);
         raws.Add(await RoundTripAsync(authClient, new AuthMessage { Id = 1, User = "x", Pass = "y" }));
@@ -70,7 +70,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         // The reference serializer deliberately lifts `type` to the first key so an
         // XRouter-style dispatcher can route on it without buffering the whole object
         // (rhp2lib's MockRhpServer emits the same shape). Pin it on every server output
-        // path — typed replies, async pushes, AND the raw-JSON {type}Reply path.
+        // path - typed replies, async pushes, AND the raw-JSON {type}Reply path.
         var raws = new List<string>();
 
         // Active side: unknown-type reply, openReply (error + ok), status push, recv push, closeReply.
@@ -195,7 +195,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     {
         // The numeric errCode ladder as XRouter clients see it (rhp2lib docs/protocol.md error
         // table; the duplicate-listen semantics are pinned against live XRouter by the R-4
-        // wire diff — XRouterRhpWireDiffTests).
+        // wire diff - XRouterRhpWireDiffTests).
         var (server, gateway) = await StartServerAsync();
         var client = await ConnectAsync(server);
 
@@ -203,7 +203,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         var sendJson = await RoundTripAsync(client, new SendMessage { Id = 1, Handle = 99999, Data = "x" });
         sendJson.Should().Contain("\"errCode\":3");
 
-        // re-listen on the SAME socket → idempotent 0 Ok (the live XRouter wire — the R-4
+        // re-listen on the SAME socket → idempotent 0 Ok (the live XRouter wire - the R-4
         // diff corrected our initial 9 here)...
         var socketJson = await RoundTripAsync(client, new SocketMessage { Id = 2, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
         var listener = Parse<SocketReplyMessage>(socketJson).Handle!.Value;
@@ -272,7 +272,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     public async Task A_fresh_connections_first_push_carries_seqno_zero_on_the_raw_wire()
     {
         // RHPTEST: "seqno starts at 0 ... the first notification after an active open is
-        // status with seqno: 0, and the first recv carries seqno: 1" — per RHP connection.
+        // status with seqno: 0, and the first recv carries seqno: 1" - per RHP connection.
         // Also observed live (R-5 probe): a fresh connection's first push is "seqno":0.
         var (server, gateway) = await StartServerAsync();
         var client = await ConnectAsync(server);
@@ -291,7 +291,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     public async Task Absent_handle_and_absent_data_answer_12_with_the_wires_errText_and_no_handle_echo()
     {
         // Live-XRouter observed shape (R-5 probe): errCode 12 with errText "Missing handle" /
-        // "Missing data" — NOT the spec table's "Bad parameter" — and no handle field on the
+        // "Missing data" - NOT the spec table's "Bad parameter" - and no handle field on the
         // reply (there is nothing truthful to echo). 3 stays reserved for well-formed-but-
         // unknown handles (RHPTEST).
         var (server, _) = await StartServerAsync();
@@ -318,7 +318,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     public async Task Accept_is_followed_by_a_child_connected_status_push()
     {
         // The protocol lifecycle's incoming-listener sequence (rhp2lib protocol primer):
-        // accept {handle:L, child:N} then status {handle:N, flags:CONNECTED} — pinned on
+        // accept {handle:L, child:N} then status {handle:N, flags:CONNECTED} - pinned on
         // the raw wire: the status push carries the CHILD handle, the Connected bit, a
         // seqno, and never an id.
         var (server, gateway) = await StartServerAsync();
@@ -347,9 +347,9 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     public async Task Hello_is_answered_with_the_unknown_type_fallback_not_a_capability_advertisement()
     {
         // The `hello`/`helloReply` capability-discovery surface was REMOVED (proposed in
-        // the rhp2lib field notes but never agreed — packet-net/packet.net#449). pdn now
-        // treats `hello` like any other unsupported type: the unknown-type fallback —
-        // helloReply errCode 2 ("Bad or missing type") — which is exactly what real
+        // the rhp2lib field notes but never agreed - packet-net/packet.net#449). pdn now
+        // treats `hello` like any other unsupported type: the unknown-type fallback -
+        // helloReply errCode 2 ("Bad or missing type") - which is exactly what real
         // XRouter answers, so pdn looks like a server that simply doesn't support it.
         var (server, _) = await StartServerAsync();
         var client = await ConnectAsync(server);
@@ -372,7 +372,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     public async Task Hello_before_auth_is_refused_like_any_other_unknown_request()
     {
         // The pre-auth gate is uniform: a pre-auth `hello` (now an unknown type) gets
-        // helloReply errCode 14 via the generic {type}Reply fallback — no capability
+        // helloReply errCode 14 via the generic {type}Reply fallback - no capability
         // fields, since the surface no longer exists (#449).
         var (server, _) = await StartServerAsync(requireAuth: true, auth: (_, _) => false);
         var client = await ConnectAsync(server);
@@ -385,7 +385,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         json.Should().NotContain("\"pfams\"");
     }
 
-    // ── helpers (harness types reused from RhpServerTests — same assembly) ─
+    // ── helpers (harness types reused from RhpServerTests - same assembly) ─
 
     private async Task<(RhpServer Server, FakeGateway Gateway)> StartServerAsync(bool requireAuth = false, Func<string, string, bool>? auth = null)
     {
@@ -393,7 +393,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         var server = new RhpServer(new RhpServerOptions
         {
             Bind = IPAddress.Loopback,
-            Port = 0,                      // ephemeral — no clashes across parallel test classes
+            Port = 0,                      // ephemeral - no clashes across parallel test classes
             RequireAuth = requireAuth,
             Authenticate = auth,
         }, gateway);
@@ -417,7 +417,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     }
 
     // Re-parses a raw frame through the codec when a test needs a field VALUE (a handle, the
-    // decoded data) — the conformance assertions themselves stay on the raw text.
+    // decoded data) - the conformance assertions themselves stay on the raw text.
     private static T Parse<T>(string json) where T : RhpMessage
         => RhpJson.Deserialize(Encoding.UTF8.GetBytes(json)).Should().BeOfType<T>().Subject;
 

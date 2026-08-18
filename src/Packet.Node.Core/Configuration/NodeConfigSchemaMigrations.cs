@@ -7,8 +7,8 @@ namespace Packet.Node.Core.Configuration;
 /// blob (#488, the load-bearing follow-up to config-in-DB #473). The blob is stored in
 /// <c>pdn.db</c> with a <c>schema_ver</c> column (<see cref="SqliteConfigStore"/>); when the
 /// running code's <see cref="NodeConfig.CurrentSchemaVersion"/> is AHEAD of a stored blob,
-/// the store runs the registered chain of <em>JSON transforms</em> here — each one rewriting
-/// the blob from version N to N+1 — up to current, THEN deserialises. This means the first
+/// the store runs the registered chain of <em>JSON transforms</em> here - each one rewriting
+/// the blob from version N to N+1 - up to current, THEN deserialises. This means the first
 /// real schema bump never has to fight an old C# type or degrade to a re-seed that would lose
 /// the operator's edits.
 /// </summary>
@@ -16,7 +16,7 @@ namespace Packet.Node.Core.Configuration;
 /// <para>
 /// <b>Why JSON, not the typed model.</b> A shape change is expressible as a
 /// <see cref="JsonObject"/> transform <em>without</em> the old C# record type still existing
-/// — rename a field, restructure a sub-object, supply a default for a newly-required member.
+/// - rename a field, restructure a sub-object, supply a default for a newly-required member.
 /// Deserialising an old blob through the <em>current</em> type would silently drop renamed
 /// fields (lossy) or throw on a now-required one (degrade to re-seed). Transforming the JSON
 /// first sidesteps both.
@@ -41,7 +41,7 @@ public static class NodeConfigSchemaMigrations
     /// A single forward step: transform the blob's root object from schema version N to N+1.
     /// Operates on the parsed <see cref="JsonObject"/> in place (and returns it) so a shape
     /// change is expressible without the old typed model. A migration MUST NOT assume the
-    /// <c>schemaVersion</c> field is any particular value — the dispatch owns the version
+    /// <c>schemaVersion</c> field is any particular value - the dispatch owns the version
     /// bookkeeping and rewrites the field after each step.
     /// </summary>
     public delegate JsonObject Migration(JsonObject root);
@@ -60,7 +60,7 @@ public static class NodeConfigSchemaMigrations
 
     /// <summary>
     /// v1 → v2: unify the node alias. Folds a pre-v2 <c>netRom.alias</c> into
-    /// <c>identity.alias</c> (the single node-name concept — the NET/ROM broadcast now takes its
+    /// <c>identity.alias</c> (the single node-name concept - the NET/ROM broadcast now takes its
     /// alias from there) unless <c>identity.alias</c> is already set, then drops the dead
     /// <c>netRom.alias</c> field. Lossless for the common case (only one was ever set); when both
     /// were set the display alias (<c>identity.alias</c>) wins and the on-air alias converges to it.
@@ -77,7 +77,7 @@ public static class NodeConfigSchemaMigrations
         {
             // Normalise to the ≤6 the v2 schema requires. This is faithful: the NODES wire field is
             // 6 octets, so a longer netRom.alias (never length-validated pre-v2) only ever reached
-            // the air as its first 6 chars — and a long identity.alias from the old unvalidated UI
+            // the air as its first 6 chars - and a long identity.alias from the old unvalidated UI
             // is brought into range too, so the migrated config always passes v2 validation (a node
             // never boots on an over-long alias).
             var trimmed = unified.Trim();
@@ -117,12 +117,12 @@ public static class NodeConfigSchemaMigrations
     /// parameterised so tests can exercise the mechanism with a synthetic registry while
     /// production calls the two-arg overload.
     /// <list type="bullet">
-    /// <item><b>Equal</b> (from == to): returns <paramref name="root"/> unchanged — no
+    /// <item><b>Equal</b> (from == to): returns <paramref name="root"/> unchanged - no
     /// migration runs (idempotent; a blob already at current is never re-transformed).</item>
     /// <item><b>Less</b> (from &lt; to): walks N → N+1 → … → to, applying
     /// <c>registry[N]</c> at each step and stamping <c>schemaVersion</c> after each, then
     /// returns the transformed root.</item>
-    /// <item><b>Greater</b> (from &gt; to): THROWS <see cref="NodeConfigSchemaException"/> —
+    /// <item><b>Greater</b> (from &gt; to): THROWS <see cref="NodeConfigSchemaException"/> -
     /// the fail-safe for a downgrade onto a future schema.</item>
     /// </list>
     /// Throws <see cref="NodeConfigSchemaException"/> if a step in the chain has no registered
@@ -135,7 +135,7 @@ public static class NodeConfigSchemaMigrations
 
         if (fromVersion == toVersion)
         {
-            return root;   // already current — nothing to do (idempotent)
+            return root;   // already current - nothing to do (idempotent)
         }
 
         if (fromVersion > toVersion)

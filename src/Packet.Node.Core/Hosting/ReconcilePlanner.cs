@@ -3,7 +3,7 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Core.Hosting;
 
 /// <summary>
-/// Computes the <see cref="ReconcilePlan"/> between two configs — the pure
+/// Computes the <see cref="ReconcilePlan"/> between two configs - the pure
 /// "decide what changed" half of hot reconfiguration. Each port is matched by
 /// its stable <see cref="PortConfig.Id"/>; the per-port restart class is decided
 /// by which fields differ.
@@ -28,7 +28,7 @@ namespace Packet.Node.Core.Hosting;
 /// <em>new</em> sessions pick them up, while every existing session keeps its
 /// object identity and in-flight state. (Slice 1 deferred this to the next
 /// bring-up because the engine seeded options at construction only; the engine
-/// now exposes a live reseed, so this class is HOT — non-disrupting.)</item>
+/// now exposes a live reseed, so this class is HOT - non-disrupting.)</item>
 /// <item><b>Link policy changed</b> (only) → live-reseed via the same mechanism: the
 /// reseeded record carries the listener's dial defaults, and the connector reads the new
 /// policy on its next dial. Future dials only; no restart.</item>
@@ -126,16 +126,16 @@ public static class ReconcilePlanner
                 continue;   // the toggle subsumes any field change (we rebuild on enable)
             }
 
-            // Both disabled — nothing running, nothing to do beyond record the new
+            // Both disabled - nothing running, nothing to do beyond record the new
             // config (the supervisor never holds a disabled port).
             if (!newPort.Enabled)
             {
                 continue;
             }
 
-            // Both enabled — classify the field change.
+            // Both enabled - classify the field change.
             // A transport change, or a channel-profile change (which can move both
-            // the AX.25 timer seed — next-bring-up only — and the CSMA params), is a
+            // the AX.25 timer seed - next-bring-up only - and the CSMA params), is a
             // single-port restart. Folding profile into restart keeps the effective
             // params unambiguous: the rebuilt listener picks up the resolved values.
             // kiss.ackMode is in the same class: it decides whether the modem is wrapped
@@ -149,7 +149,7 @@ public static class ReconcilePlanner
             // the port.
             // The rig attachment (port.rig) is construction-time as well: the CAT backend is
             // dialled and capability-probed at bring-up, so adding / removing / re-pointing it
-            // restarts the port. (A hot-swap of the side-poller is possible in principle —
+            // restarts the port. (A hot-swap of the side-poller is possible in principle -
             // promote it to the hot class if restart churn ever matters here.)
             if (!Equals(oldPort.Transport, newPort.Transport) ||
                 !string.Equals(oldPort.Profile, newPort.Profile, StringComparison.OrdinalIgnoreCase) ||
@@ -182,7 +182,7 @@ public static class ReconcilePlanner
                 linkChanged.Add(newPort);
             }
             // Per-port NET/ROM awareness knobs (QUALITY / MINQUAL / NODESPACLEN): a hot edit
-            // (NET/ROM awareness + advertisement is read-only — it never disturbs a session),
+            // (NET/ROM awareness + advertisement is read-only - it never disturbs a session),
             // applied by swapping the port's attachment quality/minqual/paclen. Any of the
             // three changing schedules the same light-touch hot-apply.
             if (oldPort.NetRomQuality != newPort.NetRomQuality ||
@@ -289,6 +289,6 @@ public static class ReconcilePlanner
     private static bool AckModeChanged(KissParams? oldKiss, KissParams? newKiss)
         => (oldKiss?.AckMode ?? false) != (newKiss?.AckMode ?? false)
         // t1FromTxComplete is likewise a construction-time choice (it changes how
-        // the listener sends, decided at build) — a toggle needs the restart too.
+        // the listener sends, decided at build) - a toggle needs the restart too.
         || (oldKiss?.T1FromTxComplete ?? false) != (newKiss?.T1FromTxComplete ?? false);
 }

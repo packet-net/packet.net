@@ -3,13 +3,13 @@ namespace Packet.Ax25.Session;
 /// <summary>
 /// Classifies a parsed <see cref="Ax25Frame"/> into the matching
 /// <see cref="Ax25Event"/> subtype. Inverse of
-/// <see cref="FrameSpecExtensions"/> — that goes spec → frame → bytes
+/// <see cref="FrameSpecExtensions"/> - that goes spec → frame → bytes
 /// for outbound; this goes bytes (already parsed to a frame) → event
 /// for inbound, ready to feed into <see cref="Ax25Session.PostEvent"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Pure function over the control byte and frame-level properties — no
+/// Pure function over the control byte and frame-level properties - no
 /// session state needed. The classifier looks only at the frame's
 /// bit-level shape; it doesn't know whether the frame is destined for
 /// us or some other station. The link layer is expected to address-
@@ -55,9 +55,9 @@ public static class Ax25FrameClassifier
         // affect classification. N(R) bits 7-5 likewise.
         if ((ctrl & 0x03) == 0x01)
         {
-            // S frames carry no information field (§3.5). One present — accepted
+            // S frames carry no information field (§3.5). One present - accepted
             // only under a lenient parse; Ax25ParseOptions.Strict rejects it at
-            // decode — is the data-link "information not permitted in frame" error
+            // decode - is the data-link "information not permitted in frame" error
             // (DL-ERROR M), surfaced here so the figc4.x error-input transition
             // fires rather than the frame being silently processed as a plain RR.
             if (!frame.Info.IsEmpty)
@@ -84,7 +84,7 @@ public static class Ax25FrameClassifier
         {
             // SABM/SABME/DISC/UA/DM carry no information field (§3.5; e.g. "an
             // information field is not permitted in a DISC command frame"). One
-            // present — accepted only under a lenient parse — is the data-link
+            // present - accepted only under a lenient parse - is the data-link
             // "information not permitted in frame" error (DL-ERROR M), so the
             // figc4.x error-input transition fires instead of the frame being
             // silently processed as a plain SABM/UA/DM/etc.
@@ -97,13 +97,13 @@ public static class Ax25FrameClassifier
             0x87 => new FrmrReceived(frame),    // FRMR
             0xAF => new XidReceived(frame),     // XID
             0xE3 => new TestReceived(frame),    // TEST
-            0x03 => ClassifyUi(frame),          // UI — special handling
+            0x03 => ClassifyUi(frame),          // UI - special handling
             _ => new ControlFieldError(),    // unknown U-frame control byte
         };
     }
 
     /// <summary>
-    /// UI frames don't have a single dedicated event — they always
+    /// UI frames don't have a single dedicated event - they always
     /// arrive as <see cref="UiReceived"/>. Kept as its own helper for
     /// symmetry with the other shapes (and a future home for any
     /// info-field validation that needs to happen before routing).

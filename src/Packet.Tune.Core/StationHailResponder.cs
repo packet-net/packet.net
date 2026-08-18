@@ -17,13 +17,13 @@ public interface IStationStatusProvider
 /// <summary>
 /// The answering end of the station-hail protocol: listens for <see cref="StationHail"/>
 /// telegrams on an <see cref="ITuningLink"/> and auto-replies with this station's
-/// <see cref="StationStatus"/>. Opt-in by construction — nothing answers until
+/// <see cref="StationStatus"/>. Opt-in by construction - nothing answers until
 /// <see cref="RunAsync"/> is invoked (mirroring the TARPN-arming pattern; a station never
 /// auto-advertises its state without an explicit enable).
 /// </summary>
 /// <remarks>
-/// The reply is sent through the link's own <see cref="ITuningLink.SendAsync"/>, which — for
-/// <see cref="SdmTuningLink"/> — already waits out the post-receive auto-ack guard before keying
+/// The reply is sent through the link's own <see cref="ITuningLink.SendAsync"/>, which - for
+/// <see cref="SdmTuningLink"/> - already waits out the post-receive auto-ack guard before keying
 /// (half-duplex etiquette), so a reply never keys over the radio's own auto-ack in flight. The responder itself
 /// keeps no per-peer state: each hail is answered independently.
 /// </remarks>

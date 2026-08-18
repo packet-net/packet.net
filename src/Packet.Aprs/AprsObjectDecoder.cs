@@ -15,8 +15,8 @@ namespace Packet.Aprs;
 /// where NNNNNNNNN is a 9-byte name (right-padded with spaces),
 /// DDHHMMz is a 7-byte DHM-zulu timestamp (also accepts <c>/</c> for
 /// DHM-local per spec), and POSITION_DATA is encoded exactly the same
-/// way as an ordinary position report — uncompressed (20 bytes) or
-/// compressed (13 bytes) — followed by an optional free-form comment.
+/// way as an ordinary position report - uncompressed (20 bytes) or
+/// compressed (13 bytes) - followed by an optional free-form comment.
 /// </para>
 /// <para>
 /// The position bytes are delegated to <see cref="AprsPositionDecoder.TryDecode"/>
@@ -58,8 +58,8 @@ public static class AprsObjectDecoder
             return false;
         }
 
-        // Name: bytes 0–8, fixed-width. Spec doesn't constrain the character
-        // set inside the name field — accept any printable ASCII so
+        // Name: bytes 0-8, fixed-width. Spec doesn't constrain the character
+        // set inside the name field - accept any printable ASCII so
         // "439.137JJ", "W4CRL  B", "PP5ADW-R " etc. all round-trip cleanly.
         // Preserve trailing spaces verbatim because the wire form is
         // fixed-width and receivers use the exact name as a dedup key.
@@ -76,9 +76,9 @@ public static class AprsObjectDecoder
 
         // Timestamp: 6 ASCII digits + terminator. APRS101 §11 allows three
         // 7-byte forms for objects (no 8-byte MDHM):
-        //   DDHHMMz — DHM zulu
-        //   DDHHMM/ — DHM local
-        //   HHMMSSh — HMS zulu
+        //   DDHHMMz - DHM zulu
+        //   DDHHMM/ - DHM local
+        //   HHMMSSh - HMS zulu
         var ts = info.Slice(NameLen + 1, TimestampLen);
         for (int i = 0; i < 6; i++)
         {

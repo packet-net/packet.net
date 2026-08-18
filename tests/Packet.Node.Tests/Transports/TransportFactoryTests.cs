@@ -5,7 +5,7 @@ namespace Packet.Node.Tests.Transports;
 
 /// <summary>
 /// The real <see cref="TransportFactory"/>'s AXUDP arm: an <see cref="AxudpTransport"/> config
-/// is mapped onto a live, NATIVE <see cref="AxudpFrameTransport"/> over a UDP socket — returned
+/// is mapped onto a live, NATIVE <see cref="AxudpFrameTransport"/> over a UDP socket - returned
 /// directly as <c>IAx25Transport</c>, no KISS shim (AXUDP is not KISS). (The serial / kiss-tcp
 /// arms open real hardware/sockets and are covered through the integration harness with a fake
 /// factory; this pins the AXUDP wiring.)

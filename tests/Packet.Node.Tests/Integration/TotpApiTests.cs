@@ -69,7 +69,7 @@ public sealed class TotpApiTests : IDisposable
             // Pin the clock the TOTP service rides so the confirming code is deterministic.
             // The TOTP enrolment cache is reconstructed over the fake clock too (its TTL also
             // rides the injected clock); the JWT token service keeps real-time validation
-            // (it's built directly in Program.cs), which is fine — a freshly-issued token is
+            // (it's built directly in Program.cs), which is fine - a freshly-issued token is
             // well inside its lifetime for the duration of the test.
             builder.ConfigureTestServices(services =>
             {
@@ -82,7 +82,7 @@ public sealed class TotpApiTests : IDisposable
 
     private NodeAppFactory Factory() => new(configPath, dbPath);
 
-    // The current 6-digit code for a base32 secret at the pinned instant — exactly what the
+    // The current 6-digit code for a base32 secret at the pinned instant - exactly what the
     // endpoint computes when it verifies an enroll/complete.
     private static string CodeFor(string secret) =>
         TotpService.ComputeCode(secret, TotpService.CounterAt(Now));
@@ -224,11 +224,11 @@ public sealed class TotpApiTests : IDisposable
         await using var factory = Factory();
         using var client = factory.CreateClient();
 
-        // Mapped (not 404) but, with no authenticated "self", begin 409s — the default-off
+        // Mapped (not 404) but, with no authenticated "self", begin 409s - the default-off
         // contract: a node that never turns auth on is never usable for TOTP enrolment.
         (await client.PostAsJsonAsync("/api/v1/auth/totp/enroll/begin", new { }, Web))
             .StatusCode.Should().Be(HttpStatusCode.Conflict);
-        // GET is reachable and reports not-enrolled (no self) — never 404.
+        // GET is reachable and reports not-enrolled (no self) - never 404.
         var get = await client.GetAsync("/api/v1/auth/totp/enroll");
         get.StatusCode.Should().Be(HttpStatusCode.OK);
         (await get.Content.ReadFromJsonAsync<JsonElement>(Web))
@@ -244,7 +244,7 @@ public sealed class TotpApiTests : IDisposable
     private async Task BootstrapAdmin()
     {
         // Bootstrap an admin with auth off, then persist auth-ON through the live write seam
-        // (config-in-DB, #473: the DB row, not a YAML rewrite, carries config between boots —
+        // (config-in-DB, #473: the DB row, not a YAML rewrite, carries config between boots -
         // PUT /config/raw is ungated while auth is still off). The caller's reboot loads it.
         WriteConfig(authEnabled: false);
         await using var setupFactory = Factory();

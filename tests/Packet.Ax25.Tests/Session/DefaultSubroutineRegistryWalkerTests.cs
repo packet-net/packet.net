@@ -13,7 +13,7 @@ namespace Packet.Ax25.Tests.Session;
 /// </summary>
 /// <remarks>
 /// Auto-Wire from <c>Ax25Session</c> is deliberately off (action verbs
-/// like <c>"RC &lt;- 1"</c> aren't bound yet) — these tests exercise the
+/// like <c>"RC &lt;- 1"</c> aren't bound yet) - these tests exercise the
 /// walker via explicit <c>Wire(...)</c> calls.
 /// </remarks>
 public class DefaultSubroutineRegistryWalkerTests
@@ -22,11 +22,11 @@ public class DefaultSubroutineRegistryWalkerTests
     public void KnownSubroutines_Reflects_Generated_Specs_Plus_Legacy_Aliases()
     {
         // Packet.Ax25.Sdl v0.5.0's figc4.7 transcription emits 11
-        // subroutines (was 13 — Establish_Data_Link and
+        // subroutines (was 13 - Establish_Data_Link and
         // Establish_Extended_Data_Link are skipped pending the n50
         // missing-edge graphml fix at packet-net/ax25sdl#11; supplied
         // hand-coded for now). The registry also exposes 4 legacy
-        // aliases — the historic Enquiry_Response_F_0 / _F_1, plus the
+        // aliases - the historic Enquiry_Response_F_0 / _F_1, plus the
         // post-rename aliases Select_T1_Value / Check_Need_For_Response
         // emitted as action verbs by older state-machine yamls.
         DefaultSubroutineRegistry.KnownSubroutines.Should().HaveCount(17);
@@ -67,7 +67,7 @@ public class DefaultSubroutineRegistryWalkerTests
         registry.Invoke("Set_Version_2_0", tx);
 
         // Set_Version_2_0 has a single decision-free path with 7 processing
-        // actions per APRS101 §11 — drawn as one multi-line processing box,
+        // actions per APRS101 §11 - drawn as one multi-line processing box,
         // transcribed as one action per line.
         actionsExecuted.Should().Equal(new[]
         {
@@ -118,8 +118,8 @@ public class DefaultSubroutineRegistryWalkerTests
     [InlineData("Enquiry_Response_F_1")]
     public void Legacy_Alias_Walks_Canonical_Enquiry_Response_Spec(string legacyAlias)
     {
-        // figc4.4 has two distinct subroutine-call boxes — `Enquiry Response (F = 0)`
-        // and `Enquiry Response (F = 1)` — that the redraw of figc4.7 collapses
+        // figc4.4 has two distinct subroutine-call boxes - `Enquiry Response (F = 0)`
+        // and `Enquiry Response (F = 1)` - that the redraw of figc4.7 collapses
         // into a single Enquiry_Response body. Per "Trust the figure" we keep
         // the figc4.4 transcription faithful (two verbs at the call site);
         // the registry resolves both to the same canonical spec.
@@ -180,7 +180,7 @@ public class DefaultSubroutineRegistryWalkerTests
         // Bind every Ax25Guard atom through the supplied lookup. Tests pass a
         // lookup that returns a fixed bool (to drive a specific subroutine path)
         // or one that throws (to exercise the walker's tolerance of a closure
-        // that signals it can't evaluate — see Walker_Tolerates_*).
+        // that signals it can't evaluate - see Walker_Tolerates_*).
         var bindings = new Dictionary<Ax25Guard, Func<bool>>();
         foreach (Ax25Guard atom in Enum.GetValues<Ax25Guard>())
         {
@@ -195,7 +195,7 @@ public class DefaultSubroutineRegistryWalkerTests
         var local = new Callsign("M0LTE", 1);
         var remote = new Callsign("WB2OSZ", 0);
         var sessionContext = new Ax25SessionContext { Local = local, Remote = remote };
-        // Use any concrete event as the trigger — we don't care about its
+        // Use any concrete event as the trigger - we don't care about its
         // shape, the walker just needs a non-null TransitionContext.
         return new TransitionContext(sessionContext, NullScheduler.Instance, new DlConnectRequest());
     }

@@ -15,9 +15,9 @@ namespace Packet.Node.Tests.Integration;
 /// Boots the real composition root and exercises the rig-control read surface:
 /// <c>GET /api/v1/rigs</c>, <c>GET /api/v1/ports/{id}/rig</c>, the plug-and-play wizard pair
 /// (<c>GET /api/v1/rigs/scan</c> with an injected fake scanner, <c>GET /api/v1/rigs/models</c>
-/// with a catalogue over a canned process runner — no rigctl or serial hardware is touched),
+/// with a catalogue over a canned process runner - no rigctl or serial hardware is touched),
 /// and the <c>event: rig</c> SSE feed at <c>GET /api/v1/rigs/events</c>. Ports stay disabled
-/// (no transports are opened) — the endpoints exercise the configured-but-not-attached
+/// (no transports are opened) - the endpoints exercise the configured-but-not-attached
 /// projections, and the SSE test drives the live <c>RigTelemetry</c> hub directly through the
 /// composition root.
 /// </summary>
@@ -195,8 +195,8 @@ public sealed class RigsApiTests : IDisposable
         await using var factory = new NodeAppFactory();
         using var client = factory.CreateClient();
 
-        // Reach the live hub through the composition root — the same object the SSE endpoint
-        // subscribes to — and publish a status as a poll tick would.
+        // Reach the live hub through the composition root - the same object the SSE endpoint
+        // subscribes to - and publish a status as a poll tick would.
         var host = factory.Services.GetRequiredService<Packet.Node.Core.Hosting.NodeHostedService>();
 
         using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/rigs/events");

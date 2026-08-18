@@ -6,7 +6,7 @@ namespace Packet.Tune;
 /// <summary>
 /// <c>rendezvous --listen &lt;port&gt;</c>: run the PIN-rendezvous WebSocket
 /// relay (see <see cref="RendezvousRelay"/>) until Ctrl+C. Designed for
-/// localhost today and a public host later — put TLS in front before
+/// localhost today and a public host later - put TLS in front before
 /// exposing one publicly.
 /// </summary>
 internal static class RendezvousCommand

@@ -7,7 +7,7 @@ namespace Packet.Radio.Tait.Tests;
 /// <summary>
 /// Unit tests for <see cref="TaitTransparentTransport"/> over a scripted <see cref="ISerialIo"/>:
 /// KISS-SLIP round-trip, frame-boundary reassembly across chunk splits, TX/RX timing computation,
-/// and Transparent-mode exit (with baud restore) on dispose — all without hardware.
+/// and Transparent-mode exit (with baud restore) on dispose - all without hardware.
 /// </summary>
 /// <remarks>
 /// These run on the real clock: the CCDI enter transaction settles on a prompt-error grace timer
@@ -106,7 +106,7 @@ public class TaitTransparentTransportTests
         await using var transport = new TaitTransparentTransport(radio, new TaitTransparentTransportOptions());
         await transport.EnterTransparentModeAsync();
 
-        // The radio pump delivers whatever chunk boundaries the wire produced — split one SLIP
+        // The radio pump delivers whatever chunk boundaries the wire produced - split one SLIP
         // frame into three arbitrary chunks and the stateful decoder must still find one frame.
         byte[] slip = KissEncoder.Encode(0, KissCommand.Data, SampleAx25);
         io.Enqueue(slip[..3]);
@@ -240,7 +240,7 @@ public class TaitTransparentTransportTests
         // The stale-Transparent scenario (#585): the previous session's pipe died before teardown,
         // so the RADIO is still a Transparent byte pipe while a freshly-opened driver believes it
         // is in Command mode. The fake only answers the `t` entry once the +++ escape has been
-        // seen — exactly the physical behaviour (a Transparent radio transmits the entry as data).
+        // seen - exactly the physical behaviour (a Transparent radio transmits the entry as data).
         var io = new FakeSerialIo();
         io.RespondTo(EnterCommand(), ".", onlyWhen: () => io.WrittenAscii.Contains("+++"));
         var radio = TaitCcdiRadio.OpenForTest(io, new TaitCcdiRadioOptions
@@ -280,7 +280,7 @@ public class TaitTransparentTransportTests
     public async Task Receive_Stream_Ends_When_The_Radio_Faults()
     {
         // A dead link (unplugged USB / dropped head-end pipe) faults the radio's read pump. The
-        // inbound stream must END — end-of-stream is the drop signal the node's reconnect
+        // inbound stream must END - end-of-stream is the drop signal the node's reconnect
         // supervisor (ReconnectingKissModem) keys on; a silent never-ending stream would leave
         // the port dead until a process restart.
         var (io, radio) = OpenRadio();

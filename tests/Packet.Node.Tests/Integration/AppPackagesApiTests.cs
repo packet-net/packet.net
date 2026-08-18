@@ -22,8 +22,8 @@ namespace Packet.Node.Tests.Integration;
 /// packages plus an inline <c>applications:</c> entry; the enable/disable trust toggle
 /// persisting through the live <c>FileConfigProvider</c> write seam; and the restart action.
 /// The supervisor seam is swapped for a fake via <c>ConfigureTestServices</c> (the real one
-/// would actually spawn daemons from the temp root) — or stripped entirely for the 503 path.
-/// Auth is off here (an idle node), so the read/admin gates pass — the auth path itself is
+/// would actually spawn daemons from the temp root) - or stripped entirely for the 503 path.
+/// Auth is off here (an idle node), so the read/admin gates pass - the auth path itself is
 /// covered by the auth suites.
 /// </summary>
 [Trait("Category", "Node")]
@@ -39,7 +39,7 @@ public sealed class AppPackagesApiTests : IDisposable
         packagesRoot = Path.Combine(dir, "apps");
         Directory.CreateDirectory(packagesRoot);
 
-        // alpha: a healthy disabled package — ui only, no service.
+        // alpha: a healthy disabled package - ui only, no service.
         WriteManifest("alpha", """
             manifest: 1
             id: alpha
@@ -52,7 +52,7 @@ public sealed class AppPackagesApiTests : IDisposable
               upstream: http://127.0.0.1:59999
             """);
 
-        // svc: a healthy package with a pdn-managed service (never spawned here — the
+        // svc: a healthy package with a pdn-managed service (never spawned here - the
         // supervisor is faked / the package stays disabled).
         WriteManifest("svc", """
             manifest: 1
@@ -64,7 +64,7 @@ public sealed class AppPackagesApiTests : IDisposable
               args: [run.sh]
             """);
 
-        // ext: an owner-managed daemon — pdn reports it as External, never tracks health.
+        // ext: an owner-managed daemon - pdn reports it as External, never tracks health.
         WriteManifest("ext", """
             manifest: 1
             id: ext
@@ -168,7 +168,7 @@ public sealed class AppPackagesApiTests : IDisposable
     }
 
     /// <summary>Boots the node with the REAL supervisor registration replaced by
-    /// <paramref name="supervisor"/> — or removed entirely when null (the degraded host the
+    /// <paramref name="supervisor"/> - or removed entirely when null (the degraded host the
     /// 503 path covers). Replacing matters: the real supervisor would actually spawn any
     /// enabled service from the temp package root. An optional <paramref name="installer"/>
     /// swaps the catalog installer too (the uninstall/upload endpoints drive it).</summary>
@@ -243,7 +243,7 @@ public sealed class AppPackagesApiTests : IDisposable
         svc.GetProperty("state").GetString().Should().Be("Running");
         svc.GetProperty("pid").GetInt32().Should().Be(4321);
 
-        // ext: owner-managed — the state IS External, pdn never guesses at health.
+        // ext: owner-managed - the state IS External, pdn never guesses at health.
         var ext = Entry(inventory, "ext");
         ext.GetProperty("service").GetString().Should().Be("external");
         ext.GetProperty("state").GetString().Should().Be("External");
@@ -402,7 +402,7 @@ public sealed class AppPackagesApiTests : IDisposable
         (await client.PostAsync("/api/v1/apps/packages/ghost/enable", content: null))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
 
-        // An inline applications: entry is config-authored — the apps: override surface
+        // An inline applications: entry is config-authored - the apps: override surface
         // does not govern it (toggling it is a config edit, not an override write).
         (await client.PostAsync("/api/v1/apps/packages/wall/enable", content: null))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -551,7 +551,7 @@ public sealed class AppPackagesApiTests : IDisposable
     [Fact]
     public async Task Uninstall_of_a_markerless_package_is_409_with_the_installer_refusal()
     {
-        // The installer refuses a hand-sideloaded dir (no marker) — the API maps that to 409.
+        // The installer refuses a hand-sideloaded dir (no marker) - the API maps that to 409.
         var installer = new FakeInstaller
         {
             UninstallOutcome = InstallOutcome.Failure("alpha", "no install marker — sideloaded by hand."),

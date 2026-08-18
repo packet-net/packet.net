@@ -58,7 +58,7 @@ public static class NodeServiceCollectionExtensions
                 sp.GetService<ILoggerFactory>()?.CreateLogger<SqlitePeerCapabilityStore>()));
 
             // The MHeard log persists to the same pdn.db (#454). Same pattern as the capability
-            // store — a durable store with a dbPath, in-memory otherwise.
+            // store - a durable store with a dbPath, in-memory otherwise.
             services.TryAddSingleton<Heard.IHeardStore>(sp => new Heard.SqliteHeardStore(
                 dbPath,
                 sp.GetService<ILoggerFactory>()?.CreateLogger<Heard.SqliteHeardStore>()));

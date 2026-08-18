@@ -7,7 +7,7 @@ namespace Packet.Rhp2;
 /// unsigned length followed by exactly that many bytes of UTF-8 JSON.
 /// </summary>
 /// <remarks>
-/// The 16-bit length field caps a single message at 65535 bytes — RHPv2
+/// The 16-bit length field caps a single message at 65535 bytes - RHPv2
 /// has no continuation mechanism, so larger payloads are a caller error
 /// (split the data across multiple <c>send</c> messages instead). A
 /// zero-length frame (<c>00 00</c>) is legal on the wire and yields an
@@ -41,7 +41,7 @@ public static class RhpFraming
     }
 
     /// <summary>
-    /// Synchronous counterpart of <see cref="WriteFrameAsync"/> — handy in
+    /// Synchronous counterpart of <see cref="WriteFrameAsync"/> - handy in
     /// tests that build wire fixtures into a <see cref="MemoryStream"/>.
     /// </summary>
     /// <exception cref="ArgumentException">
@@ -76,7 +76,7 @@ public static class RhpFraming
     /// Maximum time the rest of a frame may take to arrive after its first byte.
     /// A peer may sit idle between frames indefinitely (the multiplexed RHP
     /// connection legitimately waits on async pushes), but once it starts sending
-    /// a frame it must finish within this window — a peer that sends a length
+    /// a frame it must finish within this window - a peer that sends a length
     /// prefix and then dribbles or stalls (a slowloris) is dropped rather than
     /// pinning the connection forever. <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>
     /// disables the bound.
@@ -85,11 +85,11 @@ public static class RhpFraming
     /// <returns>
     /// The payload bytes (possibly empty for a zero-length frame), or
     /// <see langword="null"/> if the stream ended cleanly before any header
-    /// byte arrived — the peer hung up between frames, which is the normal
+    /// byte arrived - the peer hung up between frames, which is the normal
     /// way an RHP conversation ends.
     /// </returns>
     /// <exception cref="EndOfStreamException">
-    /// The stream ended part-way through a header or body — the peer hung
+    /// The stream ended part-way through a header or body - the peer hung
     /// up mid-frame, which is always abnormal.
     /// </exception>
     /// <exception cref="TimeoutException">

@@ -15,7 +15,7 @@ namespace Packet.Tune.Core;
 /// </summary>
 public interface IModeCoordStation
 {
-    /// <summary>Switch the TNC to <paramref name="mode"/> (RAM-only on hardware — never
+    /// <summary>Switch the TNC to <paramref name="mode"/> (RAM-only on hardware - never
     /// burn the flash from a negotiation) including whatever settling the TNC needs
     /// before the mode is live (the NinoTNC applies a changed setting from the SECOND
     /// frame after the command).</summary>
@@ -48,7 +48,7 @@ public interface IModeProbeCounter : IDisposable
 /// <summary>Sender-side outcome of a probe burst.</summary>
 /// <param name="Attempted">Probe frames handed to the TNC.</param>
 /// <param name="TxConfirmed">Probes whose TX-completion echo arrived (a missing echo
-/// does not mean the frame failed to key — bench-observed sporadic absence).</param>
+/// does not mean the frame failed to key - bench-observed sporadic absence).</param>
 /// <param name="MeanTxMs">Mean send→TX-complete latency over the confirmed probes
 /// (CSMA deferral + TXDELAY + airtime), <c>null</c> when none confirmed.</param>
 public sealed record ModeProbeTxStats(int Attempted, int TxConfirmed, double? MeanTxMs);
@@ -77,7 +77,7 @@ public sealed class ModeCoordException : Exception
 
 /// <summary>
 /// The link-verification stimulus of a mode-coordination attempt: short UI frames
-/// tagged with the attempt (the commit — or revert — telegram's sequence number), so
+/// tagged with the attempt (the commit - or revert - telegram's sequence number), so
 /// stale probes from a previous attempt can never satisfy the current one.
 /// </summary>
 public static class ModeProbe
@@ -88,7 +88,7 @@ public static class ModeProbe
     /// <summary>The destination address probe frames are sent to.</summary>
     public const string Destination = "TUNE";
 
-    /// <summary>Info-field length — short on purpose, long enough to exercise the modem.</summary>
+    /// <summary>Info-field length - short on purpose, long enough to exercise the modem.</summary>
     public const int InfoLength = 40;
 
     /// <summary>Build probe frame <paramref name="index"/> of <paramref name="count"/>
@@ -120,12 +120,12 @@ public static class ModeProbe
 /// <summary>Tunables shared by <see cref="ModeCoordinator"/> and <see cref="ModeResponder"/>.
 /// The timing defaults encode the bench-measured SDM cadence and the post-receive
 /// auto-ack guards (a brief gap before keying the TNC right after the coordination radio
-/// received a telegram — half-duplex etiquette; see <see cref="SdmTuningLink"/>).</summary>
+/// received a telegram - half-duplex etiquette; see <see cref="SdmTuningLink"/>).</summary>
 public sealed record ModeCoordOptions
 {
-    /// <summary>The session's home TNC mode — where both ends revert to on any failure,
+    /// <summary>The session's home TNC mode - where both ends revert to on any failure,
     /// and where the responder's watchdog takes it back to when the coordinator goes
-    /// quiet. Default 6 (1200 AFSK AX.25 — the bench rig's resting mode).</summary>
+    /// quiet. Default 6 (1200 AFSK AX.25 - the bench rig's resting mode).</summary>
     public byte HomeMode { get; init; } = 6;
 
     /// <summary>The session's home radio channel. Default 0.</summary>
@@ -155,16 +155,16 @@ public sealed record ModeCoordOptions
 
     /// <summary>Coordinator: how many times to (re)run the propose→confirm handshake before
     /// giving up. The SDM delivery receipt is unreliable for close bidirectional traffic (the
-    /// TM8110 auto-ack refractory — see <see cref="SdmTuningLink"/> and
+    /// TM8110 auto-ack refractory - see <see cref="SdmTuningLink"/> and
     /// docs/research/tm8110-sdm-autoack-refractory.md), so reliability is reply-driven: a lost
     /// propose/confirm is recovered by re-proposing with a fresh sequence (the responder
-    /// re-confirms idempotently — nothing is committed until the commit phase). Default 3.</summary>
+    /// re-confirms idempotently - nothing is committed until the commit phase). Default 3.</summary>
     public int LinkRetryAttempts { get; init; } = 3;
 
     /// <summary>Coordinator: how many whole coordination attempts to make when a transient
     /// side-channel loss in the <b>commit/probe</b> phase reverts both ends safely to home.
     /// The commit is a state change (not a re-runnable telegram), and every post-commit loss
-    /// already reverts both radios home — so the revert-safe unit to retry is the whole attempt
+    /// already reverts both radios home - so the revert-safe unit to retry is the whole attempt
     /// (see <see cref="ModeCoordinator.CoordinateWithRetryAsync"/>). Only outcomes that left both
     /// ends confirmed-home retry; real verdicts (rejected / switch-failed / probe-dead) do not.
     /// Default 3.</summary>
@@ -172,7 +172,7 @@ public sealed record ModeCoordOptions
 
     /// <summary>Minimum gap between receiving a side-channel telegram and keying the
     /// TNC: the coordination radio may still be sending its SDM auto-ack, and a brief gap
-    /// avoids keying the TNC over it (half-duplex etiquette; see <see cref="SdmTuningLink"/> —
+    /// avoids keying the TNC over it (half-duplex etiquette; see <see cref="SdmTuningLink"/> -
     /// the auto-ack refractory itself is handled by not depending on the receipt). Default 2.5 s.</summary>
     public TimeSpan PreProbeDelay { get; init; } = TimeSpan.FromSeconds(2.5);
 
@@ -182,7 +182,7 @@ public sealed record ModeCoordOptions
     public TimeSpan ArrivalGrace { get; init; } = TimeSpan.FromSeconds(1.5);
 
     /// <summary>Responder watchdog: when switched away from home (or mid-attempt) and
-    /// nothing has been heard for this long, revert to home unilaterally — SDM loss
+    /// nothing has been heard for this long, revert to home unilaterally - SDM loss
     /// (e.g. a split channel after a failed switch) must never strand the responder on
     /// a dead link. Default 150 s (must exceed <see cref="PeerProbeTimeout"/> plus the
     /// coordinator's revert exchange).</summary>
@@ -193,7 +193,7 @@ public sealed record ModeCoordOptions
 public enum ModeCoordOutcome
 {
     /// <summary>Both ends switched and the link verified with probe traffic in both
-    /// directions (possibly marginal — see the cells).</summary>
+    /// directions (possibly marginal - see the cells).</summary>
     Switched,
 
     /// <summary>The responder rejected the proposal; nothing changed.</summary>
@@ -203,7 +203,7 @@ public enum ModeCoordOutcome
     /// switches before the commit).</summary>
     ConfirmTimeout,
 
-    /// <summary>The commit's delivery was not confirmed — ambiguous, so this end stayed
+    /// <summary>The commit's delivery was not confirmed - ambiguous, so this end stayed
     /// home and sent a best-effort revert (the responder's watchdog covers the rest).</summary>
     CommitUndelivered,
 
@@ -282,7 +282,7 @@ public static class ModeCoordReport
     /// (<see cref="ModeSurvey.SelectIl2pCrcModes"/>), optionally dropping the modes
     /// whose published occupied bandwidth needs a wide (25 kHz) channel when sweeping a
     /// narrow one (<paramref name="strictBandwidth"/>). Lenient (the default CLI
-    /// behaviour) tries everything and lets the probe verdicts speak — bench evidence:
+    /// behaviour) tries everything and lets the probe verdicts speak - bench evidence:
     /// mode 2 (9600 GFSK, a 25 kHz mode per the OARC wiki) decodes on this rig's
     /// narrow programmed channel at 38 dB SNR.
     /// </summary>
@@ -319,7 +319,7 @@ public static class ModeCoordReport
     }
 
     /// <summary>One-line human outcome, e.g. <c>switched (solid both ways)</c> or
-    /// <c>PROBE DEAD — reverted, home link alive</c>.</summary>
+    /// <c>PROBE DEAD - reverted, home link alive</c>.</summary>
     public static string DescribeOutcome(ModeCoordAttempt attempt)
     {
         ArgumentNullException.ThrowIfNull(attempt);

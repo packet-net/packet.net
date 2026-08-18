@@ -2,7 +2,7 @@ namespace Packet.Node.Core.Api;
 
 /// <summary>
 /// A peer station's status as learned over the SDM side channel by
-/// <c>POST /api/v1/ports/{id}/hail</c> — the read model of a hail reply. Because the side channel
+/// <c>POST /api/v1/ports/{id}/hail</c> - the read model of a hail reply. Because the side channel
 /// is modulation-agnostic, this is returned even when the peer is unreachable on the packet path
 /// because of a mode mismatch (the mismatch is exactly what <see cref="Mode"/> then reveals).
 /// System.Text.Json's web defaults camel-case the properties.
@@ -17,8 +17,8 @@ namespace Packet.Node.Core.Api;
 /// <param name="SupportedModes">The NinoTNC mode numbers the peer advertises it can run.</param>
 /// <param name="Capabilities">Capability tokens the peer advertises (e.g. <c>hail</c>,
 /// <c>modecoord</c>, <c>tune</c>).</param>
-/// <param name="RssiOfHailDbm">The peer's receiver RSSI (dBm) sampled at hail receipt — the hail's
-/// link quality as heard at the far end — or <c>null</c> when not sampled.</param>
+/// <param name="RssiOfHailDbm">The peer's receiver RSSI (dBm) sampled at hail receipt - the hail's
+/// link quality as heard at the far end - or <c>null</c> when not sampled.</param>
 public sealed record PortHailStatus(
     string Callsign,
     byte? Mode,

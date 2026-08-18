@@ -9,7 +9,7 @@ namespace Packet.Node.Core.Console;
 /// <summary>
 /// A plain TCP listener that accepts telnet dial-ins and runs a
 /// <see cref="NodeCommandService"/> over each as a <see cref="TcpNodeConnection"/>.
-/// This is the operator-local console — bound to loopback by default. It is NOT
+/// This is the operator-local console - bound to loopback by default. It is NOT
 /// an AX.25 transport (not an <c>IAx25Transport</c>); it is a second source of
 /// <see cref="INodeConnection"/>s feeding the same console.
 /// </summary>
@@ -46,7 +46,7 @@ public sealed partial class TelnetConsoleListener : IAsyncDisposable
     public IPEndPoint? BoundEndpoint { get; private set; }
 
     /// <summary>
-    /// Bind and begin accepting. Idempotent — a second call is a no-op. Binding
+    /// Bind and begin accepting. Idempotent - a second call is a no-op. Binding
     /// happens synchronously so a port clash surfaces here (the caller logs and
     /// continues; a telnet bind clash must not crash the node).
     /// </summary>
@@ -98,7 +98,7 @@ public sealed partial class TelnetConsoleListener : IAsyncDisposable
         }
         catch (ObjectDisposedException)
         {
-            // listen socket disposed during shutdown — normal.
+            // listen socket disposed during shutdown - normal.
         }
     }
 

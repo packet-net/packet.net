@@ -5,18 +5,18 @@ namespace Packet.Node.Core.Console;
 /// <summary>
 /// Resolves a console <c>C[onnect] [port] &lt;callsign-ssid&gt;</c> to the right way out:
 /// a <b>local crossconnect</b> to an application the node is registered for (e.g. an
-/// RHP-attached chat app on its own SSID), or an <b>outbound dial</b> on a chosen — or the
-/// default — port. This is the layer the connect command grew when "dial the one default
+/// RHP-attached chat app on its own SSID), or an <b>outbound dial</b> on a chosen - or the
+/// default - port. This is the layer the connect command grew when "dial the one default
 /// port" was no longer enough; the same routing the inbound listener already does for a
 /// session addressed straight to an app SSID, made available from the prompt.
 /// </summary>
 /// <remarks>
-/// Resolution rules (NET/ROM deliberately out of scope here — that adds aliases later):
+/// Resolution rules (NET/ROM deliberately out of scope here - that adds aliases later):
 /// <list type="bullet">
 /// <item>No port given, target is a registered app SSID → loopback crossconnect to the app.</item>
 /// <item>No port given, target is anything else → the session's default connector (first port).</item>
 /// <item>An explicit port (1-indexed config order) → a direct dial out that port, even if the
-/// target is also a local app — an explicit port is an explicit "go to RF".</item>
+/// target is also a local app - an explicit port is an explicit "go to RF".</item>
 /// </list>
 /// </remarks>
 public interface IConnectRouter

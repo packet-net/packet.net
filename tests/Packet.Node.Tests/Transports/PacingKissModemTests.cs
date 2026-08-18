@@ -10,7 +10,7 @@ using Packet.Node.Core.Transports;
 namespace Packet.Node.Tests.Transports;
 
 /// <summary>
-/// <see cref="PacingKissModem"/> — the ACKMODE host-side pacing decorator. A port
+/// <see cref="PacingKissModem"/> - the ACKMODE host-side pacing decorator. A port
 /// with <c>kiss.ackMode</c> on must serialise its outbound frames onto the
 /// half-duplex channel: each frame is sent awaiting TX-completion and the next is held
 /// until the prior frame's completion arrives (or a short timeout). The pacing must
@@ -26,14 +26,14 @@ public sealed class PacingKissModemTests
         await using var inner = new GatedModem();
         await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(30), NullLogger.Instance);
 
-        // Enqueue three frames. SendAsync is fire-and-forget — it returns at once.
+        // Enqueue three frames. SendAsync is fire-and-forget - it returns at once.
         await modem.SendAsync(Encoding.ASCII.GetBytes("A"));
         await modem.SendAsync(Encoding.ASCII.GetBytes("B"));
         await modem.SendAsync(Encoding.ASCII.GetBytes("C"));
 
         // Frame A enters inner.SendAwaitingCompletionAsync and BLOCKS there (not yet acked).
         (await inner.WaitForInFlightAsync("A")).Should().BeTrue();
-        // B and C must NOT have started — the pump is awaiting A's completion.
+        // B and C must NOT have started - the pump is awaiting A's completion.
         inner.Started.Should().Equal("A");
 
         // Ack A → the pump releases B.
@@ -68,7 +68,7 @@ public sealed class PacingKissModemTests
         await modem.SendAsync(Encoding.ASCII.GetBytes("X"));   // will time out
         await modem.SendAsync(Encoding.ASCII.GetBytes("Y"));   // must still be sent
 
-        // Y must reach the inner transport despite X timing out — the pump kept going.
+        // Y must reach the inner transport despite X timing out - the pump kept going.
         (await inner.WaitForInFlightAsync("Y")).Should().BeTrue();
         inner.SignalAck();
         (await inner.WaitForCompletedCountAsync(1)).Should().BeTrue();
@@ -81,7 +81,7 @@ public sealed class PacingKissModemTests
     {
         // The TX-complete→T1 seam depends on this: an explicit
         // SendAwaitingCompletionAsync must NOT bypass the pacing queue (which would
-        // reorder it against the fire-and-forget frames around it) — it takes
+        // reorder it against the fire-and-forget frames around it) - it takes
         // its place in line and resolves with ITS frame's completion.
         await using var inner = new GatedModem();
         await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(30), NullLogger.Instance);
@@ -120,7 +120,7 @@ public sealed class PacingKissModemTests
         var xTask = modem.SendAwaitingCompletionAsync(Encoding.ASCII.GetBytes("X"));  // completion never comes
         await modem.SendAsync(Encoding.ASCII.GetBytes("Y"));
 
-        // The caller sees ITS frame's timeout (it can decide what that means —
+        // The caller sees ITS frame's timeout (it can decide what that means -
         // the T1 wiring just leaves T1 alone); the pump moves on to Y regardless.
         await xTask.Invoking(t => t.WaitAsync(TimeSpan.FromSeconds(5)))
             .Should().ThrowAsync<TimeoutException>();
@@ -162,7 +162,7 @@ public sealed class PacingKissModemTests
         await using var inner = new GatedModem();
         await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(30), NullLogger.Instance);
 
-        // Both the initial send AND the retry fault — the frame is lost, but the pump
+        // Both the initial send AND the retry fault - the frame is lost, but the pump
         // must still move on to the next frame (not wedge).
         inner.ThrowDisposedTwice = true;
         inner.Reconnecting = true;
@@ -224,7 +224,7 @@ public sealed class PacingKissModemTests
 
     /// <summary>
     /// An inner transport whose <see cref="SendAwaitingCompletionAsync"/> blocks until the
-    /// test explicitly signals a completion — so a test can observe exactly when each frame
+    /// test explicitly signals a completion - so a test can observe exactly when each frame
     /// enters (and leaves) the send, proving the pump serialises. Records the order frames
     /// start and complete.
     /// </summary>
@@ -329,7 +329,7 @@ public sealed class PacingKissModemTests
                 throw new TimeoutException("ackmode echo timed out");
             }
 
-            // Block until the test signals this frame's completion — this is what lets the
+            // Block until the test signals this frame's completion - this is what lets the
             // test prove the pump holds the next frame.
             await ackGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             lock (gate)

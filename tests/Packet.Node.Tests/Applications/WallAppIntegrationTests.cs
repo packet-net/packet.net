@@ -9,7 +9,7 @@ namespace Packet.Node.Tests.Applications;
 /// <summary>
 /// The cross-language end-to-end proof: the C# <see cref="ExternalProcessApplication"/> bridge
 /// driving the <b>actual shipped</b> Python WALL app (<c>examples/wall/wall.py</c>) over the
-/// <c>pdn-app/1</c> wire — the two halves of the language boundary, together. Unit tests cover
+/// <c>pdn-app/1</c> wire - the two halves of the language boundary, together. Unit tests cover
 /// each half (the bridge via /bin/cat; WALL via its own python tests); this proves the seam
 /// itself works between a .NET node and a non-.NET app. Linux + python3 only (CI is Linux).
 /// </summary>
@@ -58,7 +58,7 @@ public sealed class WallAppIntegrationTests : IDisposable
         // WALL's banner appears (it read our connect header + counted posts).
         await Wait.ForAsync(() => conn.Output.Contains("WALL"), "WALL banner");
 
-        // Post a line, then read it back — attributed to the connect-header callsign.
+        // Post a line, then read it back - attributed to the connect-header callsign.
         conn.Inject("POST hello from the bridge\r");
         await Wait.ForAsync(() => conn.Output.Contains("posted"), "post confirmed");
 

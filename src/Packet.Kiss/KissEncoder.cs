@@ -11,11 +11,11 @@ public static class KissEncoder
     /// Encode a single KISS frame:
     /// <c>FEND | (port&lt;&lt;4)|cmd | (escaped payload) | FEND</c>.
     /// </summary>
-    /// <param name="port">Multi-drop port (0–15).</param>
+    /// <param name="port">Multi-drop port (0-15).</param>
     /// <param name="command">KISS command code.</param>
     /// <param name="payload">Payload bytes, unescaped.</param>
     /// <returns>The wire bytes ready to send to the TNC.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Port outside 0–15.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Port outside 0-15.</exception>
     public static byte[] Encode(byte port, KissCommand command, ReadOnlySpan<byte> payload)
     {
         if (port > 15)
@@ -41,7 +41,7 @@ public static class KissEncoder
     /// <summary>
     /// Encode directly into a caller-provided buffer. Returns the number of
     /// bytes written. Throws if <paramref name="destination"/> is too small
-    /// — call <see cref="MaxEncodedLength"/> first to size.
+    /// - call <see cref="MaxEncodedLength"/> first to size.
     /// </summary>
     public static int Encode(Span<byte> destination, byte port, KissCommand command, ReadOnlySpan<byte> payload)
     {
@@ -73,7 +73,7 @@ public static class KissEncoder
         // and similar combinations would produce undecodable streams. The
         // KISS spec text says the command byte is not escaped, but real
         // implementations (e.g. direwolf's kiss_frame.c) escape it like any
-        // other byte — and receivers handle that universally because the
+        // other byte - and receivers handle that universally because the
         // first non-FEND post-FEND byte (after applying any escape) is by
         // definition the command byte.
         byte commandByte = (byte)(((port & 0x0F) << 4) | ((byte)command & 0x0F));

@@ -10,7 +10,7 @@ namespace Packet.Kiss;
 /// </summary>
 /// <remarks>
 /// Concrete drivers may emit *additional* subclasses for modem-specific
-/// frames — e.g. <c>NinoTncTxTestFrameReceivedEvent</c> in
+/// frames - e.g. <c>NinoTncTxTestFrameReceivedEvent</c> in
 /// <c>Packet.Kiss.NinoTnc</c>. Subscribers should always cover the
 /// generic shapes here and treat anything else as "modem-specific,
 /// handle if recognised, else ignore".
@@ -43,7 +43,7 @@ public sealed record Ax25FrameReceivedEvent(KissFrame Raw, Ax25Frame Ax25) : Kis
 /// <summary>
 /// An inbound ACKMODE-Data frame: KISS command 0x0C with a 2-byte sequence
 /// tag prefix followed by an AX.25 frame body. Not the same as our own
-/// outbound ACKMODE's TX-completion echo — that gets correlated by tag
+/// outbound ACKMODE's TX-completion echo - that gets correlated by tag
 /// inside the driver and surfaces as the returned
 /// <see cref="Packet.Ax25.Transport.TxCompletion"/>, not as a typed event.
 /// </summary>

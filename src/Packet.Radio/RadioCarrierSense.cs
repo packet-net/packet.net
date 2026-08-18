@@ -11,7 +11,7 @@ namespace Packet.Radio;
 /// listener via the parity-tracked <c>Ax25ListenerOptions.CarrierSense</c> member.
 /// </summary>
 /// <remarks>
-/// A pure read-through — it forwards the radio's live <see cref="IRadioControl.ChannelBusy"/>
+/// A pure read-through - it forwards the radio's live <see cref="IRadioControl.ChannelBusy"/>
 /// and owns nothing (the caller keeps and disposes the radio). Before the first DCD report (or
 /// on a radio that cannot sense carrier) <c>ChannelBusy</c> is <c>null</c>, which the gate
 /// treats as clear (fail-open).

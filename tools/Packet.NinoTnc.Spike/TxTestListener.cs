@@ -20,7 +20,7 @@ internal static class TxTestListener
         Console.WriteLine();
 
         await using var tnc = NinoTncSerialPort.Open(port);
-        // No SetModeAsync here — we want whatever DIP / runtime state the
+        // No SetModeAsync here - we want whatever DIP / runtime state the
         // operator already has. The TX-Test frame doesn't depend on mode
         // (the demod test signal does, but that lands on the air, not on
         // the host stream).

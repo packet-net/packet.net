@@ -80,7 +80,7 @@ public class PostEventConcurrencyTests
     public async Task Concurrent_posters_never_corrupt_the_dispatch_machinery()
     {
         // Upper layer streams DL-DATA-requests from one thread while the "link"
-        // posts RR receipts from another — the LinkBench bulk-transfer shape.
+        // posts RR receipts from another - the LinkBench bulk-transfer shape.
         // Pre-fix this crashed inside Queue<T>.Enqueue within a few hundred
         // posts; post-fix every event dispatches and the session stays sane.
         var (session, _, _, _) = NewConnectedRig();
@@ -184,7 +184,7 @@ public class PostEventConcurrencyTests
         await hammer;
 
         // Pre-fix, the finally-Clear() wiped requests a concurrent poster had
-        // deferred — bulk transfers stalled with bytes missing. Every request
+        // deferred - bulk transfers stalled with bytes missing. Every request
         // must reach the wire.
         sent.Should().Be(Posters * N);
     }

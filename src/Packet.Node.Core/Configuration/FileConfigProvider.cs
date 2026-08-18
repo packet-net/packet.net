@@ -16,7 +16,7 @@ namespace Packet.Node.Core.Configuration;
 /// <b>Atomic apply.</b> A candidate is fully parsed and validated before
 /// <see cref="Current"/> is touched. On any failure (malformed YAML, unknown
 /// transport kind, validation error) the provider logs and keeps the existing
-/// <see cref="Current"/>, raising no <see cref="OnChange"/> — rollback by
+/// <see cref="Current"/>, raising no <see cref="OnChange"/> - rollback by
 /// construction.
 /// </para>
 /// <para>
@@ -57,7 +57,7 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
     /// Construct the provider over <paramref name="configPath"/>. Performs the
     /// first load (writing the template if the file is absent) before returning,
     /// so <see cref="Current"/> is valid immediately. Throws if the initial
-    /// config is invalid — a node should not boot on a broken config.
+    /// config is invalid - a node should not boot on a broken config.
     /// </summary>
     /// <param name="configPath">Absolute or relative path to the YAML config file.</param>
     /// <param name="timeProvider">Time source for the debounce timer.</param>
@@ -130,11 +130,11 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
 
             if (!TryLoadCandidate(out var candidate, out var text))
             {
-                return false;   // rejected — Current unchanged, no event
+                return false;   // rejected - Current unchanged, no event
             }
             if (string.Equals(text, lastText, StringComparison.Ordinal))
             {
-                // The bytes on disk are exactly what we last applied/loaded — our
+                // The bytes on disk are exactly what we last applied/loaded - our
                 // own TryApply write echoing back through the watcher, or a touch
                 // with no content change. Nothing to do.
                 return false;
@@ -195,8 +195,8 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
             {
                 return new ConfigApplyResult(ConfigApplyOutcome.VersionMismatch, [], live);
             }
-            // Persist atomically (write a sibling temp + rename) so a reader — the
-            // watcher, or a fresh boot — never sees a half-written file. Record the
+            // Persist atomically (write a sibling temp + rename) so a reader - the
+            // watcher, or a fresh boot - never sees a half-written file. Record the
             // exact bytes so the watcher's echo of this very write is skipped.
             WriteAtomic(text);
             lastText = text;
@@ -256,7 +256,7 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
     }
 
     // Surface non-fatal config warnings (things that parse + validate but are worth the
-    // operator's attention) at load/apply, on the boot log — the existing channel for
+    // operator's attention) at load/apply, on the boot log - the existing channel for
     // config concerns (cf. the LogValidationFailed/LogWroteTemplate warnings). Currently
     // the NET/ROM routing back-compat resolver (a legacy connect/forward combo that maps
     // onto the new routing knob with a caveat) and the duplicate-MqttInstance merge
@@ -383,7 +383,7 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
     private static string FormatErrors(IEnumerable<FluentValidation.Results.ValidationFailure> errors) =>
         string.Join(Environment.NewLine, errors.Select(e => $"  - {e.ErrorMessage}"));
 
-    // Source-generated logging (CA1848 — high-performance LoggerMessage). The
+    // Source-generated logging (CA1848 - high-performance LoggerMessage). The
     // node host is a long-lived process; these compile to cached delegates.
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Loaded node config from {Path} (callsign {Callsign}, {PortCount} port(s)).")]

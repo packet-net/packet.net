@@ -6,7 +6,7 @@ namespace Packet.Ax25.Session;
 /// <c>LM_*_request</c> signal_lower verbs fire (§4.4 / figc4.4).
 /// </summary>
 /// <remarks>
-/// The link multiplexer is the medium-access arbiter — it owns the radio
+/// The link multiplexer is the medium-access arbiter - it owns the radio
 /// and serialises frame transmissions across multiple data-link sessions
 /// on the same port. Production code wires this callback to the actual
 /// multiplexer; tests can capture the signals into a list to assert
@@ -15,7 +15,7 @@ namespace Packet.Ax25.Session;
 public abstract record LinkMultiplexerSignal(string Name);
 
 /// <summary>
-/// Request that the link multiplexer seize the medium for us — once
+/// Request that the link multiplexer seize the medium for us - once
 /// granted, the multiplexer raises <see cref="LmSeizeConfirm"/>.
 /// </summary>
 public sealed record LinkMultiplexerSeizeRequest() : LinkMultiplexerSignal("LM_SEIZE_request");

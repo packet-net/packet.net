@@ -15,7 +15,7 @@ namespace Packet.Node.Tests.Hail;
 /// The node's hail-over-link core (<see cref="PortHailService.HailOverLinkAsync"/>): the reply is
 /// projected into a <see cref="Packet.Node.Core.Api.PortHailStatus"/> (including the derived mode
 /// name), and the no-reply / link-failure outcomes map to the classified
-/// <see cref="HailException"/> the API turns into 504 / 502. Driven over an in-memory link pair —
+/// <see cref="HailException"/> the API turns into 504 / 502. Driven over an in-memory link pair -
 /// no port, no radio.
 /// <para>
 /// Plus the resident-responder retry discipline: a port whose responder cannot start logs its

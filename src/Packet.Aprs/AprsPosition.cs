@@ -10,11 +10,11 @@ namespace Packet.Aprs;
 /// <param name="Longitude">Decimal-degree longitude, positive east, range [-180, 180].</param>
 /// <param name="SymbolTable">
 /// Symbol table identifier: <c>/</c> = primary, <c>\</c> = alternate, or
-/// an overlay character (<c>0–9</c>, <c>A–Z</c>) for the alternate table
+/// an overlay character (<c>0-9</c>, <c>A-Z</c>) for the alternate table
 /// with a single-character overlay per APRS12c §20.
 /// </param>
 /// <param name="SymbolCode">
-/// Symbol code byte from APRS12c §20's table — e.g. <c>&gt;</c> for car,
+/// Symbol code byte from APRS12c §20's table - e.g. <c>&gt;</c> for car,
 /// <c>b</c> for bicycle, <c>_</c> for weather station.
 /// </param>
 /// <param name="Comment">

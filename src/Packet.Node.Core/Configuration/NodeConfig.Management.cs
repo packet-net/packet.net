@@ -14,14 +14,14 @@ public sealed record ManagementConfig
     /// <summary>Optional HTTPS/TLS listener for the web control panel. Default-OFF
     /// (see <see cref="HttpsConfig"/>): with it off only the plain <see cref="Http"/>
     /// listener runs, exactly as before. With it on, a second Kestrel endpoint serves
-    /// the same panel over TLS — encrypting the password + JWT that would otherwise
+    /// the same panel over TLS - encrypting the password + JWT that would otherwise
     /// cross the LAN in clear, and providing the secure context WebAuthn/passkeys
     /// require.</summary>
     public HttpsConfig Https { get; init; } = new();
 
     /// <summary>Web control-API authentication. Default-OFF (see
     /// <see cref="AuthConfig"/>): with it off the API behaves exactly as it did
-    /// before auth existed — the read / SSE / config / ports / sessions / ping
+    /// before auth existed - the read / SSE / config / ports / sessions / ping
     /// endpoints and the SPA all serve unauthenticated. With it on, a JWT bearer
     /// token is required and the per-endpoint scope gates enforce.</summary>
     public AuthConfig Auth { get; init; } = new();
@@ -62,7 +62,7 @@ public sealed record SysopConsoleConfig
 /// <c>true</c>. It used to default off, which was only safe because the web listener
 /// defaulted to loopback (<see cref="HttpConfig.Bind"/>); now that a fresh node binds
 /// the LAN so an operator can actually reach its panel, the login is what stands
-/// between the network and a full admin session — one that can rewrite config, add
+/// between the network and a full admin session - one that can rewrite config, add
 /// ports, and <em>transmit</em>. The two defaults move together and must stay that way.
 /// </para>
 /// <para>
@@ -70,7 +70,7 @@ public sealed record SysopConsoleConfig
 /// never gated, so first-run setup still works with auth on: the first visitor gets
 /// the wizard, creates the admin, and every later request needs a token. The auth
 /// machinery (user store, JWT issuing/validation, the scope policies) is always wired
-/// either way — this flag only switches <em>enforcement</em>.
+/// either way - this flag only switches <em>enforcement</em>.
 /// </para>
 /// <para>
 /// <b>No change for an existing node.</b> A stored config is a fully-explicit
@@ -81,7 +81,7 @@ public sealed record SysopConsoleConfig
 /// </para>
 /// <para>
 /// The signing key and the user records live in <c>pdn.db</c> (the consolidated
-/// SQLite store), not here — this config record only carries the on/off switch
+/// SQLite store), not here - this config record only carries the on/off switch
 /// and the token lifetime. The key is generated on first start and persisted;
 /// it is never written to config or logs.
 /// </para>
@@ -89,24 +89,24 @@ public sealed record SysopConsoleConfig
 public sealed record AuthConfig
 {
     /// <summary>Whether the web control API requires authentication. Default
-    /// <c>true</c> — a JWT bearer token is required on the gated endpoints and the
+    /// <c>true</c> - a JWT bearer token is required on the gated endpoints and the
     /// <c>read</c>/<c>operate</c>/<c>admin</c> scope policies enforce. Set it
     /// <c>false</c> only for a node whose panel is not reachable from the network
     /// (a loopback bind, or a lab box behind something else that authenticates).</summary>
     public bool Enabled { get; init; } = true;
 
-    /// <summary>Access-token lifetime in minutes. Null = the default (60 — ~1h).
+    /// <summary>Access-token lifetime in minutes. Null = the default (60 - ~1h).
     /// Short-lived: when it expires the web client silently exchanges its refresh
     /// token (see <see cref="RefreshTokenMinutes"/>) for a fresh one rather than
     /// forcing a re-login.</summary>
     public int? AccessTokenMinutes { get; init; }
 
-    /// <summary>Refresh-token lifetime in minutes. Null = the default (10080 — 7
+    /// <summary>Refresh-token lifetime in minutes. Null = the default (10080 - 7
     /// days). This is the real session length: a refresh token rotates on each use
     /// (one-time-use) and lets the client renew its short access token without a
     /// re-login until the refresh token itself expires. Must exceed
     /// <see cref="AccessTokenMinutes"/> when both are set (a refresh token that
-    /// outlived its access token is the whole point — see
+    /// outlived its access token is the whole point - see
     /// <see cref="NodeConfigValidator"/>).</summary>
     public int? RefreshTokenMinutes { get; init; }
 
@@ -129,8 +129,8 @@ public sealed record AuthConfig
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>localhost-first, zero-config.</b> The defaults — <see cref="RelyingPartyId"/> =
-/// <c>localhost</c>, <see cref="AllowedOrigins"/> empty — make same-machine passkeys
+/// <b>localhost-first, zero-config.</b> The defaults - <see cref="RelyingPartyId"/> =
+/// <c>localhost</c>, <see cref="AllowedOrigins"/> empty - make same-machine passkeys
 /// work today with no setup: reach the panel on <c>http://localhost:&lt;port&gt;</c>
 /// (a secure context with no cert) and the RP id and origin coincide, which is the
 /// case <c>docs/passkeys-lan-trust-pattern.md</c> §2 / §4 names as the one to nail
@@ -142,18 +142,18 @@ public sealed record AuthConfig
 /// + port), so a node reached on <c>http://localhost:8080</c> just works. The RP id
 /// must be a registrable suffix of that origin; with the <c>localhost</c> default they
 /// are identical. <see cref="AllowedOrigins"/> is the explicit allow-list for the
-/// real-domain case — when empty the host accepts the request's own origin (plus
+/// real-domain case - when empty the host accepts the request's own origin (plus
 /// <c>localhost</c>); when set it pins exactly those origins.
 /// </para>
 /// <para>
 /// <b>Distribution tiers are parked.</b> Per the trust-pattern doc §8 decision gate,
-/// the mDNS / ACME / IP-encoded-name machinery is NOT built — only the RP id + origins
+/// the mDNS / ACME / IP-encoded-name machinery is NOT built - only the RP id + origins
 /// are made configurable so a real-domain operator (doc §2a) can set them by hand.
 /// </para>
 /// </remarks>
 public sealed record WebAuthnConfig
 {
-    /// <summary>The WebAuthn Relying Party ID — the registrable domain a passkey is
+    /// <summary>The WebAuthn Relying Party ID - the registrable domain a passkey is
     /// scoped to. Default <c>localhost</c> (the loopback secure-context exemption). Must
     /// be a registrable suffix of the serving origin's host; an IP literal is NOT a
     /// legal RP id (trust-pattern doc §1).</summary>
@@ -171,7 +171,7 @@ public sealed record WebAuthnConfig
     public IReadOnlyList<string> AllowedOrigins { get; init; } = [];
 
     // Records compare a collection member by REFERENCE, so two configs with equal-but-
-    // distinct AllowedOrigins lists would be unequal — breaking the YAML round-trip
+    // distinct AllowedOrigins lists would be unequal - breaking the YAML round-trip
     // identity (serialise→parse yields a fresh list). Compare the list by value so
     // equality is content-based, matching every other config record (see ConfigEquality).
     public bool Equals(WebAuthnConfig? other) =>
@@ -185,7 +185,7 @@ public sealed record WebAuthnConfig
 }
 
 /// <summary>
-/// The local telnet console listener. Defaults to loopback-only — the console
+/// The local telnet console listener. Defaults to loopback-only - the console
 /// is operator-local dial-in, not a network service.
 /// </summary>
 public sealed record TelnetConfig
@@ -193,7 +193,7 @@ public sealed record TelnetConfig
     /// <summary>Whether to run the telnet console at all.</summary>
     public bool Enabled { get; init; } = true;
 
-    /// <summary>Bind address. Defaults to <c>127.0.0.1</c> — loopback only.</summary>
+    /// <summary>Bind address. Defaults to <c>127.0.0.1</c> - loopback only.</summary>
     public string Bind { get; init; } = "127.0.0.1";
 
     /// <summary>TCP port for the telnet console.</summary>
@@ -203,7 +203,7 @@ public sealed record TelnetConfig
 /// <summary>The web server bind. Present-but-inert in slice 1.</summary>
 public sealed record HttpConfig
 {
-    /// <summary>Bind address for Kestrel. Default <c>0.0.0.0</c> — a headless node is
+    /// <summary>Bind address for Kestrel. Default <c>0.0.0.0</c> - a headless node is
     /// no use if its own control panel is unreachable from the machine the operator is
     /// sitting at. What keeps that safe is <see cref="AuthConfig.Enabled"/> defaulting
     /// on; do not narrow one without considering the other. Read at process start, so a
@@ -223,7 +223,7 @@ public sealed record HttpConfig
 /// <para>
 /// <b>Default-OFF</b> (matching the node's posture for anything it emits): a stock node
 /// advertises nothing until the operator opts in. Discovery is also only useful once
-/// <see cref="HttpConfig.Bind"/> is a LAN address — with a loopback bind the advertised
+/// <see cref="HttpConfig.Bind"/> is a LAN address - with a loopback bind the advertised
 /// endpoint would be unreachable, so the advertiser stays dormant (with a log line)
 /// rather than publish an address that won't connect.
 /// </para>
@@ -236,7 +236,7 @@ public sealed record HttpConfig
 /// </para>
 /// <para>
 /// <b>Mechanism + portability.</b> Registration goes through the system mDNS daemon
-/// (<c>avahi-publish</c>) — the conflict-free path on the Linux hosts the node deb
+/// (<c>avahi-publish</c>) - the conflict-free path on the Linux hosts the node deb
 /// targets (no second responder fighting Avahi for port 5353). Where <c>avahi-publish</c>
 /// is absent (a host without Avahi, or a non-Linux dev box) the advertiser logs once and
 /// stays dormant; the node is unaffected and manual add-by-address still works in the app.
@@ -257,7 +257,7 @@ public sealed record MdnsConfig
 
 /// <summary>
 /// Optional HTTPS/TLS listener for the web control panel. <b>Default-OFF</b>
-/// (<see cref="Enabled"/> = <c>false</c>) — only the plain HTTP listener runs, so a
+/// (<see cref="Enabled"/> = <c>false</c>) - only the plain HTTP listener runs, so a
 /// node that never configured TLS behaves exactly as before. When enabled, a second
 /// Kestrel endpoint serves the same panel over TLS.
 /// </summary>
@@ -267,7 +267,7 @@ public sealed record MdnsConfig
 /// otherwise, if <see cref="GenerateSelfSignedOnMissing"/> is true, a self-signed cert
 /// is generated on first start and persisted alongside the node state so it is stable
 /// across restarts. A self-signed cert <em>encrypts the channel</em> (the password +
-/// JWT no longer cross the LAN in clear) but is not trusted by browsers — to get a
+/// JWT no longer cross the LAN in clear) but is not trusted by browsers - to get a
 /// trusted secure context (needed for WebAuthn/passkeys over a LAN IP) point
 /// <see cref="CertificatePath"/> at a cert the client trusts, or reach the node via
 /// <c>localhost</c>.
@@ -275,7 +275,7 @@ public sealed record MdnsConfig
 /// </remarks>
 public sealed record HttpsConfig
 {
-    /// <summary>Whether the HTTPS listener runs. Default <c>false</c> — HTTP only.</summary>
+    /// <summary>Whether the HTTPS listener runs. Default <c>false</c> - HTTP only.</summary>
     public bool Enabled { get; init; }
 
     /// <summary>Bind address for the HTTPS listener. Defaults to loopback.</summary>

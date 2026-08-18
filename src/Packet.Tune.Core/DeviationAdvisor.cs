@@ -5,25 +5,25 @@ namespace Packet.Tune.Core;
 /// <summary>Advice for the human at the TX-DEV pot.</summary>
 public enum TuningAdvice
 {
-    /// <summary><c>UP</c> — turn the deviation up (frames are being missed
-    /// without evidence of clipping — likely too quiet to decode).</summary>
+    /// <summary><c>UP</c> - turn the deviation up (frames are being missed
+    /// without evidence of clipping - likely too quiet to decode).</summary>
     Up,
 
-    /// <summary><c>DN</c> — turn the deviation down (ADC clipping, or bit
+    /// <summary><c>DN</c> - turn the deviation down (ADC clipping, or bit
     /// errors on an otherwise strong signal).</summary>
     Down,
 
-    /// <summary><c>OK</c> — decode rate is solid and error correction is
+    /// <summary><c>OK</c> - decode rate is solid and error correction is
     /// (near-)idle: leave the pot alone.</summary>
     Ok,
 
-    /// <summary><c>SW</c> — no decode at all: nothing decoded and no
+    /// <summary><c>SW</c> - no decode at all: nothing decoded and no
     /// clipping, so the burst carries no directional information (far too
-    /// little deviation and far too much both decode zero frames — as does a
+    /// little deviation and far too much both decode zero frames - as does a
     /// dead RF path, which no pot position fixes). Sweep the pot across its
     /// range until frames start decoding, then the directional advice takes
     /// over. Peers that predate this state parse the token as unknown advice
-    /// (<see cref="DeviationAdvisor.FromWire"/> → <c>null</c>) — never as a
+    /// (<see cref="DeviationAdvisor.FromWire"/> → <c>null</c>) - never as a
     /// false directional verdict.</summary>
     Sweep,
 }
@@ -35,10 +35,10 @@ public enum TuningAdvice
 /// <remarks>
 /// <list type="bullet">
 ///   <item>Lost-ADC samples during the burst = the RX audio clipped the
-///     meter TNC's ADC — gross over-deviation, always <c>DN</c> (clipping is
+///     meter TNC's ADC - gross over-deviation, always <c>DN</c> (clipping is
 ///     directional evidence even when nothing decoded).</item>
 ///   <item>Zero decodes with no clipping = <c>SW</c>: a fully-dead burst has
-///     no direction in it (too quiet, too loud, and no-path all read 0/n —
+///     no direction in it (too quiet, too loud, and no-path all read 0/n -
 ///     bench-observed on the pre-R2-retap rig, where every GFSK cell was 0/5
 ///     at any pot position and a directional <c>UP</c> would have been a
 ///     lie). Sweep the pot until decodes appear.</item>
@@ -49,15 +49,15 @@ public enum TuningAdvice
 ///     byte count is climbing burst-on-burst while decode holds, the signal
 ///     is degrading at the loud end = <c>DN</c>.</item>
 /// </list>
-/// FEC-corrected bytes (register 11) only count in IL2P modes — prefer mode
+/// FEC-corrected bytes (register 11) only count in IL2P modes - prefer mode
 /// 7 (1200 AFSK IL2P+CRC) for tuning sessions so the FEC signal exists. In
 /// plain-AX.25 modes the advisor works from decode rate + clipping alone.
 /// <para>
 /// When the meter runs the GETRSSI fast path (NinoTNC <b>firmware 3.41-era
-/// only — REMOVED in 3.44</b>), <see cref="MeterReport.AudioLevelDb"/>
+/// only - REMOVED in 3.44</b>), <see cref="MeterReport.AudioLevelDb"/>
 /// carries a continuous RX-audio level. <see cref="DescribeLevel"/> turns it
 /// into mid-plateau guidance (level, quieting vs idle, burst-on-burst
-/// trend); it never changes the <see cref="Advise"/> verdict — the
+/// trend); it never changes the <see cref="Advise"/> verdict - the
 /// decode/clip cliffs remain the authoritative edge detection.
 /// </para>
 /// </remarks>
@@ -85,7 +85,7 @@ public static class DeviationAdvisor
         }
 
         // Nothing decoded and no clipping: no directional information at
-        // all — sweep, don't guess a direction.
+        // all - sweep, don't guess a direction.
         if (current.DecodedFrames == 0)
         {
             return TuningAdvice.Sweep;
@@ -113,14 +113,14 @@ public static class DeviationAdvisor
     }
 
     /// <summary>
-    /// Human guidance from the optional RX-audio level (GETRSSI — NinoTNC
+    /// Human guidance from the optional RX-audio level (GETRSSI - NinoTNC
     /// <b>firmware 3.41-era only; REMOVED in 3.44</b>): the level during the
     /// burst plus, when the meter's idle baseline is known, the quieting
     /// (idle − level; a carrier quiets the demodulated audio, so bigger =
     /// stronger signal into the modem), plus the burst-on-burst trend when a
     /// previous levelled report exists. Returns <c>null</c> when
     /// <paramref name="current"/> carries no level. Enrichment only: the
-    /// <see cref="Advise"/> verdict ignores the level entirely — decode and
+    /// <see cref="Advise"/> verdict ignores the level entirely - decode and
     /// clipping cliffs decide UP/DN/OK; the level shows where inside the
     /// plateau the pot sits and which way it is moving.
     /// </summary>
@@ -150,7 +150,7 @@ public static class DeviationAdvisor
         return text;
     }
 
-    /// <summary>The human phrase for an advice value — what the operator at
+    /// <summary>The human phrase for an advice value - what the operator at
     /// the pot should actually do.</summary>
     public static string Describe(TuningAdvice advice) => advice switch
     {

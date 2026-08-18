@@ -13,7 +13,7 @@ namespace Packet.Aprs;
 ///   T#xxx,aaa,aaa,aaa,aaa,aaa,bbbbbbbb[,comment]
 /// </code>
 /// where <c>xxx</c> is a 3-char sequence number (digits or <c>MIC</c>),
-/// the five <c>aaa</c>s are analog values 0–255, and <c>bbbbbbbb</c>
+/// the five <c>aaa</c>s are analog values 0-255, and <c>bbbbbbbb</c>
 /// is an 8-bit digital value as ASCII 0/1.
 /// </para>
 /// <para>
@@ -44,7 +44,7 @@ public static class AprsTelemetryDecoder
     /// <param name="telemetry">On success, the decoded telemetry.</param>
     /// <remarks>
     /// Strict mode enforces APRS101 §13's "3-digit decimal numbers in
-    /// the range 000–255" for each analog channel — no variable-width
+    /// the range 000-255" for each analog channel - no variable-width
     /// integers, no floating-point.
     /// </remarks>
     public static bool TryDecode(ReadOnlySpan<byte> info, AprsParseOptions options, out AprsTelemetry telemetry)
@@ -101,7 +101,7 @@ public static class AprsTelemetryDecoder
             var raw = parts[i].Trim();
             if (!options.AllowNonIntegerTelemetry)
             {
-                // Strict §13: each channel is exactly 3 digits, 000–255.
+                // Strict §13: each channel is exactly 3 digits, 000-255.
                 if (raw.Length != 3)
                 {
                     return false;

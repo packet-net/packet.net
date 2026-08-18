@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Packet.NetRom.Wire;
 
 /// <summary>
-/// A parsed NET/ROM NODES routing broadcast — the L3 content carried in the
+/// A parsed NET/ROM NODES routing broadcast - the L3 content carried in the
 /// information field of a UI frame (PID 0xCF, AX.25 destination the literal text
 /// callsign <c>NODES</c>).
 /// </summary>
@@ -24,7 +24,7 @@ namespace Packet.NetRom.Wire;
 /// <para>
 /// Parsing is read-only and total: arbitrary bytes never throw, they return
 /// <c>false</c>. Divergence tolerance (trailing partial entry, empty list) is
-/// gated by <see cref="NetRomParseOptions"/> — strict by default at the byte
+/// gated by <see cref="NetRomParseOptions"/> - strict by default at the byte
 /// boundary, lenient on the parameterless overload used for promiscuous ingest.
 /// </para>
 /// </remarks>
@@ -49,7 +49,7 @@ public sealed record NodesBroadcast
 
     /// <summary>
     /// Try to parse a NODES broadcast from a UI frame's information field, using
-    /// lenient options (the promiscuous-ingest default — see remarks on
+    /// lenient options (the promiscuous-ingest default - see remarks on
     /// <see cref="NetRomParseOptions.Lenient"/>).
     /// </summary>
     public static bool TryParse(ReadOnlySpan<byte> info, [NotNullWhen(true)] out NodesBroadcast? broadcast)
@@ -71,7 +71,7 @@ public sealed record NodesBroadcast
             return false;
         }
 
-        // Signature byte gates the whole frame — a non-0xFF first octet means
+        // Signature byte gates the whole frame - a non-0xFF first octet means
         // this is not a NODES broadcast (the canonical "wrong signature → ignore"
         // heuristic).
         if (info[0] != Signature)
@@ -86,7 +86,7 @@ public sealed record NodesBroadcast
         int remainder = body.Length - (entryCount * NodesRoutingEntry.EncodedLength);
 
         // A non-zero remainder means the routing region isn't a whole number of
-        // 21-byte entries — either trailing pad / a clipped frame, or a malformed
+        // 21-byte entries - either trailing pad / a clipped frame, or a malformed
         // dump. Strict rejects; lenient keeps the whole entries it can read.
         if (remainder != 0 && !options.AllowTrailingPartialEntry)
         {
@@ -109,7 +109,7 @@ public sealed record NodesBroadcast
             if (!NodesRoutingEntry.TryParse(body.Slice(offset, NodesRoutingEntry.EncodedLength), out var entry))
             {
                 // A single undecodable entry shouldn't sink the frame under
-                // lenient ingest — skip it and keep parsing the rest. Under
+                // lenient ingest - skip it and keep parsing the rest. Under
                 // strict, a bad entry is a malformed broadcast.
                 if (!options.AllowTrailingPartialEntry)
                 {

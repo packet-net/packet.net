@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Integration;
 /// <c>POST /api/v1/console/{id}/input</c> (feed a command), <c>DELETE /api/v1/console/{id}</c> (close).
 /// </summary>
 /// <remarks>
-/// Mirrors <see cref="SessionsApiTests"/> — a temp YAML config with no ports and telnet disabled (so
+/// Mirrors <see cref="SessionsApiTests"/> - a temp YAML config with no ports and telnet disabled (so
 /// no fixed TCP port is bound under the WAF). Auth is off in this fixture, so the admin gate passes
 /// through (the explicit admin-refused-when-auth-on assertion lives in the auth-enabled suites; the
 /// gate is the same <see cref="Packet.Node.Api.PdnAuthPolicies.Admin"/> policy the MCP-token API uses,
@@ -120,12 +120,12 @@ public sealed class ConsoleApiTests : IDisposable
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
-            // 3) Drain until the banner (carrying the node alias) arrives — the console emits the
+            // 3) Drain until the banner (carrying the node alias) arrives - the console emits the
             //    banner + first prompt as its opening write, so this proves the bridge is live.
             (await DrainUntilDataContainsAsync(reader, "LONDON", cts.Token))
                 .Should().BeTrue("the console's banner (with the node alias) must stream back over SSE");
 
-            // 4) Type the help command (a CR-terminated line — the line discipline the console wants)
+            // 4) Type the help command (a CR-terminated line - the line discipline the console wants)
             //    and assert its output (the "Commands:" help block) arrives on the same stream.
             using var inputResp = await client.PostAsJsonAsync($"/api/v1/console/{id}/input", new { data = "?\r" });
             inputResp.StatusCode.Should().Be(HttpStatusCode.Accepted);
@@ -225,7 +225,7 @@ public sealed class ConsoleApiTests : IDisposable
             }
             catch (JsonException)
             {
-                continue;   // not a JSON-encoded string line (shouldn't happen) — skip
+                continue;   // not a JSON-encoded string line (shouldn't happen) - skip
             }
             if (chunk is not null && chunk.Contains(needle, StringComparison.Ordinal))
             {

@@ -9,15 +9,15 @@ namespace Packet.Node.Core.HeadEnd;
 /// bring-up: <c>headEndId → address</c> (from <see cref="NodeConfig.HeadEnds"/>), then
 /// <c>GET /inventory</c> on that head-end, then <c>deviceId → tcpPort + baud</c>. This is the seam
 /// the radio / transport factories call for their head-end branches; keying by
-/// <c>(instanceId, deviceId)</c> — never <c>host:port</c> — is what lets a re-addressed head-end keep
+/// <c>(instanceId, deviceId)</c> - never <c>host:port</c> - is what lets a re-addressed head-end keep
 /// its port configs (the address is looked up fresh each resolve).
 /// </summary>
 /// <remarks>
 /// Stage 3a resolved <c>headEndId → address</c> from the manual <see cref="HeadEndConfig.Address"/>
 /// only. Stage 3b threads an optional <see cref="IHeadEndAddressResolver"/> through the same shape:
 /// when supplied, the address step prefers the config address and falls back to an mDNS browse of
-/// the instance id, so a head-end configured in discover mode (blank address) — or one that changed
-/// address — resolves to its current endpoint at bring-up. The <see cref="HeadEndClient"/> factory
+/// the instance id, so a head-end configured in discover mode (blank address) - or one that changed
+/// address - resolves to its current endpoint at bring-up. The <see cref="HeadEndClient"/> factory
 /// takes the <em>resolved</em> base <see cref="Uri"/> and is injectable so tests point resolution at
 /// a stub inventory server.
 /// </remarks>
@@ -50,7 +50,7 @@ public sealed partial class HeadEndDeviceResolver
     /// port / baud, plus the <see cref="HeadEndClient"/> the caller wires <c>setBaud</c> to. Throws
     /// <see cref="InvalidOperationException"/> for an unknown head-end id, a head-end whose address
     /// resolves to nothing (no manual address and no unambiguous mDNS hit), or a device the head-end's
-    /// inventory doesn't list — the port supervisor treats any throw as a clean transport/radio-open
+    /// inventory doesn't list - the port supervisor treats any throw as a clean transport/radio-open
     /// failure (log + degrade / retry).
     /// </summary>
     public async Task<HeadEndDeviceBinding> ResolveAsync(
@@ -74,7 +74,7 @@ public sealed partial class HeadEndDeviceResolver
             // `byId` hint. A NodeConfig adopted against the old head-end would otherwise fault at
             // bring-up after the upgrade and stay down until re-adopted. AMBIGUITY IS FATAL: the
             // very reason by-id was abandoned is that two dongles can share a USB serial (#574),
-            // giving them the same by-id hint — guessing between them would drive the wrong
+            // giving them the same by-id hint - guessing between them would drive the wrong
             // physical radio, which is worse than staying down.
             var legacyMatches = inventory.Ports.Where(p => MatchesLegacyById(p, deviceId)).ToList();
             if (legacyMatches.Count > 1)
@@ -104,7 +104,7 @@ public sealed partial class HeadEndDeviceResolver
     }
 
     /// <summary>Does <paramref name="deviceId"/> (a config binding's device id) match
-    /// <paramref name="port"/>'s legacy identity — the basename of its <c>/dev/serial/by-id</c>
+    /// <paramref name="port"/>'s legacy identity - the basename of its <c>/dev/serial/by-id</c>
     /// path (the id head-end ≤0.1.2 used)? Shared with the fleet scanner's bound-device
     /// detection so both resolve legacy bindings the same way (#578).</summary>
     internal static bool MatchesLegacyById(HeadEndPortInfo port, string deviceId) =>

@@ -4,7 +4,7 @@ namespace Packet.Kiss.Adaptive;
 /// Combine multiple estimators into one. Each child's
 /// <see cref="IAdaptiveParameterEstimator.Recommend"/> is queried and the
 /// non-null fields of each are stacked via
-/// <see cref="KissParameters.Override"/> in order — later children win
+/// <see cref="KissParameters.Override"/> in order - later children win
 /// on overlapping fields, which is rare in practice since each child
 /// usually owns a disjoint set of parameters (TXDELAY one, CSMA the
 /// others).

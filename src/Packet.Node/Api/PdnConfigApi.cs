@@ -12,8 +12,8 @@ namespace Packet.Node.Api;
 /// The write side of the pdn node control API (Slice 3, step 2). Maps the
 /// <c>PUT /api/v1/config</c> family the web editor uses to persist an edit:
 /// validate a candidate <see cref="NodeConfig"/>, show the operator what applying
-/// it would disrupt (the <see cref="ReconcilePreview"/>), and — unless it was a
-/// dry-run — persist it through the <see cref="IWritableConfigProvider"/> write
+/// it would disrupt (the <see cref="ReconcilePreview"/>), and - unless it was a
+/// dry-run - persist it through the <see cref="IWritableConfigProvider"/> write
 /// seam (which advances <c>Current</c> + raises <c>OnChange</c>, driving the same
 /// hot reconcile a hand-edit of the file would).
 /// </summary>
@@ -68,7 +68,7 @@ public static class PdnConfigApi
         // previews without persisting.
         v1.MapPut("/config", (NodeConfig candidate, HttpContext ctx, IWritableConfigProvider cfg, NodeHostedService host, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
         {
-            // Capture the live config BEFORE applying — the preview is from→to.
+            // Capture the live config BEFORE applying - the preview is from→to.
             var before = cfg.Current;
 
             // A round-tripped edit carries "***" wherever the read projection masked a secret;

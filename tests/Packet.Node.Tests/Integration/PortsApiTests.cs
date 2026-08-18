@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Integration;
 /// Boots the real <c>Packet.Node</c> composition root and exercises the Slice 3
 /// port-management API (step 3): <c>POST/PUT/DELETE /api/v1/ports</c> + the
 /// <c>/ports/{id}/lifecycle</c> up/down/restart actions. Mirrors
-/// <see cref="ConfigWriteApiTests"/> / <see cref="ReadApiTests"/> — a temp YAML config
+/// <see cref="ConfigWriteApiTests"/> / <see cref="ReadApiTests"/> - a temp YAML config
 /// with no ports and telnet disabled (so no fixed TCP port is bound under the WAF) and
 /// the routing store in the same temp dir. Each mutation flows through the live
 /// <c>FileConfigProvider</c> write seam, so a follow-up <c>GET /api/v1/ports</c> (or
@@ -29,7 +29,7 @@ public sealed class PortsApiTests : IDisposable
 
     public PortsApiTests()
     {
-        // Start with NO ports — every test adds/removes its own. Telnet off so the
+        // Start with NO ports - every test adds/removes its own. Telnet off so the
         // WAF-hosted node binds no fixed TCP port (could clash across parallel classes).
         var dir = TestPaths.NewPath("packetnet-portsapi");
         Directory.CreateDirectory(dir);
@@ -157,7 +157,7 @@ public sealed class PortsApiTests : IDisposable
         (await client.PostAsJsonAsync("/api/v1/ports", KissTcpPort("vhf", "127.0.0.1", 8101)))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Same id again — distinct endpoint so it is the unique-id rule that rejects it.
+        // Same id again - distinct endpoint so it is the unique-id rule that rejects it.
         var dup = await client.PostAsJsonAsync("/api/v1/ports", KissTcpPort("vhf", "127.0.0.1", 8102));
         dup.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
 
@@ -166,7 +166,7 @@ public sealed class PortsApiTests : IDisposable
         problem!.Errors.Should().NotBeEmpty();
     }
 
-    // #672 — the shape of the failure matters as much as the failure. A KISS knob outside
+    // #672 - the shape of the failure matters as much as the failure. A KISS knob outside
     // the byte the wire carries used to fail JSON model binding (the record typed them
     // byte?), so the API answered a bare 400 with nothing naming the field: the operator
     // who wrote 300 thinking in milliseconds got no clue which of ten fields was wrong.
@@ -317,7 +317,7 @@ public sealed class PortsApiTests : IDisposable
         await using var factory = new NodeAppFactory();
         using var client = factory.CreateClient();
 
-        // Add an enabled-by-config port, but pointed at a dead endpoint — it will fail to
+        // Add an enabled-by-config port, but pointed at a dead endpoint - it will fail to
         // come up under the WAF (no listener), which is fine: we assert the persisted
         // enabled flag, not the live transport state.
         (await client.PostAsJsonAsync("/api/v1/ports", KissTcpPort("vhf", "127.0.0.1", 8101, enabled: true)))
@@ -341,7 +341,7 @@ public sealed class PortsApiTests : IDisposable
             "the reconcile takes the port down and the state model says so");
 
         // up → enabled flips back true (the live state may still read configured/starting while
-        // the async reconcile runs — we assert the persisted enabled flag).
+        // the async reconcile runs - we assert the persisted enabled flag).
         var up = await client.PostAsJsonAsync("/api/v1/ports/vhf/lifecycle", new { action = "up" });
         up.StatusCode.Should().Be(HttpStatusCode.OK);
         var afterUp = await up.Content.ReadFromJsonAsync<PortStatus>(Web);
@@ -367,7 +367,7 @@ public sealed class PortsApiTests : IDisposable
         await using var factory = new NodeAppFactory();
         using var client = factory.CreateClient();
 
-        // Disabled port (the default in KissTcpPort) — RestartPortAsync returns false for a
+        // Disabled port (the default in KissTcpPort) - RestartPortAsync returns false for a
         // disabled port, which the endpoint maps to 409 (bring it up before restarting).
         (await client.PostAsJsonAsync("/api/v1/ports", KissTcpPort("vhf", "127.0.0.1", 8101, enabled: false)))
             .StatusCode.Should().Be(HttpStatusCode.OK);
@@ -385,7 +385,7 @@ public sealed class PortsApiTests : IDisposable
         await using var factory = new NodeAppFactory();
         using var client = factory.CreateClient();
 
-        // Enabled but pointed at a dead endpoint — RestartPortAsync still returns true (the
+        // Enabled but pointed at a dead endpoint - RestartPortAsync still returns true (the
         // port is configured + enabled; the transient bring-up faults under the WAF, which is
         // fine: we assert the endpoint applied the restart and returned the port's status,
         // not a live transport state).

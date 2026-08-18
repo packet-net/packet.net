@@ -1,7 +1,7 @@
 # The soundmodem transport and services
 
 PDN can be its own modem. The `soundmodem` transport runs the pdn-soundmodem
-engine **in-process** — the node demodulates and modulates AX.25 itself over a
+engine **in-process** - the node demodulates and modulates AX.25 itself over a
 sound card (or a FlexRadio), with **no external TNC or daemon**. Native carrier
 detect (DCD) feeds the AX.25 stack's carrier-sense gate, transmit completion is
 sample-accurate, and the KISS TXDELAY / PERSIST / SLOTTIME knobs drive the
@@ -12,7 +12,7 @@ The same engine also backs two node-level **services** (not transports): a
 configured in the node's YAML and are off by default.
 
 > These are all soundmodem-audio features. There is no dedicated web-UI editor
-> for the paging/ardop services yet — configure them in YAML (a Services editor
+> for the paging/ardop services yet - configure them in YAML (a Services editor
 > is a follow-up). The `soundmodem` transport **is** editable in the Ports
 > screen of the control panel.
 
@@ -45,7 +45,7 @@ and `ax25:` timing block as the RF TNC transports.
 ### The mode catalogue
 
 `mode` accepts the shared modem catalogue (the server's
-`SoundModemValidator.KnownModes` — `ModemCatalog.KnownModes` minus
+`SoundModemValidator.KnownModes` - `ModemCatalog.KnownModes` minus
 `bpsk1200-multi`):
 
 | Family | Modes |
@@ -62,10 +62,10 @@ and `ax25:` timing block as the RF TNC transports.
 Three families are new alongside the classic NinoTNC-compatible AFSK/BPSK/QPSK/FSK
 set:
 
-- **C4FSK** (`c4fsk9600` / `c4fsk19200`) — four-level FSK at 9600 / 19200.
-- **FreeDV datac** (`freedv-datac0/1/3/4/13/14`) — the FreeDV HF **OFDM** data
+- **C4FSK** (`c4fsk9600` / `c4fsk19200`) - four-level FSK at 9600 / 19200.
+- **FreeDV datac** (`freedv-datac0/1/3/4/13/14`) - the FreeDV HF **OFDM** data
   waveforms, for robust HF paths.
-- **MS110D App-D** (`ms110d-wn0..6/13`) — MIL-STD-188-110D Appendix D
+- **MS110D App-D** (`ms110d-wn0..6/13`) - MIL-STD-188-110D Appendix D
   narrowband waveforms (`wn` = walsh/narrowband variants).
 
 Only the baseband `fsk*` / `c4fsk*` modes have **no settable centre frequency**:
@@ -96,7 +96,7 @@ transport:
                               # BPSK differential, QPSK coherent).
 ```
 
-`bpsk1200` is deliberately **not** a bank — it stays the legacy single-carrier
+`bpsk1200` is deliberately **not** a bank - it stays the legacy single-carrier
 modem (the 1200-baud diversity variant `bpsk1200-multi` is not exposed, pending
 over-the-air evidence).
 
@@ -107,7 +107,7 @@ modes; omit it for the per-family default (BPSK differential, QPSK coherent).
 
 Set `device` to `flex:<radio>[:slice][@station]` to drive a FlexRadio over DAX
 instead of a sound card. For a **headless** slice, add a `flex:` block to tune
-it; leave `ptt` empty — the radio keys itself over CAT, so a configured PTT is
+it; leave `ptt` empty - the radio keys itself over CAT, so a configured PTT is
 rejected. (An attach-mode `@station` flex device and ALSA devices ignore the
 `flex:` block.)
 
@@ -124,7 +124,7 @@ transport:
                             # using when sharing a box (default 1)
 ```
 
-`captureRate` does not apply to a `flex:` device — it clocks off the DAX stream.
+`captureRate` does not apply to a `flex:` device - it clocks off the DAX stream.
 
 ## Node-level services
 
@@ -166,12 +166,12 @@ ardop:
   # ptt: serial:/dev/ttyUSB0:rts   # ALSA only; empty = VOX (a flex: device keys itself)
 ```
 
-Point your ARDOP host at `127.0.0.1:8515` (host/command) — Pat's ardop connection,
+Point your ARDOP host at `127.0.0.1:8515` (host/command) - Pat's ardop connection,
 BPQ's `ARDOPPORT`, or Winlink Express's ARDOP TNC session all speak this.
 
 ## See also
 
 - `packaging/packetnet.yaml` and the first-run template
-  (`NodeConfigTemplate.cs`) — commented copies of every block above.
+  (`NodeConfigTemplate.cs`) - commented copies of every block above.
 - `docs/node-api.md` and the `TransportConfig` records - the `SoundModemTransport`, `PagingConfig`, and
   `ArdopConfig` schemas the control API exposes.

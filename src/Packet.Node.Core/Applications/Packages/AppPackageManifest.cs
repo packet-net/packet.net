@@ -3,7 +3,7 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Core.Applications.Packages;
 
 /// <summary>
-/// An app package's <c>pdn-app.yaml</c> — the manifest <b>authored by the app</b>, not the node
+/// An app package's <c>pdn-app.yaml</c> - the manifest <b>authored by the app</b>, not the node
 /// owner (the owner's surface is the <c>apps:</c> override list, <see cref="AppOverrideConfig"/>).
 /// The full contract is <c>docs/app-packages.md</c>; this record tree is its C# shape. At least
 /// one of <see cref="Session"/> / <see cref="Service"/> / <see cref="Ui"/> must be present
@@ -15,7 +15,7 @@ public sealed record AppPackageManifest
     /// validation error (forward-incompatible by design).</summary>
     public int Manifest { get; init; }
 
-    /// <summary>Stable app identity — lowercase <c>[a-z0-9-]</c>, MUST equal the package
+    /// <summary>Stable app identity - lowercase <c>[a-z0-9-]</c>, MUST equal the package
     /// directory name. The reconcile / log / override key.</summary>
     public required string Id { get; init; }
 
@@ -31,30 +31,30 @@ public sealed record AppPackageManifest
     /// <summary>Optional lucide icon name (cosmetic).</summary>
     public string? Icon { get; init; }
 
-    /// <summary>Declared capabilities — shown to the owner at enable time (the trust prompt),
+    /// <summary>Declared capabilities - shown to the owner at enable time (the trust prompt),
     /// not enforced in v1. Conventional values: <c>session</c>, <c>network</c>, <c>web</c>.</summary>
     public IReadOnlyList<string> Capabilities { get; init; } = [];
 
-    /// <summary>Packet-plane identity (<c>docs/app-packages.md</c> § Application packet identity) —
+    /// <summary>Packet-plane identity (<c>docs/app-packages.md</c> § Application packet identity) -
     /// optional. Carries the app-authored node-prompt verb (<see cref="AppPacketSpec.Command"/>);
     /// the callsign / NET/ROM alias are the <b>node's</b>, set in the owner's
     /// <c>apps[]</c>/<c>applications[]</c> entry, never the manifest.</summary>
     public AppPacketSpec? Packet { get; init; }
 
-    /// <summary>Packet-plane console attachment (the <c>pdn-app/1</c> wire) — optional.
+    /// <summary>Packet-plane console attachment (the <c>pdn-app/1</c> wire) - optional.
     /// The console verb that attaches a session is <see cref="AppPacketSpec.Command"/> on
     /// <see cref="Packet"/>, not a field here.</summary>
     public AppSessionSpec? Session { get; init; }
 
     /// <summary>A long-running daemon pdn supervises (or observes, when
-    /// <see cref="AppServiceSpec.Managed"/> is <see cref="AppServiceManaged.External"/>) — optional.</summary>
+    /// <see cref="AppServiceSpec.Managed"/> is <see cref="AppServiceManaged.External"/>) - optional.</summary>
     public AppServiceSpec? Service { get; init; }
 
-    /// <summary>Human-plane web UI (the existing app-gateway contract) — optional.</summary>
+    /// <summary>Human-plane web UI (the existing app-gateway contract) - optional.</summary>
     public AppUiConfig? Ui { get; init; }
 
     /// <summary>Declared tailnet port forwards (<c>docs/network-access.md</c> § App-declared
-    /// port forwarding) — the app asks pdn's embedded Tailscale node to expose a port on the
+    /// port forwarding) - the app asks pdn's embedded Tailscale node to expose a port on the
     /// tailnet and proxy it to the app's loopback listener. Each forward is a capability the
     /// owner sees at enable time. Default empty; tailnet-only (applied only when
     /// <c>tailscale.enabled</c>).</summary>
@@ -65,18 +65,18 @@ public sealed record AppPackageManifest
 public enum ForwardTls
 {
     /// <summary>The sidecar terminates TLS with the node's tailnet cert and proxies plaintext
-    /// to the app's loopback <see cref="AppForwardSpec.Target"/> (the default — pdn owns the
+    /// to the app's loopback <see cref="AppForwardSpec.Target"/> (the default - pdn owns the
     /// TLS edge; the app stays plaintext-on-loopback). The everyday IMAPS/SMTPS shape.</summary>
     Terminate,
 
     /// <summary>The sidecar passes the TCP stream through unterminated, relying on WireGuard for
-    /// transport encryption — for an app that speaks its own TLS (or a plaintext tailnet
+    /// transport encryption - for an app that speaks its own TLS (or a plaintext tailnet
     /// protocol).</summary>
     Raw,
 }
 
 /// <summary>
-/// One entry in the manifest's <c>forward:</c> block — a tailnet-facing port the embedded
+/// One entry in the manifest's <c>forward:</c> block - a tailnet-facing port the embedded
 /// Tailscale node exposes and reverse-proxies to one of the app's loopback listeners. The Go
 /// sidecar consumes these (the supervisor writes them to <c>--forwards-file</c> as a JSON
 /// array). Validated by <see cref="AppPackageCatalog"/>: <see cref="Listen"/> in 1..65535 and
@@ -89,7 +89,7 @@ public sealed record AppForwardSpec
     /// IMAPS). 1..65535, never 443 (the web reverse-proxy owns that).</summary>
     public int Listen { get; init; }
 
-    /// <summary>The app's plaintext loopback listener as <c>host:port</c> — host ∈
+    /// <summary>The app's plaintext loopback listener as <c>host:port</c> - host ∈
     /// {127.0.0.1, ::1, localhost}, port 1..65535. pdn refuses to proxy the tailnet to a
     /// non-loopback host.</summary>
     public required string Target { get; init; }
@@ -100,15 +100,15 @@ public sealed record AppForwardSpec
 }
 
 /// <summary>
-/// The manifest's <c>packet:</c> block — the app's packet-plane identity
+/// The manifest's <c>packet:</c> block - the app's packet-plane identity
 /// (<c>docs/app-packages.md</c> § Application packet identity). Only the
 /// <see cref="Command"/> verb is app-authored: it <i>is</i> the app's identity (a generic
 /// "bbs" app legitimately calls itself <c>BBS</c>). The callsign and NET/ROM alias are the
-/// node's — they live in the owner's <c>apps[]</c>/<c>applications[]</c> entry, never here.
+/// node's - they live in the owner's <c>apps[]</c>/<c>applications[]</c> entry, never here.
 /// </summary>
 public sealed record AppPacketSpec
 {
-    /// <summary>The node-prompt verb / application name (e.g. <c>"BBS"</c>) — a sensible
+    /// <summary>The node-prompt verb / application name (e.g. <c>"BBS"</c>) - a sensible
     /// app-authored default the owner may override via <see cref="AppOverrideConfig.Command"/>.
     /// Registers a bare node-prompt verb; for a <c>service</c> app it loopback-connects to the
     /// app's resolved callsign, for a <c>session</c> app it attaches the per-connection session.
@@ -118,7 +118,7 @@ public sealed record AppPacketSpec
     public string? Command { get; init; }
 }
 
-/// <summary>The manifest's <c>session:</c> block — how a console verb attaches a user session
+/// <summary>The manifest's <c>session:</c> block - how a console verb attaches a user session
 /// to the app over the <c>pdn-app/1</c> wire. Mirrors the inline
 /// <see cref="ApplicationConfig"/> fields, minus owner-only concerns. The verb that triggers
 /// the attachment is <see cref="AppPacketSpec.Command"/> (on <see cref="AppPackageManifest.Packet"/>),
@@ -129,7 +129,7 @@ public sealed record AppSessionSpec
     /// or connect-per-session <see cref="ApplicationKind.Socket"/>.</summary>
     public ApplicationKind Kind { get; init; } = ApplicationKind.Process;
 
-    /// <summary>Executable for <see cref="ApplicationKind.Process"/> — absolute, or relative to
+    /// <summary>Executable for <see cref="ApplicationKind.Process"/> - absolute, or relative to
     /// the package directory.</summary>
     public string? Command { get; init; }
 
@@ -165,10 +165,10 @@ public enum AppServiceManaged
     External,
 }
 
-/// <summary>The manifest's <c>service:</c> block — a long-running daemon.</summary>
+/// <summary>The manifest's <c>service:</c> block - a long-running daemon.</summary>
 public sealed record AppServiceSpec
 {
-    /// <summary>Executable — absolute, or relative to the package directory.</summary>
+    /// <summary>Executable - absolute, or relative to the package directory.</summary>
     public required string Command { get; init; }
 
     /// <summary>Arguments, package-dir-relative resolution as for the session block.</summary>

@@ -5,7 +5,7 @@ namespace Packet.Tune.Core.Tests;
 
 /// <summary>
 /// The <c>TXD</c> telegram codec: per-action wire forms, round trips, the SDM character
-/// budget for the routine forms, reject-don't-crash parsing of malformed args — and the
+/// budget for the routine forms, reject-don't-crash parsing of malformed args - and the
 /// probe/settle frame factories (tag matching; a settle frame is never a probe).
 /// </summary>
 public class TxDelayMinMessageTests

@@ -6,7 +6,7 @@ using Packet.Node.Tests.Support;
 namespace Packet.Node.Tests.Configuration;
 
 /// <summary>
-/// Behavioural tests for <see cref="SqliteConfigProvider"/> — the config-in-DB provider
+/// Behavioural tests for <see cref="SqliteConfigProvider"/> - the config-in-DB provider
 /// (#473). Covers the NON-NEGOTIABLE first-boot YAML→DB migration (an existing install's
 /// hand-tuned /etc YAML is imported unchanged, runs identically, and a second boot reads
 /// the DB not the YAML), idempotency, the seed fallbacks, and the write path (TryApply
@@ -124,7 +124,7 @@ public sealed class SqliteConfigProviderTests : IDisposable
             first.Current.Management.Should().Be(expected.Management);
             first.Current.Tailscale.Should().Be(expected.Tailscale);
 
-            // (b) the migration is announced on the boot log — assert the RENDERED string,
+            // (b) the migration is announced on the boot log - assert the RENDERED string,
             // not just the persisted value (a LoggerMessage arg-swap would still pass a
             // value-only assert but render garbage).
             log.Messages.Should().ContainSingle(m =>
@@ -162,7 +162,7 @@ public sealed class SqliteConfigProviderTests : IDisposable
     public void A_present_but_invalid_legacy_YAML_throws_at_boot()
     {
         // Blank callsign fails validation. The node must NOT silently template over an
-        // operator's broken-but-fixable file — it boot-fails loudly.
+        // operator's broken-but-fixable file - it boot-fails loudly.
         File.WriteAllText(yamlPath, "schemaVersion: 1\nidentity:\n  callsign: \"\"\n");
 
         var act = () => NewProvider(configPath: yamlPath);

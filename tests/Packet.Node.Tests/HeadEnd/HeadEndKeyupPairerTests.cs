@@ -7,7 +7,7 @@ using Packet.Node.Tests.Support;
 namespace Packet.Node.Tests.HeadEnd;
 
 /// <summary>
-/// The keyup-pairing routine (<see cref="HeadEndKeyupPairer"/>) — the operator-initiated RF action that
+/// The keyup-pairing routine (<see cref="HeadEndKeyupPairer"/>) - the operator-initiated RF action that
 /// resolves the PHYSICAL modem↔radio map by keying each NinoTNC and watching which Tait's PTT fires.
 /// Driven ENTIRELY with in-memory fakes: no serial port and no socket to real hardware is ever opened,
 /// nothing transmits. A fake "keyer" fires the fake watches its NinoTNC is wired to; the routine reads
@@ -18,7 +18,7 @@ public sealed class HeadEndKeyupPairerTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
-    // Tiny timings — the fakes fire synchronously, so no real waiting is needed.
+    // Tiny timings - the fakes fire synchronously, so no real waiting is needed.
     private static readonly HeadEndKeyupOptions Fast = new()
     {
         ObservationWindow = TimeSpan.FromMilliseconds(1),
@@ -158,7 +158,7 @@ public sealed class HeadEndKeyupPairerTests
     public async Task A_radio_that_re_fires_for_a_second_tnc_is_not_double_claimed()
     {
         // Physically impossible but modelled: taitA "fires" for both ninoX and ninoY. The first keyup
-        // claims it; the second must not re-pair it — ninoY is left unpaired instead.
+        // claims it; the second must not re-pair it - ninoY is left unpaired instead.
         var result = await RunAsync(
             tncIds: ["ninoX", "ninoY"],
             radioIds: ["taitA"],
@@ -265,7 +265,7 @@ public sealed class HeadEndKeyupPairerTests
     public async Task PairByKeyupAsync_reports_a_scanned_device_missing_from_the_inventory_as_unpaired()
     {
         // The scan lists nino0 + tait0 as free, but the inventory (fetched a beat later) only lists
-        // tait0 — nino0 raced away. It must be reported unpaired, not silently dropped.
+        // tait0 - nino0 raced away. It must be reported unpaired, not silently dropped.
         var taitWatch = new FakeWatch();
         OpenKeyupWatch watchOverride = (target, ct) => Task.FromResult<IKeyupWatch>(taitWatch);
         OpenKeyupModem modemOverride = (target, ct) => Task.FromResult<IKeyupModem>(new FakeModem([]));

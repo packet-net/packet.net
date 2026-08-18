@@ -60,7 +60,7 @@ public class AprsDecoderOptionsTests
     [Fact]
     public void Telemetry_Strict_Accepts_Spec_Conformant_Frame()
     {
-        // APRS101 §13 example: 3-digit zero-padded, all in 000–255.
+        // APRS101 §13 example: 3-digit zero-padded, all in 000-255.
         var info = System.Text.Encoding.ASCII.GetBytes("T#005,199,000,255,073,123,01101001");
         AprsTelemetryDecoder.TryDecode(info, AprsParseOptions.Strict, out var t).Should().BeTrue();
         t.AnalogValues.Should().Equal(199.0, 0.0, 255.0, 73.0, 123.0);
@@ -92,7 +92,7 @@ public class AprsDecoderOptionsTests
     [Fact]
     public void MicE_Strict_Accepts_Canonical_Dti()
     {
-        // Same payload but with backtick DTI — canonical per §10.
+        // Same payload but with backtick DTI - canonical per §10.
         var info = new byte[]
         {
             (byte)'`', (byte)'(', (byte)'(', (byte)'N', (byte)'$', (byte)'Z', (byte)'O',

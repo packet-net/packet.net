@@ -45,7 +45,7 @@ public class SdmTuningLinkTests
     public async Task Default_mode_completes_on_radio_accept_ignoring_negative_receipts()
     {
         // Default (WaitForDeliveryReceipt = false): the over-air receipt is advisory. Even a run
-        // of negative receipts must NOT retry or throw — the payload is delivered and reliability
+        // of negative receipts must NOT retry or throw - the payload is delivered and reliability
         // is the caller's application-level reply. The TM8110 auto-ack refractory makes the
         // receipt unreliable for close bidirectional SDM (docs/research/tm8110-sdm-autoack-refractory.md).
         var channel = new FakeSdmChannel { AckPlan = [false, false, false] };

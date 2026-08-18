@@ -138,7 +138,7 @@ public class FileConfigProviderTests : IDisposable
     public void Surfaces_the_netrom_routing_backcompat_warning_at_load()
     {
         // The inert legacy combo (forward:true without connect) parses + validates but is a
-        // no-op the operator should know about — it must be surfaced on the boot log.
+        // no-op the operator should know about - it must be surfaced on the boot log.
         File.WriteAllText(path, """
             schemaVersion: 1
             identity:

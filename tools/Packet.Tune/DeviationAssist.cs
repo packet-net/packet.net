@@ -8,7 +8,7 @@ namespace Packet.Tune;
 
 /// <summary>
 /// The remote deviation-tuning commands: <c>deviation-sdm</c> (coordination
-/// over Tait SDMs — radio-native FFSK at factory deviation, independent of
+/// over Tait SDMs - radio-native FFSK at factory deviation, independent of
 /// the pot under tune) and <c>deviation-remote</c> (coordination over a
 /// WebSocket rendezvous relay with a spoken 6-digit PIN). Both run the same
 /// <see cref="TuningSession"/> assistant loop; only the
@@ -119,7 +119,7 @@ internal static class DeviationAssist
         {
             if (common.Role == TuningSession.TunedRole)
             {
-                // Arm this TNC's CQBEEP responder for the session (volatile —
+                // Arm this TNC's CQBEEP responder for the session (volatile -
                 // a TNC reset disarms it; re-run the command after one). The
                 // meter can then also trigger tone tests as a refinement.
                 Console.WriteLine("  arming this TNC's CQBEEP responder ([TARPNstat) for the session...");

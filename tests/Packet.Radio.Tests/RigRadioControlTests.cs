@@ -12,7 +12,7 @@ public sealed class RigRadioControlTests
 {
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
-        // Bounded poll for cross-task visibility (the loop runs on a Task.Run) — the fake clock
+        // Bounded poll for cross-task visibility (the loop runs on a Task.Run) - the fake clock
         // drives *when* ticks happen; this only waits for the tick's writes to land.
         for (var i = 0; i < 500 && !condition(); i++)
         {
@@ -119,7 +119,7 @@ public sealed class RigRadioControlTests
         await WaitUntilAsync(() => radio.ChannelBusy is null);
         Volatile.Read(ref events).Should().Be(0, "a fault is unknown-state, not a carrier edge");
 
-        // Faulted, the loop waits FaultRetryInterval (2 s) — a poll interval passing must not tick.
+        // Faulted, the loop waits FaultRetryInterval (2 s) - a poll interval passing must not tick.
         var readsWhenFaulted = rig.DcdReads;
         await LetThePollLoopParkAsync();
         clock.Advance(TimeSpan.FromMilliseconds(100));

@@ -7,7 +7,7 @@ using Xunit;
 namespace Packet.NetRom.Tests.Routing;
 
 /// <summary>
-/// <see cref="NetRomRoutingTable.Restore"/> — the hydrate path the node host uses to
+/// <see cref="NetRomRoutingTable.Restore"/> - the hydrate path the node host uses to
 /// reload a persisted table at startup (so a restart does not lose the topology). Pure
 /// table maintenance: it round-trips a <see cref="NetRomRoutingSnapshot"/>, ages routes
 /// by the elapsed-downtime decay, drops what expired, and prunes orphan neighbours.

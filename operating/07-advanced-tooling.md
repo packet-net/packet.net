@@ -1,6 +1,6 @@
 # 7. Advanced tooling
 
-**Goal:** the bench-side extras — the `packet-tune` command-line tool, firmware
+**Goal:** the bench-side extras - the `packet-tune` command-line tool, firmware
 flashing, and mode coordination. These are for hands-on work at the node, beyond the
 web control panel.
 
@@ -29,11 +29,11 @@ likely to reach for:
 | `deviation-remote --role … --tnc … --rendezvous <ws> [--pin …]` | Deviation tuning over an internet WebSocket relay + PIN (operators not co-located). | [Chapter 4](04-tune-your-link.md) |
 | `flash-tnc <tncPort> <hexFile>` | Flash NinoTNC firmware. | Below |
 | `mode-coord --role … --tnc … --radio … --peer …` | Negotiate a modem mode with a peer over the SDM side-channel. | Below |
-| `hail --tnc … --radio … --peer …` | Ask a peer for its mode/modem + capabilities over SDM — **works across a mode mismatch that blocks the packet path**. | Below |
-| `set-mode <tncPort> <mode>` | Set a NinoTNC's modem mode (`--persist` to keep it across reboot). Verifies the TNC actually applied it and retries — exit code 1 means the mode is **not** set. | — |
+| `hail --tnc … --radio … --peer …` | Ask a peer for its mode/modem + capabilities over SDM - **works across a mode mismatch that blocks the packet path**. | Below |
+| `set-mode <tncPort> <mode>` | Set a NinoTNC's modem mode (`--persist` to keep it across reboot). Verifies the TNC actually applied it and retries - exit code 1 means the mode is **not** set. | - |
 | `radio-health <ccdiPort>` | Sample a Tait radio's RSSI / PA-temp / power-detector trend. | [Chapter 2](02-see-your-link-quality.md) |
-| `radio-channel <ccdiPort> [channel]` | Read or set the radio's channel. | — |
-| `mode-survey <tncA> <tncB> <ccdiA> <ccdiB>` | Sweep modem modes across a two-radio bench to compare decode rates. | — |
+| `radio-channel <ccdiPort> [channel]` | Read or set the radio's channel. | - |
+| `mode-survey <tncA> <tncB> <ccdiA> <ccdiB>` | Sweep modem modes across a two-radio bench to compare decode rates. | - |
 
 There are a few more low-level bench verbs (`verify-control`, `measure`,
 `rendezvous`, `radio-reset`); run the tool with no arguments to see the full usage.
@@ -54,9 +54,9 @@ prompt with `--yes`). After a successful flash it waits for the reboot and
 re-verifies the version.
 
 > [!WARNING]
-> **Do not interrupt a flash.** The transfer takes **2–4 minutes**. Do not unplug
+> **Do not interrupt a flash.** The transfer takes **2-4 minutes**. Do not unplug
 > the TNC, close the tool, or let the machine sleep during it. An interrupted flash
-> strands the TNC in its bootloader — it's **recoverable by re-running the same
+> strands the TNC in its bootloader - it's **recoverable by re-running the same
 > command**, but the TNC is dead until you do. Have a **known-good firmware image on
 > hand** before you start so you can always re-flash.
 
@@ -66,21 +66,21 @@ re-verifies the version.
 > your port config so it's re-applied on the next port start).
 
 > [!NOTE]
-> **`flash-tnc` is local-serial only — it does not reach through a
+> **`flash-tnc` is local-serial only - it does not reach through a
 > [head-end](08-split-station-head-end.md).** Its pre-flight checks are inherently
 > local (`<tncPort>` is a local device path, and the "is another process holding
-> the port" exclusivity scan reads the local machine's `/proc`), and a 2–4-minute
+> the port" exclusivity scan reads the local machine's `/proc`), and a 2-4-minute
 > bootloader transfer is not something to run across a network pipe anyway. To
 > flash a NinoTNC hosted on a remote Pi, **SSH to the head-end box**, stop (or
 > disable) the port that owns the device so the head-end's bridge isn't holding it,
-> and run `flash-tnc` there against the local device — then bring the port back.
+> and run `flash-tnc` there against the local device - then bring the port back.
 > This is deliberate; see the remote-parity table in
 > [chapter 8](08-split-station-head-end.md#what-works-remotely-and-what-stays-local).
 
 ## Mode coordination
 
 `mode-coord` lets two stations **agree on a modem mode** (baud/modulation) over the
-radios' SDM side-channel — propose a mode, both confirm, both commit, and revert
+radios' SDM side-channel - propose a mode, both confirm, both commit, and revert
 cleanly if it doesn't take. It's the seed of adaptive mode-agility (picking a faster
 mode on a good channel, a more robust one on a poor channel).
 
@@ -89,13 +89,13 @@ The web-UI surface for it is not shipped yet.
 
 ## Hailing a neighbour (`hail`)
 
-`hail` lets one station **ask another for its status** — callsign, current NinoTNC mode
-(number + name) and bit rate, radio channel, supported modes, and capabilities — over the
+`hail` lets one station **ask another for its status** - callsign, current NinoTNC mode
+(number + name) and bit rate, radio channel, supported modes, and capabilities - over the
 radios' SDM side-channel.
 
 The point is **diagnostic**. The SDM side-channel rides the radio's own FFSK signalling
-modem, which is *independent of the packet modulation*. So you can hail — and get a status
-reply from — a station you **cannot** reach on the packet path *because* the two of you are
+modem, which is *independent of the packet modulation*. So you can hail - and get a status
+reply from - a station you **cannot** reach on the packet path *because* the two of you are
 on incompatible modem modes. The reply tells you exactly what mode the peer is on, which is
 usually the mismatch you were chasing. Nothing else in the stack can report on a station you
 cannot decode.
@@ -109,12 +109,12 @@ packet-tune hail --respond --tnc /dev/ttyACM1 --radio /dev/ttyUSB1 --peer PDN000
 ```
 
 A successful hail prints the peer's mode/bitrate/channel/capabilities. The reply is optionally
-tagged with the responder's **RSSI of the hail** — a bidirectional link-quality snapshot. The
+tagged with the responder's **RSSI of the hail** - a bidirectional link-quality snapshot. The
 richer status rides an *extended* SDM (up to 128 characters), which these radios split and
 reassemble natively.
 
 On the **node**, the same capability is `POST /api/v1/ports/{id}/hail` with `{ "peerSdmId": … }`
-(admin-scoped and audited — it transmits); and a port can be armed as a resident responder with
+(admin-scoped and audited - it transmits); and a port can be armed as a resident responder with
 the `radio.hailResponder` / `radio.hailResponderPeer` config on its radio block (off by default).
 v1 is point-to-point; answering arbitrary hailers (routing the reply to the SDM caller id) is a
 documented follow-up, as is a web-UI neighbour-mode map.
@@ -125,13 +125,13 @@ To keep the boundary honest:
 
 | Capability | Web UI | CLI (`packet-tune`) |
 |---|---|---|
-| Attach a radio, see health, heard list | ✅ | — |
+| Attach a radio, see health, heard list | ✅ | - |
 | Doctor (check radio setup) | ✅ | ✅ (`doctor`) |
 | Guided deviation tuning (SDM) | ✅ (`/tools/tuner`) | ✅ (`deviation-sdm`) |
-| Deviation tuning over internet relay | — | ✅ (`deviation-remote`) |
-| Firmware flashing | — | ✅ (`flash-tnc`) |
-| Mode coordination | — | ✅ (`mode-coord`) |
-| Station hail (diagnostic, over SDM) | — (node API: `POST /ports/{id}/hail`) | ✅ (`hail`) |
+| Deviation tuning over internet relay | - | ✅ (`deviation-remote`) |
+| Firmware flashing | - | ✅ (`flash-tnc`) |
+| Mode coordination | - | ✅ (`mode-coord`) |
+| Station hail (diagnostic, over SDM) | - (node API: `POST /ports/{id}/hail`) | ✅ (`hail`) |
 
 ## Back to the start
 

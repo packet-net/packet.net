@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Traffic;
 
 /// <summary>
 /// The traffic-log writer: subscribes to the node's existing frame-trace stream
-/// (<see cref="NodeTelemetry"/> — the same tap the web monitor's SSE feed rides,
+/// (<see cref="NodeTelemetry"/> - the same tap the web monitor's SSE feed rides,
 /// so there is no second decode path) and persists every traced frame to the
 /// <see cref="SqliteTrafficStore"/> in batches, with a periodic
 /// <see cref="TimeProvider"/>-driven prune enforcing the configured retention +
@@ -23,7 +23,7 @@ namespace Packet.Node.Core.Traffic;
 /// but a non-blocking <see cref="ChannelWriter{T}.TryWrite"/>; when the queue is
 /// full (a slow/stalled disk) the frame is <b>dropped from the log</b> and
 /// counted (<see cref="DroppedFrames"/>, surfaced in <c>GET /api/v1/status</c>
-/// and logged) — never queued unboundedly, never blocked on. The telemetry
+/// and logged) - never queued unboundedly, never blocked on. The telemetry
 /// subscription itself is the same drop-oldest bounded channel the SSE feed
 /// uses, so even a stalled forwarder cannot touch a pump thread.
 /// </para>
@@ -38,7 +38,7 @@ namespace Packet.Node.Core.Traffic;
 public sealed partial class TrafficLogService : BackgroundService
 {
     /// <summary>Default bound on the store hand-off queue. Generous (frames are
-    /// small) but finite — the whole point is that a stalled disk drops log rows
+    /// small) but finite - the whole point is that a stalled disk drops log rows
     /// instead of growing the heap.</summary>
     public const int DefaultQueueCapacity = 4096;
 
@@ -74,7 +74,7 @@ public sealed partial class TrafficLogService : BackgroundService
         this.config = config;
         this.clock = clock;
         this.logger = logger ?? NullLogger<TrafficLogService>.Instance;
-        // FullMode.Wait makes TryWrite return false when full — the overflow signal
+        // FullMode.Wait makes TryWrite return false when full - the overflow signal
         // the drop counter rides (DropOldest/DropWrite would "succeed" silently).
         queue = Channel.CreateBounded<MonitorEvent>(new BoundedChannelOptions(queueCapacity)
         {
@@ -85,7 +85,7 @@ public sealed partial class TrafficLogService : BackgroundService
     }
 
     /// <summary>Frames dropped from the traffic log because the hand-off queue was
-    /// full (a slow disk) — the log's loss counter, never the radio path's.</summary>
+    /// full (a slow disk) - the log's loss counter, never the radio path's.</summary>
     public long DroppedFrames => Volatile.Read(ref dropped);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -163,7 +163,7 @@ public sealed partial class TrafficLogService : BackgroundService
         }
         catch (OperationCanceledException)
         {
-            // Shutdown — any undrained rows are dropped (it's a diagnostic log).
+            // Shutdown - any undrained rows are dropped (it's a diagnostic log).
         }
     }
 
@@ -201,7 +201,7 @@ public sealed partial class TrafficLogService : BackgroundService
     }
 
     /// <summary>Test seam (InternalsVisibleTo Packet.Node.Tests): run one prune
-    /// pass deterministically — the same code the periodic timer fires.</summary>
+    /// pass deterministically - the same code the periodic timer fires.</summary>
     internal void PruneNow() => PruneOnce();
 
     [LoggerMessage(Level = LogLevel.Warning,

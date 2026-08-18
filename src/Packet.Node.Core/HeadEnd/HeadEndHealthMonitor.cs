@@ -8,12 +8,12 @@ namespace Packet.Node.Core.HeadEnd;
 /// <summary>
 /// The background head-end fleet health poller (#583): every <see cref="DefaultPollInterval"/> it
 /// resolves each configured/referenced head-end instance's address (config wins; else one bounded
-/// mDNS browse shared across the cycle — the same config-else-discovery rule as
+/// mDNS browse shared across the cycle - the same config-else-discovery rule as
 /// <see cref="HeadEndAddressResolver"/>) and probes its HTTP control plane: <c>GET /statusz</c>
 /// (headend-v0.1.4+, #587) for the rich shape, falling back to the bare <c>GET /healthz</c> on a
 /// 404 from an older daemon. The rolling per-instance snapshot (reachable, bridge count, per-bridge
 /// client-connection, last-seen, failure counters) feeds the <c>pdn_headend_*</c> metrics bucket and
-/// the <c>GET /api/v1/radios/headends</c> live-health enrichment — both read the in-memory snapshot,
+/// the <c>GET /api/v1/radios/headends</c> live-health enrichment - both read the in-memory snapshot,
 /// never probing on the request path.
 /// </summary>
 /// <remarks>
@@ -26,9 +26,9 @@ namespace Packet.Node.Core.HeadEnd;
 /// </para>
 /// <para>
 /// <b>Quiet by design.</b> State TRANSITIONS are logged (reachable→unreachable as a WARNING,
-/// recovery as Information — the <see cref="Transports.ReconnectingKissModem"/> 5101/5102
+/// recovery as Information - the <see cref="Transports.ReconnectingKissModem"/> 5101/5102
 /// convention), never per-poll results; a fleet that is down stays one warning per outage, not one
-/// per 30 s. The poll is pure HTTP GET against the control plane — it never opens device pipes and
+/// per 30 s. The poll is pure HTTP GET against the control plane - it never opens device pipes and
 /// never touches the scan/keyup probe gate.
 /// </para>
 /// </remarks>
@@ -47,7 +47,7 @@ public sealed partial class HeadEndHealthMonitor : BackgroundService
     private readonly ILogger<HeadEndHealthMonitor> logger;
 
     // Per-instance rolling state, keyed by instance id. Mutated only by the poll loop; read by
-    // Snapshot() (metrics scrape / API request threads) — every access goes through the gate.
+    // Snapshot() (metrics scrape / API request threads) - every access goes through the gate.
     private readonly object gate = new();
     private readonly Dictionary<string, InstanceState> states = new(StringComparer.Ordinal);
 
@@ -77,7 +77,7 @@ public sealed partial class HeadEndHealthMonitor : BackgroundService
     /// <summary>
     /// The current fleet health snapshot: one row per monitored instance that has completed at least
     /// one poll, ordered by instance id. Empty on a node with no head-ends (or before the first
-    /// cycle finishes). Pure in-memory read — safe on the metrics/API request path.
+    /// cycle finishes). Pure in-memory read - safe on the metrics/API request path.
     /// </summary>
     public IReadOnlyList<HeadEndHealth> Snapshot()
     {
@@ -108,7 +108,7 @@ public sealed partial class HeadEndHealthMonitor : BackgroundService
             {
                 // Defensive: per-instance failures are absorbed inside the cycle, so this is an
                 // unexpected cycle-level fault (e.g. a discovery backend throw). Log and keep
-                // polling — fleet observability must not die quietly.
+                // polling - fleet observability must not die quietly.
                 LogPollCycleFaulted(ex);
             }
 
@@ -125,7 +125,7 @@ public sealed partial class HeadEndHealthMonitor : BackgroundService
 
     /// <summary>
     /// Run one full fleet poll cycle. Internal as the deterministic test seam (InternalsVisibleTo
-    /// <c>Packet.Node.Tests</c>) — tests drive cycles directly instead of racing the timer loop.
+    /// <c>Packet.Node.Tests</c>) - tests drive cycles directly instead of racing the timer loop.
     /// </summary>
     internal async Task PollOnceAsync(CancellationToken cancellationToken)
     {
@@ -216,7 +216,7 @@ public sealed partial class HeadEndHealthMonitor : BackgroundService
     }
 
     // The union of declared head-ends and head-ends a port binding references (a nino-tnc-tcp
-    // transport or a head-end-bound radio) — normally identical (the validator requires references
+    // transport or a head-end-bound radio) - normally identical (the validator requires references
     // to be declared), but the union keeps the monitor honest over any config the node runs.
     private static List<string> MonitoredIds(NodeConfig current)
     {
@@ -248,7 +248,7 @@ public sealed partial class HeadEndHealthMonitor : BackgroundService
     }
 
     // Config address wins (the operator resolved it by hand); else exactly one discovery match.
-    // Zero matches or a duplicate-id clash resolves to null — the caller records an unreachable
+    // Zero matches or a duplicate-id clash resolves to null - the caller records an unreachable
     // poll, and the loud conflict logging stays with the resolver/scan surfaces that own it.
     private static Uri? ResolveBaseAddress(NodeConfig current, string id, IReadOnlyList<DiscoveredHeadEnd> discovered)
     {
@@ -364,13 +364,13 @@ public sealed partial class HeadEndHealthMonitor : BackgroundService
 /// <param name="InstanceId">The head-end's stable instance id.</param>
 /// <param name="Reachable">Whether the most recent poll succeeded.</param>
 /// <param name="BridgeCount">The bridge (device) count from the last successful <c>/statusz</c>;
-/// null when unknown — the daemon predates <c>/statusz</c> (healthz fallback) or has never answered.</param>
+/// null when unknown - the daemon predates <c>/statusz</c> (healthz fallback) or has never answered.</param>
 /// <param name="Bridges">Per-bridge rows from the last successful <c>/statusz</c> (last-known-good
 /// across an outage; empty when unknown).</param>
 /// <param name="LastSeen">When the instance last answered a poll, or null if it never has.</param>
 /// <param name="ConsecutiveFailures">Failed polls since the last success (0 while reachable).</param>
 /// <param name="PollFailuresTotal">Total failed polls since the monitor started tracking the
-/// instance — the <c>pdn_headend_poll_failures_total</c> counter source.</param>
+/// instance - the <c>pdn_headend_poll_failures_total</c> counter source.</param>
 public sealed record HeadEndHealth(
     string InstanceId,
     bool Reachable,

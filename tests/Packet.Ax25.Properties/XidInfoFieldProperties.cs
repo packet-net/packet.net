@@ -114,8 +114,8 @@ public class XidInfoFieldProperties
     }
 
     /// <summary>
-    /// For any byte array — empty, oversize, all-zero, all-0xFF, well-formed-but-
-    /// truncated — <see cref="XidInfoField.TryParse(System.ReadOnlySpan{byte}, XidParseOptions, out XidParameters?)"/>
+    /// For any byte array - empty, oversize, all-zero, all-0xFF, well-formed-but-
+    /// truncated - <see cref="XidInfoField.TryParse(System.ReadOnlySpan{byte}, XidParseOptions, out XidParameters?)"/>
     /// must terminate without throwing under both option presets, returning a
     /// non-null value on true and null on false.
     /// </summary>
@@ -144,7 +144,7 @@ public class XidInfoFieldProperties
             b.Should().BeNull();
         }
 
-        // A value the parser accepted must re-encode without throwing — the
+        // A value the parser accepted must re-encode without throwing - the
         // semantic view always maps back to some well-formed wire form.
         if (strict) { var _ = XidInfoField.Encode(a!); }
         if (lenient) { var _ = XidInfoField.Encode(b!); }
@@ -153,7 +153,7 @@ public class XidInfoFieldProperties
     /// <summary>
     /// Lenient is a strict superset: anything the strict parser accepts, the
     /// lenient parser also accepts and decodes to the same value. (The reverse
-    /// doesn't hold — lenient tolerates over-claimed GL / truncated parameters.)
+    /// doesn't hold - lenient tolerates over-claimed GL / truncated parameters.)
     /// </summary>
     [Property(MaxTest = 2_000)]
     public void Lenient_Accepts_Everything_Strict_Accepts(byte[] bytes)
@@ -209,7 +209,7 @@ public class XidInfoFieldProperties
     /// <summary>
     /// Build an <see cref="HdlcOptionalFunctions"/> from a selector byte, or
     /// null. Only the genuinely-negotiated bits (reject scheme, modulo,
-    /// segmenter, SREJ-multiframe) vary — the fixed bits the encoder forces are
+    /// segmenter, SREJ-multiframe) vary - the fixed bits the encoder forces are
     /// not part of the value space.
     /// </summary>
     private static HdlcOptionalFunctions? BuildHdlc(byte selector)

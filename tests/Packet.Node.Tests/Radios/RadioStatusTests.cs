@@ -94,7 +94,7 @@ public sealed class RadioStatusTests
         status.Attached.Should().BeFalse();
         status.Kind.Should().BeEmpty();
 
-        // /radios lists only ports that have a radio block — none here.
+        // /radios lists only ports that have a radio block - none here.
         RadioReadModels.All(supervisor: null, config).Should().BeEmpty();
     }
 }

@@ -6,11 +6,11 @@ using Packet.Rig;
 namespace Packet.Rig.Hamlib.Tests;
 
 /// <summary>
-/// Integration against a REAL <c>rigctld</c> driving hamlib's dummy rig (model 1) — the
+/// Integration against a REAL <c>rigctld</c> driving hamlib's dummy rig (model 1) - the
 /// ecosystem's standard client-test harness (hamlib's own pytest suite does exactly this).
 /// Skipped cleanly when <c>rigctld</c> isn't installed; <c>apt install libhamlib-utils</c>
 /// lights these up. <c>--set-conf=static_data=1</c> makes the dummy's meters deterministic
-/// (RFPOWER_METER 0.5, WATTS 50.0 — stable across hamlib 4.3→master).
+/// (RFPOWER_METER 0.5, WATTS 50.0 - stable across hamlib 4.3→master).
 /// </summary>
 public sealed class RigctldInteropTests
 {
@@ -25,7 +25,7 @@ public sealed class RigctldInteropTests
     private static async Task<(Process Daemon, RigctldRig Rig)> StartAsync(params string[] extraArgs)
     {
         // Grab a free port, then hand it to rigctld. (Bind-release has a nominal race; in
-        // practice the pattern is what the whole ecosystem uses — rigctld can't bind port 0.)
+        // practice the pattern is what the whole ecosystem uses - rigctld can't bind port 0.)
         int port;
         using (var probe = new TcpListener(IPAddress.Loopback, 0))
         {
@@ -146,7 +146,7 @@ public sealed class RigctldInteropTests
             await using var _ = rig;
 
             // static_data=1 pins the simulated meters; SWR isn't simulated at all on the dummy
-            // (reads as last-set, initially 0) — asserting exact values proves the level plumbing.
+            // (reads as last-set, initially 0) - asserting exact values proves the level plumbing.
             (await rig.ReadRfPowerAsync()).Should().Be(0.5);
             (await rig.ReadRfPowerWattsAsync()).Should().Be(50.0);
             (await rig.ReadSwrAsync()).Should().Be(0.0);
@@ -169,7 +169,7 @@ public sealed class RigctldInteropTests
 
             rig.Capabilities.Should().HaveFlag(RigCapabilities.DcdRead | RigCapabilities.SignalStrengthRead);
 
-            // The dummy rig alternates DCD on every read — two reads prove the parse sees both
+            // The dummy rig alternates DCD on every read - two reads prove the parse sees both
             // wire states, without depending on which one comes first.
             var first = await rig.ReadDcdAsync();
             var second = await rig.ReadDcdAsync();

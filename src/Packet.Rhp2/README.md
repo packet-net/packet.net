@@ -2,7 +2,7 @@
 
 > The RHPv2 (Radio Host Protocol v2) JSON-over-TCP wire codec.
 
-`Packet.Rhp2` is the single source of truth for the **RHPv2** (PWP-0222 / PWP-0245) wire format: framing, the message catalogue, JSON serialization, and payload encoding — with no engine, no transport, and no client/server policy. It is the shared codec layer that both RHPv2 servers and RHPv2 clients build on. Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack.
+`Packet.Rhp2` is the single source of truth for the **RHPv2** (PWP-0222 / PWP-0245) wire format: framing, the message catalogue, JSON serialization, and payload encoding - with no engine, no transport, and no client/server policy. It is the shared codec layer that both RHPv2 servers and RHPv2 clients build on. Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack.
 
 ## Install
 
@@ -50,13 +50,13 @@ if (frame is not null)
 
 ## Key types
 
-- `RhpFraming` — read/write one length-prefixed frame (2-byte big-endian length + UTF-8 JSON); zero-length frames are legal.
-- `RhpJson` — serialize/deserialize `RhpMessage` DTOs; type-first key emission, null omission, case-insensitive reads.
-- `RhpMessage` — abstract base for every message; subclasses (`AuthMessage`, `OpenMessage`, `ConnectMessage`, `SendMessage`, `RecvMessage`, … and their replies) map one-to-one to the `type` discriminators.
-- `UnknownMessage` — carries the raw JSON for an unrecognised `type` instead of throwing (forward-compatible).
-- `RhpDataEncoding` — bytes ↔ the JSON `data` field via Latin-1 (one byte per code unit). **Not base64.**
-- `RhpConstants` — `ProtocolFamily`, `SocketMode`, `OpenFlags`, `StatusFlags`, `RhpErrorCode` (with canonical `Text()`), `RhpMessageType`.
-- `RhpProtocolException` — thrown for a codec-level violation (non-object JSON, missing `type`), but never for a merely unknown `type`.
+- `RhpFraming` - read/write one length-prefixed frame (2-byte big-endian length + UTF-8 JSON); zero-length frames are legal.
+- `RhpJson` - serialize/deserialize `RhpMessage` DTOs; type-first key emission, null omission, case-insensitive reads.
+- `RhpMessage` - abstract base for every message; subclasses (`AuthMessage`, `OpenMessage`, `ConnectMessage`, `SendMessage`, `RecvMessage`, … and their replies) map one-to-one to the `type` discriminators.
+- `UnknownMessage` - carries the raw JSON for an unrecognised `type` instead of throwing (forward-compatible).
+- `RhpDataEncoding` - bytes ↔ the JSON `data` field via Latin-1 (one byte per code unit). **Not base64.**
+- `RhpConstants` - `ProtocolFamily`, `SocketMode`, `OpenFlags`, `StatusFlags`, `RhpErrorCode` (with canonical `Text()`), `RhpMessageType`.
+- `RhpProtocolException` - thrown for a codec-level violation (non-object JSON, missing `type`), but never for a merely unknown `type`.
 
 ## Wire fidelity
 
@@ -65,8 +65,8 @@ The shapes here are pinned against **live XRouter**, not just the published spec
 ## See also
 
 - [Source & issues](https://github.com/packet-net/packet.net)
-- [Packet.NetRom](https://www.nuget.org/packages/Packet.NetRom) — NET/ROM layer 3/4
-- [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) — the AX.25 link layer underneath
+- [Packet.NetRom](https://www.nuget.org/packages/Packet.NetRom) - NET/ROM layer 3/4
+- [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) - the AX.25 link layer underneath
 
 ---
 *AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

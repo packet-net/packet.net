@@ -1,6 +1,6 @@
 # 8. Beyond
 
-You can now build the whole stack — transport, frames, connected sessions, a
+You can now build the whole stack - transport, frames, connected sessions, a
 node, and NET/ROM. This chapter is a map of what's left: the engine
 behaviours that ran quietly under the earlier chapters, the knobs that control
 them, how to test code built on the engine, and the `Packet.Node.Core` building
@@ -19,14 +19,14 @@ fragments that the far end reassembles. The engine does this transparently:
 - **Receiving:** reassembly is wired into every session's inbound path, so a
   `DataLinkDataIndication` you receive already carries the reassembled whole.
 
-So you generally don't think about it — you `SendData` a logical message and
+So you generally don't think about it - you `SendData` a logical message and
 receive a logical message. Just be aware the limit exists, and that fragmentation
 requires a peer that negotiated it.
 
 ## XID parameter negotiation
 
-AX.25 v2.2 peers negotiate link parameters — window size, frame length,
-acknowledgement timer, retry count, and whether SREJ is available — via **XID**
+AX.25 v2.2 peers negotiate link parameters - window size, frame length,
+acknowledgement timer, retry count, and whether SREJ is available - via **XID**
 exchange. The engine drives this through a per-session management data-link
 (`Ax25ManagementDataLink`); you don't call it directly. What you control is the
 *policy*:
@@ -39,7 +39,7 @@ exchange. The engine drives this through a per-session management data-link
 
 The negotiated results land on `session.Context` (`SrejEnabled`, the effective
 window, `IsExtended`, …) where your status code can read them. If you need to
-parse or build XID info fields yourself — for a gateway, a conformance harness —
+parse or build XID info fields yourself - for a gateway, a conformance harness -
 the codec is public as `XidInfoField` / `XidParameters` with its own
 `XidParseOptions` (the same named-flag pattern).
 
@@ -48,7 +48,7 @@ the codec is public as `XidInfoField` / `XidParameters` with its own
 This is the connected-mode sibling of `Ax25ParseOptions`
 ([chapter 3](03-frames-and-callsigns.md#ax25parseoptions--leniency-as-a-named-choice)).
 Where `Ax25ParseOptions` governs how leniently you *decode frames*,
-`Ax25SessionQuirks` governs *state-machine behaviour* — specifically two classes
+`Ax25SessionQuirks` governs *state-machine behaviour* - specifically two classes
 of deviation from the printed SDL:
 
 - **SDL figure-defect workarounds** (named `Ax25Spec<NN>…`): places where the
@@ -61,8 +61,8 @@ Two presets:
 
 | Preset | Meaning |
 |--------|---------|
-| `Ax25SessionQuirks.Default` | every quirk on — **spec-correct**, the right choice for on-air use |
-| `Ax25SessionQuirks.StrictlyFaithful` | every quirk off — runs the figures *exactly* as drawn, defects included; conformance study only |
+| `Ax25SessionQuirks.Default` | every quirk on - **spec-correct**, the right choice for on-air use |
+| `Ax25SessionQuirks.StrictlyFaithful` | every quirk off - runs the figures *exactly* as drawn, defects included; conformance study only |
 
 Set it once via `Ax25ListenerOptions.Quirks`; it's seeded onto each new session's
 `Context.Quirks`. You'll almost always want `Default` (which is what you get if
@@ -79,7 +79,7 @@ the diagrams, not for talking to real stations.
 ## Observability
 
 `Ax25Listener.FrameTraced` (every frame, both directions, timestamped) is your
-single tap for monitoring, logging, and `mheard`-style displays — you met it in
+single tap for monitoring, logging, and `mheard`-style displays - you met it in
 [chapter 4](04-listen.md). For per-session introspection, `session.CurrentState`
 and `session.Context` expose the live state machine (sequence variables, timers,
 retry counter, smoothed RTT), and `listener.ActiveSessions` enumerates all cached
@@ -102,7 +102,7 @@ same seams:
     // …advance time.Advance(TimeSpan.FromSeconds(6)) to fire T1, etc.
     ```
 
-- **A fake transport.** `IAx25Transport` is a tiny interface — implement it over
+- **A fake transport.** `IAx25Transport` is a tiny interface - implement it over
   an in-memory queue (or pair two together) to script frames in and assert on
   frames out, no hardware required. `SendAsync` enqueues what your code transmits;
   `ReceiveAsync` yields the `Ax25InboundFrame`s you want it to hear.
@@ -115,14 +115,14 @@ same seams:
 ## Adopting the node host's building blocks
 
 If your ambitions run to a full deployable node, you don't have to grow the
-config-reconcile-persist-multiport machinery yourself — `Packet.Node.Core`
+config-reconcile-persist-multiport machinery yourself - `Packet.Node.Core`
 already exposes it as composable parts, all sitting on the same `Ax25Listener`
 core you've been using:
 
 | Building block | Namespace | What it gives you |
 |----------------|-----------|-------------------|
 | `INodeConnection` | `Packet.Node.Core.Console` | a transport-agnostic byte stream over a session (AX.25 / NET/ROM / Telnet alike) |
-| `INodeApplication` | `Packet.Node.Core.Applications` | the application seam: `RunAsync(connection, context, ct)` — a BBS, chat, gateway plug in here |
+| `INodeApplication` | `Packet.Node.Core.Applications` | the application seam: `RunAsync(connection, context, ct)` - a BBS, chat, gateway plug in here |
 | `NetRomService` | `Packet.Node.Core.NetRom` | the assembled NET/ROM node from [chapter 7](07-netrom.md): NODES ingestion, advertising, forwarding, circuits, interlinks |
 | `IConfigProvider` / `AddPacketNode(...)` | `Packet.Node.Core.*` | config-driven hosting: a `Microsoft.Extensions.Hosting` `BackgroundService` that supervises ports and reconciles live config changes |
 
@@ -148,23 +148,23 @@ through, and nothing in them is hidden from you.
 
 ## Where to read next
 
-- [`README.md`](../README.md) — the library publication matrix and the
+- [`README.md`](../README.md) - the library publication matrix and the
   sibling-repo map (`ax25sdl` for the SDL tables, `ax25-ts` for the TypeScript
   port).
-- [`docs/plan.md`](../docs/plan.md) — the living design document and the source of
+- [`docs/plan.md`](../docs/plan.md) - the living design document and the source of
   truth for where the project is heading.
-- [`docs/strict-vs-pragmatic-audit.md`](../docs/strict-vs-pragmatic-audit.md) —
+- [`docs/strict-vs-pragmatic-audit.md`](../docs/strict-vs-pragmatic-audit.md) -
   every named leniency flag, justified.
 - The per-library READMEs, e.g.
   [`src/Packet.Kiss.NinoTnc/README.md`](../src/Packet.Kiss.NinoTnc/README.md).
-- The `examples/` directory — small, complete node applications (`wall`,
+- The `examples/` directory - small, complete node applications (`wall`,
   `lobby`) showing the `INodeApplication`-style contract from the other side.
 
 ---
 
 That's the engine, bottom to top. You started by dumping hex off a modem; you can
-now build a routed, multi-port, spec-correct packet node — and you've seen every
+now build a routed, multi-port, spec-correct packet node - and you've seen every
 seam you'd reach for in between. One optional leg remains: the seams that let
 your station see the radio behind the modem.
 
-Next: [radios & rigs — RSSI, carrier-sense, and CAT control →](09-radios-and-rigs.md)
+Next: [radios & rigs - RSSI, carrier-sense, and CAT control →](09-radios-and-rigs.md)

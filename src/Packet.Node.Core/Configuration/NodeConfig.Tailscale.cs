@@ -1,7 +1,7 @@
 namespace Packet.Node.Core.Configuration;
 
 /// <summary>
-/// The embedded Tailscale node (<c>tsnet</c> Go sidecar) configuration — the blessed
+/// The embedded Tailscale node (<c>tsnet</c> Go sidecar) configuration - the blessed
 /// remote + passkey path. <b>Default-OFF</b>: pdn serves plain HTTP (loopback + LAN)
 /// and stays HTTP-only until the operator sets <see cref="Enabled"/>.
 /// </summary>
@@ -24,7 +24,7 @@ namespace Packet.Node.Core.Configuration;
 /// </remarks>
 public sealed record TailscaleConfig
 {
-    /// <summary>Whether the embedded Tailscale sidecar runs. Default <c>false</c> — pdn
+    /// <summary>Whether the embedded Tailscale sidecar runs. Default <c>false</c> - pdn
     /// stays HTTP-only until opted in.</summary>
     public bool Enabled { get; init; }
 
@@ -42,7 +42,7 @@ public sealed record TailscaleConfig
     /// <summary>The desired node name → <c>&lt;hostname&gt;.&lt;tailnet&gt;.ts.net</c> (the
     /// actual name is read back from the sidecar). <b>Empty (the default) ⇒ derive
     /// <c>&lt;callsign&gt;-pdn</c></b> (the lowercased base callsign) so multiple nodes on
-    /// one tailnet don't collide on a bare <c>pdn</c> — see
+    /// one tailnet don't collide on a bare <c>pdn</c> - see
     /// <see cref="Tailscale.TailscaleHostname"/>. When set explicitly it must match
     /// <c>^[a-z0-9-]+$</c>.</summary>
     public string Hostname { get; init; } = "";
