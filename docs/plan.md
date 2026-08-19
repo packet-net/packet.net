@@ -1367,6 +1367,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-19 - Tait codeplug typed field map + get/set, unified with the serial transport
+
+Added a typed, version-pinned field map to `tools/Packet.Tait.Codeplug` so the tool can read and write named codeplug settings, not just whole images. This is the M2 field-mapping half, brought together with the M1 serial transport into one read-patch-write pipeline. Facts only: the field encodings are stated and pinned by tests, no derivation narrative.
+
+- **The field map** ([`Fields/CodeplugFields.cs`](../tools/Packet.Tait.Codeplug/Fields/CodeplugFields.cs)): channels (TX/RX frequency, bandwidth, TX power, split-TX) decoded from record 0x05's contiguous 181-bit-per-channel LSB-first stream (channels straddle the ≤32-byte physical records, handled by [`ChannelBits`](../tools/Packet.Tait.Codeplug/Fields/ChannelBits.cs)); the data/signalling block 0x09/0 (SDM, THSD modem, transparent mode, data port, FFSK baud); the audio tap block 0x3B/0 (RX tap-out, EPTT1 tap-in, tap-out unmute). Version-pinned via record 0x27 (the DB-version field): the map covers DBVer 0094/0095 and refuses others. Enums in [`CodeplugEnums.cs`](../tools/Packet.Tait.Codeplug/Fields/CodeplugEnums.cs).
+- **CLI**: `dump` decodes every mapped field; `get <file> [field]` and `set <file> <field> <value>` read/write one by name (`ch0.bandwidth Wide`, `sdm off`, `rxtap R2`, ...). A `set` rewrites only the one record the field lives in (there is no whole-codeplug checksum), so changes are byte-isolated.
+- **Validated** against the real radio's codeplug read in the M1 session (s/n 19925328, DBVer 0094): decodes to 2 channels both 146.9 MHz (ch0 narrow / ch1 wide, VeryLow power), SDM on, transparent on, data port Mic, FFSK 28800, RX tap R2 / TX tap T13 - matching the bench history exactly. 11 new tests pin each field against synthetic fixtures (25 total in the suite). Field map documented in [`docs/research/tait-codeplug-protocol.md`](research/tait-codeplug-protocol.md).
+
 ### 2026-08-19 - Tait TM8100/TM8200 codeplug programming protocol reverse-engineered; Linux read/write validated on hardware
 
 Reverse-engineered the proprietary serial protocol the Windows CPS uses to program the Tait TM8100/TM8200 codeplug, from Free Serial Analyzer captures, and shipped a spike-grade Linux tool that reads and writes it without the CPS. This is milestone M1 of [`docs/research/tait-codeplug-programming-brief.md`](research/tait-codeplug-programming-brief.md). The durable protocol write-up is [`docs/research/tait-codeplug-protocol.md`](research/tait-codeplug-protocol.md); the raw captures are deliberately not committed (`.gitignore`d).

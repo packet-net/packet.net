@@ -33,6 +33,33 @@ public sealed class CodeplugImage
     /// header), or null if the header does not carry one.</summary>
     public string? DatabaseVersion => HeaderValue("DBVer");
 
+    /// <summary>The database version read from the codeplug itself (record 0x27 = a 12-bit field),
+    /// as a zero-padded 4-digit string, or null if that record is absent. Authoritative: the header
+    /// value is what the CPS chose to save, this is what the codeplug actually carries.</summary>
+    public string? DatabaseVersionFromRecord
+    {
+        get
+        {
+            CodeplugRecord? r = Find(0x27, 0);
+            if (r is null || r.Data.Length < 2)
+            {
+                return null;
+            }
+
+            int value = r.Data[0] | ((r.Data[1] & 0x0F) << 8); // low 12 bits, LSB first
+            return value.ToString("D4", CultureInfo.InvariantCulture);
+        }
+    }
+
+    /// <summary>Find the record with the given type and index, or null.</summary>
+    public CodeplugRecord? Find(byte type, byte index) =>
+        Records.FirstOrDefault(r => r.Section == type && r.Index == index);
+
+    /// <summary>Find the record with the given type and index, or throw if it is absent.</summary>
+    public CodeplugRecord Require(byte type, byte index) =>
+        Find(type, index) ?? throw new InvalidOperationException(
+            $"codeplug has no record 0x{type:X2}/{index}");
+
     /// <summary>Parse a .m8p document.</summary>
     public static CodeplugImage LoadM8p(string text)
     {

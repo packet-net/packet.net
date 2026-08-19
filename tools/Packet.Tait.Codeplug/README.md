@@ -21,6 +21,11 @@ the captures). Short version:
 
 - `CodeplugChecksum` / `CodeplugRecord` / `CodeplugImage` - the record model, checksum, and .m8p
   load/save + section map. Fully offline and unit-tested.
+- `Fields/` - the typed, version-pinned field map (`CodeplugFields`, `CodeplugEnums`,
+  `ChannelBits`): channels (frequency, bandwidth, power, split-TX), the data/signalling block
+  (SDM, THSD, transparent mode, data port, FFSK baud), and audio taps. See
+  `docs/research/tait-codeplug-protocol.md` for the map. Each field is pinned by a test.
+- `FieldConsole` - name/value access used by the `dump`/`get`/`set` CLI verbs.
 - `ISerialLine` / `SerialPortLine` - the byte seam (mirrors `Packet.Radio.Tait.ISerialIo`); tests
   substitute a scripted mock radio.
 - `TaitProgrammer` - the lock-step transport state machine (connect, interrogate, read, write).
@@ -30,8 +35,10 @@ the captures). Short version:
 
 ```
 # offline (no radio)
-dotnet run --project tools/Packet.Tait.Codeplug -- parse <file.m8p>   # verify checksums + section map
-dotnet run --project tools/Packet.Tait.Codeplug -- dump  <file.m8p>   # decode identity + fields
+dotnet run --project tools/Packet.Tait.Codeplug -- parse <file.m8p>              # verify checksums + section map
+dotnet run --project tools/Packet.Tait.Codeplug -- dump  <file.m8p>              # decode every mapped field
+dotnet run --project tools/Packet.Tait.Codeplug -- get   <file.m8p> [field]      # read one field (or all)
+dotnet run --project tools/Packet.Tait.Codeplug -- set   <file.m8p> <field> <v>  # set one field + save
 
 # hardware (radio latched into programming mode on <port>: power-cycle as you trigger)
 dotnet run --project tools/Packet.Tait.Codeplug -- version <port> [--baud N]
