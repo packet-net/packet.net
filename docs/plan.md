@@ -1367,6 +1367,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-19 - Tait codeplug: write-side CTCSS/DCS (set a channel's tone, byte-exact vs the CPS)
+
+Set a channel's subaudible tone by value (`set ch0.rxtone "CTCSS 88.5"` / `"DCS 023"` / `None`). Because the index points into a per-codeplug tone table, writing a tone means managing that table: `CodeplugFields` finds the tone, or reuses a free (zero) slot, or appends a new entry - growing the table record (0x32 CTCSS / 0x3D DCS) and bumping that item's `CurrentRecordCount` in the item index (record 0x01). `CodeplugImage` gained `SetRecord` (add/replace) for the structural growth. CTCSS values are validated against the standard + non-standard tone set. **Verified byte-for-byte against the CPS**: `base + set ch0.rxtone "CTCSS 88.5"` reproduces the CPS's `ctcss-rx-885` save exactly, and `set ... "DCS 023"` reproduces `dcs-rx-023` exactly (both change three records: the channel field, the tone-table record, and the item-index count - nothing else, since there is no whole-file checksum). 32 tests.
+
 ### 2026-08-19 - Tait codeplug: CTCSS/DCS tone resolution, DB-version write guard, patch backup, raw write removed
 
 Hardening and completeness on `tools/Packet.Tait.Codeplug`.

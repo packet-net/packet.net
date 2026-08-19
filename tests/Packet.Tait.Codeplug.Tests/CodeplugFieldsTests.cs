@@ -191,6 +191,58 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
+    public void Setting_a_channel_tone_manages_the_table_and_item_counts()
+    {
+        // item index (record 0x01) with a CTCSS entry (item 0x32, 12-bit, count 1) and an empty
+        // DCS entry (item 0x3D, 9-bit, count 0).
+        var itemIndex = new byte[14];
+        itemIndex[0] = 0x32; itemIndex[1] = 12; itemIndex[3] = 1; // CTCSS: count 1
+        itemIndex[7] = 0x3D; itemIndex[8] = 9;                    // DCS: count 0
+        CodeplugImage image = ImageWith(
+            new CodeplugRecord(0x01, 0, itemIndex),
+            new CodeplugRecord(0x05, 0, new byte[46]),  // 2 channels
+            new CodeplugRecord(0x32, 0, new byte[2]));  // CTCSS table = [0] placeholder
+        CodeplugFields f = CodeplugFields.Open(image);
+
+        // Fill the free slot 0 (matches the CPS): table stays one entry, no count change.
+        f.SetRxCtcss(0, 88.5);
+        f.CtcssTable.Should().Equal(88.5);
+        f.GetRxSubaudible(0).Should().Be("CTCSS 88.5");
+        ItemCount(image, 0x32).Should().Be(1);
+
+        // A distinct tone grows the table and bumps the item count.
+        f.SetTxCtcss(1, 100.0);
+        f.CtcssTable.Should().Equal(88.5, 100.0);
+        f.GetTxSubaudible(1).Should().Be("CTCSS 100.0");
+        ItemCount(image, 0x32).Should().Be(2);
+
+        // DCS from an empty table creates the table record and takes the count 0 -> 1.
+        f.SetRxDcs(1, "023");
+        f.DcsTable.Should().Equal("023");
+        f.GetRxSubaudible(1).Should().Be("DCS 023");
+        ItemCount(image, 0x3D).Should().Be(1);
+
+        f.SetRxSubaudibleNone(0);
+        f.GetRxSubaudible(0).Should().Be("None");
+
+        ((Action)(() => f.SetRxCtcss(0, 68.0))).Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    private static int ItemCount(CodeplugImage image, byte itemId)
+    {
+        byte[] idx = image.Require(0x01, 0).Data;
+        for (int off = 0; off + 7 <= idx.Length; off += 7)
+        {
+            if (idx[off] == itemId)
+            {
+                return idx[off + 3] | (idx[off + 4] << 8);
+            }
+        }
+
+        return -1;
+    }
+
+    [Fact]
     public void Audio_tap_inverted_bits_round_trip()
     {
         var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));

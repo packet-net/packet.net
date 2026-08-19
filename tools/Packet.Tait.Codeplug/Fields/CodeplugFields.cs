@@ -171,6 +171,154 @@ public sealed class CodeplugFields
         }
     }
 
+    /// <summary>Set a channel's RX subaudible to a CTCSS tone (Hz), adding it to the codeplug's
+    /// tone table if needed.</summary>
+    public void SetRxCtcss(int channel, double hz) => SetSubaudible(channel, rx: true, CtcssSlot(hz), SubaudibleType.Ctcss);
+
+    /// <summary>Set a channel's TX subaudible to a CTCSS tone (Hz).</summary>
+    public void SetTxCtcss(int channel, double hz) => SetSubaudible(channel, rx: false, CtcssSlot(hz), SubaudibleType.Ctcss);
+
+    /// <summary>Set a channel's RX subaudible to a DCS code (its 3-digit octal form, e.g. "023").</summary>
+    public void SetRxDcs(int channel, string code) => SetSubaudible(channel, rx: true, DcsSlot(code), SubaudibleType.Dcs);
+
+    /// <summary>Set a channel's TX subaudible to a DCS code.</summary>
+    public void SetTxDcs(int channel, string code) => SetSubaudible(channel, rx: false, DcsSlot(code), SubaudibleType.Dcs);
+
+    /// <summary>Clear a channel's RX subaudible signalling.</summary>
+    public void SetRxSubaudibleNone(int channel) => SetRxSubaudibleType(channel, SubaudibleType.None);
+
+    /// <summary>Clear a channel's TX subaudible signalling.</summary>
+    public void SetTxSubaudibleNone(int channel) => SetTxSubaudibleType(channel, SubaudibleType.None);
+
+    private void SetSubaudible(int channel, bool rx, int slot, SubaudibleType type)
+    {
+        if (rx)
+        {
+            SetRxSubaudibleType(channel, type);
+            SetRxSubaudibleIndex(channel, slot);
+        }
+        else
+        {
+            SetTxSubaudibleType(channel, type);
+            SetTxSubaudibleIndex(channel, slot);
+        }
+    }
+
+    private int CtcssSlot(double hz)
+    {
+        int value = (int)Math.Round(hz * 10, MidpointRounding.AwayFromZero);
+        if (!ValidCtcssTimesTen.Contains(value))
+        {
+            throw new ArgumentOutOfRangeException(nameof(hz), hz, "not a supported CTCSS tone");
+        }
+
+        return EnsureSlot(0x32, 12, 0x32, value);
+    }
+
+    private int DcsSlot(string code)
+    {
+        ArgumentNullException.ThrowIfNull(code);
+        int value;
+        try
+        {
+            value = Convert.ToInt32(code.Trim(), 8);
+        }
+        catch (FormatException)
+        {
+            throw new ArgumentException($"'{code}' is not a valid octal DCS code", nameof(code));
+        }
+
+        if (value is <= 0 or > 0x1FF)
+        {
+            throw new ArgumentOutOfRangeException(nameof(code), code, "DCS code out of 9-bit octal range");
+        }
+
+        return EnsureSlot(0x3D, 9, 0x3D, value);
+    }
+
+    /// <summary>Find <paramref name="value"/> in the tone table; if absent, reuse a free (zero)
+    /// slot or append a new entry, growing the table records and bumping the item count. Returns
+    /// the slot index.</summary>
+    private int EnsureSlot(byte section, int entryBits, byte itemId, int value)
+    {
+        var entries = ReadTable(section, entryBits).ToList();
+        int at = entries.IndexOf(value);
+        if (at >= 0)
+        {
+            return at;
+        }
+
+        at = entries.IndexOf(0);
+        if (at >= 0)
+        {
+            entries[at] = value;
+        }
+        else
+        {
+            entries.Add(value);
+            at = entries.Count - 1;
+        }
+
+        WriteTable(section, entryBits, entries);
+        SetItemCount(itemId, entries.Count);
+        return at;
+    }
+
+    private void WriteTable(byte section, int entryBits, List<int> entries)
+    {
+        var buf = new byte[((entries.Count * entryBits) + 7) / 8];
+        for (int e = 0; e < entries.Count; e++)
+        {
+            for (int k = 0; k < entryBits; k++)
+            {
+                if (((entries[e] >> k) & 1) != 0)
+                {
+                    int bit = (e * entryBits) + k;
+                    buf[bit >> 3] |= (byte)(1 << (bit & 7));
+                }
+            }
+        }
+
+        for (int rec = 0, off = 0; off < buf.Length; rec++, off += 32)
+        {
+            int len = Math.Min(32, buf.Length - off);
+            Image.SetRecord(new CodeplugRecord(section, (byte)rec, buf[off..(off + len)]));
+        }
+    }
+
+    private void SetItemCount(byte itemId, int count)
+    {
+        var records = Image.Records.Where(r => r.Section == 0x01).OrderBy(r => r.Index).ToList();
+        byte[] concat = records.SelectMany(r => r.Data).ToArray();
+        for (int off = 0; off + 7 <= concat.Length; off += 7)
+        {
+            if (concat[off] == itemId)
+            {
+                concat[off + 3] = (byte)(count & 0xFF);
+                concat[off + 4] = (byte)((count >> 8) & 0xFF);
+                int p = 0;
+                foreach (CodeplugRecord r in records)
+                {
+                    Array.Copy(concat, p, r.Data, 0, r.Data.Length);
+                    p += r.Data.Length;
+                }
+
+                return;
+            }
+        }
+
+        throw new InvalidOperationException($"item 0x{itemId:X2} not found in the item index");
+    }
+
+    /// <summary>Supported CTCSS tone frequencies times ten (standard + non-standard).</summary>
+    private static readonly HashSet<int> ValidCtcssTimesTen = new()
+    {
+        670, 693, 719, 744, 770, 797, 825, 854, 885, 915, 948, 974, 1000, 1035, 1072, 1109, 1148,
+        1188, 1230, 1273, 1318, 1365, 1413, 1462, 1514, 1567, 1622, 1679, 1738, 1799, 1862, 1928,
+        2035, 2107, 2181, 2257, 2336, 2418, 2503,
+        1598, 1655, 1713, 1773, 1835, 1899, 1966, 1995, 2065, 2291, 2541,
+    };
+
     private int[] ReadTable(byte section, int entryBits)
     {
         byte[] buf = Image.Records
