@@ -38,6 +38,7 @@
     <Project Path="tests/Packet.Node.Tests/Packet.Node.Tests.csproj" />
     <Project Path="tests/Packet.Radio.Tait.Tests/Packet.Radio.Tait.Tests.csproj" />
     <Project Path="tests/Packet.Radio.Tests/Packet.Radio.Tests.csproj" />
+    <Project Path="tests/Packet.Tait.Codeplug.Tests/Packet.Tait.Codeplug.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />
     <Project Path="tests/Packet.Rig.Flrig.Tests/Packet.Rig.Flrig.Tests.csproj" />
     <Project Path="tests/Packet.Rig.Hamlib.Tests/Packet.Rig.Hamlib.Tests.csproj" />
@@ -50,6 +51,7 @@
     <Project Path="tools/Packet.LinkBench/Packet.LinkBench.csproj" />
     <Project Path="tools/Packet.Mqtt.Spike/Packet.Mqtt.Spike.csproj" />
     <Project Path="tools/Packet.NinoTnc.Spike/Packet.NinoTnc.Spike.csproj" />
+    <Project Path="tools/Packet.Tait.Codeplug/Packet.Tait.Codeplug.csproj" />
     <Project Path="tools/Packet.Tait.Spike/Packet.Tait.Spike.csproj" />
     <Project Path="tools/Packet.Tune/Packet.Tune.csproj" />
   </Folder>

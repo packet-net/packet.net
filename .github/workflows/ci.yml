@@ -35,7 +35,7 @@ jobs:
       # the per-runner flock below coordinates across runner processes via /tmp —
       # the exclusive heavy workflows (interop / fuzz / deb-smoke) hold an
       # EXCLUSIVE flock that starves the real-time AX.25 pumps in
-      # Packet.Node.Tests if they overlap. 19 matrix legs × max-parallel 4
+      # Packet.Node.Tests if they overlap. 20 matrix legs × max-parallel 4
       # naturally saturates all four runners, so throughput is unchanged.
       max-parallel: 4
       # KEEP IN SYNC WITH tests/: the `test-matrix-guard` job below fails the build
@@ -61,6 +61,7 @@ jobs:
           - Packet.Rig.Flrig.Tests
           - Packet.Rig.Hamlib.Tests
           - Packet.Rig.Tests
+          - Packet.Tait.Codeplug.Tests
           - Packet.Tune.Core.Tests
     steps:
       - uses: actions/checkout@v6
