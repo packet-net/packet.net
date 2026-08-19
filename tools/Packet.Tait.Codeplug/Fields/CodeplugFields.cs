@@ -207,11 +207,13 @@ public sealed class CodeplugFields
     public void SetTxDcs(int channel, string code) => SetSubaudible(channel, rx: false, DcsSlot(code), SubaudibleType.Dcs);
 
     /// <summary>
-    /// Set the audio I/O (Programmable I/O -&gt; Audio) to the recommended amateur-packet configuration.
-    /// This is a fixed, CPS-validated audio-IO record (item 59): Rx row tap-out R1 (type D-Split, unmute
-    /// Except-on-PTT), EPTT1 row tap-in T13 (type A-Bypass In, unmute On-PTT, tap-out None type C-Bypass
-    /// Out), Mic PTT and EPTT2 at defaults, all inversion disabled. The audio-IO block is self-contained,
-    /// so applying this record configures the audio routing regardless of the rest of the codeplug.
+    /// Set the audio I/O (Programmable I/O -&gt; Audio) to the audio routing the amateur-packet community
+    /// has settled on over time. This is a convention, not a CPS feature - the CPS knows nothing about
+    /// packet radio; it is just a specific set of the item-59 audio fields: Rx row tap-out R1 (type
+    /// D-Split, unmute Except-on-PTT), EPTT1 row tap-in T13 (type A-Bypass In, unmute On-PTT, tap-out
+    /// None type C-Bypass Out), Mic PTT and EPTT2 at defaults, all inversion disabled. The audio-IO
+    /// block is self-contained, so applying this record configures the routing regardless of the rest of
+    /// the codeplug. The exact bytes were validated to reproduce a CPS save of that manual configuration.
     /// </summary>
     public void ApplyPacketAudioDefaults()
     {
