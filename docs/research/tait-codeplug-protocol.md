@@ -92,7 +92,7 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 
 | field | stream bit | width | encoding / meaning |
 |-------|-----------|-------|--------------------|
-| power-up state | 3 | 2 | 0 = Command, 1 = FFSK Transparent, 2 = THSD Transparent |
+| power-up state | 17 | 2 | 0 = Command, 1 = FFSK Transparent, 2 = THSD Transparent |
 | ignore subaudible on data | 85 | 1 | flag: modem not gated by CTCSS/DCS |
 | SDM enabled | 86 | 1 | (the CPS also cascades the text-SDM flags at 155..157) |
 | SDM auto-ack delay | 87 | 6 | count of 100 ms steps, 0..5000 ms |
@@ -114,7 +114,7 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 
 Transparent-mode enable additionally sets bit 0 (data options) plus bits 158 and 160; SDM enable sets bit 86 and cascades bits 155..157; these composite writes reproduce the CPS byte-for-byte.
 
-These are the codeplug prerequisites the `Packet.Radio.Tait` runtime features depend on. CCDI (RSSI, DCD / channel-busy, PTT, status queries) needs **CCDI mode allowed** on and a command-capable power-up state and CCDI port/baud. SDM reception at a host needs **SDM enabled** plus **CCDI SDM output enabled**. The FFSK Transparent byte pipe needs **transparent mode enabled**, **ignore escape sequence OFF** (the classic wedge), matching **FFSK over-air baud** at both ends, and usually **ignore subaudible on data**. Directly fixture-confirmed offsets: SDM-options (86), transparent-terminal-baud (102), HSD-baud (107), data/CCDI-port (112), THSD-modem (123), over-air-FFSK-baud (171). Offsets between two confirmed anchors are bit-exact by the contiguous packing. Three are model-derived pending a single-setting confirmation save: ignore-subaudible (85, immediately before the confirmed 86), power-up state (3..4), and CCDI-mode-allowed (177, a few bits past the last confirmed anchor).
+These are the codeplug prerequisites the `Packet.Radio.Tait` runtime features depend on. CCDI (RSSI, DCD / channel-busy, PTT, status queries) needs **CCDI mode allowed** on and a command-capable power-up state and CCDI port/baud. SDM reception at a host needs **SDM enabled** plus **CCDI SDM output enabled**. The FFSK Transparent byte pipe needs **transparent mode enabled**, **ignore escape sequence OFF** (the classic wedge), matching **FFSK over-air baud** at both ends, and usually **ignore subaudible on data**. Every offset in the table is fixture-confirmed by a single-setting CPS save, and offsets between two confirmed points are bit-exact by the contiguous packing. Power-up state pins the one subtlety in the leading region: it lands at bit 17, not the bit 3 a naive field-order count gives, because the two flow-control character fields ahead of it are a byte each rather than a single flag (the identity field's on-disk width is likewise larger than the field table's length column, which is what produces the constant shift for the fields past it).
 
 **Audio tap** is record 0x3B/0:
 

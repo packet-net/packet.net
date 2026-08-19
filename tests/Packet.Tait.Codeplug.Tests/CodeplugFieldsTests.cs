@@ -163,10 +163,12 @@ public class CodeplugFieldsTests
         f.CcdiModeAllowed.Should().BeTrue();
         (Payload()[22] & 0x02).Should().Be(0x02);
 
-        // Power-up mode (bits 3..4 = byte 0 bits[4:3]).
+        // Power-up mode (bits 17..18 = byte 2 bits[2:1]); THSD Transparent = 2 = 0b10 -> bit 18 set.
         f.PowerupState = DataPowerupMode.ThsdTransparent; // index 2
         f.PowerupState.Should().Be(DataPowerupMode.ThsdTransparent);
-        (Payload()[0] & 0x18).Should().Be(0x10);
+        (Payload()[2] & 0x06).Should().Be(0x04);
+        f.PowerupState = DataPowerupMode.FfskTransparent; // index 1 = 0b01 -> bit 17 set
+        (Payload()[2] & 0x06).Should().Be(0x02);
 
         // CCDI command-mode baud (bits 97..99, straddles byte 12/13) and THSD baud (bits 107..109).
         f.CommandModeBaud = FfskBaud.Baud9600;

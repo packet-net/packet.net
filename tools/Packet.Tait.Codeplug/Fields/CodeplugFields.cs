@@ -533,12 +533,14 @@ public sealed class CodeplugFields
         set => SetDataBits(177, 1, value ? 1 : 0);
     }
 
-    /// <summary>Which data mode the radio powers up in (bits 3..4). CCDI features need a command-capable
-    /// power-up state; the transparent modes bring the radio straight up as a byte pipe.</summary>
+    /// <summary>Which data mode the radio powers up in (bits 17..18; the two flow-control character
+    /// fields ahead of it are a byte each, so it sits higher than a naive field-order count suggests).
+    /// CCDI features need a command-capable power-up state; the transparent modes bring the radio
+    /// straight up as a byte pipe.</summary>
     public DataPowerupMode PowerupState
     {
-        get => (DataPowerupMode)GetDataBits(3, 2);
-        set => SetDataBits(3, 2, (byte)value);
+        get => (DataPowerupMode)GetDataBits(17, 2);
+        set => SetDataBits(17, 2, (byte)value);
     }
 
     /// <summary>CCDI command-mode serial baud (bits 97..99), the rate the host talks CCDI over the data
