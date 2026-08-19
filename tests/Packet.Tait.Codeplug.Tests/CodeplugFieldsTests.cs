@@ -142,6 +142,67 @@ public class CodeplugFieldsTests
 
         f.FfskTransparentBaud = FfskBaud.Baud28800; // index 6 = 0b110, straddles [12] and [13]
         f.FfskTransparentBaud.Should().Be(FfskBaud.Baud28800);
+
+        // Over-air FFSK modem rate: a 2-bit index in payload byte 21 bits[4:3] (fixture ffsk-baud-rate-1200).
+        f.FfskModemBaud = FfskModemRate.Baud2400; // index 2 = 0b10
+        f.FfskModemBaud.Should().Be(FfskModemRate.Baud2400);
+        (f.Image.Require(0x09, 0).Data[21] & 0x18).Should().Be(0x10);
+        f.FfskModemBaud = FfskModemRate.Baud1200; // index 0
+        f.FfskModemBaud.Should().Be(FfskModemRate.Baud1200);
+        (f.Image.Require(0x09, 0).Data[21] & 0x18).Should().Be(0x00);
+    }
+
+    [Fact]
+    public void Ccdi_sdm_and_transparent_enablers_use_their_pinned_bits()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
+        byte[] Payload() => f.Image.Require(0x09, 0).Data;
+
+        // CCDI master (bit 177 = byte 22 bit 1) - gates RSSI / DCD / PTT / status.
+        f.CcdiModeAllowed = true;
+        f.CcdiModeAllowed.Should().BeTrue();
+        (Payload()[22] & 0x02).Should().Be(0x02);
+
+        // Power-up mode (bits 3..4 = byte 0 bits[4:3]).
+        f.PowerupState = DataPowerupMode.ThsdTransparent; // index 2
+        f.PowerupState.Should().Be(DataPowerupMode.ThsdTransparent);
+        (Payload()[0] & 0x18).Should().Be(0x10);
+
+        // CCDI command-mode baud (bits 97..99, straddles byte 12/13) and THSD baud (bits 107..109).
+        f.CommandModeBaud = FfskBaud.Baud9600;
+        f.CommandModeBaud.Should().Be(FfskBaud.Baud9600);
+        f.HsdBaud = FfskBaud.Baud19200;
+        f.HsdBaud.Should().Be(FfskBaud.Baud19200);
+
+        // SDM output / progress / text sub-flags (bits 149, 151, 155..157, 170).
+        f.CcdiSdmOutputEnabled = true; f.CcdiSdmOutputEnabled.Should().BeTrue();
+        (Payload()[18] & 0x80).Should().Be(0x80);
+        f.CcdiProgressMessageEnabled = true; f.CcdiProgressMessageEnabled.Should().BeTrue();
+        (Payload()[18] & 0x20).Should().Be(0x20);
+        f.TextSdmIndicator = true; f.TextSdmAutoAckTransmission = true; f.TextSdmAutoAckReception = true;
+        (Payload()[19] & 0x38).Should().Be(0x38);
+        f.CcdiSdmTextOnly = true; f.CcdiSdmTextOnly.Should().BeTrue();
+        (Payload()[21] & 0x04).Should().Be(0x04);
+
+        // SDM auto-ack numeric fields.
+        f.SdmAutoAckDelayMs = 500; f.SdmAutoAckDelayMs.Should().Be(500); // 5 x 100 ms
+        f.SdmWaitForAck = 6; f.SdmWaitForAck.Should().Be(6);
+
+        // Transparent gotchas: ignore-escape (bit 114) and ignore-subaudible (bit 85).
+        f.IgnoreEscapeSequence = true; f.IgnoreEscapeSequence.Should().BeTrue();
+        (Payload()[14] & 0x04).Should().Be(0x04);
+        f.IgnoreSubaudibleOnData = true; f.IgnoreSubaudibleOnData.Should().BeTrue();
+        (Payload()[10] & 0x20).Should().Be(0x20);
+    }
+
+    [Fact]
+    public void Sdm_auto_ack_numeric_fields_reject_out_of_range()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
+        ((Action)(() => f.SdmAutoAckDelayMs = 5100)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.SdmAutoAckDelayMs = 150)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.SdmWaitForAck = 0)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.SdmWaitForAck = 16)).Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]

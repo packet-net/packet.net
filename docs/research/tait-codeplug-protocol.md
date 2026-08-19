@@ -88,15 +88,33 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 | network | 106 | 3 | network reference (the CPS "Network" column), 0..7 |
 | TX power | 109 | 3 | 0 = Off, 1 = VeryLow, 2 = Low, 3 = Medium, 4 = High |
 
-**Data / signalling** is record 0x09/0. Byte offsets into its payload:
+**Data / signalling** is record 0x09/0, a single LSB-first bit-stream packed in schema field order. The one wrinkle is that the identity field near the front is 70 bits wide on disk (not the 7 the field table's length column suggests), which puts a constant 63-bit shift between the first few flags and everything from the SDM options field onward. Five independent real-radio CPS saves land on the exact bit offsets below (67.0/97.4 spread of tone tests notwithstanding, the data block was pinned by toggling one data setting at a time and diffing), so the layout is bit-exact:
 
-| field | encoding |
-|-------|----------|
-| SDM enabled | byte 10 bit 0x40 (with byte 19 bits 0x38) |
-| THSD modem enabled | byte 15 bit 0x08 |
-| transparent mode enabled | byte 0 bit 0x01 (with byte 19 bit 0x40, byte 20) |
-| data port | byte 14 low 2 bits: 0 = Mic, 1 = Aux, 2 = Internal Options |
-| FFSK transparent baud | 3-bit index: byte 12 bits[7:6] (low 2) + byte 13 bit 0 (high) -> 1200..28800 |
+| field | stream bit | width | encoding / meaning |
+|-------|-----------|-------|--------------------|
+| power-up state | 3 | 2 | 0 = Command, 1 = FFSK Transparent, 2 = THSD Transparent |
+| ignore subaudible on data | 85 | 1 | flag: modem not gated by CTCSS/DCS |
+| SDM enabled | 86 | 1 | (the CPS also cascades the text-SDM flags at 155..157) |
+| SDM auto-ack delay | 87 | 6 | count of 100 ms steps, 0..5000 ms |
+| SDM wait-for-ack | 93 | 4 | count, 1..15 |
+| command-mode (CCDI) baud | 97 | 3 | index into 1200..28800 |
+| FFSK transparent (terminal) baud | 102 | 3 | index into 1200..28800 |
+| THSD (HSD) baud | 107 | 3 | index into 1200..28800 |
+| data / CCDI port | 112 | 2 | 0 = Mic, 1 = Aux, 2 = Internal Options |
+| ignore escape sequence | 114 | 1 | flag: OFF for a raw transparent byte pipe |
+| THSD modem enabled | 123 | 1 | flag |
+| CCDI progress message enabled | 149 | 1 | flag: emit CCDI progress/result to host |
+| CCDI SDM output enabled | 151 | 1 | flag: deliver received SDMs to the CCDI host |
+| text-SDM indicator | 155 | 1 | flag (cascaded on by SDM enable) |
+| text-SDM auto-ack transmission | 156 | 1 | flag (cascaded on by SDM enable) |
+| text-SDM auto-ack reception | 157 | 1 | flag (cascaded on by SDM enable) |
+| CCDI SDM text-only | 170 | 1 | flag |
+| FFSK (over-air modem) baud | 171 | 2 | 0 = 1200, 1 = 1200 (A75), 2 = 2400 |
+| CCDI mode allowed | 177 | 1 | flag: master gate for the CCDI command channel |
+
+Transparent-mode enable additionally sets bit 0 (data options) plus bits 158 and 160; SDM enable sets bit 86 and cascades bits 155..157; these composite writes reproduce the CPS byte-for-byte.
+
+These are the codeplug prerequisites the `Packet.Radio.Tait` runtime features depend on. CCDI (RSSI, DCD / channel-busy, PTT, status queries) needs **CCDI mode allowed** on and a command-capable power-up state and CCDI port/baud. SDM reception at a host needs **SDM enabled** plus **CCDI SDM output enabled**. The FFSK Transparent byte pipe needs **transparent mode enabled**, **ignore escape sequence OFF** (the classic wedge), matching **FFSK over-air baud** at both ends, and usually **ignore subaudible on data**. Directly fixture-confirmed offsets: SDM-options (86), transparent-terminal-baud (102), HSD-baud (107), data/CCDI-port (112), THSD-modem (123), over-air-FFSK-baud (171). Offsets between two confirmed anchors are bit-exact by the contiguous packing. Three are model-derived pending a single-setting confirmation save: ignore-subaudible (85, immediately before the confirmed 86), power-up state (3..4), and CCDI-mode-allowed (177, a few bits past the last confirmed anchor).
 
 **Audio tap** is record 0x3B/0:
 
