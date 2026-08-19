@@ -1367,6 +1367,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-19 - Tait codeplug: channel table completed (squelch, TX inhibit, network)
+
+Filled the remaining CPS channel-table columns: **squelch** (the CPS "Squelch" column = the `RxBusyDetect` field, Country/City/Hard, bit 84), **TX inhibit** (None/Busy/Mute, bit 82), and **network** (the "Network" column = `ChannelNetworkId`, 0..7, bit 106). Validated against the radio readout. The channel table is now complete (ID is the channel's position; RX/TX frequency, RX/TX Sig, power, bandwidth, squelch, TX inhibit, network all mapped). CLI `ch0.squelch` / `ch0.txinhibit` / `ch0.network`. 33 tests. Remaining CPS areas: Programmable I/O Audio (item 59, needs an entry model) and Digital (item 55) - both need single-field CPS saves to pin.
+
 ### 2026-08-19 - Tait codeplug: write-side CTCSS/DCS (set a channel's tone, byte-exact vs the CPS)
 
 Set a channel's subaudible tone by value (`set ch0.rxtone "CTCSS 88.5"` / `"DCS 023"` / `None`). Because the index points into a per-codeplug tone table, writing a tone means managing that table: `CodeplugFields` finds the tone, or reuses a free (zero) slot, or appends a new entry - growing the table record (0x32 CTCSS / 0x3D DCS) and bumping that item's `CurrentRecordCount` in the item index (record 0x01). `CodeplugImage` gained `SetRecord` (add/replace) for the structural growth. CTCSS values are validated against the standard + non-standard tone set. **Verified byte-for-byte against the CPS**: `base + set ch0.rxtone "CTCSS 88.5"` reproduces the CPS's `ctcss-rx-885` save exactly, and `set ... "DCS 023"` reproduces `dcs-rx-023` exactly (both change three records: the channel field, the tone-table record, and the item-index count - nothing else, since there is no whole-file checksum). 32 tests.

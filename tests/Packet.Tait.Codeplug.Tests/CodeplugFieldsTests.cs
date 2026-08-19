@@ -71,6 +71,28 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
+    public void Channel_squelch_inhibit_network_decode_and_round_trip()
+    {
+        var ch = new byte[23];
+        PutBits(ch, 82, 2, (long)TxInhibit.Mute);
+        PutBits(ch, 84, 2, (long)Squelch.Hard);
+        PutBits(ch, 106, 3, 5);
+
+        CodeplugFields f = CodeplugFields.Open(ImageWith(Channels(ch)));
+        f.GetTxInhibit(0).Should().Be(TxInhibit.Mute);
+        f.GetSquelch(0).Should().Be(Squelch.Hard);
+        f.GetNetwork(0).Should().Be(5);
+
+        f.SetSquelch(0, Squelch.City);
+        f.SetTxInhibit(0, TxInhibit.None);
+        f.SetNetwork(0, 2);
+        f.GetSquelch(0).Should().Be(Squelch.City);
+        f.GetTxInhibit(0).Should().Be(TxInhibit.None);
+        f.GetNetwork(0).Should().Be(2);
+        ((Action)(() => f.SetNetwork(0, 8))).Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public void Channel_fields_round_trip_through_set()
     {
         CodeplugFields f = CodeplugFields.Open(ImageWith(Channels(new byte[23])));

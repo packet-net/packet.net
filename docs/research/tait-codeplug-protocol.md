@@ -79,10 +79,13 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 | TX frequency | 16 | 32 | unsigned Hz |
 | RX frequency | 48 | 32 | unsigned Hz |
 | bandwidth | 80 | 2 | 0 = 12.5 kHz, 1 = 20 kHz, 2 = 25 kHz |
+| TX inhibit | 82 | 2 | 0 = None, 1 = Busy, 2 = Mute |
+| squelch (RxBusyDetect) | 84 | 2 | 0 = Country, 1 = City, 2 = Hard |
 | TX subaudible type | 86 | 2 | 0 = None, 1 = CTCSS, 2 = DCS |
 | RX subaudible type | 88 | 2 | 0 = None, 1 = CTCSS, 2 = DCS |
 | TX subaudible index | 90 | 8 | slot in the per-codeplug tone table (see below) |
 | RX subaudible index | 98 | 8 | slot in the per-codeplug tone table (see below) |
+| network | 106 | 3 | network reference (the CPS "Network" column), 0..7 |
 | TX power | 109 | 3 | 0 = Off, 1 = VeryLow, 2 = Low, 3 = Medium, 4 = High |
 
 **Data / signalling** is record 0x09/0. Byte offsets into its payload:

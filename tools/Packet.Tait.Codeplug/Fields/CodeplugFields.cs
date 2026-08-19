@@ -28,10 +28,13 @@ public sealed class CodeplugFields
     private const int ChTxFreq = 16;       // 32 bits, Hz
     private const int ChRxFreq = 48;       // 32 bits, Hz
     private const int ChBandwidth = 80;    // 2 bits
+    private const int ChTxInhibit = 82;    // 2 bits
+    private const int ChSquelch = 84;      // 2 bits (RxBusyDetect)
     private const int ChTxSubType = 86;    // 2 bits (subaudible type)
     private const int ChRxSubType = 88;    // 2 bits
     private const int ChTxSubIndex = 90;   // 8 bits (tone-table index)
     private const int ChRxSubIndex = 98;   // 8 bits
+    private const int ChNetwork = 106;     // 3 bits (ChannelNetworkId)
     private const int ChTxPower = 109;     // 3 bits
 
     private readonly ChannelBits _channels;
@@ -102,6 +105,25 @@ public sealed class CodeplugFields
 
     /// <summary>Set channel transmit power level.</summary>
     public void SetPowerLevel(int channel, PowerLevel value) => SetCh(channel, ChTxPower, 3, (long)value);
+
+    /// <summary>Channel squelch / busy-detect tightness (the CPS "Squelch" column).</summary>
+    public Squelch GetSquelch(int channel) => (Squelch)Ch(channel, ChSquelch, 2);
+
+    /// <summary>Set channel squelch tightness.</summary>
+    public void SetSquelch(int channel, Squelch value) => SetCh(channel, ChSquelch, 2, (long)value);
+
+    /// <summary>Channel transmit inhibit.</summary>
+    public TxInhibit GetTxInhibit(int channel) => (TxInhibit)Ch(channel, ChTxInhibit, 2);
+
+    /// <summary>Set channel transmit inhibit.</summary>
+    public void SetTxInhibit(int channel, TxInhibit value) => SetCh(channel, ChTxInhibit, 2, (long)value);
+
+    /// <summary>Channel network reference (the CPS "Network" column), 0..7.</summary>
+    public int GetNetwork(int channel) => (int)Ch(channel, ChNetwork, 3);
+
+    /// <summary>Set the channel network reference (0..7).</summary>
+    public void SetNetwork(int channel, int network) =>
+        SetCh(channel, ChNetwork, 3, network is >= 0 and <= 7 ? network : throw new ArgumentOutOfRangeException(nameof(network), network, "0..7"));
 
     /// <summary>TX subaudible signalling type (None / CTCSS / DCS).</summary>
     public SubaudibleType GetTxSubaudibleType(int channel) => (SubaudibleType)Ch(channel, ChTxSubType, 2);
