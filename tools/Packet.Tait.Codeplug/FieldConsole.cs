@@ -101,6 +101,14 @@ public static class FieldConsole
             case "tapunmute": f.TapOutUnmute = Enum<TapOutUnmute>(value); return;
             case "rxtapinverted": f.RxTapOutInverted = Bool(value); return;
             case "txtapinverted": f.Eptt1TapInInverted = Bool(value); return;
+            case "audio":
+                if (!string.Equals(value, "packet-defaults", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new FormatException("the only supported 'audio' value is 'packet-defaults'");
+                }
+
+                f.ApplyPacketAudioDefaults();
+                return;
             default: throw new FormatException($"unknown field '{name}'");
         }
     }

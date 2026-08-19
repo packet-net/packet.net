@@ -206,6 +206,28 @@ public sealed class CodeplugFields
     /// <summary>Set a channel's TX subaudible to a DCS code.</summary>
     public void SetTxDcs(int channel, string code) => SetSubaudible(channel, rx: false, DcsSlot(code), SubaudibleType.Dcs);
 
+    /// <summary>
+    /// Set the audio I/O (Programmable I/O -&gt; Audio) to the recommended amateur-packet configuration.
+    /// This is a fixed, CPS-validated audio-IO record (item 59): Rx row tap-out R1 (type D-Split, unmute
+    /// Except-on-PTT), EPTT1 row tap-in T13 (type A-Bypass In, unmute On-PTT, tap-out None type C-Bypass
+    /// Out), Mic PTT and EPTT2 at defaults, all inversion disabled. The audio-IO block is self-contained,
+    /// so applying this record configures the audio routing regardless of the rest of the codeplug.
+    /// </summary>
+    public void ApplyPacketAudioDefaults()
+    {
+        Image.RemoveRecordsInSection(0x3B);
+        Image.SetRecord(new CodeplugRecord(0x3B, 0, (byte[])PacketAudioRecord.Clone()));
+        SetItemCount(0x3B, PacketAudioEntryCount);
+    }
+
+    private const int PacketAudioEntryCount = 4;
+
+    private static readonly byte[] PacketAudioRecord =
+    {
+        0x00, 0x01, 0x00, 0xC1, 0x08, 0x80, 0x00, 0x00, 0x40, 0x00,
+        0x80, 0x3A, 0x00, 0x20, 0x00, 0x40, 0x00, 0x00, 0x10, 0x00,
+    };
+
     /// <summary>Clear a channel's RX subaudible signalling.</summary>
     public void SetRxSubaudibleNone(int channel) => SetRxSubaudibleType(channel, SubaudibleType.None);
 

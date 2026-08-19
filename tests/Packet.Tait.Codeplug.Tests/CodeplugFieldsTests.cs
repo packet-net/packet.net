@@ -265,6 +265,31 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
+    public void Apply_packet_audio_defaults_writes_the_recommended_config()
+    {
+        // item index with a 0x3B (audio I/O) entry so the item count can be set.
+        var itemIndex = new byte[7];
+        itemIndex[0] = 0x3B; itemIndex[1] = 95;  // item 0x3B, recSizeBits 95, count 0
+        CodeplugImage image = ImageWith(
+            new CodeplugRecord(0x01, 0, itemIndex),
+            new CodeplugRecord(0x3B, 0, new byte[8])); // some other prior audio record
+        CodeplugFields f = CodeplugFields.Open(image);
+
+        f.ApplyPacketAudioDefaults();
+
+        // Byte-exact against the CPS's own "set to packet defaults" save.
+        Convert.ToHexString(image.Require(0x3B, 0).Data).ToLowerInvariant()
+            .Should().Be("000100c1088000004000803a0020004000001000");
+        ItemCount(image, 0x3B).Should().Be(4);
+        // The fields we can read match the recommended config.
+        f.GetRxTapOutNode().Should().Be(1);        // Rx tap out R1
+        f.GetEptt1TapInNode().Should().Be(13);     // EPTT1 tap in T13
+        f.TapOutUnmute.Should().Be(TapOutUnmute.ExceptOnPtt);
+        f.RxTapOutInverted.Should().BeFalse();
+        f.Eptt1TapInInverted.Should().BeFalse();
+    }
+
+    [Fact]
     public void Audio_tap_inverted_bits_round_trip()
     {
         var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));
