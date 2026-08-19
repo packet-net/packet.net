@@ -479,6 +479,179 @@ public sealed class CodeplugFields
         }
     }
 
+    /// <summary>Over-air FFSK modem data rate (the CPS "FFSK Baud Rate" field), a 2-bit index in
+    /// payload byte 21 bits[4:3]. This is the on-air symbol rate the modem runs and must match at both
+    /// ends of a Transparent link; distinct from the terminal serial rate (<see cref="FfskTransparentBaud"/>).</summary>
+    public FfskModemRate FfskModemBaud
+    {
+        get => (FfskModemRate)((Data[21] >> 3) & 0x03);
+        set => Data[21] = (byte)((Data[21] & ~0x18) | (((byte)value & 0x03) << 3));
+    }
+
+    // ---- CCDI / SDM / transparent runtime-feature enablers (record 0x09/0) --------------
+    //
+    // These are the codeplug prerequisites the Packet.Radio.Tait runtime features depend on: CCDI
+    // (RSSI / DCD / PTT / status) needs the radio in a CCDI-capable command mode, SDM reception needs
+    // the messages routed out to the host, and the FFSK Transparent path has its own escape / mute
+    // gotchas. Each field is one entry in the item-9 (record 0x09/0) bit-stream, which is packed in
+    // schema field order; the bit offsets below are validated against real-radio CPS saves.
+
+    // LSB-first bit access into the single data/signalling record payload.
+    private long GetDataBits(int bitOffset, int bitLength)
+    {
+        byte[] p = Data;
+        long value = 0;
+        for (int k = 0; k < bitLength; k++)
+        {
+            int b = bitOffset + k;
+            if (((p[b >> 3] >> (b & 7)) & 1) != 0)
+            {
+                value |= 1L << k;
+            }
+        }
+
+        return value;
+    }
+
+    private void SetDataBits(int bitOffset, int bitLength, long value)
+    {
+        byte[] p = Data;
+        for (int k = 0; k < bitLength; k++)
+        {
+            int b = bitOffset + k;
+            int mask = 1 << (b & 7);
+            p[b >> 3] = ((value >> k) & 1) != 0 ? (byte)(p[b >> 3] | mask) : (byte)(p[b >> 3] & ~mask);
+        }
+    }
+
+    /// <summary>Master switch that lets the radio drop into CCDI command mode (the CPS "CCDI mode
+    /// allowed" field, bit 177). Every CCDI runtime feature - RSSI, DCD / channel-busy, PTT control,
+    /// status queries - needs this on; with it off the radio never presents the CCDI command channel.</summary>
+    public bool CcdiModeAllowed
+    {
+        get => GetDataBits(177, 1) != 0;
+        set => SetDataBits(177, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Which data mode the radio powers up in (bits 17..18; the two flow-control character
+    /// fields ahead of it are a byte each, so it sits higher than a naive field-order count suggests).
+    /// CCDI features need a command-capable power-up state; the transparent modes bring the radio
+    /// straight up as a byte pipe.</summary>
+    public DataPowerupMode PowerupState
+    {
+        get => (DataPowerupMode)GetDataBits(17, 2);
+        set => SetDataBits(17, 2, (byte)value);
+    }
+
+    /// <summary>CCDI command-mode serial baud (bits 97..99), the rate the host talks CCDI over the data
+    /// port. A 3-bit index into the shared baud table.</summary>
+    public FfskBaud CommandModeBaud
+    {
+        get => (FfskBaud)GetDataBits(97, 3);
+        set => SetDataBits(97, 3, (byte)value);
+    }
+
+    /// <summary>THSD (high-speed data) modem baud (bits 107..109), a 3-bit index into the shared baud
+    /// table. Meaningful when <see cref="ThsdModemEnabled"/> is on.</summary>
+    public FfskBaud HsdBaud
+    {
+        get => (FfskBaud)GetDataBits(107, 3);
+        set => SetDataBits(107, 3, (byte)value);
+    }
+
+    /// <summary>Route received SDMs out to the CCDI host (the CPS "CCDI SDM output" field, bit 151).
+    /// Needed for a host to see incoming short data messages over the CCDI channel.</summary>
+    public bool CcdiSdmOutputEnabled
+    {
+        get => GetDataBits(151, 1) != 0;
+        set => SetDataBits(151, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Emit CCDI progress / result messages to the host (bit 149). Lets a host see command
+    /// acknowledgements and send progress.</summary>
+    public bool CcdiProgressMessageEnabled
+    {
+        get => GetDataBits(149, 1) != 0;
+        set => SetDataBits(149, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Deliver SDMs to the host as text only, suppressing the binary form (bit 170).</summary>
+    public bool CcdiSdmTextOnly
+    {
+        get => GetDataBits(170, 1) != 0;
+        set => SetDataBits(170, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Show the received-SDM indicator (bit 155). Part of the text-SDM behaviour group that
+    /// <see cref="SdmEnabled"/> defaults on when SDM is enabled.</summary>
+    public bool TextSdmIndicator
+    {
+        get => GetDataBits(155, 1) != 0;
+        set => SetDataBits(155, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Auto-acknowledge transmitted text SDMs (bit 156).</summary>
+    public bool TextSdmAutoAckTransmission
+    {
+        get => GetDataBits(156, 1) != 0;
+        set => SetDataBits(156, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Auto-acknowledge received text SDMs (bit 157).</summary>
+    public bool TextSdmAutoAckReception
+    {
+        get => GetDataBits(157, 1) != 0;
+        set => SetDataBits(157, 1, value ? 1 : 0);
+    }
+
+    /// <summary>SDM auto-acknowledge delay in milliseconds (bits 87..92, a 6-bit count of 100 ms steps,
+    /// 0..5000 ms).</summary>
+    public int SdmAutoAckDelayMs
+    {
+        get => (int)GetDataBits(87, 6) * 100;
+        set
+        {
+            if (value is < 0 or > 5000 || value % 100 != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..5000 ms in 100 ms steps");
+            }
+
+            SetDataBits(87, 6, value / 100);
+        }
+    }
+
+    /// <summary>SDM wait-for-acknowledge count (bits 93..96, 1..15).</summary>
+    public int SdmWaitForAck
+    {
+        get => (int)GetDataBits(93, 4);
+        set
+        {
+            if (value is < 1 or > 15)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "1..15");
+            }
+
+            SetDataBits(93, 4, value);
+        }
+    }
+
+    /// <summary>Ignore the FFSK Transparent-mode escape sequence (the CPS "Ignore escape sequence"
+    /// field, bit 114). For a raw byte pipe this must be OFF, otherwise the escape bytes are swallowed
+    /// and the link wedges; it is the classic TNC-less-Tait gotcha.</summary>
+    public bool IgnoreEscapeSequence
+    {
+        get => GetDataBits(114, 1) != 0;
+        set => SetDataBits(114, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Ignore subaudible (CTCSS / DCS) signalling on the data path (bit 85). For a transparent
+    /// data link both ends generally set this so the modem is not gated by tone squelch.</summary>
+    public bool IgnoreSubaudibleOnData
+    {
+        get => GetDataBits(85, 1) != 0;
+        set => SetDataBits(85, 1, value ? 1 : 0);
+    }
+
     // ---- Audio tap block (record 0x3B/0) ------------------------------------------------
 
     private byte[] Audio => Image.Require(0x3B, 0).Data;

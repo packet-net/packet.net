@@ -24,7 +24,9 @@ public enum PowerLevel : byte
     High = 4,
 }
 
-/// <summary>FFSK transparent-mode baud rate (a 3-bit index in the data/signalling block).</summary>
+/// <summary>Transparent-mode terminal serial baud rate (a 3-bit index in the data/signalling block).
+/// The CPS "Baud Rate (FFSK transparent mode)" / DataTMBaudRate field - the rate the serial terminal
+/// clocks bytes in Transparent mode, not the over-air modem rate (see <see cref="FfskModemRate"/>).</summary>
 public enum FfskBaud : byte
 {
     Baud1200 = 0,
@@ -34,6 +36,26 @@ public enum FfskBaud : byte
     Baud14400 = 4,
     Baud19200 = 5,
     Baud28800 = 6,
+}
+
+/// <summary>Over-air FFSK modem data rate (the CPS "FFSK Baud Rate" / FFSKBaudRate field, a 2-bit
+/// index). Must match at both ends of a Transparent link. Distinct from the terminal serial rate
+/// (<see cref="FfskBaud"/>).</summary>
+public enum FfskModemRate : byte
+{
+    Baud1200 = 0,
+    Baud1200A75 = 1,
+    Baud2400 = 2,
+}
+
+/// <summary>Which data mode the radio boots into (the CPS "Power-up state" field, a 2-bit index).
+/// Command Mode gives a CCDI host command channel; the transparent modes bring the radio up as a byte
+/// pipe.</summary>
+public enum DataPowerupMode : byte
+{
+    CommandMode = 0,
+    FfskTransparent = 1,
+    ThsdTransparent = 2,
 }
 
 /// <summary>Data-port routing: where the data modem's audio is sourced and sunk. Low two bits
