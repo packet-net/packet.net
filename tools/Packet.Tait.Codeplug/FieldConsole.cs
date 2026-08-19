@@ -20,6 +20,9 @@ public static class FieldConsole
             rows.Add(($"ch{c}.splittx", f.GetSeparateTxFrequency(c) ? "true" : "false"));
             rows.Add(($"ch{c}.bandwidth", f.GetBandwidth(c).ToString()));
             rows.Add(($"ch{c}.power", f.GetPowerLevel(c).ToString()));
+            rows.Add(($"ch{c}.squelch", f.GetSquelch(c).ToString()));
+            rows.Add(($"ch{c}.txinhibit", f.GetTxInhibit(c).ToString()));
+            rows.Add(($"ch{c}.network", Int(f.GetNetwork(c))));
             rows.Add(($"ch{c}.txtone", f.GetTxSubaudible(c)));
             rows.Add(($"ch{c}.rxtone", f.GetRxSubaudible(c)));
         }
@@ -73,6 +76,9 @@ public static class FieldConsole
                 case "splittx": f.SetSeparateTxFrequency(channel, Bool(value)); return;
                 case "bandwidth": f.SetBandwidth(channel, Enum<Bandwidth>(value)); return;
                 case "power": f.SetPowerLevel(channel, Enum<PowerLevel>(value)); return;
+                case "squelch": f.SetSquelch(channel, Enum<Squelch>(value)); return;
+                case "txinhibit": f.SetTxInhibit(channel, Enum<TxInhibit>(value)); return;
+                case "network": f.SetNetwork(channel, int.Parse(value, CultureInfo.InvariantCulture)); return;
                 case "txtonetype": f.SetTxSubaudibleType(channel, Enum<SubaudibleType>(value)); return;
                 case "txtoneindex": f.SetTxSubaudibleIndex(channel, int.Parse(value, CultureInfo.InvariantCulture)); return;
                 case "rxtonetype": f.SetRxSubaudibleType(channel, Enum<SubaudibleType>(value)); return;

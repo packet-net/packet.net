@@ -67,3 +67,21 @@ public enum SubaudibleType : byte
     Ctcss = 1,
     Dcs = 2,
 }
+
+/// <summary>Per-channel squelch / busy-detect tightness (the CPS "Squelch" column; the schema field
+/// is RxBusyDetect). A 2-bit index.</summary>
+public enum Squelch : byte
+{
+    Country = 0,
+    City = 1,
+    Hard = 2,
+}
+
+/// <summary>Per-channel transmit inhibit (a 2-bit index): never inhibit, inhibit while the channel is
+/// busy, or inhibit unless the subaudible mute is open.</summary>
+public enum TxInhibit : byte
+{
+    None = 0,
+    Busy = 1,
+    Mute = 2,
+}
