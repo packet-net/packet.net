@@ -43,12 +43,14 @@ dotnet run --project tools/Packet.Tait.Codeplug -- set   <file.m8p> <field> <v> 
 # hardware (radio latched into programming mode on <port>: power-cycle as you trigger)
 dotnet run --project tools/Packet.Tait.Codeplug -- version <port> [--baud N]
 dotnet run --project tools/Packet.Tait.Codeplug -- read    <port> <out.m8p> [--baud N]
-dotnet run --project tools/Packet.Tait.Codeplug -- write   <port> <in.m8p>  [--baud N]
-dotnet run --project tools/Packet.Tait.Codeplug -- patch   <port> <field> <value> [--restore]  # live-set one field (writes only the changed record)
+dotnet run --project tools/Packet.Tait.Codeplug -- patch   <port> <field> <value>  # live-set one field (backs up first)
 ```
 
-The single-record `patch` wire path is unit-tested but not yet bench-validated (the full same-image
-write is, from the M1 session); validate it on a sacrificial radio before trusting it.
+`patch` reads the codeplug, sets the field, backs up the pre-change image to a file, and writes the
+whole codeplug (a single-record write is not committed by the radio - #744). It is hardware-validated.
+There is no raw whole-file write verb: the underlying write method refuses a radio whose database
+version is not in its validated set (the write init argument and field offsets are version-specific).
+Reading is unrestricted.
 
 ## Status and safety
 
