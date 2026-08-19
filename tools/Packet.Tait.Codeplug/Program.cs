@@ -40,7 +40,7 @@ try
         case "set":
             return CmdSet(Arg(args, 1), Arg(args, 2), Arg(args, 3));
         case "patch":
-            return CmdPatch(Arg(args, 1), Arg(args, 2), Arg(args, 3), Baud(args), HasFlag(args, "--restore"));
+            return CmdPatch(Arg(args, 1), Arg(args, 2), Arg(args, 3), Baud(args));
         case "version":
             return CmdVersion(Arg(args, 1), Baud(args));
         case "read":
@@ -183,7 +183,7 @@ static int CmdWrite(string port, string inPath, int baud, bool yes)
     return 0;
 }
 
-static int CmdPatch(string port, string field, string value, int baud, bool restore)
+static int CmdPatch(string port, string field, string value, int baud)
 {
     using var programmer = new TaitProgrammer(new SerialPortLine(port, baud), HardwareOptions(baud));
     Console.WriteLine($"opening {port} at {baud} 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
@@ -198,6 +198,7 @@ static int CmdPatch(string port, string field, string value, int baud, bool rest
 
     var changed = image.Records
         .Where(r => !r.Data.AsSpan().SequenceEqual(snapshot[(r.Section, r.Index)]))
+        .Select(r => $"0x{r.Section:X2}/{r.Index}")
         .ToList();
     if (changed.Count == 0)
     {
@@ -205,24 +206,13 @@ static int CmdPatch(string port, string field, string value, int baud, bool rest
         return 0;
     }
 
-    Console.WriteLine($"{field}: {before} -> {after}");
-    Console.WriteLine($"writing {changed.Count} changed record(s): " +
-        string.Join(", ", changed.Select(r => $"0x{r.Section:X2}/{r.Index}")));
-    programmer.WriteRecords(changed);
-
-    string reread = FieldConsole.Get(CodeplugFields.Open(programmer.ReadImage()), field);
-    Console.WriteLine($"read back: {field} = {reread}  [{(reread == after ? "OK" : "MISMATCH")}]");
-
-    if (restore)
-    {
-        var originals = changed
-            .Select(r => new CodeplugRecord(r.Section, r.Index, snapshot[(r.Section, r.Index)]))
-            .ToList();
-        programmer.WriteRecords(originals);
-        string restored = FieldConsole.Get(CodeplugFields.Open(programmer.ReadImage()), field);
-        Console.WriteLine($"restored: {field} = {restored}  [{(restored == before ? "OK" : "MISMATCH")}]");
-    }
-
+    // The radio does not commit a partial write block (bench 2026-08-19: a single-record write is
+    // acked but discarded, likely because the i<arg> init encodes the full-codeplug scope, #744).
+    // So a live field change writes the WHOLE codeplug, which is the validated write path.
+    Console.WriteLine($"{field}: {before} -> {after} (changed record(s): {string.Join(", ", changed)})");
+    int written = programmer.WriteImage(image);
+    Console.WriteLine($"wrote {written} records. Re-read (a fresh power cycle) to verify; " +
+        "read-back in the same session is unreliable after a write.");
     return 0;
 }
 
@@ -261,7 +251,7 @@ static void PrintUsage()
     Console.WriteLine("  version <port> [--baud N]              interrogate a radio");
     Console.WriteLine("  read    <port> <out.m8p> [--baud N]    read the codeplug");
     Console.WriteLine("  write   <port> <in.m8p>  [--baud N]    program the codeplug (backs up first)");
-    Console.WriteLine("  patch   <port> <field> <value> [--restore]  live-set one field (writes only the changed record)");
+    Console.WriteLine("  patch   <port> <field> <value>         live-set one field (full read-modify-write)");
     Console.WriteLine();
     Console.WriteLine("the radio must be latched into programming mode (power-cycle as you trigger).");
 }

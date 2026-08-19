@@ -26,6 +26,10 @@ public sealed class CodeplugFields
     private const int ChTxFreq = 16;       // 32 bits, Hz
     private const int ChRxFreq = 48;       // 32 bits, Hz
     private const int ChBandwidth = 80;    // 2 bits
+    private const int ChTxSubType = 86;    // 2 bits (subaudible type)
+    private const int ChRxSubType = 88;    // 2 bits
+    private const int ChTxSubIndex = 90;   // 8 bits (tone-table index)
+    private const int ChRxSubIndex = 98;   // 8 bits
     private const int ChTxPower = 109;     // 3 bits
 
     private readonly ChannelBits _channels;
@@ -96,6 +100,33 @@ public sealed class CodeplugFields
 
     /// <summary>Set channel transmit power level.</summary>
     public void SetPowerLevel(int channel, PowerLevel value) => SetCh(channel, ChTxPower, 3, (long)value);
+
+    /// <summary>TX subaudible signalling type (None / CTCSS / DCS).</summary>
+    public SubaudibleType GetTxSubaudibleType(int channel) => (SubaudibleType)Ch(channel, ChTxSubType, 2);
+
+    /// <summary>Set the TX subaudible signalling type.</summary>
+    public void SetTxSubaudibleType(int channel, SubaudibleType value) => SetCh(channel, ChTxSubType, 2, (long)value);
+
+    /// <summary>RX subaudible signalling type (None / CTCSS / DCS).</summary>
+    public SubaudibleType GetRxSubaudibleType(int channel) => (SubaudibleType)Ch(channel, ChRxSubType, 2);
+
+    /// <summary>Set the RX subaudible signalling type.</summary>
+    public void SetRxSubaudibleType(int channel, SubaudibleType value) => SetCh(channel, ChRxSubType, 2, (long)value);
+
+    /// <summary>TX subaudible tone/code index into the radio's tone table.</summary>
+    public int GetTxSubaudibleIndex(int channel) => (int)Ch(channel, ChTxSubIndex, 8);
+
+    /// <summary>Set the TX subaudible tone/code index.</summary>
+    public void SetTxSubaudibleIndex(int channel, int index) => SetCh(channel, ChTxSubIndex, 8, RequireByte(index));
+
+    /// <summary>RX subaudible tone/code index into the radio's tone table.</summary>
+    public int GetRxSubaudibleIndex(int channel) => (int)Ch(channel, ChRxSubIndex, 8);
+
+    /// <summary>Set the RX subaudible tone/code index.</summary>
+    public void SetRxSubaudibleIndex(int channel, int index) => SetCh(channel, ChRxSubIndex, 8, RequireByte(index));
+
+    private static long RequireByte(int v) =>
+        v is >= 0 and <= 255 ? v : throw new ArgumentOutOfRangeException(nameof(v), v, "0..255");
 
     private long Ch(int channel, int offset, int length)
     {
@@ -224,5 +255,19 @@ public sealed class CodeplugFields
     {
         get => (TapOutUnmute)(Audio[4] & 0x0E);
         set => Audio[4] = (byte)((Audio[4] & 0xF1) | ((byte)value & 0x0E));
+    }
+
+    /// <summary>RX tap-out audio inverted (payload byte 4 bit 0x40).</summary>
+    public bool RxTapOutInverted
+    {
+        get => (Audio[4] & 0x40) != 0;
+        set { if (value) { Audio[4] |= 0x40; } else { Audio[4] &= 0xBF; } }
+    }
+
+    /// <summary>EPTT1 tap-in audio inverted (payload byte 14 bit 0x08).</summary>
+    public bool Eptt1TapInInverted
+    {
+        get => (Audio[14] & 0x08) != 0;
+        set { if (value) { Audio[14] |= 0x08; } else { Audio[14] &= 0xF7; } }
     }
 }

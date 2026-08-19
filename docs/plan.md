@@ -1367,6 +1367,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-19 - Tait codeplug: live field patching hardware-validated; CTCSS + tap-inverted fields
+
+Bench session on the real radio (s/n 19925328) and two more mapped fields.
+
+- **Live field patching works.** `patch <port> <field> <value>` (read, set the field, write) was validated end to end: `patch ch0.bandwidth Wide` changed exactly one record's one bandwidth byte (`00` -> `02`), the change persisted across a power-cycle, every other record was untouched, and a restore returned the radio byte-identical to its start.
+- **Single-record write does not commit; full write does.** A `b`/`i`/`w`/`e` block containing only the changed record is acked but discarded by the radio (the codeplug read back unchanged) - the `i53380146` init arg almost certainly encodes the full-codeplug scope ([#744](https://github.com/packet-net/packet.net/issues/744)), so a partial block is inconsistent. `patch` therefore writes the whole image (the M1-validated path); `TaitProgrammer.WriteRecords` keeps the single-record capability for when #744 is decoded. Also found: read-back in the same session after a write is unreliable, so verification is a fresh read after a power-cycle.
+- **New fields** (validated against single-field CPS saves, pinned by tests): per-channel CTCSS/DCS subaudible TX/RX type (`SubaudibleType` None/CTCSS/DCS) and TX/RX tone index; audio RX-tap-out-inverted and EPTT1-tap-in-inverted. CLI `ch0.txtonetype`, `ch0.rxtoneindex`, `rxtapinverted`, `txtapinverted`, etc. The tone-index-to-frequency table is a follow-up (Tait's ordering is not plain frequency-sorted). 29 tests in the suite.
+
 ### 2026-08-19 - Tait codeplug typed field map + get/set, unified with the serial transport
 
 Added a typed, version-pinned field map to `tools/Packet.Tait.Codeplug` so the tool can read and write named codeplug settings, not just whole images. This is the M2 field-mapping half, brought together with the M1 serial transport into one read-patch-write pipeline. Facts only: the field encodings are stated and pinned by tests, no derivation narrative.
