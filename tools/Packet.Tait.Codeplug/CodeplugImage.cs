@@ -13,8 +13,10 @@ public sealed class CodeplugImage
     /// <summary>Header key/value pairs (Radio, Tier, DBVer, Build, Date, ...), in file order.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> Header { get; }
 
+    private readonly List<CodeplugRecord> _records;
+
     /// <summary>The records, in file/wire order.</summary>
-    public IReadOnlyList<CodeplugRecord> Records { get; }
+    public IReadOnlyList<CodeplugRecord> Records => _records;
 
     /// <summary>Create an image from a header and records.</summary>
     public CodeplugImage(
@@ -22,7 +24,30 @@ public sealed class CodeplugImage
         IReadOnlyList<CodeplugRecord> records)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Records = records ?? throw new ArgumentNullException(nameof(records));
+        _records = records is null ? throw new ArgumentNullException(nameof(records)) : new List<CodeplugRecord>(records);
+    }
+
+    /// <summary>Add or replace the record with this type and index, keeping records ordered by
+    /// address. Used by structural field writes that grow a table.</summary>
+    public void SetRecord(CodeplugRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        int existing = _records.FindIndex(r => r.Section == record.Section && r.Index == record.Index);
+        if (existing >= 0)
+        {
+            _records[existing] = record;
+            return;
+        }
+
+        int insertAt = _records.FindIndex(r => r.Address > record.Address);
+        if (insertAt < 0)
+        {
+            _records.Add(record);
+        }
+        else
+        {
+            _records.Insert(insertAt, record);
+        }
     }
 
     /// <summary>Look up a header value by key, or null if absent.</summary>

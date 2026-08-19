@@ -77,6 +77,8 @@ public static class FieldConsole
                 case "txtoneindex": f.SetTxSubaudibleIndex(channel, int.Parse(value, CultureInfo.InvariantCulture)); return;
                 case "rxtonetype": f.SetRxSubaudibleType(channel, Enum<SubaudibleType>(value)); return;
                 case "rxtoneindex": f.SetRxSubaudibleIndex(channel, int.Parse(value, CultureInfo.InvariantCulture)); return;
+                case "rxtone": SetTone(f, channel, rx: true, value); return;
+                case "txtone": SetTone(f, channel, rx: false, value); return;
                 default: throw new FormatException($"unknown channel field '{field}'");
             }
         }
@@ -94,6 +96,46 @@ public static class FieldConsole
             case "rxtapinverted": f.RxTapOutInverted = Bool(value); return;
             case "txtapinverted": f.Eptt1TapInInverted = Bool(value); return;
             default: throw new FormatException($"unknown field '{name}'");
+        }
+    }
+
+    private static void SetTone(CodeplugFields f, int channel, bool rx, string value)
+    {
+        string s = value.Trim();
+        if (string.Equals(s, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            if (rx) { f.SetRxSubaudibleNone(channel); } else { f.SetTxSubaudibleNone(channel); }
+            return;
+        }
+
+        // Accept "CTCSS 88.5" / "C88.5" / "88.5", and "DCS 023" / "D023".
+        if (s.StartsWith("CTCSS", StringComparison.OrdinalIgnoreCase))
+        {
+            s = "C" + s[5..].Trim();
+        }
+        else if (s.StartsWith("DCS", StringComparison.OrdinalIgnoreCase))
+        {
+            s = "D" + s[3..].Trim();
+        }
+
+        if (s.Length > 1 && (s[0] is 'C' or 'c'))
+        {
+            double hz = double.Parse(s[1..], CultureInfo.InvariantCulture);
+            if (rx) { f.SetRxCtcss(channel, hz); } else { f.SetTxCtcss(channel, hz); }
+        }
+        else if (s.Length > 1 && (s[0] is 'D' or 'd'))
+        {
+            string code = s[1..].Trim();
+            if (rx) { f.SetRxDcs(channel, code); } else { f.SetTxDcs(channel, code); }
+        }
+        else if (s.Contains('.', StringComparison.Ordinal))
+        {
+            double hz = double.Parse(s, CultureInfo.InvariantCulture);
+            if (rx) { f.SetRxCtcss(channel, hz); } else { f.SetTxCtcss(channel, hz); }
+        }
+        else
+        {
+            throw new FormatException($"tone must be like 'CTCSS 88.5', 'DCS 023', or 'None' (got '{value}')");
         }
     }
 
