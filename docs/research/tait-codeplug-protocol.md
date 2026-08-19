@@ -59,4 +59,38 @@ Section 0x27 (issue #745) does not round-trip: the radio holds `0x5E`, the CPS `
 
 ## In-place patching
 
-The CPS reads and writes the entire map, but the protocol is record-addressed: a write block can carry just the record(s) that changed rather than all 170. The library models records individually, so a single-field patch is mechanically a matter of sending `b`, `i`, the changed record, `e`. The one caveat is section 0x27: if the radio validates a whole-codeplug checksum on commit, a partial write needs 0x27 recomputed over the resulting image (see the open questions).
+The CPS reads and writes the entire map, but the protocol is record-addressed: a write block can carry just the record(s) that changed rather than all 170. The library models records individually, so a single-field patch is mechanically a matter of sending `b`, `i`, the changed record, `e`. There is no whole-codeplug checksum (integrity is per-record), so editing one field perturbs exactly that record, confirmed on hardware by a same-image write round-trip.
+
+## Codeplug field map (DBVer 0094 / 0095)
+
+Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packet.Tait.Codeplug/Fields/CodeplugFields.cs) exposes a typed, version-pinned view; each field below is pinned by a test and validated against a real radio's codeplug. Record 0x27 (a 12-bit field) carries the database version, which pins the map (the tool refuses an unmapped version).
+
+**Channels** live in record type 0x05 as one contiguous LSB-first bit-stream, 181 bits per channel, physically split across a run of up to 32-byte records, so a channel can straddle a record boundary. Channel N's field at stream bit `N*181 + offset`:
+
+| field | offset (bits) | width | encoding |
+|-------|---------------|-------|----------|
+| separate TX frequency | 0 | 1 | flag: TX differs from RX |
+| TX frequency | 16 | 32 | unsigned Hz |
+| RX frequency | 48 | 32 | unsigned Hz |
+| bandwidth | 80 | 2 | 0 = 12.5 kHz, 1 = 20 kHz, 2 = 25 kHz |
+| TX power | 109 | 3 | 0 = Off, 1 = VeryLow, 2 = Low, 3 = Medium, 4 = High |
+
+**Data / signalling** is record 0x09/0. Byte offsets into its payload:
+
+| field | encoding |
+|-------|----------|
+| SDM enabled | byte 10 bit 0x40 (with byte 19 bits 0x38) |
+| THSD modem enabled | byte 15 bit 0x08 |
+| transparent mode enabled | byte 0 bit 0x01 (with byte 19 bit 0x40, byte 20) |
+| data port | byte 14 low 2 bits: 0 = Mic, 1 = Aux, 2 = Internal Options |
+| FFSK transparent baud | 3-bit index: byte 12 bits[7:6] (low 2) + byte 13 bit 0 (high) -> 1200..28800 |
+
+**Audio tap** is record 0x3B/0:
+
+| field | encoding |
+|-------|----------|
+| RX tap-out node | byte 3 low nibble (R1=1, R2=2, R4=4, R5=5, R7=7, R10=10) |
+| EPTT1 tap-in node | byte 11 = 0x20 \| (node << 1) (T3=3, T5=5, T8=8, T13=13) |
+| RX tap-out unmute | byte 4 bits[3:1] |
+
+The CLI reads and writes these by name: `get <file.m8p> [field]`, `set <file.m8p> <field> <value>` (e.g. `set base.m8p ch0.bandwidth Wide`). A `set` rewrites only the one record the field lives in.

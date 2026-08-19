@@ -35,6 +35,12 @@ try
             return CmdParse(Arg(args, 1));
         case "dump":
             return CmdDump(Arg(args, 1));
+        case "get":
+            return CmdGet(Arg(args, 1), args.Length > 2 && !args[2].StartsWith("--", StringComparison.Ordinal) ? args[2] : null);
+        case "set":
+            return CmdSet(Arg(args, 1), Arg(args, 2), Arg(args, 3));
+        case "patch":
+            return CmdPatch(Arg(args, 1), Arg(args, 2), Arg(args, 3), Baud(args), HasFlag(args, "--restore"));
         case "version":
             return CmdVersion(Arg(args, 1), Baud(args));
         case "read":
@@ -70,10 +76,51 @@ static int CmdParse(string path)
 static int CmdDump(string path)
 {
     CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
-    var section0 = image.Records.Where(r => r.Section == 0).ToList();
-    TaitIdentity id = TaitIdentity.FromSectionZero(section0);
-    Console.WriteLine($"DBVer:    {image.DatabaseVersion}");
-    Console.WriteLine($"identity: {id}");
+    Console.WriteLine($"DBVer (header): {image.DatabaseVersion}");
+    Console.WriteLine($"DBVer (radio):  {image.DatabaseVersionFromRecord}");
+    if (!CodeplugFields.IsSupported(image))
+    {
+        Console.WriteLine("(field map not available for this database version)");
+        return 0;
+    }
+
+    CodeplugFields fields = CodeplugFields.Open(image);
+    foreach ((string name, string value) in FieldConsole.Describe(fields))
+    {
+        Console.WriteLine($"  {name,-16} {value}");
+    }
+
+    return 0;
+}
+
+static int CmdGet(string path, string? field)
+{
+    CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
+    CodeplugFields fields = CodeplugFields.Open(image);
+    if (field is null)
+    {
+        foreach ((string name, string value) in FieldConsole.Describe(fields))
+        {
+            Console.WriteLine($"{name}={value}");
+        }
+    }
+    else
+    {
+        Console.WriteLine(FieldConsole.Get(fields, field));
+    }
+
+    return 0;
+}
+
+static int CmdSet(string path, string field, string value)
+{
+    CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
+    CodeplugFields fields = CodeplugFields.Open(image);
+    string before = FieldConsole.Get(fields, field);
+    FieldConsole.Set(fields, field, value);
+    string after = FieldConsole.Get(fields, field);
+    File.WriteAllText(path, image.ToM8p());
+    Console.WriteLine($"{field}: {before} -> {after}  (saved {path})");
     return 0;
 }
 
@@ -136,6 +183,49 @@ static int CmdWrite(string port, string inPath, int baud, bool yes)
     return 0;
 }
 
+static int CmdPatch(string port, string field, string value, int baud, bool restore)
+{
+    using var programmer = new TaitProgrammer(new SerialPortLine(port, baud), HardwareOptions(baud));
+    Console.WriteLine($"opening {port} at {baud} 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
+
+    CodeplugImage image = programmer.ReadImage();
+    var snapshot = image.Records.ToDictionary(r => (r.Section, r.Index), r => (byte[])r.Data.Clone());
+    CodeplugFields fields = CodeplugFields.Open(image);
+
+    string before = FieldConsole.Get(fields, field);
+    FieldConsole.Set(fields, field, value);
+    string after = FieldConsole.Get(fields, field);
+
+    var changed = image.Records
+        .Where(r => !r.Data.AsSpan().SequenceEqual(snapshot[(r.Section, r.Index)]))
+        .ToList();
+    if (changed.Count == 0)
+    {
+        Console.WriteLine($"{field} is already {value}; nothing to write.");
+        return 0;
+    }
+
+    Console.WriteLine($"{field}: {before} -> {after}");
+    Console.WriteLine($"writing {changed.Count} changed record(s): " +
+        string.Join(", ", changed.Select(r => $"0x{r.Section:X2}/{r.Index}")));
+    programmer.WriteRecords(changed);
+
+    string reread = FieldConsole.Get(CodeplugFields.Open(programmer.ReadImage()), field);
+    Console.WriteLine($"read back: {field} = {reread}  [{(reread == after ? "OK" : "MISMATCH")}]");
+
+    if (restore)
+    {
+        var originals = changed
+            .Select(r => new CodeplugRecord(r.Section, r.Index, snapshot[(r.Section, r.Index)]))
+            .ToList();
+        programmer.WriteRecords(originals);
+        string restored = FieldConsole.Get(CodeplugFields.Open(programmer.ReadImage()), field);
+        Console.WriteLine($"restored: {field} = {restored}  [{(restored == before ? "OK" : "MISMATCH")}]");
+    }
+
+    return 0;
+}
+
 static string Arg(string[] args, int index)
 {
     if (index >= args.Length || args[index].StartsWith("--", StringComparison.Ordinal))
@@ -165,10 +255,13 @@ static void PrintUsage()
 {
     Console.WriteLine("usage:");
     Console.WriteLine("  parse   <file.m8p>                     verify checksums + section map");
-    Console.WriteLine("  dump    <file.m8p>                     decode identity + known fields");
+    Console.WriteLine("  dump    <file.m8p>                     decode every mapped field");
+    Console.WriteLine("  get     <file.m8p> [field]             read one field (or all as name=value)");
+    Console.WriteLine("  set     <file.m8p> <field> <value>     set one field and save (e.g. ch0.bandwidth Wide)");
     Console.WriteLine("  version <port> [--baud N]              interrogate a radio");
     Console.WriteLine("  read    <port> <out.m8p> [--baud N]    read the codeplug");
     Console.WriteLine("  write   <port> <in.m8p>  [--baud N]    program the codeplug (backs up first)");
+    Console.WriteLine("  patch   <port> <field> <value> [--restore]  live-set one field (writes only the changed record)");
     Console.WriteLine();
     Console.WriteLine("the radio must be latched into programming mode (power-cycle as you trigger).");
 }
