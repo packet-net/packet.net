@@ -59,6 +59,10 @@ public sealed class TaitProgrammer : IDisposable
     private const byte Prompt = (byte)'>';
     private const byte Banner = (byte)'v';
 
+    /// <summary>Programming-application version stamped into a read-back .m8p header. The CPS reads
+    /// this field; it corresponds to the database versions this map covers.</summary>
+    private const string CpsBuild = "3.09.00.0004";
+
     private readonly ISerialLine _line;
     private readonly ProgrammerOptions _options;
     private readonly byte[] _rx = new byte[512];
@@ -140,13 +144,22 @@ public sealed class TaitProgrammer : IDisposable
             records.AddRange(ReadSection(s));
         }
 
+        // The CPS requires Radio / Tier / DBVer / Build in the .m8p header, or it refuses to load
+        // the file ("unrecognised format or invalid database version"). DBVer comes from the
+        // codeplug itself (record 0x27), so the file matches the radio's actual database version.
         TaitIdentity id = TaitIdentity.FromSectionZero(records.Where(r => r.Section == 0).ToList());
+        CodeplugRecord? versionRecord = records.FirstOrDefault(r => r.Section == 0x27);
+        string dbVersion = versionRecord is { Data.Length: >= 2 }
+            ? (versionRecord.Data[0] | ((versionRecord.Data[1] & 0x0F) << 8)).ToString("D4", CultureInfo.InvariantCulture)
+            : "";
+        string tier = id.Model is { Length: > 4 } model && model[4] == '2' ? "TM8200" : "TM8100";
         var header = new List<KeyValuePair<string, string>>
         {
             new("Radio", "TM8000"),
-            new("Model", id.Model ?? ""),
-            new("Firmware", id.Firmware ?? ""),
-            new("Serial", id.Serial ?? ""),
+            new("Date", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture)),
+            new("Tier", tier),
+            new("DBVer", dbVersion),
+            new("Build", CpsBuild),
         };
         return new CodeplugImage(header, records);
     }

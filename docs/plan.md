@@ -1367,6 +1367,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-19 - Tait codeplug: recommended amateur-packet audio preset
+
+The full Programmable-I/O Audio block (record 0x3B / item 59) is a multi-row table with a trimmed on-disk encoding and Type/Unmute enums that are not in the recovered schema, so mapping every field is high-cost and low packet-value. Instead, shipped the piece that is actually useful: `set <file.m8p> audio packet-defaults` applies the recommended amateur-packet audio configuration (Rx tap-out R1 / type D-Split / unmute Except-on-PTT; EPTT1 tap-in T13; Mic PTT and EPTT2 default; all inversion off) as a validated preset. It writes the known-good audio-IO record and its item count and **reproduces the CPS's own "set to packet defaults" save byte-for-byte**; because the audio-IO block is self-contained it applies cleanly on top of any codeplug (verified: applied to the real radio codeplug, only record 0x3B changes). `CodeplugImage` gained `RemoveRecordsInSection`. 34 tests.
+
 ### 2026-08-19 - Tait codeplug: channel table completed (squelch, TX inhibit, network)
 
 Filled the remaining CPS channel-table columns: **squelch** (the CPS "Squelch" column = the `RxBusyDetect` field, Country/City/Hard, bit 84), **TX inhibit** (None/Busy/Mute, bit 82), and **network** (the "Network" column = `ChannelNetworkId`, 0..7, bit 106). Validated against the radio readout. The channel table is now complete (ID is the channel's position; RX/TX frequency, RX/TX Sig, power, bandwidth, squelch, TX inhibit, network all mapped). CLI `ch0.squelch` / `ch0.txinhibit` / `ch0.network`. 33 tests. Remaining CPS areas: Programmable I/O Audio (item 59, needs an entry model) and Digital (item 55) - both need single-field CPS saves to pin.

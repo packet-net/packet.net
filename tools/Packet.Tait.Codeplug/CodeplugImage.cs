@@ -50,6 +50,9 @@ public sealed class CodeplugImage
         }
     }
 
+    /// <summary>Remove every record of a given type. Used when replacing a whole item's records.</summary>
+    public void RemoveRecordsInSection(byte section) => _records.RemoveAll(r => r.Section == section);
+
     /// <summary>Look up a header value by key, or null if absent.</summary>
     public string? HeaderValue(string key) =>
         Header.FirstOrDefault(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)).Value;

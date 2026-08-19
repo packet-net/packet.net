@@ -113,12 +113,20 @@ static int CmdSet(string path, string field, string value)
 {
     CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
     CodeplugFields fields = CodeplugFields.Open(image);
-    string before = FieldConsole.Get(fields, field);
+    string? before = TryGet(fields, field);
     FieldConsole.Set(fields, field, value);
-    string after = FieldConsole.Get(fields, field);
     File.WriteAllText(path, image.ToM8p());
-    Console.WriteLine($"{field}: {before} -> {after}  (saved {path})");
+    string? after = TryGet(fields, field);
+    Console.WriteLine(before is not null && after is not null
+        ? $"{field}: {before} -> {after}  (saved {path})"
+        : $"applied {field}={value}  (saved {path})");
     return 0;
+
+    static string? TryGet(CodeplugFields f, string name)
+    {
+        try { return FieldConsole.Get(f, name); }
+        catch (FormatException) { return null; }
+    }
 }
 
 static int CmdVersion(string port, int baud)
