@@ -162,6 +162,35 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
+    public void Subaudible_index_resolves_to_a_tone_via_the_codeplug_tables()
+    {
+        // channel 0: RX = CTCSS index 1, TX = DCS index 0.
+        var ch = new byte[23];
+        PutBits(ch, 88, 2, (long)SubaudibleType.Ctcss); // RX type
+        PutBits(ch, 98, 8, 1);                          // RX index -> CTCSS table[1]
+        PutBits(ch, 86, 2, (long)SubaudibleType.Dcs);   // TX type
+        PutBits(ch, 90, 8, 0);                          // TX index -> DCS table[0]
+
+        // CTCSS table (0x32): two 12-bit entries, freq*10 -> 67.0, 97.4.
+        var ctcss = new byte[3];
+        PutBits(ctcss, 0, 12, 670);
+        PutBits(ctcss, 12, 12, 974);
+        // DCS table (0x3D): one 9-bit entry, octal 017 = 15.
+        var dcs = new byte[2];
+        PutBits(dcs, 0, 9, 15);
+
+        CodeplugFields f = CodeplugFields.Open(ImageWith(
+            Channels(ch),
+            new CodeplugRecord(0x32, 0, ctcss),
+            new CodeplugRecord(0x3D, 0, dcs)));
+
+        f.CtcssTable.Should().Equal(67.0, 97.4);
+        f.DcsTable.Should().Equal("017");
+        f.GetRxSubaudible(0).Should().Be("CTCSS 97.4");
+        f.GetTxSubaudible(0).Should().Be("DCS 017");
+    }
+
+    [Fact]
     public void Audio_tap_inverted_bits_round_trip()
     {
         var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));

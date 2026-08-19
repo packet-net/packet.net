@@ -12,11 +12,10 @@
 // Hardware verbs (radio in programming mode on <port>):
 //   version <port> [--baud N]                 interrogate: model / firmware / serial
 //   read    <port> <out.m8p> [--baud N]       read the whole codeplug to a file
-//   write   <port> <in.m8p>  [--baud N]       program a codeplug (auto-backs-up first)
 //
 // GOLDEN RULES (docs/research/tait-codeplug-programming-brief.md): always back up before a write
-// (write does this), never touch firmware (this only writes the codeplug region), version-pin on
-// DBVer, and bench on a sacrificial radio first.
+// (patch does this), never touch firmware (this only writes the codeplug region), version-pin on
+// DBVer (the write path refuses an unvalidated database version), and bench on a sacrificial radio first.
 
 using System.Globalization;
 using Packet.Tait.Codeplug;
@@ -45,8 +44,6 @@ try
             return CmdVersion(Arg(args, 1), Baud(args));
         case "read":
             return CmdRead(Arg(args, 1), Arg(args, 2), Baud(args));
-        case "write":
-            return CmdWrite(Arg(args, 1), Arg(args, 2), Baud(args), HasFlag(args, "--yes"));
         default:
             PrintUsage();
             return 1;
@@ -150,39 +147,6 @@ static int CmdRead(string port, string outPath, int baud)
     return 0;
 }
 
-static int CmdWrite(string port, string inPath, int baud, bool yes)
-{
-    CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(inPath));
-    Console.WriteLine($"loaded {image.Records.Count} records from {inPath} (DBVer {image.DatabaseVersion})");
-
-    using var programmer = new TaitProgrammer(new SerialPortLine(port, baud), HardwareOptions(baud));
-    Console.WriteLine($"opening {port} at {baud} 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
-
-    // Golden rule 1: always snapshot the current codeplug before writing.
-    string backup = $"{inPath}.pre-write-backup-{DateTime.UtcNow:yyyyMMddHHmmss}.m8p";
-    Console.WriteLine("backing up the current codeplug first...");
-    File.WriteAllText(backup, programmer.ReadImage().ToM8p());
-    Console.WriteLine($"backup saved to {backup}");
-
-    if (yes)
-    {
-        Console.WriteLine($"--yes given: writing {image.Records.Count} records to {port}...");
-    }
-    else
-    {
-        Console.Write($"about to WRITE {image.Records.Count} records to the radio on {port}. Type 'yes' to proceed: ");
-        if (Console.ReadLine()?.Trim() != "yes")
-        {
-            Console.WriteLine("aborted; no write performed.");
-            return 0;
-        }
-    }
-
-    int written = programmer.WriteImage(image);
-    Console.WriteLine($"wrote {written} records. Re-read to verify before trusting.");
-    return 0;
-}
-
 static int CmdPatch(string port, string field, string value, int baud)
 {
     using var programmer = new TaitProgrammer(new SerialPortLine(port, baud), HardwareOptions(baud));
@@ -206,6 +170,16 @@ static int CmdPatch(string port, string field, string value, int baud)
         return 0;
     }
 
+    // Golden rule 1: snapshot the pre-change codeplug before writing. `image` still holds the
+    // radio's original bytes for the records we did not touch, and `snapshot` holds the originals
+    // for the ones we did, so restore the changed records and write the backup file.
+    var original = new CodeplugImage(
+        image.Header,
+        image.Records.Select(r => new CodeplugRecord(r.Section, r.Index, snapshot[(r.Section, r.Index)])).ToList());
+    string backup = $"{field}.pre-patch-backup-{DateTime.UtcNow:yyyyMMddHHmmss}.m8p";
+    File.WriteAllText(backup, original.ToM8p());
+    Console.WriteLine($"backed up the pre-change codeplug to {backup}");
+
     // The radio does not commit a partial write block (bench 2026-08-19: a single-record write is
     // acked but discarded, likely because the i<arg> init encodes the full-codeplug scope, #744).
     // So a live field change writes the WHOLE codeplug, which is the validated write path.
@@ -225,8 +199,6 @@ static string Arg(string[] args, int index)
 
     return args[index];
 }
-
-static bool HasFlag(string[] args, string flag) => Array.Exists(args, a => a == flag);
 
 static int Baud(string[] args)
 {
@@ -250,7 +222,6 @@ static void PrintUsage()
     Console.WriteLine("  set     <file.m8p> <field> <value>     set one field and save (e.g. ch0.bandwidth Wide)");
     Console.WriteLine("  version <port> [--baud N]              interrogate a radio");
     Console.WriteLine("  read    <port> <out.m8p> [--baud N]    read the codeplug");
-    Console.WriteLine("  write   <port> <in.m8p>  [--baud N]    program the codeplug (backs up first)");
     Console.WriteLine("  patch   <port> <field> <value>         live-set one field (full read-modify-write)");
     Console.WriteLine();
     Console.WriteLine("the radio must be latched into programming mode (power-cycle as you trigger).");

@@ -1367,6 +1367,15 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-19 - Tait codeplug: CTCSS/DCS tone resolution, DB-version write guard, patch backup, raw write removed
+
+Hardening and completeness on `tools/Packet.Tait.Codeplug`.
+
+- **CTCSS/DCS fully resolved.** A channel's subaudible index is a slot in a per-codeplug tone table (insertion order), not a fixed tone number. The tones live in their own records: CTCSS in record 0x32 as 12-bit frequency-times-ten, DCS in record 0x3D as 9-bit octal codes. `CodeplugFields` now reads both tables and resolves a channel to the real tone (`get ch0.rxtone` -> `CTCSS 67.0` / `DCS 017` / `None`), plus `ctcsstable` / `dcstable`. Validated against a six-channel boundary sample (67.0 / 97.4 / 100.0 / 254.1 Hz, DCS 017 / 754) - all exact.
+- **DB-version write guard.** The write init argument and field offsets are DB-version-specific, so `TaitProgrammer.WriteRecords` now reads the radio's DB version (record 0x27) and refuses to write unless it is in a validated set (0094/0095), with an `AllowUnvalidatedWrite` override. This is the "won't-write-the-wrong-radio" safety net; reading stays unrestricted.
+- **`patch` backs up first**; the raw `write <port> <file>` CLI verb was removed (a whole-file write of an arbitrary image is a footgun) while `WriteImage`/`WriteRecords` stay as the underlying, now-guarded, methods.
+- 31 tests. Field map + tone tables documented in [`docs/research/tait-codeplug-protocol.md`](research/tait-codeplug-protocol.md). #744 (the write init arg) was closed: it is a DBVer-0095 constant, not image-derived, so partial-write-via-`i` is not possible.
+
 ### 2026-08-19 - Tait codeplug: live field patching hardware-validated; CTCSS + tap-inverted fields
 
 Bench session on the real radio (s/n 19925328) and two more mapped fields.

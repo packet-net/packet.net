@@ -28,6 +28,17 @@ public sealed class ProgrammerOptions
     /// so which rate the boot handshake wants is unconfirmed; probing both within one connect window
     /// avoids spending a power-cycle to guess. Empty = leave the port at its opened rate.</summary>
     public IReadOnlyList<int> ProbeBauds { get; init; } = [];
+
+    /// <summary>Database versions the write path (<see cref="TaitProgrammer.WriteRecords"/>) will
+    /// program. The write init argument is a per-DB-version constant, and the field offsets are
+    /// version-specific, so writing a radio on an unvalidated version is refused unless
+    /// <see cref="AllowUnvalidatedWrite"/> is set.</summary>
+    public IReadOnlySet<string> ValidatedWriteDbVersions { get; init; } =
+        new HashSet<string>(StringComparer.Ordinal) { "0094", "0095" };
+
+    /// <summary>Override the write DB-version guard. Only set this when you have separately
+    /// confirmed the write init argument and field map are correct for the radio's DB version.</summary>
+    public bool AllowUnvalidatedWrite { get; init; }
 }
 
 /// <summary>
@@ -180,7 +191,8 @@ public sealed class TaitProgrammer : IDisposable
         // Faithful preamble reads (harmless, and what the CPS does before a write).
         ReadSection(0x00);
         Transact("p01");
-        ReadSection(0x27);
+        IReadOnlyList<CodeplugRecord> versionRecords = ReadSection(0x27);
+        GuardWriteDatabaseVersion(versionRecords);
         Transact("p00");
         ReadSection(0x2F);
         Transact("p01");
@@ -196,6 +208,28 @@ public sealed class TaitProgrammer : IDisposable
 
         Transact("e"); // end/commit
         return toWrite.Count;
+    }
+
+    private void GuardWriteDatabaseVersion(IReadOnlyList<CodeplugRecord> versionRecords)
+    {
+        if (_options.AllowUnvalidatedWrite)
+        {
+            return;
+        }
+
+        CodeplugRecord? r = versionRecords.FirstOrDefault(x => x.Section == 0x27);
+        string version = r is { Data.Length: >= 2 }
+            ? (r.Data[0] | ((r.Data[1] & 0x0F) << 8)).ToString("D4", CultureInfo.InvariantCulture)
+            : "(unknown)";
+
+        if (!_options.ValidatedWriteDbVersions.Contains(version))
+        {
+            throw new NotSupportedException(
+                $"refusing to write: the radio's database version '{version}' is not one the write " +
+                $"path is validated for ({string.Join(", ", _options.ValidatedWriteDbVersions)}). The " +
+                "write init argument and field offsets are DB-version-specific; writing an unvalidated " +
+                "version risks a rejected or inconsistent write.");
+        }
     }
 
     /// <summary>Leave programming mode (<c>^</c>), best-effort.</summary>

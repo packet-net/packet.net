@@ -93,6 +93,24 @@ public class TaitProgrammerTests
     }
 
     [Fact]
+    public void WriteRecords_refuses_an_unvalidated_database_version()
+    {
+        // r27 reports DB version 0091 (0x5B), which is not in the validated write set.
+        Dictionary<string, string> script = InterrogateScript();
+        script["r27"] = "2700025B007C\r>"; // 0x05B = 91 -> "0091"
+        script["r22"] = "22000100DD\r>";
+        var radio = new ScriptedRadio(
+            script,
+            fallback: cmd => cmd is "b" or "e" || cmd.StartsWith('i') || cmd.StartsWith('w') ? ">" : null);
+        using var programmer = new TaitProgrammer(radio);
+
+        Action act = () => programmer.WriteRecords(new[] { new CodeplugRecord(0x30, 0, new byte[] { 0x01 }) });
+
+        act.Should().Throw<NotSupportedException>();
+        radio.CommandsSeen.Should().NotContain("b"); // guarded before the write block opens
+    }
+
+    [Fact]
     public void WriteRecords_never_writes_the_read_only_identity()
     {
         Dictionary<string, string> script = InterrogateScript();

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Packet.Tait.Codeplug;
 
 /// <summary>
@@ -127,6 +129,74 @@ public sealed class CodeplugFields
 
     private static long RequireByte(int v) =>
         v is >= 0 and <= 255 ? v : throw new ArgumentOutOfRangeException(nameof(v), v, "0..255");
+
+    // ---- Subaudible tone/code tables --------------------------------------------------
+    //
+    // A channel's subaudible index does not name a tone directly: it points into a small
+    // per-codeplug table populated in insertion order. CTCSS frequencies live in record type 0x32
+    // as 12-bit entries (frequency in tenths of a Hz); DCS codes live in record type 0x3D as 9-bit
+    // entries (the octal code as its integer value). GetRx/TxSubaudible resolves a channel to the
+    // actual tone.
+
+    /// <summary>CTCSS frequencies (Hz) in the codeplug's tone table, indexed by subaudible index.</summary>
+    public IReadOnlyList<double> CtcssTable => ReadTable(0x32, 12).Select(v => v / 10.0).ToList();
+
+    /// <summary>DCS codes (as their 3-digit octal form) in the codeplug's code table.</summary>
+    public IReadOnlyList<string> DcsTable =>
+        ReadTable(0x3D, 9).Select(v => Convert.ToString(v, 8).PadLeft(3, '0')).ToList();
+
+    /// <summary>Resolve a channel's RX subaudible signalling to a human string: <c>None</c>,
+    /// <c>CTCSS 67.0</c>, or <c>DCS 017</c>.</summary>
+    public string GetRxSubaudible(int channel) =>
+        DescribeSubaudible(GetRxSubaudibleType(channel), GetRxSubaudibleIndex(channel));
+
+    /// <summary>Resolve a channel's TX subaudible signalling to a human string.</summary>
+    public string GetTxSubaudible(int channel) =>
+        DescribeSubaudible(GetTxSubaudibleType(channel), GetTxSubaudibleIndex(channel));
+
+    private string DescribeSubaudible(SubaudibleType type, int index)
+    {
+        switch (type)
+        {
+            case SubaudibleType.Ctcss:
+                IReadOnlyList<double> ctcss = CtcssTable;
+                return index < ctcss.Count
+                    ? $"CTCSS {ctcss[index].ToString("0.0", CultureInfo.InvariantCulture)}"
+                    : $"CTCSS #{index} (not in table)";
+            case SubaudibleType.Dcs:
+                IReadOnlyList<string> dcs = DcsTable;
+                return index < dcs.Count ? $"DCS {dcs[index]}" : $"DCS #{index} (not in table)";
+            default:
+                return "None";
+        }
+    }
+
+    private int[] ReadTable(byte section, int entryBits)
+    {
+        byte[] buf = Image.Records
+            .Where(r => r.Section == section)
+            .OrderBy(r => r.Index)
+            .SelectMany(r => r.Data)
+            .ToArray();
+        int count = (buf.Length * 8) / entryBits;
+        var entries = new int[count];
+        for (int e = 0; e < count; e++)
+        {
+            int value = 0;
+            for (int k = 0; k < entryBits; k++)
+            {
+                int bit = (e * entryBits) + k;
+                if (((buf[bit >> 3] >> (bit & 7)) & 1) != 0)
+                {
+                    value |= 1 << k;
+                }
+            }
+
+            entries[e] = value;
+        }
+
+        return entries;
+    }
 
     private long Ch(int channel, int offset, int length)
     {

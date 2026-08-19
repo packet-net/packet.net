@@ -20,11 +20,12 @@ public static class FieldConsole
             rows.Add(($"ch{c}.splittx", f.GetSeparateTxFrequency(c) ? "true" : "false"));
             rows.Add(($"ch{c}.bandwidth", f.GetBandwidth(c).ToString()));
             rows.Add(($"ch{c}.power", f.GetPowerLevel(c).ToString()));
-            rows.Add(($"ch{c}.txtonetype", f.GetTxSubaudibleType(c).ToString()));
-            rows.Add(($"ch{c}.txtoneindex", Int(f.GetTxSubaudibleIndex(c))));
-            rows.Add(($"ch{c}.rxtonetype", f.GetRxSubaudibleType(c).ToString()));
-            rows.Add(($"ch{c}.rxtoneindex", Int(f.GetRxSubaudibleIndex(c))));
+            rows.Add(($"ch{c}.txtone", f.GetTxSubaudible(c)));
+            rows.Add(($"ch{c}.rxtone", f.GetRxSubaudible(c)));
         }
+
+        rows.Add(("ctcsstable", string.Join(",", f.CtcssTable.Select(hz => hz.ToString("0.0", CultureInfo.InvariantCulture)))));
+        rows.Add(("dcstable", string.Join(",", f.DcsTable)));
 
         rows.Add(("sdm", f.SdmEnabled ? "true" : "false"));
         rows.Add(("thsd", f.ThsdModemEnabled ? "true" : "false"));

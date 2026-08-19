@@ -65,6 +65,8 @@ The write is the full codeplug (all 170 writable records), not just the changed 
 
 Read-back in the same session after a write is unreliable (the post-write read comes back malformed), so verify a write with a fresh read after a power-cycle rather than in-session.
 
+The CLI exposes this as `patch <port> <field> <value>` (read, set the field, write the whole codeplug), which snapshots the pre-change codeplug to a backup file first. There is no raw whole-file write verb: the write path is only validated for specific database versions (the write init argument and field offsets are version-specific), so the underlying write method refuses a radio whose DB version is not in its validated set. Reading is unrestricted.
+
 ## Codeplug field map (DBVer 0094 / 0095)
 
 Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packet.Tait.Codeplug/Fields/CodeplugFields.cs) exposes a typed, version-pinned view; each field below is pinned by a test and validated against a real radio's codeplug. Record 0x27 (a 12-bit field) carries the database version, which pins the map (the tool refuses an unmapped version).
@@ -79,8 +81,8 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 | bandwidth | 80 | 2 | 0 = 12.5 kHz, 1 = 20 kHz, 2 = 25 kHz |
 | TX subaudible type | 86 | 2 | 0 = None, 1 = CTCSS, 2 = DCS |
 | RX subaudible type | 88 | 2 | 0 = None, 1 = CTCSS, 2 = DCS |
-| TX subaudible index | 90 | 8 | tone/code index into the radio's tone table |
-| RX subaudible index | 98 | 8 | tone/code index into the radio's tone table |
+| TX subaudible index | 90 | 8 | slot in the per-codeplug tone table (see below) |
+| RX subaudible index | 98 | 8 | slot in the per-codeplug tone table (see below) |
 | TX power | 109 | 3 | 0 = Off, 1 = VeryLow, 2 = Low, 3 = Medium, 4 = High |
 
 **Data / signalling** is record 0x09/0. Byte offsets into its payload:
@@ -102,5 +104,7 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 | RX tap-out unmute | byte 4 bits[3:1] |
 | RX tap-out inverted | byte 4 bit 0x40 |
 | EPTT1 tap-in inverted | byte 14 bit 0x08 |
+
+**Subaudible tones** are two-level: a channel's subaudible index is a slot in a small per-codeplug table (populated in insertion order), not a fixed tone number. The tones themselves are stored in their own records: **CTCSS in record type 0x32** as 12-bit entries holding the frequency in tenths of a Hz (e.g. `670` = 67.0 Hz), and **DCS in record type 0x3D** as 9-bit entries holding the code as its octal value (e.g. `15` = octal 017). So channel N's tone is `CtcssTable[index]` or `DcsTable[index]`; `CodeplugFields` resolves it (`get ch0.rxtone` -> `CTCSS 67.0` / `DCS 017` / `None`).
 
 The CLI reads and writes these by name: `get <file.m8p> [field]`, `set <file.m8p> <field> <value>` (e.g. `set base.m8p ch0.bandwidth Wide`). A `set` rewrites only the one record the field lives in.
