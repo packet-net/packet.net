@@ -58,3 +58,12 @@ public enum TapOutUnmute : byte
     RxMuteOpen = 0x06,
     ExceptOnPtt = 0x08,
 }
+
+/// <summary>Per-channel subaudible signalling type (a 2-bit index): no tone, CTCSS (analogue tone),
+/// or DCS (digital code). The specific tone/code is a separate index into the radio's tone table.</summary>
+public enum SubaudibleType : byte
+{
+    None = 0,
+    Ctcss = 1,
+    Dcs = 2,
+}

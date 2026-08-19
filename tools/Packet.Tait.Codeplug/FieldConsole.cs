@@ -20,6 +20,10 @@ public static class FieldConsole
             rows.Add(($"ch{c}.splittx", f.GetSeparateTxFrequency(c) ? "true" : "false"));
             rows.Add(($"ch{c}.bandwidth", f.GetBandwidth(c).ToString()));
             rows.Add(($"ch{c}.power", f.GetPowerLevel(c).ToString()));
+            rows.Add(($"ch{c}.txtonetype", f.GetTxSubaudibleType(c).ToString()));
+            rows.Add(($"ch{c}.txtoneindex", Int(f.GetTxSubaudibleIndex(c))));
+            rows.Add(($"ch{c}.rxtonetype", f.GetRxSubaudibleType(c).ToString()));
+            rows.Add(($"ch{c}.rxtoneindex", Int(f.GetRxSubaudibleIndex(c))));
         }
 
         rows.Add(("sdm", f.SdmEnabled ? "true" : "false"));
@@ -30,6 +34,8 @@ public static class FieldConsole
         rows.Add(("rxtap", "R" + Int(f.GetRxTapOutNode())));
         rows.Add(("txtap", "T" + Int(f.GetEptt1TapInNode())));
         rows.Add(("tapunmute", f.TapOutUnmute.ToString()));
+        rows.Add(("rxtapinverted", f.RxTapOutInverted ? "true" : "false"));
+        rows.Add(("txtapinverted", f.Eptt1TapInInverted ? "true" : "false"));
         return rows;
     }
 
@@ -66,6 +72,10 @@ public static class FieldConsole
                 case "splittx": f.SetSeparateTxFrequency(channel, Bool(value)); return;
                 case "bandwidth": f.SetBandwidth(channel, Enum<Bandwidth>(value)); return;
                 case "power": f.SetPowerLevel(channel, Enum<PowerLevel>(value)); return;
+                case "txtonetype": f.SetTxSubaudibleType(channel, Enum<SubaudibleType>(value)); return;
+                case "txtoneindex": f.SetTxSubaudibleIndex(channel, int.Parse(value, CultureInfo.InvariantCulture)); return;
+                case "rxtonetype": f.SetRxSubaudibleType(channel, Enum<SubaudibleType>(value)); return;
+                case "rxtoneindex": f.SetRxSubaudibleIndex(channel, int.Parse(value, CultureInfo.InvariantCulture)); return;
                 default: throw new FormatException($"unknown channel field '{field}'");
             }
         }
@@ -80,6 +90,8 @@ public static class FieldConsole
             case "rxtap": f.SetRxTapOutNode(Node(value, 'R')); return;
             case "txtap": f.SetEptt1TapInNode(Node(value, 'T')); return;
             case "tapunmute": f.TapOutUnmute = Enum<TapOutUnmute>(value); return;
+            case "rxtapinverted": f.RxTapOutInverted = Bool(value); return;
+            case "txtapinverted": f.Eptt1TapInInverted = Bool(value); return;
             default: throw new FormatException($"unknown field '{name}'");
         }
     }

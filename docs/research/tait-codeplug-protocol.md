@@ -57,9 +57,13 @@ The `i53380146` init argument (`53 38 01 46`, issue #744) is sent once before th
 
 Section 0x27 (issue #745) does not round-trip: the radio holds `0x5E`, the CPS `.m8p` holds `0x5F`, and two CPS save-as of the same codeplug are byte-identical (so it is not a save counter), while a same-content hardware write left it unchanged (so it is not a per-write counter). The working theory is that 0x27 is a checksum over the whole codeplug including section 0, whose value flips because the radio's section-0 identity differs from the file's blanked stub. Reversing the checksum function so a patcher can recompute it is the remaining work before a single-field in-place patch is safe.
 
-## In-place patching
+## Patching a field
 
-The CPS reads and writes the entire map, but the protocol is record-addressed: a write block can carry just the record(s) that changed rather than all 170. The library models records individually, so a single-field patch is mechanically a matter of sending `b`, `i`, the changed record, `e`. There is no whole-codeplug checksum (integrity is per-record), so editing one field perturbs exactly that record, confirmed on hardware by a same-image write round-trip.
+A field change is a read, a `CodeplugFields` set, then a write. There is no whole-codeplug checksum (integrity is per-record), so a change perturbs exactly the one record the field lives in. Hardware-validated end to end: `patch ch0.bandwidth Wide` changed a single record's single bandwidth byte (`00` -> `02`), persisted across a power-cycle, and left every other record untouched; a restore returned the radio byte-identical to its start.
+
+The write is the full codeplug (all 170 writable records), not just the changed record. A **single-record write block does not commit**: the radio acks a `b`/`i`/`w`/`e` block containing only the changed record but discards it (bench-confirmed, the codeplug read back unchanged). The `i53380146` init argument almost certainly encodes the full-codeplug scope, so a partial block is inconsistent and dropped; a working single-record patch is gated on decoding that argument (issue #744). Until then, patching writes the whole image, which is the validated path.
+
+Read-back in the same session after a write is unreliable (the post-write read comes back malformed), so verify a write with a fresh read after a power-cycle rather than in-session.
 
 ## Codeplug field map (DBVer 0094 / 0095)
 
@@ -73,6 +77,10 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 | TX frequency | 16 | 32 | unsigned Hz |
 | RX frequency | 48 | 32 | unsigned Hz |
 | bandwidth | 80 | 2 | 0 = 12.5 kHz, 1 = 20 kHz, 2 = 25 kHz |
+| TX subaudible type | 86 | 2 | 0 = None, 1 = CTCSS, 2 = DCS |
+| RX subaudible type | 88 | 2 | 0 = None, 1 = CTCSS, 2 = DCS |
+| TX subaudible index | 90 | 8 | tone/code index into the radio's tone table |
+| RX subaudible index | 98 | 8 | tone/code index into the radio's tone table |
 | TX power | 109 | 3 | 0 = Off, 1 = VeryLow, 2 = Low, 3 = Medium, 4 = High |
 
 **Data / signalling** is record 0x09/0. Byte offsets into its payload:
@@ -92,5 +100,7 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 | RX tap-out node | byte 3 low nibble (R1=1, R2=2, R4=4, R5=5, R7=7, R10=10) |
 | EPTT1 tap-in node | byte 11 = 0x20 \| (node << 1) (T3=3, T5=5, T8=8, T13=13) |
 | RX tap-out unmute | byte 4 bits[3:1] |
+| RX tap-out inverted | byte 4 bit 0x40 |
+| EPTT1 tap-in inverted | byte 14 bit 0x08 |
 
 The CLI reads and writes these by name: `get <file.m8p> [field]`, `set <file.m8p> <field> <value>` (e.g. `set base.m8p ch0.bandwidth Wide`). A `set` rewrites only the one record the field lives in.

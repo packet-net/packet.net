@@ -14,7 +14,7 @@ public class FieldConsoleTests
             {
                 new CodeplugRecord(0x05, 0, new byte[23]),
                 new CodeplugRecord(0x09, 0, new byte[22]),
-                new CodeplugRecord(0x3B, 0, new byte[12]),
+                new CodeplugRecord(0x3B, 0, new byte[16]),
             });
         return CodeplugFields.Open(image);
     }

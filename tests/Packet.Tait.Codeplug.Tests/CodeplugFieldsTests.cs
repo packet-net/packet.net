@@ -125,7 +125,7 @@ public class CodeplugFieldsTests
     [Fact]
     public void Audio_block_tap_fields_round_trip()
     {
-        var f = CodeplugFields.Open(ImageWith(Audio(new byte[12])));
+        var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));
         f.SetRxTapOutNode(2);   // R2
         f.SetEptt1TapInNode(13); // T13
         f.TapOutUnmute = TapOutUnmute.ExceptOnPtt;
@@ -135,5 +135,46 @@ public class CodeplugFieldsTests
         f.TapOutUnmute.Should().Be(TapOutUnmute.ExceptOnPtt);
         // the T-node marker bit is preserved
         (f.Image.Require(0x3B, 0).Data[11] & 0x20).Should().Be(0x20);
+    }
+
+    [Fact]
+    public void Channel_subaudible_fields_decode_and_round_trip()
+    {
+        // pin the offsets: place TX type + RX type + indices, decode.
+        var ch = new byte[23];
+        PutBits(ch, 86, 2, (long)SubaudibleType.Ctcss); // TX type
+        PutBits(ch, 88, 2, (long)SubaudibleType.Dcs);   // RX type
+        PutBits(ch, 90, 8, 7);   // TX index
+        PutBits(ch, 98, 8, 42);  // RX index
+
+        CodeplugFields f = CodeplugFields.Open(ImageWith(Channels(ch)));
+        f.GetTxSubaudibleType(0).Should().Be(SubaudibleType.Ctcss);
+        f.GetRxSubaudibleType(0).Should().Be(SubaudibleType.Dcs);
+        f.GetTxSubaudibleIndex(0).Should().Be(7);
+        f.GetRxSubaudibleIndex(0).Should().Be(42);
+
+        f.SetTxSubaudibleType(0, SubaudibleType.None);
+        f.SetRxSubaudibleIndex(0, 5);
+        f.GetTxSubaudibleType(0).Should().Be(SubaudibleType.None);
+        f.GetRxSubaudibleIndex(0).Should().Be(5);
+        // the RX type is untouched by setting the RX index
+        f.GetRxSubaudibleType(0).Should().Be(SubaudibleType.Dcs);
+    }
+
+    [Fact]
+    public void Audio_tap_inverted_bits_round_trip()
+    {
+        var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));
+        f.RxTapOutInverted.Should().BeFalse();
+        f.Eptt1TapInInverted.Should().BeFalse();
+
+        f.RxTapOutInverted = true;
+        f.Eptt1TapInInverted = true;
+        (f.Image.Require(0x3B, 0).Data[4] & 0x40).Should().Be(0x40);
+        (f.Image.Require(0x3B, 0).Data[14] & 0x08).Should().Be(0x08);
+
+        f.RxTapOutInverted = false;
+        f.RxTapOutInverted.Should().BeFalse();
+        f.Eptt1TapInInverted.Should().BeTrue(); // independent
     }
 }
