@@ -12,10 +12,15 @@ namespace Packet.Tait.Codeplug.Tests;
 internal sealed class ScriptedRadio : ISerialLine
 {
     private readonly IReadOnlyDictionary<string, string> _replies;
+    private readonly Func<string, string?>? _fallback;
     private readonly Queue<byte> _rx = new();
     private readonly StringBuilder _pending = new();
 
-    public ScriptedRadio(IReadOnlyDictionary<string, string> replies) => _replies = replies;
+    public ScriptedRadio(IReadOnlyDictionary<string, string> replies, Func<string, string?>? fallback = null)
+    {
+        _replies = replies;
+        _fallback = fallback;
+    }
 
     public List<string> CommandsSeen { get; } = new();
 
@@ -73,7 +78,8 @@ internal sealed class ScriptedRadio : ISerialLine
         CommandsSeen.Add(command);
         if (!_replies.TryGetValue(command, out string? reply))
         {
-            throw new InvalidOperationException($"scripted radio got an unexpected command: '{command}'");
+            reply = _fallback?.Invoke(command)
+                ?? throw new InvalidOperationException($"scripted radio got an unexpected command: '{command}'");
         }
 
         foreach (byte b in Encoding.ASCII.GetBytes(reply))

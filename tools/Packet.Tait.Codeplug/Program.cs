@@ -39,6 +39,8 @@ try
             return CmdGet(Arg(args, 1), args.Length > 2 && !args[2].StartsWith("--", StringComparison.Ordinal) ? args[2] : null);
         case "set":
             return CmdSet(Arg(args, 1), Arg(args, 2), Arg(args, 3));
+        case "patch":
+            return CmdPatch(Arg(args, 1), Arg(args, 2), Arg(args, 3), Baud(args), HasFlag(args, "--restore"));
         case "version":
             return CmdVersion(Arg(args, 1), Baud(args));
         case "read":
@@ -181,6 +183,49 @@ static int CmdWrite(string port, string inPath, int baud, bool yes)
     return 0;
 }
 
+static int CmdPatch(string port, string field, string value, int baud, bool restore)
+{
+    using var programmer = new TaitProgrammer(new SerialPortLine(port, baud), HardwareOptions(baud));
+    Console.WriteLine($"opening {port} at {baud} 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
+
+    CodeplugImage image = programmer.ReadImage();
+    var snapshot = image.Records.ToDictionary(r => (r.Section, r.Index), r => (byte[])r.Data.Clone());
+    CodeplugFields fields = CodeplugFields.Open(image);
+
+    string before = FieldConsole.Get(fields, field);
+    FieldConsole.Set(fields, field, value);
+    string after = FieldConsole.Get(fields, field);
+
+    var changed = image.Records
+        .Where(r => !r.Data.AsSpan().SequenceEqual(snapshot[(r.Section, r.Index)]))
+        .ToList();
+    if (changed.Count == 0)
+    {
+        Console.WriteLine($"{field} is already {value}; nothing to write.");
+        return 0;
+    }
+
+    Console.WriteLine($"{field}: {before} -> {after}");
+    Console.WriteLine($"writing {changed.Count} changed record(s): " +
+        string.Join(", ", changed.Select(r => $"0x{r.Section:X2}/{r.Index}")));
+    programmer.WriteRecords(changed);
+
+    string reread = FieldConsole.Get(CodeplugFields.Open(programmer.ReadImage()), field);
+    Console.WriteLine($"read back: {field} = {reread}  [{(reread == after ? "OK" : "MISMATCH")}]");
+
+    if (restore)
+    {
+        var originals = changed
+            .Select(r => new CodeplugRecord(r.Section, r.Index, snapshot[(r.Section, r.Index)]))
+            .ToList();
+        programmer.WriteRecords(originals);
+        string restored = FieldConsole.Get(CodeplugFields.Open(programmer.ReadImage()), field);
+        Console.WriteLine($"restored: {field} = {restored}  [{(restored == before ? "OK" : "MISMATCH")}]");
+    }
+
+    return 0;
+}
+
 static string Arg(string[] args, int index)
 {
     if (index >= args.Length || args[index].StartsWith("--", StringComparison.Ordinal))
@@ -216,6 +261,7 @@ static void PrintUsage()
     Console.WriteLine("  version <port> [--baud N]              interrogate a radio");
     Console.WriteLine("  read    <port> <out.m8p> [--baud N]    read the codeplug");
     Console.WriteLine("  write   <port> <in.m8p>  [--baud N]    program the codeplug (backs up first)");
+    Console.WriteLine("  patch   <port> <field> <value> [--restore]  live-set one field (writes only the changed record)");
     Console.WriteLine();
     Console.WriteLine("the radio must be latched into programming mode (power-cycle as you trigger).");
 }

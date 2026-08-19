@@ -156,7 +156,26 @@ public sealed class TaitProgrammer : IDisposable
     public int WriteImage(CodeplugImage image)
     {
         ArgumentNullException.ThrowIfNull(image);
+        return WriteRecords(image.Records);
+    }
+
+    /// <summary>
+    /// Write a subset of records in one write block (<c>b</c>, <c>i&lt;arg&gt;</c>, a
+    /// <c>w&lt;record&gt;</c> per record awaiting each prompt, <c>e</c>) preceded by the CPS write
+    /// preamble. Because there is no whole-codeplug checksum, a single changed record can be written
+    /// in place without rewriting the rest. Section 0 (the read-only identity) is always skipped.
+    /// Returns the number of records written.
+    /// </summary>
+    public int WriteRecords(IEnumerable<CodeplugRecord> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
         Connect();
+
+        var toWrite = records.Where(r => r.Section != 0x00).ToList();
+        if (toWrite.Count == 0)
+        {
+            return 0;
+        }
 
         // Faithful preamble reads (harmless, and what the CPS does before a write).
         ReadSection(0x00);
@@ -170,20 +189,13 @@ public sealed class TaitProgrammer : IDisposable
         Transact("b"); // begin
         Transact("i" + _options.WriteInitArg); // init/unlock
 
-        int written = 0;
-        foreach (CodeplugRecord r in image.Records)
+        foreach (CodeplugRecord r in toWrite)
         {
-            if (r.Section == 0x00)
-            {
-                continue; // identity is read-only; never written
-            }
-
             Transact("w" + r.ToWireLine());
-            written++;
         }
 
         Transact("e"); // end/commit
-        return written;
+        return toWrite.Count;
     }
 
     /// <summary>Leave programming mode (<c>^</c>), best-effort.</summary>
