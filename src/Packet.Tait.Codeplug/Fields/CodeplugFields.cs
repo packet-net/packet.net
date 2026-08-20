@@ -255,6 +255,50 @@ public sealed class CodeplugFields
         0x80, 0x3A, 0x00, 0x20, 0x00, 0x40, 0x00, 0x00, 0x10, 0x00,
     };
 
+    /// <summary>
+    /// Upgrade the codeplug for the Packet.NET "pdn-basic" feature set: the CCDI command channel that
+    /// carries the radio telemetry and control Packet.Radio.Tait uses - averaged and instantaneous RSSI,
+    /// forward/reverse power, PA temperature, radio status/identity, transmitter keying, and the PROGRESS
+    /// stream that carries carrier-sense (DCD) and external-PTT edges. It enables the CCDI master, keeps
+    /// the radio in Command mode at power-up so it is always CCDI-reachable, turns on progress-message
+    /// output (needed for DCD/PTT), and sets the command-mode baud to the Packet.NET default (28800).
+    /// It does not touch the data port (that follows the physical wiring) or the RF config, so it is safe
+    /// to layer onto a radio already configured for its channels. It changes only the data record (0x09).
+    /// </summary>
+    public void ApplyPdnBasic()
+    {
+        CcdiModeAllowed = true;
+        PowerupState = DataPowerupMode.CommandMode;
+        CcdiProgressMessageEnabled = true;
+        CommandModeBaud = FfskBaud.Baud28800;
+    }
+
+    /// <summary>
+    /// Upgrade the codeplug for the Packet.NET "pdn-extra" feature set: the TNC-less internal FFSK packet
+    /// modem (the radio's own byte pipe, driven by <c>TaitTransparentTransport</c>) plus the SDM side
+    /// channel used for out-of-band mode signalling. Includes everything <see cref="ApplyPdnBasic"/> does
+    /// (the transparent transport is entered from Command mode and escapes back on teardown, so the radio
+    /// must stay CCDI-reachable), and adds: transparent mode enabled; <b>ignore-escape-sequence OFF</b>
+    /// (load-bearing - without it the escape can never return the radio to Command mode and it wedges);
+    /// ignore-subaudible on the data path (so the modem is not gated by tone squelch); the transparent
+    /// terminal baud (28800) and over-air FFSK baud (2400) at the Packet.NET defaults; and SDM plus
+    /// CCDI SDM output for the mode-signalling side channel. It changes only the data record (0x09). The
+    /// over-air FFSK baud must match at both ends of the link; adjust it (and the bauds) if your
+    /// deployment differs. It configures the internal modem, not an external-TNC audio path - use the
+    /// separate <see cref="ApplyPacketAudioDefaults"/> preset for a soundcard/TNC deployment.
+    /// </summary>
+    public void ApplyPdnExtra()
+    {
+        ApplyPdnBasic();
+        TransparentModeEnabled = true;                 // must precede the transparent-gated fields
+        IgnoreEscapeSequence = false;
+        IgnoreSubaudibleOnData = true;
+        FfskTransparentBaud = FfskBaud.Baud28800;
+        FfskModemBaud = FfskModemRate.Baud2400;
+        SdmEnabled = true;
+        CcdiSdmOutputEnabled = true;
+    }
+
     /// <summary>Clear a channel's RX subaudible signalling.</summary>
     public void SetRxSubaudibleNone(int channel) => SetRxSubaudibleType(channel, SubaudibleType.None);
 

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Title>Packet.Tait.Codeplug - Tait TM8100/TM8200 codeplug programming</Title>
+    <Description>Reverse-engineered Tait TM8100/TM8200 codeplug read/write over the serial programming interface, plus a typed, version-pinned field map for the whole CPS Data form (transparent FFSK modem, CCDI, SDM, GPS, customer data) and the channel table, with the CPS's own input guards. Used to upgrade a radio to the Packet.NET (PDN) feature set. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>tait;tm8100;tm8200;codeplug;ccdi;packet-radio</PackageTags>
+  </PropertyGroup>
+
+</Project>
