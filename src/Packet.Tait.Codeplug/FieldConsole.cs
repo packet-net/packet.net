@@ -262,6 +262,14 @@ public static class FieldConsole
 
                 f.ApplyPacketAudioDefaults();
                 return;
+            case "profile":
+                switch (value.ToLowerInvariant())
+                {
+                    case "pdn-basic": f.ApplyPdnBasic(); return;
+                    case "pdn-extra": f.ApplyPdnExtra(); return;
+                    default: throw new FormatException("supported profiles: pdn-basic, pdn-extra");
+                }
+
             default: throw new FormatException($"unknown field '{name}'");
         }
     }

@@ -228,9 +228,15 @@ static void PrintUsage()
     Console.WriteLine("  dump    <file.m8p>                     decode every mapped field");
     Console.WriteLine("  get     <file.m8p> [field]             read one field (or all as name=value)");
     Console.WriteLine("  set     <file.m8p> <field> <value>     set one field and save (e.g. ch0.bandwidth Wide)");
+    Console.WriteLine("  set     <file.m8p> profile <name>      apply a PDN upgrade profile to a file");
     Console.WriteLine("  version <port> [--baud N]              interrogate a radio");
     Console.WriteLine("  read    <port> <out.m8p> [--baud N]    read the codeplug");
     Console.WriteLine("  patch   <port> <field> <value>         live-set one field (full read-modify-write)");
+    Console.WriteLine("  patch   <port> profile <name>          live-apply a PDN upgrade profile");
+    Console.WriteLine();
+    Console.WriteLine("PDN upgrade profiles (leave RF/channels untouched; adjust data port + bauds for your setup):");
+    Console.WriteLine("  pdn-basic   CCDI telemetry + control: RSSI, forward/reverse power, status, PTT, DCD");
+    Console.WriteLine("  pdn-extra   pdn-basic + the TNC-less internal FFSK packet modem and SDM mode signalling");
     Console.WriteLine();
     Console.WriteLine("the radio must be latched into programming mode (power-cycle as you trigger).");
 }

@@ -3,10 +3,11 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>Packet.Tait.Codeplug</RootNamespace>
+    <AssemblyName>tait-codeplug</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.IO.Ports" />
+    <ProjectReference Include="..\..\src\Packet.Tait.Codeplug\Packet.Tait.Codeplug.csproj" />
   </ItemGroup>
 
 </Project>

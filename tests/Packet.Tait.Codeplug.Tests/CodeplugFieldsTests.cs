@@ -414,6 +414,38 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
+    public void Pdn_basic_profile_enables_the_ccdi_channel()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
+        f.ApplyPdnBasic();
+        f.CcdiModeAllowed.Should().BeTrue();
+        f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
+        f.CcdiProgressMessageEnabled.Should().BeTrue();
+        f.CommandModeBaud.Should().Be(FfskBaud.Baud28800);
+        // pdn-basic is telemetry only: it does not turn on the transparent modem.
+        f.TransparentModeEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Pdn_extra_profile_enables_the_transparent_modem_and_includes_basic()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
+        f.ApplyPdnExtra();
+        // includes pdn-basic
+        f.CcdiModeAllowed.Should().BeTrue();
+        f.PowerupState.Should().Be(DataPowerupMode.CommandMode);
+        f.CcdiProgressMessageEnabled.Should().BeTrue();
+        // the transparent modem + mode-signalling additions
+        f.TransparentModeEnabled.Should().BeTrue();
+        f.IgnoreEscapeSequence.Should().BeFalse();          // load-bearing: escape must work
+        f.IgnoreSubaudibleOnData.Should().BeTrue();
+        f.FfskTransparentBaud.Should().Be(FfskBaud.Baud28800);
+        f.FfskModemBaud.Should().Be(FfskModemRate.Baud2400);
+        f.SdmEnabled.Should().BeTrue();
+        f.CcdiSdmOutputEnabled.Should().BeTrue();
+    }
+
+    [Fact]
     public void Audio_block_tap_fields_round_trip()
     {
         var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));

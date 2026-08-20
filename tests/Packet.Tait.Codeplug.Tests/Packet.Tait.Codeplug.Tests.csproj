@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\..\tools\Packet.Tait.Codeplug\Packet.Tait.Codeplug.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Tait.Codeplug\Packet.Tait.Codeplug.csproj" />
   </ItemGroup>
 
 </Project>
