@@ -158,6 +158,14 @@ public class CodeplugFieldsTests
         var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
         byte[] Payload() => f.Image.Require(0x09, 0).Data;
 
+        // Enable the masters first so their dependent fields are available (as the CPS requires).
+        f.SdmEnabled = true;
+        f.TransparentModeEnabled = true;
+        f.ThsdModemEnabled = true;
+        f.CcdiSdmOutputEnabled = true;
+        f.TextSdmAutoAckTransmission = true;
+        f.TextSdmAutoAckReception = true;
+
         // CCDI master (bit 177 = byte 22 bit 1) - gates RSSI / DCD / PTT / status.
         f.CcdiModeAllowed = true;
         f.CcdiModeAllowed.Should().BeTrue();
@@ -201,10 +209,183 @@ public class CodeplugFieldsTests
     public void Sdm_auto_ack_numeric_fields_reject_out_of_range()
     {
         var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
+        f.SdmEnabled = true;
+        f.TextSdmAutoAckTransmission = true;
+        f.TextSdmAutoAckReception = true;
         ((Action)(() => f.SdmAutoAckDelayMs = 5100)).Should().Throw<ArgumentOutOfRangeException>();
         ((Action)(() => f.SdmAutoAckDelayMs = 150)).Should().Throw<ArgumentOutOfRangeException>();
         ((Action)(() => f.SdmWaitForAck = 0)).Should().Throw<ArgumentOutOfRangeException>();
         ((Action)(() => f.SdmWaitForAck = 16)).Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Remaining_data_form_fields_round_trip()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[32])));
+        byte[] P() => f.Image.Require(0x09, 0).Data;
+
+        // Enable the masters so the transparent/THSD fields (and, via Layer 2 = TOTAL, the TOTAL fields)
+        // are available; SDM Buffer Overwrite needs Output SDMs Automatically off, which is the default.
+        f.TransparentModeEnabled = true;
+        f.ThsdModemEnabled = true;
+
+        // General
+        f.OpenMonitorOnDialledCall = true; f.OpenMonitorOnDialledCall.Should().BeTrue();
+        f.SelcallOutputEnabled = true; f.SelcallOutputEnabled.Should().BeTrue();
+        f.MaximumInitialFrameLength = true; f.MaximumInitialFrameLength.Should().BeTrue();
+        f.UartWriteDelayMs = 250; f.UartWriteDelayMs.Should().Be(250);
+        f.TxBackoffTimeMinMs = 100; f.TxBackoffTimeMinMs.Should().Be(100);
+        f.TxBackoffTimeMaxMs = 800; f.TxBackoffTimeMaxMs.Should().Be(800);
+
+        // Serial: XON/XOFF are byte character codes (bits 1..8 / 9..16).
+        f.XonCharacter = 0x11; f.XonCharacter.Should().Be(0x11);
+        f.XoffCharacter = 0x13; f.XoffCharacter.Should().Be(0x13);
+        f.CommandModeFlowControl = DataFlowControl.Software; f.CommandModeFlowControl.Should().Be(DataFlowControl.Software);
+        f.FfskTransparentFlowControl = DataFlowControl.Hardware; f.FfskTransparentFlowControl.Should().Be(DataFlowControl.Hardware);
+        f.HsdFlowControl = DataFlowControl.Software; f.HsdFlowControl.Should().Be(DataFlowControl.Software);
+
+        // RF Modems
+        f.CheckPacketLength = true; f.CheckPacketLength.Should().BeTrue();
+        f.FfskToneBlanking = true; f.FfskToneBlanking.Should().BeTrue();
+        f.FfskLeadInDelayMs = 500; f.FfskLeadInDelayMs.Should().Be(500); // 100 x 5 ms
+        f.FfskLeadOutDelayMs = 200; f.FfskLeadOutDelayMs.Should().Be(200);
+        f.WidebandModemEnabled = true; f.WidebandModemEnabled.Should().BeTrue();
+        f.ThsdLayer2Protocol = ThsdLayer2.Total; f.ThsdLayer2Protocol.Should().Be(ThsdLayer2.Total);
+        f.ThsdForwardErrorCorrection = true; f.ThsdForwardErrorCorrection.Should().BeTrue();
+        f.ThsdNumberOfBlocks = 7; f.ThsdNumberOfBlocks.Should().Be(7);
+        f.ThsdLeadInDelayMs = 5000; f.ThsdLeadInDelayMs.Should().Be(5000);
+        f.ThsdLeadOutDelayMs = 250; f.ThsdLeadOutDelayMs.Should().Be(250);
+
+        // SDM: the caller-ID checkbox drives both the encode (bit 152) and decode (bit 153) bits.
+        f.SdmBufferOverwrite = true; f.SdmBufferOverwrite.Should().BeTrue();
+        f.SdmCallerId = true; f.SdmCallerId.Should().BeTrue();
+        (P()[19] & 0x03).Should().Be(0x03); // bits 152, 153 = byte 19 bits 0,1
+
+        // TOTAL Transparent Mode
+        f.TotalService = TotalModeService.Confirmed; f.TotalService.Should().Be(TotalModeService.Confirmed);
+        f.TotalRadioId = 0x1234; f.TotalRadioId.Should().Be(0x1234);
+        f.TotalSystemId = 0xAB; f.TotalSystemId.Should().Be(0xAB);
+        f.TotalDestinationId = 0xFFFF; f.TotalDestinationId.Should().Be(0xFFFF);
+        f.TotalLinkId = 0x5A; f.TotalLinkId.Should().Be(0x5A);
+    }
+
+    [Fact]
+    public void Remaining_data_form_fields_reject_out_of_range()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[32])));
+        f.TransparentModeEnabled = true;
+        f.ThsdModemEnabled = true;
+        f.ThsdLayer2Protocol = ThsdLayer2.Total;   // make the THSD + TOTAL fields available
+        ((Action)(() => f.FfskLeadInDelayMs = 3)).Should().Throw<ArgumentOutOfRangeException>();   // not a 5 ms step
+        ((Action)(() => f.FfskLeadInDelayMs = 5105)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.ThsdNumberOfBlocks = 0)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.ThsdNumberOfBlocks = 8)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.TotalRadioId = 0x10000)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.TotalSystemId = 256)).Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Unit_data_identity_is_eight_char_ascii()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
+        f.UnitDataIdentity.Should().BeEmpty();               // all-zero = blank
+        f.UnitDataIdentity = "SOMEVALU";
+        f.UnitDataIdentity.Should().Be("SOMEVALU");
+        f.UnitDataIdentity = "NODE1";                        // shorter, trailing slots blank
+        f.UnitDataIdentity.Should().Be("NODE1");
+        f.UnitDataIdentity = "AB12*Z";                       // the wildcard is allowed
+        f.UnitDataIdentity.Should().Be("AB12*Z");
+        f.UnitDataIdentity = "";
+        f.UnitDataIdentity.Should().BeEmpty();
+        ((Action)(() => f.UnitDataIdentity = "TOOLONG12")).Should().Throw<ArgumentException>(); // > 8 chars
+        ((Action)(() => f.UnitDataIdentity = "node1")).Should().Throw<ArgumentException>();      // lowercase
+    }
+
+    private static CodeplugFields GpsImage() => CodeplugFields.Open(ImageWith(
+        new CodeplugRecord(0x05, 0, new byte[23]),   // one channel
+        new CodeplugRecord(0x09, 0, new byte[37]),
+        new CodeplugRecord(0x45, 0, new byte[21])));
+
+    [Fact]
+    public void Gps_fields_round_trip()
+    {
+        CodeplugFields f = GpsImage();
+        f.HasGps.Should().BeTrue();
+
+        f.SdmEnabled = true;                           // GPS enable requires SDM (below)
+        f.GpsEnabled = true; f.GpsEnabled.Should().BeTrue();
+        f.GpsSerialPort = DataPort.Aux; f.GpsSerialPort.Should().Be(DataPort.Aux);
+        f.GpsBaudRate = FfskBaud.Baud14400; f.GpsBaudRate.Should().Be(FfskBaud.Baud14400);
+        f.GpsPollResponseChannelType = GpsPollResponseChannelType.Dedicated;
+        f.GpsPollResponseChannelType.Should().Be(GpsPollResponseChannelType.Dedicated);
+        f.GpsPollResponseChannel = 1; f.GpsPollResponseChannel.Should().Be(1);
+        f.GpsCalloutIntervalSeconds = 300; f.GpsCalloutIntervalSeconds.Should().Be(300);
+        f.GpsMaxNumberOfCallouts = 5; f.GpsMaxNumberOfCallouts.Should().Be(5);
+        f.GpsConnectionTimeoutSeconds = 600; f.GpsConnectionTimeoutSeconds.Should().Be(600);
+        f.GpsLeadInDelayMs = 500; f.GpsLeadInDelayMs.Should().Be(500);
+        f.GpsPollResponseDelayMs = 100; f.GpsPollResponseDelayMs.Should().Be(100);
+        f.GpsSendOnEmergencyCallout = true; f.GpsSendOnEmergencyCallout.Should().BeTrue();
+        f.GpsDispatcherAddress = "12345678"; f.GpsDispatcherAddress.Should().Be("12345678");
+
+        ((Action)(() => f.GpsCalloutIntervalSeconds = 7)).Should().Throw<ArgumentOutOfRangeException>(); // not a 5 s step
+        ((Action)(() => f.GpsConnectionTimeoutSeconds = 10)).Should().Throw<ArgumentOutOfRangeException>(); // below 20
+    }
+
+    [Fact]
+    public void Gps_guards_match_the_cps()
+    {
+        CodeplugFields f = GpsImage();
+
+        // GPS position reporting can only be enabled once SDM is on.
+        ((Action)(() => f.GpsEnabled = true)).Should().Throw<InvalidOperationException>();
+        f.SdmEnabled = true;
+        f.GpsEnabled = true;
+
+        // Dispatcher address is a radio identity (A-Z, 0-9, or '*'); letters are fine, other chars are not.
+        f.GpsDispatcherAddress = "TESTADDR";
+        f.GpsDispatcherAddress = "00099887";
+        ((Action)(() => f.GpsDispatcherAddress = "test")).Should().Throw<ArgumentException>();     // lowercase
+        ((Action)(() => f.GpsDispatcherAddress = "A-B")).Should().Throw<ArgumentException>();       // symbol
+
+        // The GPS port takes any standard baud, including 28800.
+        f.GpsBaudRate = FfskBaud.Baud28800; f.GpsBaudRate.Should().Be(FfskBaud.Baud28800);
+
+        // The poll-response channel is only editable when the channel type is Dedicated...
+        ((Action)(() => f.GpsPollResponseChannel = 1)).Should().Throw<InvalidOperationException>();
+        f.GpsPollResponseChannelType = GpsPollResponseChannelType.Dedicated;
+        // ...and then must be None (0) or an existing channel (this image has one).
+        ((Action)(() => f.GpsPollResponseChannel = 5)).Should().Throw<ArgumentOutOfRangeException>();
+        f.GpsPollResponseChannel = 1;
+        f.GpsPollResponseChannel = 0;
+    }
+
+    [Fact]
+    public void Customer_data_bytes_round_trip()
+    {
+        CodeplugFields f = CodeplugFields.Open(ImageWith(
+            new CodeplugRecord(0x05, 0, new byte[23]),
+            new CodeplugRecord(0x4C, 0, new byte[8]),
+            new CodeplugRecord(0x4D, 0, new byte[4])));
+        f.HasCustomerData.Should().BeTrue();
+
+        for (int i = 1; i <= 4; i++) { f.SetCustomerGlobalByte(i, (byte)i); }
+        for (int i = 1; i <= 4; i++) { f.GetCustomerGlobalByte(i).Should().Be((byte)i); }
+        // global bytes live after four pad bytes
+        f.Image.Require(0x4C, 0).Data[4].Should().Be(1);
+
+        for (int i = 1; i <= 4; i++) { f.SetCustomerNetworkByte(1, i, (byte)(i + 4)); }
+        for (int i = 1; i <= 4; i++) { f.GetCustomerNetworkByte(1, i).Should().Be((byte)(i + 4)); }
+        f.Image.Require(0x4D, 0).Data[0].Should().Be(5);
+
+        ((Action)(() => f.SetCustomerGlobalByte(5, 0))).Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Optional_blocks_report_absent()
+    {
+        CodeplugFields f = CodeplugFields.Open(ImageWith(new CodeplugRecord(0x05, 0, new byte[23])));
+        f.HasGps.Should().BeFalse();
+        f.HasCustomerData.Should().BeFalse();
     }
 
     [Fact]

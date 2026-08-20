@@ -88,29 +88,92 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 | network | 106 | 3 | network reference (the CPS "Network" column), 0..7 |
 | TX power | 109 | 3 | 0 = Off, 1 = VeryLow, 2 = Low, 3 = Medium, 4 = High |
 
-**Data / signalling** is record 0x09/0, a single LSB-first bit-stream packed in schema field order. The one wrinkle is that the identity field near the front is 70 bits wide on disk (not the 7 the field table's length column suggests), which puts a constant 63-bit shift between the first few flags and everything from the SDM options field onward. Five independent real-radio CPS saves land on the exact bit offsets below (67.0/97.4 spread of tone tests notwithstanding, the data block was pinned by toggling one data setting at a time and diffing), so the layout is bit-exact:
+**Data / signalling** is record 0x09/0, a single LSB-first bit-stream packed in schema field order. This one record holds the whole CPS **Data** form (its General, Serial Communications, RF Modems, SDM and TOTAL Transparent Mode tabs). Three fields near the front are wider on disk than a naive read of the field table's length column suggests: the two flow-control character codes (XON and XOFF) are a byte each rather than a flag, and the unit-data-identity field is 7 bytes (56 bits). Those extra widths are what shift every field from the SDM-options field onward by a constant 63 bits. The whole logical record is 293 bits, but the **stored record is trimmed to 32 bytes (256 bits)**, so the trailing TOTAL fields past bit 245 (MTU size, validate-CRC, confirmed-mode retries/timeout, busy back-off, and the General tab's channel-access method) are not written and the CPS fills schema defaults for them.
+
+Every offset below is validated against a real-radio CPS save, either a single-setting diff or by decoding a codeplug the CPS displays in full (a non-default like TOTAL destination ID = 0xFFFF confirms the tail offsets too).
 
 | field | stream bit | width | encoding / meaning |
 |-------|-----------|-------|--------------------|
+| data options enabled | 0 | 1 | set alongside transparent-mode enable |
+| XON character | 1 | 8 | flow-control byte (CPS shows it in hex; 0x11 = DC1) |
+| XOFF character | 9 | 8 | flow-control byte (0x13 = DC3) |
 | power-up state | 17 | 2 | 0 = Command, 1 = FFSK Transparent, 2 = THSD Transparent |
+| unit data identity | 19 | 56 | eight 7-bit ASCII characters (the CPS "Unit Data Identity"; blank = all zero) |
+| FFSK lead-in delay | 75 | 10 | 5 ms steps, 0..5100 ms |
 | ignore subaudible on data | 85 | 1 | flag: modem not gated by CTCSS/DCS |
 | SDM enabled | 86 | 1 | (the CPS also cascades the text-SDM flags at 155..157) |
 | SDM auto-ack delay | 87 | 6 | count of 100 ms steps, 0..5000 ms |
 | SDM wait-for-ack | 93 | 4 | count, 1..15 |
 | command-mode (CCDI) baud | 97 | 3 | index into 1200..28800 |
+| command-mode flow control | 100 | 2 | 0 = None, 1 = Software, 2 = Hardware |
 | FFSK transparent (terminal) baud | 102 | 3 | index into 1200..28800 |
+| FFSK transparent flow control | 105 | 2 | 0 = None, 1 = Software, 2 = Hardware |
 | THSD (HSD) baud | 107 | 3 | index into 1200..28800 |
+| THSD flow control | 110 | 2 | 0 = None, 1 = Software, 2 = Hardware |
 | data / CCDI port | 112 | 2 | 0 = Mic, 1 = Aux, 2 = Internal Options |
 | ignore escape sequence | 114 | 1 | flag: OFF for a raw transparent byte pipe |
+| FFSK lead-out delay | 115 | 8 | 0..250 ms |
 | THSD modem enabled | 123 | 1 | flag |
+| THSD layer-2 protocol | 124 | 2 | 0 = None, 1 = Simple, 2 = TOTAL |
+| FFSK tone blanking | 126 | 1 | flag (schema MuteOnFFSKReceiving) |
+| THSD forward error correction | 127 | 1 | flag |
+| THSD lead-in delay | 128 | 13 | 0..5000 ms |
+| THSD lead-out delay | 141 | 8 | 0..250 ms |
 | CCDI progress message enabled | 149 | 1 | flag: emit CCDI progress/result to host |
+| output all selcall receptions | 150 | 1 | flag |
 | CCDI SDM output enabled | 151 | 1 | flag: deliver received SDMs to the CCDI host |
+| SDM caller ID (encode / decode) | 152 | 2 | the CPS keeps the two bits equal |
+| wideband modem enabled | 154 | 1 | flag |
 | text-SDM indicator | 155 | 1 | flag (cascaded on by SDM enable) |
 | text-SDM auto-ack transmission | 156 | 1 | flag (cascaded on by SDM enable) |
 | text-SDM auto-ack reception | 157 | 1 | flag (cascaded on by SDM enable) |
+| check packet length | 158 | 1 | flag |
+| SDM buffer overwrite | 159 | 1 | flag |
+| maximum initial frame length | 160 | 1 | flag |
+| UART write delay | 161 | 9 | 0..500 ms |
 | CCDI SDM text-only | 170 | 1 | flag |
 | FFSK (over-air modem) baud | 171 | 2 | 0 = 1200, 1 = 1200 (A75), 2 = 2400 |
+| open monitor on dialled call | 173 | 1 | flag |
+| THSD number of blocks (FEC) | 174 | 3 | 1..7 |
 | CCDI mode allowed | 177 | 1 | flag: master gate for the CCDI command channel |
+| Tx back-off time (min) | 178 | 9 | 0..500 ms |
+| Tx back-off time (max) | 187 | 10 | 0..1000 ms |
+| TOTAL service | 197 | 1 | 0 = Unconfirmed, 1 = Confirmed |
+| TOTAL radio ID | 198 | 16 | 0..65535 |
+| TOTAL system ID | 214 | 8 | 0..255 |
+| TOTAL destination ID | 222 | 16 | 0..65535 (default 0xFFFF) |
+| TOTAL link ID | 238 | 8 | 0..255 |
+
+Fields past bit 245 (TOTAL MTU size, validate-CRC, confirmed-mode retries/timeout, busy back-off, channel-access method) are trimmed from the 32-byte stored record; the CPS fills their schema defaults. Setting them would require the record to grow. The CPS only un-greys those TOTAL controls when the RF-Modems **Layer 2 Protocol** is set to **TOTAL** (which needs THSD Modem Enabled), so a sample in that state is what would let the tail be mapped; none of the available codeplugs are, so those five plus the channel-access method are left unmapped.
+
+The **unit data identity** is exposed: it is an eight-character 7-bit-ASCII field at bit 19 (the same packed encoding as the GPS dispatcher address below). The **GPS** and **Customer Data** tabs are separate records, covered next.
+
+## GPS tab (record 0x45/0)
+
+The Data form's GPS tab is its own record, an LSB-first bit-stream. Offsets validated against a GPS-enabled real-radio save (a non-default dispatcher address "12345678" pins the packed-ASCII field):
+
+| field | stream bit | width | encoding / CPS control |
+|-------|-----------|-------|------------------------|
+| GPS serial port | 0 | 2 | 0 = Mic, 1 = Aux, 2 = Internal Options ("GPS Port") |
+| GPS baud rate | 2 | 4 | index into 1200..28800 ("Baud Rate") |
+| poll-response channel | 6 | 7 | 0..99 dedicated channel ("Channel") |
+| callout interval | 13 | 6 | 5 s steps, 0..300 s ("Callout Interval") |
+| max number of callouts | 19 | 8 | 0..250 ("Maximum Number of Callouts") |
+| connection time-out | 30 | 8 | 20 s steps, 20..600 s ("Connection Time Out") |
+| GPS lead-in delay | 38 | 8 | 5 ms steps, 0..1200 ms ("GPS Lead-In Delay") |
+| send on emergency callout | 49 | 1 | flag ("Send Position on Emergency Callout") |
+| dispatcher address | 50 | 56 | eight 7-bit ASCII characters ("Dispatcher Address", default "00000000") |
+| GPS position reporting enabled | 136 | 1 | flag ("GPS Position Reporting Enabled"; the CPS needs SDM on to set it) |
+| poll-response channel type | 137 | 1 | 0 = Current, 1 = Dedicated ("Poll Response Channel Type") |
+| poll-response delay time | 138 | 9 | 10 ms steps, 0..5000 ms ("Poll Response Delay Time") |
+
+(The three per-network "send position" fields occupy bits 106..135; the caller-ID, PTT-suppression, NMEA and SDM-ack GPS fields sit past bit 146 and are not on the main GPS form, so they are not mapped.)
+
+Where the CPS's own help documents an input rule, the field map enforces the same rule (sourced from the programming manual, not the schema's min/max columns, which do not match the CPS's real input ranges). For the GPS fields: position reporting can only be enabled when SDM is on; the dispatcher address is a radio identity (up to eight characters from A-Z, 0-9, or the wildcard `*`, the same as the unit data identity); and the dedicated poll-response channel must be None or a channel that exists in the codeplug. The numeric fields carry their manual-stated ranges and steps.
+
+## Customer Data tab (records 0x4C/0 and 0x4D/n)
+
+Plain bytes. Record 0x4C/0 is eight bytes: four leading pad bytes then the four global bytes (the CPS "Global Byte 1..4"). Each network row is record 0x4D at that network's index (network 1 = 0x4D/0), four bytes = the CPS "Byte 1..4".
 
 Transparent-mode enable additionally sets bit 0 (data options) plus bits 158 and 160; SDM enable sets bit 86 and cascades bits 155..157; these composite writes reproduce the CPS byte-for-byte.
 
@@ -140,8 +203,28 @@ Each of these is a control on the CPS **Data** form. By tab:
 | Receive SDM Auto Acknowledgement | SDM > Text SDMs Only | text-SDM auto-ack reception |
 | SDM Auto Acknowledge Delay | SDM > Text SDMs Only | SDM auto-ack delay |
 | SDM Wait For Acknowledgement Time | SDM > Text SDMs Only | SDM wait-for-ack |
+| Open Monitor On Dialled Call | General > Command Mode | open monitor on dialled call |
+| Output All Selcall Receptions | General > Command Mode | output all selcall receptions |
+| Maximum Initial Frame Length | General > Transparent Mode | maximum initial frame length |
+| UART Write Delay | General > Transparent Mode | UART write delay |
+| Tx Back-off Time (Min) / (Max) | General > Transparent Mode | Tx back-off time min / max |
+| XON Character / XOFF Character | Serial Communications | XON / XOFF character |
+| Flow Control (three columns) | Serial Communications | command / FFSK / THSD flow control |
+| Check Packet Length | RF Modems > FFSK Modem | check packet length |
+| FFSK Tone Blanking | RF Modems > FFSK Modem | FFSK tone blanking |
+| FFSK Lead-In Delay / Lead-Out Delay | RF Modems > FFSK Modem | FFSK lead-in / lead-out delay |
+| Wide Band Modem Enabled | RF Modems > THSD Modem | wideband modem enabled |
+| Layer 2 Protocol | RF Modems > THSD Modem | THSD layer-2 protocol |
+| Forward Error Correction (FEC) | RF Modems > THSD Modem | THSD forward error correction |
+| Number of Blocks | RF Modems > THSD Modem | THSD number of blocks |
+| THSD Lead-In Delay / Lead-Out Delay | RF Modems > THSD Modem | THSD lead-in / lead-out delay |
+| SDM Buffer Overwrite | SDM > All SDMs | SDM buffer overwrite |
+| SDM Caller ID | SDM > Text SDMs Only | SDM caller ID |
+| TOTAL Service / Radio ID / System ID / Destination ID / Link ID | TOTAL Transparent Mode | TOTAL service / radio ID / system ID / destination ID / link ID |
 
-Verified end to end by loading a tool-written codeplug, every item-9 field set to a distinctive value, into the CPS and confirming each control reads back what the tool wrote. One UI enable-rule to note: **SDM Wait For Acknowledgement Time** is only editable in the CPS when **Receive SDM Auto Acknowledgement** is on; the stored value is written regardless, the CPS just greys the box when its precondition is off.
+The field map also mirrors the CPS's "this field is only available if ..." rules: a setter whose enabling condition is not met throws, so the tool cannot produce a field-state the greyed UI would not let you create (you enable the parent first, exactly as in the CPS). For example THSD Modem Enabled needs Transparent Mode on; the FFSK / THSD baud, flow-control, and delay fields need their respective mode on; the SDM auto-ack fields need SDM plus the matching transmit/receive auto-ack; the TOTAL fields need Layer 2 Protocol = TOTAL; and the GPS dedicated channel needs the Poll Response Channel Type set to Dedicated. These are the rules the programming manual documents; the many purely-cosmetic UI states are not enforced.
+
+Verified end to end by loading a tool-written codeplug, every item-9 field set to a distinctive value, into the CPS and reading back every control on all five Data tabs. Two things to note. First, an in-CPS UI enable-rule: **SDM Wait For Acknowledgement Time** is only editable when **Receive SDM Auto Acknowledgement** is on; the stored value is written regardless, the CPS just greys the box when its precondition is off. Second, the CPS shows the character fields and the TOTAL IDs in hexadecimal (so **XON Character** reads `11` for the stored byte 0x11 = DC1); the tool prints and accepts those with a `0x` prefix. The two CPS controls that are not item-9 fields are **SDM Format** (a derived field) and the Hardware Flow Control **CTS / RTS** (which live in the Programmable-I/O item), so they are out of scope for this record.
 
 **Audio tap** is record 0x3B/0:
 

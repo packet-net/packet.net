@@ -58,6 +58,38 @@ public enum DataPowerupMode : byte
     ThsdTransparent = 2,
 }
 
+/// <summary>Serial flow control for a data mode (the CPS "Flow Control" combo, a 2-bit index). Applies
+/// per mode: command, FFSK transparent, and THSD transparent each have their own.</summary>
+public enum DataFlowControl : byte
+{
+    None = 0,
+    Software = 1,
+    Hardware = 2,
+}
+
+/// <summary>THSD layer-2 protocol (the CPS "Layer 2 Protocol" combo, a 2-bit index).</summary>
+public enum ThsdLayer2 : byte
+{
+    None = 0,
+    Simple = 1,
+    Total = 2,
+}
+
+/// <summary>TOTAL transparent-mode service class (the CPS "TOTAL Service" combo, a 1-bit index).</summary>
+public enum TotalModeService : byte
+{
+    Unconfirmed = 0,
+    Confirmed = 1,
+}
+
+/// <summary>GPS poll-response channel selection (the CPS "Poll Response Channel Type" combo, a 1-bit
+/// index): reply on the current channel, or on a dedicated one.</summary>
+public enum GpsPollResponseChannelType : byte
+{
+    Current = 0,
+    Dedicated = 1,
+}
+
 /// <summary>Data-port routing: where the data modem's audio is sourced and sunk. Low two bits
 /// of a byte in the data/signalling block.</summary>
 public enum DataPort : byte

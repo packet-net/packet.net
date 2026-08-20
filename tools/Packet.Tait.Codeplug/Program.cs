@@ -49,7 +49,7 @@ try
             return 1;
     }
 }
-catch (Exception ex) when (ex is FormatException or IOException or TimeoutException or InvalidOperationException)
+catch (Exception ex) when (ex is FormatException or IOException or TimeoutException or InvalidOperationException or ArgumentException)
 {
     Console.Error.WriteLine($"error: {ex.Message}");
     return 2;
