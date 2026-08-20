@@ -30,7 +30,9 @@ public sealed class SystemVersionServiceTests
         var svc = new SystemVersionService("0.8.0", probe, new FakeTimeProvider(T0), NullLoggerFactory.Instance);
 
         // The synchronous snapshot read returns the default immediately (it only KICKS OFF a
-        // background refresh - it never awaits one), so /info is never blocked.
+        // background refresh - it never awaits one), so /info is never blocked. The service reads the
+        // snapshot before triggering, so this holds however fast the probe is - it is not a race with
+        // the background publish.
         svc.GetAvailabilitySnapshot().Should().Be(SystemUpdateAvailability.None);
     }
 

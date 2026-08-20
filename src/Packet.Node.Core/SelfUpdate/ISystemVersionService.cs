@@ -77,11 +77,21 @@ public sealed partial class SystemVersionService : ISystemVersionService
         var now = clock.GetUtcNow();
         var last = Interlocked.Read(ref lastRefreshTicks);
         bool stale = last == long.MinValue || now.UtcTicks - last >= ttl.Ticks;
+
+        // Read the snapshot BEFORE kicking off the refresh, so what this call returns is well-defined:
+        // the snapshot as of entry. Reading it afterwards left the return value up to whether the
+        // fire-and-forget refresh happened to publish in the microseconds between the Task.Run and the
+        // read - a race that changes nothing for a real networked probe, but makes the method
+        // nondeterministic against a fast one (it flaked the "safe default before the first refresh"
+        // test on a loaded CI runner, 2026-08-20). Either value satisfies the contract; a defined one
+        // is worth more than a marginally fresher one on the very call that asked for the refresh.
+        var snapshot = Snapshot;
         if (stale)
         {
             TriggerBackgroundRefresh(now);
         }
-        return Snapshot;
+
+        return snapshot;
     }
 
     /// <summary>Run a refresh and await it - for tests + an optional eager warm-up at boot. Updates

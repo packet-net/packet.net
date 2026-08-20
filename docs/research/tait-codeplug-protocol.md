@@ -1,6 +1,6 @@
 # Tait TM8100/TM8200 codeplug programming protocol (reverse-engineered)
 
-The proprietary serial protocol the Windows CPS (Tait Programming Application) uses to read and write the Tait TM8100/TM8200 codeplug, reverse-engineered from serial captures and validated end to end against real hardware. This is milestone M1 of [`tait-codeplug-programming-brief.md`](tait-codeplug-programming-brief.md): enough of the protocol to do a safe read then write without the CPS. The implementation is the [`src/Packet.Tait.Codeplug`](../../src/Packet.Tait.Codeplug) library (with a `Packet.Tait.Codeplug.Cli` front-end).
+The proprietary serial protocol the Windows CPS (Tait Programming Application) uses to read and write the Tait TM8100/TM8200 codeplug, reverse-engineered from serial captures and validated end to end against real hardware. This is milestone M1 of [`tait-codeplug-programming-brief.md`](tait-codeplug-programming-brief.md): enough of the protocol to do a safe read then write without the CPS. The implementation is the [`M0LTE.Tait.Codeplug`](https://github.com/M0LTE/tait-codeplug) library and its `tait-codeplug` CLI, which moved to their own repo on 2026-08-20.
 
 ## How it was captured
 
@@ -69,7 +69,7 @@ The CLI exposes this as `patch <port> <field> <value>` (read, set the field, wri
 
 ## Codeplug field map (DBVer 0094 / 0095)
 
-Fields are bit-packed into record payloads. [`CodeplugFields`](../../src/Packet.Tait.Codeplug/Fields/CodeplugFields.cs) exposes a typed, version-pinned view; each field below is pinned by a test and validated against a real radio's codeplug. Record 0x27 (a 12-bit field) carries the database version, which pins the map (the tool refuses an unmapped version).
+Fields are bit-packed into record payloads. [`CodeplugFields`](https://github.com/M0LTE/tait-codeplug/blob/main/src/M0LTE.Tait.Codeplug/Fields/CodeplugFields.cs) exposes a typed, version-pinned view; each field below is pinned by a test and validated against a real radio's codeplug. Record 0x27 (a 12-bit field) carries the database version, which pins the map (the tool refuses an unmapped version).
 
 **Channels** live in record type 0x05 as one contiguous LSB-first bit-stream, 181 bits per channel, physically split across a run of up to 32-byte records, so a channel can straddle a record boundary. Channel N's field at stream bit `N*181 + offset`:
 

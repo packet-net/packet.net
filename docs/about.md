@@ -36,8 +36,9 @@ The libraries produce and accept exactly what AX.25 v2.2 / APRS101 / the KISS TN
 | [`packet-net/packet-term-web`](https://github.com/packet-net/packet-term-web) | Browser TNC2 emulator at <https://packet-term.m0lte.uk>. Consumes `@packet-net/ax25` from npm. |
 | [`packet-net/pdn-libax25`](https://github.com/packet-net/pdn-libax25) | LGPL-3.0 drop-in `libax25.so` + `LD_PRELOAD` AF_AX25 interposer: native AX.25 apps (address a callsign) run over pdn via RHPv2. The native seam. |
 | [`packet-net/pdn-net`](https://github.com/packet-net/pdn-net) | AGPL-3.0 TUN/IP host stack: run unmodified IP software (address an IP) over packet radio; standard IP-over-AX.25. The IP seam. |
+| [`M0LTE/tait-codeplug`](https://github.com/M0LTE/tait-codeplug) | AGPL-3.0 Tait TM8100/TM8200 codeplug programmer: the `tait-codeplug` CLI + the `M0LTE.Tait.Codeplug` NuGet package. Provisions a radio for the `Packet.Radio.Tait` driver that lives here. Split out of this repo on 2026-08-20. |
 
-All of the above are public. The [`packet-net`](https://github.com/orgs/packet-net/repositories) organisation holds more besides - the soundmodem engine, apps that run on the node, the net simulator - but the table above is the set this repository is directly coupled to.
+All of the above are public (`M0LTE/tait-codeplug` sits outside the org, under Tom's own account). The [`packet-net`](https://github.com/orgs/packet-net/repositories) organisation holds more besides - the soundmodem engine, apps that run on the node, the net simulator - but the table above is the set this repository is directly coupled to.
 
 The `ax25sdl` repo is the longest-lived contributor surface: that is where SDL transcriptions and spec-side work happen. Tom is working with the original AX.25 authors on whether `packethacking/ax25spec` should be the canonical community home for those transcriptions; `packet-net/ax25sdl` is the prove-out venue until that is agreed.
 
