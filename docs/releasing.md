@@ -100,22 +100,11 @@ Verify the release is **non-draft with 7 assets** (three `.deb`s + three binarie
 gh release view headend-v<semver> --repo packet-net/packet.net
 ```
 
-## Step 2c - tag the Tait codeplug CLI → cross-platform binaries GitHub Release (`publish-tait-cli.yml`)
+## Step 2c (retired) - the Tait codeplug CLI and library moved out
 
-The standalone Tait codeplug CLI (`tools/Packet.Tait.Codeplug.Cli`) releases on its **own cadence** with its own tag - only when the CLI or its library (`src/Packet.Tait.Codeplug`) changed this cycle, and only when a public release is wanted. It is **not** in lockstep with `lib-v*`/`node-v*` (the codeplug library is not a NuGet package).
+They left this repo on 2026-08-20 for [`M0LTE/tait-codeplug`](https://github.com/M0LTE/tait-codeplug), which releases both on its own cadence: a `v*` tag there gates on the tests, publishes the [`M0LTE.Tait.Codeplug`](https://www.nuget.org/packages/M0LTE.Tait.Codeplug) NuGet package via trusted publishing, and attaches the six cross-platform, self-contained CLI binaries + `SHA256SUMS` to a GitHub Release. None of it is part of this repo's cascade any more, and the `tait-cli-v*` tags and their releases here were deleted with the move.
 
-```sh
-git tag -a tait-cli-v<semver> origin/main -m "tait-cli-v<semver> - <one-line summary>"
-git push origin tait-cli-v<semver>
-```
-
-The `tait-cli-v*` tag triggers [`.github/workflows/publish-tait-cli.yml`](../.github/workflows/publish-tait-cli.yml): it runs the local gate (`dotnet test` on `Packet.Tait.Codeplug.Tests`) first, then `dotnet publish` cross-publishes a **self-contained, single-file** executable for **linux-x64 / linux-arm64 / linux-arm / win-x64 / osx-x64 / osx-arm64** from the one x64 runner (each embeds the .NET runtime and the native serial library via `IncludeNativeLibrariesForSelfExtract`; compressed to ~37 MB), and `gh release create tait-cli-v<semver>` attaches the six version-stamped binaries + `SHA256SUMS`, with notes from [`.github/release-notes/tait-cli.md`](../.github/release-notes/tait-cli.md). No `.deb` and no Actions artifacts (all in one job's working tree, like the head-end).
-
-Verify the release is **non-draft with 7 assets** (six binaries + `SHA256SUMS`):
-
-```sh
-gh release view tait-cli-v<semver> --repo packet-net/packet.net
-```
+`Packet.Radio.Tait` - the runtime CCDI / transparent-mode radio driver, a different thing from the codeplug programmer - stays here and ships with `lib-v*` as before.
 
 ### Optional - move the lab to the release `.deb`
 
