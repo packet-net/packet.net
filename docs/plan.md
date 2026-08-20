@@ -1367,6 +1367,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-20 - Tait codeplug CLI: read-to-stdout + drop --baud
+
+Two ergonomics fixes on the CLI. `read <port>` now prints the `.m8p` to stdout when no output file is given (`... read /dev/ttyUSB0 > radio.m8p`), with all progress on stderr so the piped output is clean; `read <port> <out.m8p>` still writes a file. And `--baud` is gone from every hardware verb: the session runs reliably at 19200 (hardware-confirmed), so the tool just uses it. In the library, `SerialPortLine`'s baud now defaults to 19200 (the probing seam was already off by default). 46 tests.
+
 ### 2026-08-20 - Tait codeplug CLI: cross-platform GitHub Releases workflow
 
 Added [`.github/workflows/publish-tait-cli.yml`](../.github/workflows/publish-tait-cli.yml) so the standalone codeplug CLI can ship to people who want it without building it. A `tait-cli-v*` tag (its own cadence, like `headend-v*`) cross-publishes a self-contained, single-file executable for linux-x64/arm64/arm, win-x64 and osx-x64/arm64 from the one self-hosted x64 runner, and attaches the six binaries + `SHA256SUMS` to a GitHub Release with notes from `.github/release-notes/tait-cli.md`. Follows the established publish-* pattern (self-hosted only, one job, no Actions artifacts, gate-before-release). The single-file + `System.IO.Ports` native-lib gotcha is handled with `IncludeNativeLibrariesForSelfExtract=true` (and `EnableCompressionInSingleFile=true` keeps each binary ~37 MB); no trimming (System.IO.Ports is not trim-safe). Release doc updated (step 2c). Workflow-only, no code change.
