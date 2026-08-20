@@ -114,7 +114,34 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 
 Transparent-mode enable additionally sets bit 0 (data options) plus bits 158 and 160; SDM enable sets bit 86 and cascades bits 155..157; these composite writes reproduce the CPS byte-for-byte.
 
-These are the codeplug prerequisites the `Packet.Radio.Tait` runtime features depend on. CCDI (RSSI, DCD / channel-busy, PTT, status queries) needs **CCDI mode allowed** on and a command-capable power-up state and CCDI port/baud. SDM reception at a host needs **SDM enabled** plus **CCDI SDM output enabled**. The FFSK Transparent byte pipe needs **transparent mode enabled**, **ignore escape sequence OFF** (the classic wedge), matching **FFSK over-air baud** at both ends, and usually **ignore subaudible on data**. Every offset in the table is fixture-confirmed by a single-setting CPS save, and offsets between two confirmed points are bit-exact by the contiguous packing. Power-up state pins the one subtlety in the leading region: it lands at bit 17, not the bit 3 a naive field-order count gives, because the two flow-control character fields ahead of it are a byte each rather than a single flag (the identity field's on-disk width is likewise larger than the field table's length column, which is what produces the constant shift for the fields past it).
+These are the codeplug prerequisites the `Packet.Radio.Tait` runtime features depend on. CCDI (RSSI, DCD / channel-busy, PTT, status queries) needs **CCDI mode allowed** on and a command-capable power-up state and CCDI port/baud. SDM reception at a host needs **SDM enabled** plus **CCDI SDM output enabled**. The FFSK Transparent byte pipe needs **transparent mode enabled**, **ignore escape sequence OFF** (the classic wedge), matching **FFSK over-air baud** at both ends, and usually **ignore subaudible on data**. Every offset in the table is fixture-confirmed by a single-setting CPS save, and offsets between two confirmed points are bit-exact by the contiguous packing. Power-up state pins the one subtlety in the leading region: it lands at bit 17, not the bit 3 a naive field-order count gives, because the two flow-control character fields ahead of it (the XON and XOFF character codes, a byte each) are not single flags. The identity field's on-disk width is likewise larger than the field table's length column, which is what produces the constant shift for the fields past it.
+
+Each of these is a control on the CPS **Data** form. By tab:
+
+| CPS control | tab / group | field here |
+|-------------|-------------|------------|
+| Powerup State | General > Common Data Parameters | power-up state |
+| CCDI Mode Allowed | General > Command Mode | CCDI mode allowed |
+| Output Progress Messages | General > Command Mode | CCDI progress message |
+| Output SDMs Automatically | General > Command Mode | CCDI SDM output |
+| CCDI SDM Text Only | General > Command Mode | CCDI SDM text-only |
+| Transparent Mode Enabled | General > Transparent Mode | transparent mode enabled |
+| Ignore Escape Sequence | General > Transparent Mode | ignore escape sequence |
+| THSD Modem Enabled | General > Transparent Mode | THSD modem enabled |
+| Baud Rate (Command Mode column) | Serial Communications | command-mode (CCDI) baud |
+| Baud Rate (FFSK Transparent Mode column) | Serial Communications | FFSK transparent (terminal) baud |
+| Baud Rate (THSD Transparent Mode column) | Serial Communications | THSD (HSD) baud |
+| Data Port | Serial Communications | data / CCDI port |
+| Ignore DCS/CTCSS | RF Modems > FFSK Modem | ignore subaudible on data |
+| FFSK Baud Rate | RF Modems > FFSK Modem | FFSK (over-air modem) baud |
+| SDM Enabled | SDM > All SDMs | SDM enabled |
+| Indicate When SDM Received | SDM > Text SDMs Only | text-SDM indicator |
+| Transmit SDM Auto Acknowledgement | SDM > Text SDMs Only | text-SDM auto-ack transmission |
+| Receive SDM Auto Acknowledgement | SDM > Text SDMs Only | text-SDM auto-ack reception |
+| SDM Auto Acknowledge Delay | SDM > Text SDMs Only | SDM auto-ack delay |
+| SDM Wait For Acknowledgement Time | SDM > Text SDMs Only | SDM wait-for-ack |
+
+Verified end to end by loading a tool-written codeplug, every item-9 field set to a distinctive value, into the CPS and confirming each control reads back what the tool wrote. One UI enable-rule to note: **SDM Wait For Acknowledgement Time** is only editable in the CPS when **Receive SDM Auto Acknowledgement** is on; the stored value is written regardless, the CPS just greys the box when its precondition is off.
 
 **Audio tap** is record 0x3B/0:
 
