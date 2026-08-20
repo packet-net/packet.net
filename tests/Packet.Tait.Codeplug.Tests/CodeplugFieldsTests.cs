@@ -273,6 +273,28 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
+    public void Powerup_state_and_backoff_guards_match_the_cps()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[32])));
+
+        // The transparent power-up options are only offered when the matching mode is on.
+        ((Action)(() => f.PowerupState = DataPowerupMode.FfskTransparent)).Should().Throw<InvalidOperationException>();
+        ((Action)(() => f.PowerupState = DataPowerupMode.ThsdTransparent)).Should().Throw<InvalidOperationException>();
+        f.PowerupState = DataPowerupMode.CommandMode;   // always allowed
+        f.TransparentModeEnabled = true;
+        f.PowerupState = DataPowerupMode.FfskTransparent;
+        f.ThsdModemEnabled = true;
+        f.PowerupState = DataPowerupMode.ThsdTransparent;
+
+        // Tx back-off maximum must exceed the minimum (or both 0 to disable).
+        f.TxBackoffTimeMinMs = 200;
+        ((Action)(() => f.TxBackoffTimeMaxMs = 100)).Should().Throw<ArgumentOutOfRangeException>();
+        f.TxBackoffTimeMaxMs = 400; f.TxBackoffTimeMaxMs.Should().Be(400);
+        f.TxBackoffTimeMinMs = 0; f.TxBackoffTimeMaxMs = 0; // both 0 disables
+        f.TxBackoffTimeMaxMs.Should().Be(0);
+    }
+
+    [Fact]
     public void Remaining_data_form_fields_reject_out_of_range()
     {
         var f = CodeplugFields.Open(ImageWith(Data(new byte[32])));

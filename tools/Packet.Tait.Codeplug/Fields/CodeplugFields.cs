@@ -644,7 +644,20 @@ public sealed class CodeplugFields
     public DataPowerupMode PowerupState
     {
         get => (DataPowerupMode)GetDataBits(17, 2);
-        set => SetDataBits(17, 2, (byte)value);
+        set
+        {
+            // The CPS offers the FFSK / THSD Transparent power-up options only when the matching mode is on.
+            if (value == DataPowerupMode.FfskTransparent)
+            {
+                RequireAvailable(TransparentModeEnabled, "Transparent Mode is enabled");
+            }
+            else if (value == DataPowerupMode.ThsdTransparent)
+            {
+                RequireAvailable(ThsdModemEnabled, "the THSD modem is enabled");
+            }
+
+            SetDataBits(17, 2, (byte)value);
+        }
     }
 
     /// <summary>CCDI command-mode serial baud (the CPS "Baud Rate" Command Mode column, Data > Serial
@@ -858,7 +871,8 @@ public sealed class CodeplugFields
     }
 
     /// <summary>Transmit back-off time maximum in ms (the CPS "Tx Back-off Time (Max)", Data > General >
-    /// Transparent Mode; bits 187..196, 0..1000).</summary>
+    /// Transparent Mode; bits 187..196, 0..1000). The CPS requires the maximum to be greater than the
+    /// minimum (or both 0 to disable the back-off).</summary>
     public int TxBackoffTimeMaxMs
     {
         get => (int)GetDataBits(187, 10);
@@ -867,6 +881,12 @@ public sealed class CodeplugFields
             if (value is < 0 or > 1000)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "0..1000");
+            }
+
+            if (value != 0 && value <= TxBackoffTimeMinMs)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value), value, $"must be greater than the minimum ({TxBackoffTimeMinMs} ms), or 0 to disable");
             }
 
             SetDataBits(187, 10, value);
