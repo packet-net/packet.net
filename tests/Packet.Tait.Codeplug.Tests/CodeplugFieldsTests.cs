@@ -279,19 +279,24 @@ public class CodeplugFieldsTests
         ((Action)(() => f.UnitDataIdentity = "TOOLONG12")).Should().Throw<ArgumentException>(); // > 8 chars
     }
 
+    private static CodeplugFields GpsImage() => CodeplugFields.Open(ImageWith(
+        new CodeplugRecord(0x05, 0, new byte[23]),   // one channel
+        new CodeplugRecord(0x09, 0, new byte[37]),
+        new CodeplugRecord(0x45, 0, new byte[21])));
+
     [Fact]
     public void Gps_fields_round_trip()
     {
-        CodeplugFields f = CodeplugFields.Open(ImageWith(
-            new CodeplugRecord(0x05, 0, new byte[23]), new CodeplugRecord(0x45, 0, new byte[21])));
+        CodeplugFields f = GpsImage();
         f.HasGps.Should().BeTrue();
 
+        f.SdmEnabled = true;                           // GPS enable requires SDM (below)
         f.GpsEnabled = true; f.GpsEnabled.Should().BeTrue();
         f.GpsSerialPort = DataPort.Aux; f.GpsSerialPort.Should().Be(DataPort.Aux);
         f.GpsBaudRate = FfskBaud.Baud14400; f.GpsBaudRate.Should().Be(FfskBaud.Baud14400);
         f.GpsPollResponseChannelType = GpsPollResponseChannelType.Dedicated;
         f.GpsPollResponseChannelType.Should().Be(GpsPollResponseChannelType.Dedicated);
-        f.GpsPollResponseChannel = 99; f.GpsPollResponseChannel.Should().Be(99);
+        f.GpsPollResponseChannel = 1; f.GpsPollResponseChannel.Should().Be(1);
         f.GpsCalloutIntervalSeconds = 300; f.GpsCalloutIntervalSeconds.Should().Be(300);
         f.GpsMaxNumberOfCallouts = 5; f.GpsMaxNumberOfCallouts.Should().Be(5);
         f.GpsConnectionTimeoutSeconds = 600; f.GpsConnectionTimeoutSeconds.Should().Be(600);
@@ -302,6 +307,29 @@ public class CodeplugFieldsTests
 
         ((Action)(() => f.GpsCalloutIntervalSeconds = 7)).Should().Throw<ArgumentOutOfRangeException>(); // not a 5 s step
         ((Action)(() => f.GpsConnectionTimeoutSeconds = 10)).Should().Throw<ArgumentOutOfRangeException>(); // below 20
+    }
+
+    [Fact]
+    public void Gps_guards_match_the_cps()
+    {
+        CodeplugFields f = GpsImage();
+
+        // GPS position reporting can only be enabled once SDM is on.
+        ((Action)(() => f.GpsEnabled = true)).Should().Throw<InvalidOperationException>();
+        f.SdmEnabled = true;
+        f.GpsEnabled = true;
+
+        // Dispatcher address is numeric; the identity is free text.
+        ((Action)(() => f.GpsDispatcherAddress = "TESTADDR")).Should().Throw<ArgumentException>();
+        f.GpsDispatcherAddress = "00099887";
+
+        // The GPS port is capped at 19200.
+        ((Action)(() => f.GpsBaudRate = FfskBaud.Baud28800)).Should().Throw<ArgumentOutOfRangeException>();
+
+        // The poll-response channel must be None (0) or an existing channel (this image has one).
+        ((Action)(() => f.GpsPollResponseChannel = 5)).Should().Throw<ArgumentOutOfRangeException>();
+        f.GpsPollResponseChannel = 1;
+        f.GpsPollResponseChannel = 0;
     }
 
     [Fact]

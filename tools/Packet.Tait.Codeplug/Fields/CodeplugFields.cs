@@ -1087,11 +1087,20 @@ public sealed class CodeplugFields
     private byte[] Gps => Image.Require(0x45, 0).Data;
 
     /// <summary>GPS position reporting enabled (the CPS "GPS Position Reporting Enabled" checkbox,
-    /// Data > GPS > General; bit 136). The CPS only lets this be enabled when SDM is on.</summary>
+    /// Data > GPS > General; bit 136). The CPS only lets this be enabled when SDM is on, so enabling it
+    /// here with SDM off throws, matching that rule.</summary>
     public bool GpsEnabled
     {
         get => GetBits(Gps, 136, 1) != 0;
-        set => SetBits(Gps, 136, 1, value ? 1 : 0);
+        set
+        {
+            if (value && !SdmEnabled)
+            {
+                throw new InvalidOperationException("GPS position reporting requires SDM to be enabled first.");
+            }
+
+            SetBits(Gps, 136, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>GPS serial port (the CPS "GPS Port", Data > GPS > Serial Communications; bits 0..1).</summary>
@@ -1102,11 +1111,19 @@ public sealed class CodeplugFields
     }
 
     /// <summary>GPS serial baud rate (the CPS "Baud Rate", Data > GPS > Serial Communications; bits
-    /// 2..5, a 4-bit index into the shared 1200..28800 baud table).</summary>
+    /// 2..5). The CPS caps the GPS port at 19200, so 28800 is rejected.</summary>
     public FfskBaud GpsBaudRate
     {
         get => (FfskBaud)GetBits(Gps, 2, 4);
-        set => SetBits(Gps, 2, 4, (byte)value);
+        set
+        {
+            if (value > FfskBaud.Baud19200)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "the GPS port supports 1200..19200");
+            }
+
+            SetBits(Gps, 2, 4, (byte)value);
+        }
     }
 
     /// <summary>Poll-response channel type (the CPS "Poll Response Channel Type", Data > GPS > Channel
@@ -1118,15 +1135,17 @@ public sealed class CodeplugFields
     }
 
     /// <summary>Dedicated poll-response channel number (the CPS "Channel", Data > GPS > Channel Setup;
-    /// bits 6..12, 0..99). Only used when the channel type is Dedicated.</summary>
+    /// bits 6..12). Only used when the channel type is Dedicated. 0 is "None"; otherwise it must be an
+    /// existing channel (1.. the codeplug's channel count), which is what the CPS enforces.</summary>
     public int GpsPollResponseChannel
     {
         get => (int)GetBits(Gps, 6, 7);
         set
         {
-            if (value is < 0 or > 99)
+            if (value < 0 || value > ChannelCount)
             {
-                throw new ArgumentOutOfRangeException(nameof(value), value, "0..99");
+                throw new ArgumentOutOfRangeException(
+                    nameof(value), value, $"0 (None) or an existing channel 1..{ChannelCount}");
             }
 
             SetBits(Gps, 6, 7, value);
@@ -1222,11 +1241,23 @@ public sealed class CodeplugFields
     }
 
     /// <summary>AVL dispatcher address (the CPS "Dispatcher Address", Data > GPS > General; bits
-    /// 50..105, eight 7-bit ASCII characters, default "00000000").</summary>
+    /// 50..105, eight 7-bit ASCII characters, default "00000000"). The CPS treats this as an up-to-8
+    /// digit number, so non-digits are rejected (unlike <see cref="UnitDataIdentity"/>, which is free text).</summary>
     public string GpsDispatcherAddress
     {
         get => GetAscii7(Gps, 50);
-        set => SetAscii7(Gps, 50, value);
+        set
+        {
+            foreach (char c in value)
+            {
+                if (c is < '0' or > '9')
+                {
+                    throw new ArgumentException("the dispatcher address is numeric (digits 0-9 only)", nameof(value));
+                }
+            }
+
+            SetAscii7(Gps, 50, value);
+        }
     }
 
     // ---- Customer Data tab (records 0x4C/0 and 0x4D/n) ----------------------------------

@@ -169,6 +169,8 @@ The Data form's GPS tab is its own record, an LSB-first bit-stream. Offsets vali
 
 (The three per-network "send position" fields occupy bits 106..135; the caller-ID, PTT-suppression, NMEA and SDM-ack GPS fields sit past bit 146 and are not on the main GPS form, so they are not mapped.)
 
+Where the CPS constrains a field's input, the field map enforces the same rule rather than writing a codeplug the CPS would then reject on load: GPS position reporting can only be enabled when SDM is on; the dispatcher address is numeric (digits only, unlike the free-text unit data identity); the GPS port baud is capped at 19200; and the dedicated poll-response channel must be None or a channel that exists in the codeplug.
+
 ## Customer Data tab (records 0x4C/0 and 0x4D/n)
 
 Plain bytes. Record 0x4C/0 is eight bytes: four leading pad bytes then the four global bytes (the CPS "Global Byte 1..4"). Each network row is record 0x4D at that network's index (network 1 = 0x4D/0), four bytes = the CPS "Byte 1..4".
