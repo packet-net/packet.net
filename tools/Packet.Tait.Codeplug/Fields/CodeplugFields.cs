@@ -135,8 +135,13 @@ public sealed class CodeplugFields
     /// <summary>Channel transmit inhibit.</summary>
     public TxInhibit GetTxInhibit(int channel) => (TxInhibit)Ch(channel, ChTxInhibit, 2);
 
-    /// <summary>Set channel transmit inhibit.</summary>
-    public void SetTxInhibit(int channel, TxInhibit value) => SetCh(channel, ChTxInhibit, 2, (long)value);
+    /// <summary>Set channel transmit inhibit. The CPS greys this field when the channel's receive
+    /// frequency is 0, so setting it there is refused.</summary>
+    public void SetTxInhibit(int channel, TxInhibit value)
+    {
+        RequireAvailable(GetRxFrequencyHz(channel) != 0, "the channel's receive frequency is not 0");
+        SetCh(channel, ChTxInhibit, 2, (long)value);
+    }
 
     /// <summary>Channel network reference (the CPS "Network" column), 0..7.</summary>
     public int GetNetwork(int channel) => (int)Ch(channel, ChNetwork, 3);

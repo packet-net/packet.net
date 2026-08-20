@@ -84,6 +84,9 @@ public class CodeplugFieldsTests
         f.GetNetwork(0).Should().Be(5);
 
         f.SetSquelch(0, Squelch.City);
+        // Tx Inhibit is only available when the channel has a receive frequency (as in the CPS).
+        ((Action)(() => f.SetTxInhibit(0, TxInhibit.None))).Should().Throw<InvalidOperationException>();
+        f.SetRxFrequencyHz(0, 145_000_000);
         f.SetTxInhibit(0, TxInhibit.None);
         f.SetNetwork(0, 2);
         f.GetSquelch(0).Should().Be(Squelch.City);
