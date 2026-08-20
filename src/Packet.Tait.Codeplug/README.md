@@ -42,10 +42,10 @@ The CLI (`tools/Packet.Tait.Codeplug.Cli`) is a thin front-end over this library
 ## CLI
 
 ```
-# offline (no radio)
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- parse <file.m8p>              # verify checksums + section map
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- dump  <file.m8p>              # decode every mapped field
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- get   <file.m8p> [field]      # read one field (or all)
+# decode - the source is an .m8p file OR a serial port (read the live radio; power-cycle as prompted)
+dotnet run --project tools/Packet.Tait.Codeplug.Cli -- parse <file.m8p | port>       # verify checksums + section map
+dotnet run --project tools/Packet.Tait.Codeplug.Cli -- dump  <file.m8p | port>       # decode every mapped field
+dotnet run --project tools/Packet.Tait.Codeplug.Cli -- get   <file.m8p | port> [field]  # read one field (or all)
 dotnet run --project tools/Packet.Tait.Codeplug.Cli -- set   <file.m8p> <field> <v>  # set one field + save
 dotnet run --project tools/Packet.Tait.Codeplug.Cli -- set   <file.m8p> profile <name>  # apply a PDN profile
 

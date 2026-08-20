@@ -1367,6 +1367,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-20 - Tait codeplug CLI: decode verbs read a live radio
+
+`parse` / `dump` / `get` now take their codeplug from either an `.m8p` file or a serial port - a source under `/dev/` or named `COM<n>` is read from the live radio (boot-latch power-cycle prompted on stderr), anything else is a file. So `get <port>` prints the decoded fields the same way `get <file>` does (this is what the earlier read-to-stdout was reaching for; `read <port>` keeps its raw-`.m8p` pipe as a separate, backup-shaped thing). Also caught `UnauthorizedAccessException` in the CLI so a busy/denied serial port prints a clean `error:` instead of a stack trace. 46 tests.
+
 ### 2026-08-20 - Tait codeplug CLI: read-to-stdout + drop --baud
 
 Two ergonomics fixes on the CLI. `read <port>` now prints the `.m8p` to stdout when no output file is given (`... read /dev/ttyUSB0 > radio.m8p`), with all progress on stderr so the piped output is clean; `read <port> <out.m8p>` still writes a file. And `--baud` is gone from every hardware verb: the session runs reliably at 19200 (hardware-confirmed), so the tool just uses it. In the library, `SerialPortLine`'s baud now defaults to 19200 (the probing seam was already off by default). 46 tests.

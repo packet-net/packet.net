@@ -5,13 +5,14 @@
 // CR-terminated, strictly lock-step; records share the .m8p framing. The radio must be latched
 // into programming mode first: power-cycle it as the operation is triggered. No RF is involved.
 //
-// Offline verbs (no radio):
-//   parse <file.m8p>              verify every record checksum + print the section map
-//   dump  <file.m8p>              decode the identity + known fields
+// Decode verbs (source = an .m8p file, or a serial port to read the live radio):
+//   parse <file.m8p | port>       verify every record checksum + print the section map
+//   dump  <file.m8p | port>       decode the identity + known fields
+//   get   <file.m8p | port> [f]   one field, or all as name=value
 //
 // Hardware verbs (radio in programming mode on <port>):
 //   version <port>                            interrogate: model / firmware / serial
-//   read    <port> [out.m8p]                  read the codeplug (to a file, or stdout if omitted)
+//   read    <port> [out.m8p]                  read the raw codeplug (to a file, or stdout if omitted)
 //
 // GOLDEN RULES (docs/research/tait-codeplug-programming-brief.md): always back up before a write
 // (patch does this), never touch firmware (this only writes the codeplug region), version-pin on
@@ -48,15 +49,15 @@ try
             return 1;
     }
 }
-catch (Exception ex) when (ex is FormatException or IOException or TimeoutException or InvalidOperationException or ArgumentException)
+catch (Exception ex) when (ex is FormatException or IOException or TimeoutException or InvalidOperationException or ArgumentException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine($"error: {ex.Message}");
     return 2;
 }
 
-static int CmdParse(string path)
+static int CmdParse(string source)
 {
-    CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
+    CodeplugImage image = LoadImage(source);
     Console.WriteLine($"header: {string.Join(", ", image.Header.Select(kv => $"{kv.Key}={kv.Value}"))}");
     Console.WriteLine($"records: {image.Records.Count} (all checksums verified on load)");
     Console.WriteLine($"sections: {image.SectionMap().Count}");
@@ -69,9 +70,9 @@ static int CmdParse(string path)
     return 0;
 }
 
-static int CmdDump(string path)
+static int CmdDump(string source)
 {
-    CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
+    CodeplugImage image = LoadImage(source);
     Console.WriteLine($"DBVer (header): {image.DatabaseVersion}");
     Console.WriteLine($"DBVer (radio):  {image.DatabaseVersionFromRecord}");
     if (!CodeplugFields.IsSupported(image))
@@ -89,9 +90,9 @@ static int CmdDump(string path)
     return 0;
 }
 
-static int CmdGet(string path, string? field)
+static int CmdGet(string source, string? field)
 {
-    CodeplugImage image = CodeplugImage.LoadM8p(File.ReadAllText(path));
+    CodeplugImage image = LoadImage(source);
     CodeplugFields fields = CodeplugFields.Open(image);
     if (field is null)
     {
@@ -142,6 +143,44 @@ static ProgrammerOptions HardwareOptions() => new()
 {
     ConnectWaitMs = 90_000, // wait up to 90s for the operator to power-cycle into programming mode
 };
+
+// The offline verbs (parse/dump/get) take their codeplug from either an .m8p file or a live radio:
+// a source under /dev/ or named COM<n> is a serial port and is read from the radio, anything else is
+// a file. Reading a radio prompts (on stderr) for the boot-latch power-cycle.
+static bool IsPort(string source)
+{
+    if (source.StartsWith("/dev/", StringComparison.Ordinal))
+    {
+        return true;
+    }
+
+    if (source.Length > 3 && source.StartsWith("COM", StringComparison.OrdinalIgnoreCase))
+    {
+        for (int i = 3; i < source.Length; i++)
+        {
+            if (!char.IsDigit(source[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+static CodeplugImage LoadImage(string source)
+{
+    if (!IsPort(source))
+    {
+        return CodeplugImage.LoadM8p(File.ReadAllText(source));
+    }
+
+    using var programmer = new TaitProgrammer(new SerialPortLine(source), HardwareOptions());
+    Console.Error.WriteLine($"opening {source} at 19200 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
+    return programmer.ReadImage();
+}
 
 // read <port>            -> print the .m8p to stdout (pipe it, e.g. `... read /dev/ttyUSB0 > radio.m8p`)
 // read <port> <out.m8p>  -> write the .m8p to a file
@@ -222,9 +261,9 @@ static string Arg(string[] args, int index)
 static void PrintUsage()
 {
     Console.WriteLine("usage:");
-    Console.WriteLine("  parse   <file.m8p>                     verify checksums + section map");
-    Console.WriteLine("  dump    <file.m8p>                     decode every mapped field");
-    Console.WriteLine("  get     <file.m8p> [field]             read one field (or all as name=value)");
+    Console.WriteLine("  parse   <file.m8p | port>              verify checksums + section map (file or live radio)");
+    Console.WriteLine("  dump    <file.m8p | port>              decode every mapped field (file or live radio)");
+    Console.WriteLine("  get     <file.m8p | port> [field]      read one field, or all as name=value (file or live radio)");
     Console.WriteLine("  set     <file.m8p> <field> <value>     set one field and save (e.g. ch0.bandwidth Wide)");
     Console.WriteLine("  set     <file.m8p> profile <name>      apply a PDN upgrade profile to a file");
     Console.WriteLine("  version <port>                         interrogate a radio");
