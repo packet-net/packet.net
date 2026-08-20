@@ -574,20 +574,28 @@ public sealed class CodeplugFields
 
     private static void SetAscii7(byte[] p, int bitOffset, string value)
     {
+        for (int i = 0; i < 8; i++)
+        {
+            char c = i < value.Length ? value[i] : '\0';
+            SetBits(p, bitOffset + (7 * i), 7, c);
+        }
+    }
+
+    // A Tait radio identity (the unit data identity and the GPS dispatcher address) is up to eight
+    // characters from A-Z, 0-9, or the wildcard '*', which is what the CPS accepts.
+    private static void ValidateRadioIdentity(string value)
+    {
         if (value.Length > 8)
         {
             throw new ArgumentException("an identity is at most 8 characters", nameof(value));
         }
 
-        for (int i = 0; i < 8; i++)
+        foreach (char c in value)
         {
-            char c = i < value.Length ? value[i] : '\0';
-            if (c > 0x7F)
+            if (!(c is (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '*'))
             {
-                throw new ArgumentException("an identity is 7-bit ASCII", nameof(value));
+                throw new ArgumentException("an identity uses A-Z, 0-9, or the wildcard '*'", nameof(value));
             }
-
-            SetBits(p, bitOffset + (7 * i), 7, c);
         }
     }
 
@@ -695,9 +703,9 @@ public sealed class CodeplugFields
         }
     }
 
-    /// <summary>SDM wait-for-acknowledge count (the CPS "SDM Wait For Acknowledgement Time", Data > SDM >
-    /// Text SDMs Only; bits 93..96, 1..15). The CPS only lets you edit this box when "Receive SDM Auto
-    /// Acknowledgement" is on, but the value is stored regardless.</summary>
+    /// <summary>SDM wait-for-acknowledge time in seconds (the CPS "SDM Wait For Acknowledgement Time",
+    /// Data > SDM > Text SDMs Only; bits 93..96, 1..15 s). The CPS only lets you edit this box when
+    /// "Receive SDM Auto Acknowledgement" is on, but the value is stored regardless.</summary>
     public int SdmWaitForAck
     {
         get => (int)GetDataBits(93, 4);
@@ -872,15 +880,15 @@ public sealed class CodeplugFields
     }
 
     /// <summary>FFSK lead-in delay in ms (the CPS "FFSK Lead-In Delay", Data > RF Modems > FFSK Modem;
-    /// bits 75..84, a 10-bit count in 5 ms steps, 0..5100 ms).</summary>
+    /// bits 75..84, a 10-bit count in 5 ms steps, 15..5100 ms).</summary>
     public int FfskLeadInDelayMs
     {
         get => (int)GetDataBits(75, 10) * 5;
         set
         {
-            if (value is < 0 or > 5100 || value % 5 != 0)
+            if (value is < 15 or > 5100 || value % 5 != 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(value), value, "0..5100 ms in 5 ms steps");
+                throw new ArgumentOutOfRangeException(nameof(value), value, "15..5100 ms in 5 ms steps");
             }
 
             SetDataBits(75, 10, value / 5);
@@ -997,12 +1005,16 @@ public sealed class CodeplugFields
         }
     }
 
-    /// <summary>Unit data identity (the CPS "Unit Data Identity", Data > SDM > All SDMs; bits 19..74,
-    /// eight 7-bit ASCII characters). Blank ("") is an all-zero field.</summary>
+    /// <summary>Unit data identity (the CPS "Unit Data Identity", Data > SDM > All SDMs; bits 19..74).
+    /// Up to eight characters from A-Z, 0-9, or the wildcard '*'; blank ("") is an all-zero field.</summary>
     public string UnitDataIdentity
     {
         get => GetAscii7(Data, 19);
-        set => SetAscii7(Data, 19, value);
+        set
+        {
+            ValidateRadioIdentity(value);
+            SetAscii7(Data, 19, value);
+        }
     }
 
     // -- TOTAL Transparent Mode tab (the fields that fall within the stored record) --
@@ -1111,19 +1123,11 @@ public sealed class CodeplugFields
     }
 
     /// <summary>GPS serial baud rate (the CPS "Baud Rate", Data > GPS > Serial Communications; bits
-    /// 2..5). The CPS caps the GPS port at 19200, so 28800 is rejected.</summary>
+    /// 2..5, a 4-bit index into the shared 1200..28800 baud table).</summary>
     public FfskBaud GpsBaudRate
     {
         get => (FfskBaud)GetBits(Gps, 2, 4);
-        set
-        {
-            if (value > FfskBaud.Baud19200)
-            {
-                throw new ArgumentOutOfRangeException(nameof(value), value, "the GPS port supports 1200..19200");
-            }
-
-            SetBits(Gps, 2, 4, (byte)value);
-        }
+        set => SetBits(Gps, 2, 4, (byte)value);
     }
 
     /// <summary>Poll-response channel type (the CPS "Poll Response Channel Type", Data > GPS > Channel
@@ -1241,21 +1245,14 @@ public sealed class CodeplugFields
     }
 
     /// <summary>AVL dispatcher address (the CPS "Dispatcher Address", Data > GPS > General; bits
-    /// 50..105, eight 7-bit ASCII characters, default "00000000"). The CPS treats this as an up-to-8
-    /// digit number, so non-digits are rejected (unlike <see cref="UnitDataIdentity"/>, which is free text).</summary>
+    /// 50..105, default "00000000"). Like a <see cref="UnitDataIdentity"/>: up to eight characters from
+    /// A-Z, 0-9, or the wildcard '*'.</summary>
     public string GpsDispatcherAddress
     {
         get => GetAscii7(Gps, 50);
         set
         {
-            foreach (char c in value)
-            {
-                if (c is < '0' or > '9')
-                {
-                    throw new ArgumentException("the dispatcher address is numeric (digits 0-9 only)", nameof(value));
-                }
-            }
-
+            ValidateRadioIdentity(value);
             SetAscii7(Gps, 50, value);
         }
     }

@@ -274,9 +274,12 @@ public class CodeplugFieldsTests
         f.UnitDataIdentity.Should().Be("SOMEVALU");
         f.UnitDataIdentity = "NODE1";                        // shorter, trailing slots blank
         f.UnitDataIdentity.Should().Be("NODE1");
+        f.UnitDataIdentity = "AB12*Z";                       // the wildcard is allowed
+        f.UnitDataIdentity.Should().Be("AB12*Z");
         f.UnitDataIdentity = "";
         f.UnitDataIdentity.Should().BeEmpty();
         ((Action)(() => f.UnitDataIdentity = "TOOLONG12")).Should().Throw<ArgumentException>(); // > 8 chars
+        ((Action)(() => f.UnitDataIdentity = "node1")).Should().Throw<ArgumentException>();      // lowercase
     }
 
     private static CodeplugFields GpsImage() => CodeplugFields.Open(ImageWith(
@@ -319,12 +322,14 @@ public class CodeplugFieldsTests
         f.SdmEnabled = true;
         f.GpsEnabled = true;
 
-        // Dispatcher address is numeric; the identity is free text.
-        ((Action)(() => f.GpsDispatcherAddress = "TESTADDR")).Should().Throw<ArgumentException>();
+        // Dispatcher address is a radio identity (A-Z, 0-9, or '*'); letters are fine, other chars are not.
+        f.GpsDispatcherAddress = "TESTADDR";
         f.GpsDispatcherAddress = "00099887";
+        ((Action)(() => f.GpsDispatcherAddress = "test")).Should().Throw<ArgumentException>();     // lowercase
+        ((Action)(() => f.GpsDispatcherAddress = "A-B")).Should().Throw<ArgumentException>();       // symbol
 
-        // The GPS port is capped at 19200.
-        ((Action)(() => f.GpsBaudRate = FfskBaud.Baud28800)).Should().Throw<ArgumentOutOfRangeException>();
+        // The GPS port takes any standard baud, including 28800.
+        f.GpsBaudRate = FfskBaud.Baud28800; f.GpsBaudRate.Should().Be(FfskBaud.Baud28800);
 
         // The poll-response channel must be None (0) or an existing channel (this image has one).
         ((Action)(() => f.GpsPollResponseChannel = 5)).Should().Throw<ArgumentOutOfRangeException>();
