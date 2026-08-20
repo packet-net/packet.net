@@ -465,7 +465,18 @@ public sealed class CodeplugFields
     public bool ThsdModemEnabled
     {
         get => (Data[15] & 0x08) != 0;
-        set { if (value) { Data[15] |= 0x08; } else { Data[15] &= 0xF7; } }
+        set
+        {
+            if (value)
+            {
+                RequireAvailable(TransparentModeEnabled, "Transparent Mode is enabled");
+                Data[15] |= 0x08;
+            }
+            else
+            {
+                Data[15] &= 0xF7;
+            }
+        }
     }
 
     /// <summary>FFSK Transparent-mode (byte-pipe data operation) enabled (the CPS "Transparent Mode
@@ -497,6 +508,7 @@ public sealed class CodeplugFields
         get => (FfskBaud)(((Data[13] & 0x01) << 2) | ((Data[12] & 0xC0) >> 6));
         set
         {
+            RequireAvailable(TransparentModeEnabled, "Transparent Mode is enabled");
             byte[] p = Data;
             int idx = (byte)value;
             p[12] = (byte)((p[12] & 0x3F) | ((idx & 0x03) << 6));
@@ -581,6 +593,17 @@ public sealed class CodeplugFields
         }
     }
 
+    // Mirror the CPS's "this field is only available if ..." rules: a field whose enabling condition is
+    // not met is greyed in the CPS, so writing it would produce a codeplug state the UI cannot create.
+    // Guarding the setter refuses that edit (the enabling field must be set first, exactly as in the UI).
+    private static void RequireAvailable(bool condition, string requirement)
+    {
+        if (!condition)
+        {
+            throw new InvalidOperationException($"this field is only available when {requirement} (as in the CPS).");
+        }
+    }
+
     // A Tait radio identity (the unit data identity and the GPS dispatcher address) is up to eight
     // characters from A-Z, 0-9, or the wildcard '*', which is what the CPS accepts.
     private static void ValidateRadioIdentity(string value)
@@ -634,7 +657,11 @@ public sealed class CodeplugFields
     public FfskBaud HsdBaud
     {
         get => (FfskBaud)GetDataBits(107, 3);
-        set => SetDataBits(107, 3, (byte)value);
+        set
+        {
+            RequireAvailable(ThsdModemEnabled, "the THSD modem is enabled");
+            SetDataBits(107, 3, (byte)value);
+        }
     }
 
     /// <summary>Route received SDMs out to the CCDI host (the CPS "Output SDMs Automatically" checkbox,
@@ -659,7 +686,11 @@ public sealed class CodeplugFields
     public bool CcdiSdmTextOnly
     {
         get => GetDataBits(170, 1) != 0;
-        set => SetDataBits(170, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(CcdiSdmOutputEnabled, "Output SDMs Automatically is on"); }
+            SetDataBits(170, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>Show the received-SDM indicator (the CPS "Indicate When SDM Received" checkbox, Data >
@@ -676,7 +707,11 @@ public sealed class CodeplugFields
     public bool TextSdmAutoAckTransmission
     {
         get => GetDataBits(156, 1) != 0;
-        set => SetDataBits(156, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(SdmEnabled, "SDM is enabled"); }
+            SetDataBits(156, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>Auto-acknowledge received text SDMs (the CPS "Receive SDM Auto Acknowledgement"
@@ -684,7 +719,11 @@ public sealed class CodeplugFields
     public bool TextSdmAutoAckReception
     {
         get => GetDataBits(157, 1) != 0;
-        set => SetDataBits(157, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(SdmEnabled, "SDM is enabled"); }
+            SetDataBits(157, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>SDM auto-acknowledge delay in milliseconds (the CPS "SDM Auto Acknowledge Delay", Data >
@@ -694,6 +733,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(87, 6) * 100;
         set
         {
+            RequireAvailable(SdmEnabled && TextSdmAutoAckTransmission, "SDM and Transmit SDM Auto Acknowledgement are on");
             if (value is < 0 or > 5000 || value % 100 != 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "0..5000 ms in 100 ms steps");
@@ -711,6 +751,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(93, 4);
         set
         {
+            RequireAvailable(SdmEnabled && TextSdmAutoAckReception, "SDM and Receive SDM Auto Acknowledgement are on");
             if (value is < 1 or > 15)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "1..15");
@@ -726,7 +767,11 @@ public sealed class CodeplugFields
     public bool IgnoreEscapeSequence
     {
         get => GetDataBits(114, 1) != 0;
-        set => SetDataBits(114, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(TransparentModeEnabled, "Transparent Mode is enabled"); }
+            SetDataBits(114, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>Ignore subaudible (CTCSS / DCS) signalling on the data path (the CPS "Ignore DCS/CTCSS"
@@ -768,7 +813,11 @@ public sealed class CodeplugFields
     public bool MaximumInitialFrameLength
     {
         get => GetDataBits(160, 1) != 0;
-        set => SetDataBits(160, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(TransparentModeEnabled, "Transparent Mode is enabled"); }
+            SetDataBits(160, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>Transparent-mode UART write delay in ms (the CPS "UART Write Delay", Data > General >
@@ -850,7 +899,11 @@ public sealed class CodeplugFields
     public DataFlowControl FfskTransparentFlowControl
     {
         get => (DataFlowControl)GetDataBits(105, 2);
-        set => SetDataBits(105, 2, (byte)value);
+        set
+        {
+            RequireAvailable(TransparentModeEnabled, "Transparent Mode is enabled");
+            SetDataBits(105, 2, (byte)value);
+        }
     }
 
     /// <summary>THSD transparent-mode serial flow control (the CPS "Flow Control" THSD Transparent Mode
@@ -858,7 +911,11 @@ public sealed class CodeplugFields
     public DataFlowControl HsdFlowControl
     {
         get => (DataFlowControl)GetDataBits(110, 2);
-        set => SetDataBits(110, 2, (byte)value);
+        set
+        {
+            RequireAvailable(ThsdModemEnabled, "the THSD modem is enabled");
+            SetDataBits(110, 2, (byte)value);
+        }
     }
 
     // -- RF Modems tab --
@@ -868,7 +925,11 @@ public sealed class CodeplugFields
     public bool CheckPacketLength
     {
         get => GetDataBits(158, 1) != 0;
-        set => SetDataBits(158, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(TransparentModeEnabled, "Transparent Mode is enabled"); }
+            SetDataBits(158, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>Mute the receiver while receiving FFSK (the CPS "FFSK Tone Blanking" checkbox, Data >
@@ -876,7 +937,11 @@ public sealed class CodeplugFields
     public bool FfskToneBlanking
     {
         get => GetDataBits(126, 1) != 0;
-        set => SetDataBits(126, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(TransparentModeEnabled || SdmEnabled, "Transparent Mode or SDM is enabled"); }
+            SetDataBits(126, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>FFSK lead-in delay in ms (the CPS "FFSK Lead-In Delay", Data > RF Modems > FFSK Modem;
@@ -916,7 +981,11 @@ public sealed class CodeplugFields
     public bool WidebandModemEnabled
     {
         get => GetDataBits(154, 1) != 0;
-        set => SetDataBits(154, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(TransparentModeEnabled && ThsdModemEnabled, "Transparent Mode and the THSD modem are enabled"); }
+            SetDataBits(154, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>THSD layer-2 protocol (the CPS "Layer 2 Protocol" combo, Data > RF Modems > THSD Modem;
@@ -924,7 +993,11 @@ public sealed class CodeplugFields
     public ThsdLayer2 ThsdLayer2Protocol
     {
         get => (ThsdLayer2)GetDataBits(124, 2);
-        set => SetDataBits(124, 2, (byte)value);
+        set
+        {
+            RequireAvailable(TransparentModeEnabled && ThsdModemEnabled, "Transparent Mode and the THSD modem are enabled");
+            SetDataBits(124, 2, (byte)value);
+        }
     }
 
     /// <summary>THSD forward error correction enable (the CPS "Forward Error Correction (FEC)" checkbox,
@@ -932,7 +1005,11 @@ public sealed class CodeplugFields
     public bool ThsdForwardErrorCorrection
     {
         get => GetDataBits(127, 1) != 0;
-        set => SetDataBits(127, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(TransparentModeEnabled && ThsdModemEnabled, "Transparent Mode and the THSD modem are enabled"); }
+            SetDataBits(127, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>THSD FEC codeword count (the CPS "Number of Blocks", Data > RF Modems > THSD Modem;
@@ -942,6 +1019,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(174, 3);
         set
         {
+            RequireAvailable(TransparentModeEnabled && ThsdModemEnabled, "Transparent Mode and the THSD modem are enabled");
             if (value is < 1 or > 7)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "1..7");
@@ -958,6 +1036,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(128, 13);
         set
         {
+            RequireAvailable(TransparentModeEnabled && ThsdModemEnabled, "Transparent Mode and the THSD modem are enabled");
             if (value is < 0 or > 5000)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "0..5000");
@@ -974,6 +1053,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(141, 8);
         set
         {
+            RequireAvailable(TransparentModeEnabled && ThsdModemEnabled, "Transparent Mode and the THSD modem are enabled");
             if (value is < 0 or > 250)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "0..250");
@@ -990,7 +1070,11 @@ public sealed class CodeplugFields
     public bool SdmBufferOverwrite
     {
         get => GetDataBits(159, 1) != 0;
-        set => SetDataBits(159, 1, value ? 1 : 0);
+        set
+        {
+            if (value) { RequireAvailable(!CcdiSdmOutputEnabled, "Output SDMs Automatically is off"); }
+            SetDataBits(159, 1, value ? 1 : 0);
+        }
     }
 
     /// <summary>SDM caller-ID enable (the CPS "SDM Caller ID" checkbox, Data > SDM > Text SDMs Only).
@@ -1024,7 +1108,11 @@ public sealed class CodeplugFields
     public TotalModeService TotalService
     {
         get => (TotalModeService)GetDataBits(197, 1);
-        set => SetDataBits(197, 1, (byte)value);
+        set
+        {
+            RequireAvailable(ThsdLayer2Protocol == ThsdLayer2.Total, "the Layer 2 Protocol is TOTAL");
+            SetDataBits(197, 1, (byte)value);
+        }
     }
 
     /// <summary>TOTAL radio ID (the CPS "Radio ID", Data > TOTAL Transparent Mode; bits 198..213,
@@ -1034,6 +1122,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(198, 16);
         set
         {
+            RequireAvailable(ThsdLayer2Protocol == ThsdLayer2.Total, "the Layer 2 Protocol is TOTAL");
             if (value is < 0 or > 65535)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "0..65535");
@@ -1050,6 +1139,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(214, 8);
         set
         {
+            RequireAvailable(ThsdLayer2Protocol == ThsdLayer2.Total, "the Layer 2 Protocol is TOTAL");
             if (value is < 0 or > 255)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "0..255");
@@ -1066,6 +1156,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(222, 16);
         set
         {
+            RequireAvailable(ThsdLayer2Protocol == ThsdLayer2.Total, "the Layer 2 Protocol is TOTAL");
             if (value is < 0 or > 65535)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "0..65535");
@@ -1082,6 +1173,7 @@ public sealed class CodeplugFields
         get => (int)GetDataBits(238, 8);
         set
         {
+            RequireAvailable(ThsdLayer2Protocol == ThsdLayer2.Total, "the Layer 2 Protocol is TOTAL");
             if (value is < 0 or > 255)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "0..255");
@@ -1146,6 +1238,8 @@ public sealed class CodeplugFields
         get => (int)GetBits(Gps, 6, 7);
         set
         {
+            RequireAvailable(GpsPollResponseChannelType == GpsPollResponseChannelType.Dedicated,
+                "the Poll Response Channel Type is Dedicated");
             if (value < 0 || value > ChannelCount)
             {
                 throw new ArgumentOutOfRangeException(

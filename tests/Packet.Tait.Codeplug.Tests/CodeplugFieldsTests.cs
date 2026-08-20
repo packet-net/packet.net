@@ -158,6 +158,14 @@ public class CodeplugFieldsTests
         var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
         byte[] Payload() => f.Image.Require(0x09, 0).Data;
 
+        // Enable the masters first so their dependent fields are available (as the CPS requires).
+        f.SdmEnabled = true;
+        f.TransparentModeEnabled = true;
+        f.ThsdModemEnabled = true;
+        f.CcdiSdmOutputEnabled = true;
+        f.TextSdmAutoAckTransmission = true;
+        f.TextSdmAutoAckReception = true;
+
         // CCDI master (bit 177 = byte 22 bit 1) - gates RSSI / DCD / PTT / status.
         f.CcdiModeAllowed = true;
         f.CcdiModeAllowed.Should().BeTrue();
@@ -201,6 +209,9 @@ public class CodeplugFieldsTests
     public void Sdm_auto_ack_numeric_fields_reject_out_of_range()
     {
         var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
+        f.SdmEnabled = true;
+        f.TextSdmAutoAckTransmission = true;
+        f.TextSdmAutoAckReception = true;
         ((Action)(() => f.SdmAutoAckDelayMs = 5100)).Should().Throw<ArgumentOutOfRangeException>();
         ((Action)(() => f.SdmAutoAckDelayMs = 150)).Should().Throw<ArgumentOutOfRangeException>();
         ((Action)(() => f.SdmWaitForAck = 0)).Should().Throw<ArgumentOutOfRangeException>();
@@ -212,6 +223,11 @@ public class CodeplugFieldsTests
     {
         var f = CodeplugFields.Open(ImageWith(Data(new byte[32])));
         byte[] P() => f.Image.Require(0x09, 0).Data;
+
+        // Enable the masters so the transparent/THSD fields (and, via Layer 2 = TOTAL, the TOTAL fields)
+        // are available; SDM Buffer Overwrite needs Output SDMs Automatically off, which is the default.
+        f.TransparentModeEnabled = true;
+        f.ThsdModemEnabled = true;
 
         // General
         f.OpenMonitorOnDialledCall = true; f.OpenMonitorOnDialledCall.Should().BeTrue();
@@ -257,6 +273,9 @@ public class CodeplugFieldsTests
     public void Remaining_data_form_fields_reject_out_of_range()
     {
         var f = CodeplugFields.Open(ImageWith(Data(new byte[32])));
+        f.TransparentModeEnabled = true;
+        f.ThsdModemEnabled = true;
+        f.ThsdLayer2Protocol = ThsdLayer2.Total;   // make the THSD + TOTAL fields available
         ((Action)(() => f.FfskLeadInDelayMs = 3)).Should().Throw<ArgumentOutOfRangeException>();   // not a 5 ms step
         ((Action)(() => f.FfskLeadInDelayMs = 5105)).Should().Throw<ArgumentOutOfRangeException>();
         ((Action)(() => f.ThsdNumberOfBlocks = 0)).Should().Throw<ArgumentOutOfRangeException>();
@@ -331,7 +350,10 @@ public class CodeplugFieldsTests
         // The GPS port takes any standard baud, including 28800.
         f.GpsBaudRate = FfskBaud.Baud28800; f.GpsBaudRate.Should().Be(FfskBaud.Baud28800);
 
-        // The poll-response channel must be None (0) or an existing channel (this image has one).
+        // The poll-response channel is only editable when the channel type is Dedicated...
+        ((Action)(() => f.GpsPollResponseChannel = 1)).Should().Throw<InvalidOperationException>();
+        f.GpsPollResponseChannelType = GpsPollResponseChannelType.Dedicated;
+        // ...and then must be None (0) or an existing channel (this image has one).
         ((Action)(() => f.GpsPollResponseChannel = 5)).Should().Throw<ArgumentOutOfRangeException>();
         f.GpsPollResponseChannel = 1;
         f.GpsPollResponseChannel = 0;
