@@ -1367,6 +1367,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-20 - Tait codeplug library + CLI split out to `M0LTE/tait-codeplug`
+
+The codeplug programmer left this repo. `src/Packet.Tait.Codeplug`, `tests/Packet.Tait.Codeplug.Tests` and `tools/Packet.Tait.Codeplug.Cli` now live in [`M0LTE/tait-codeplug`](https://github.com/M0LTE/tait-codeplug) (public, AGPL-3.0-or-later), history carried across with `git filter-repo`. Renamed there: the package is [`M0LTE.Tait.Codeplug`](https://www.nuget.org/packages/M0LTE.Tait.Codeplug) on nuget.org, the CLI project is `M0LTE.Tait.Codeplug.Cli`, the namespace follows, and the shipped command is still `tait-codeplug`. A `v*` tag there gates on the tests, pushes the package via NuGet trusted publishing (OIDC, no stored API key), then attaches the six self-contained single-file CLI binaries + `SHA256SUMS` to a GitHub Release.
+
+Why: the CLI had been given a GitHub Releases workflow *here* the same evening (step 2c, entry below), and shipping an end-user tool out of the platform repo was the wrong shape. The library half wanted to be a NuGet package rather than a build-it-yourself dependency, and both halves wanted their own cadence.
+
+The split is clean because nothing in this repo depended on the library: its only consumers were its own tests and the CLI. Removed here: the three project directories, `.github/workflows/publish-tait-cli.yml`, `.github/release-notes/tait-cli.md`, the three `Packet.NET.slnx` entries and the `ci.yml` matrix leg (19 legs now; the matrix guard passes). The `tait-cli-v0.1.0` / `tait-cli-v0.2.0` releases and tags were deleted from this repo, superseded by the new repo's releases. PR #761 (live-radio `parse`/`dump`/`get`, the entry below) merged here first and its code came across in the move, so the CLI arrives in the new repo at that state.
+
+Staying here: `Packet.Radio.Tait` (the runtime CCDI / transparent-mode driver the profiles provision a radio *for*), `tools/Packet.Tait.Spike`, and the research write-ups in `docs/research/tait-codeplug-*.md`, which the new repo links to as the protocol record. `docs/releasing.md` step 2c is retired, and `docs/about.md` gains a sibling-repo row.
+
 ### 2026-08-20 - Tait codeplug CLI: decode verbs read a live radio
 
 `parse` / `dump` / `get` now take their codeplug from either an `.m8p` file or a serial port - a source under `/dev/` or named `COM<n>` is read from the live radio (boot-latch power-cycle prompted on stderr), anything else is a file. So `get <port>` prints the decoded fields the same way `get <file>` does (this is what the earlier read-to-stdout was reaching for; `read <port>` keeps its raw-`.m8p` pipe as a separate, backup-shaped thing). Also caught `UnauthorizedAccessException` in the CLI so a busy/denied serial port prints a clean `error:` instead of a stack trace. 46 tests.

@@ -61,7 +61,6 @@ jobs:
           - Packet.Rig.Flrig.Tests
           - Packet.Rig.Hamlib.Tests
           - Packet.Rig.Tests
-          - Packet.Tait.Codeplug.Tests
           - Packet.Tune.Core.Tests
     steps:
       - uses: actions/checkout@v6
