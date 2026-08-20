@@ -39,7 +39,7 @@ Write: preamble `ld d00 r00 p01 r27 p00 r2F p01 r22`, then the write block `b`, 
 
 ## Transport parameters
 
-CP2102 dongle at 8N1. The session opens at 9600 then switches to 19200 for the transfer; which rate the boot handshake wants is unconfirmed, so the tool probes both within one connect window. Programming mode is entered by a boot-time latch: trigger the operation first, then power-cycle the radio, and it latches into programming mode as it boots with the tool already probing. A bad or interrupted codeplug write therefore never locks the radio out: catch it at the next boot in programming mode and rewrite a known-good image. No RF is involved; all work is over the data connector.
+CP2102 dongle at 8N1. The CPS opens at 9600 then switches to 19200 for the transfer, but the whole session runs reliably at 19200 in practice, so the tool just uses 19200 (no baud probing, no `--baud`). Programming mode is entered by a boot-time latch: trigger the operation first, then power-cycle the radio, and it latches into programming mode as it boots with the tool already probing. A bad or interrupted codeplug write therefore never locks the radio out: catch it at the next boot in programming mode and rewrite a known-good image. No RF is involved; all work is over the data connector.
 
 ## Hardware validation
 

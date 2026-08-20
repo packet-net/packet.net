@@ -4,9 +4,10 @@ namespace Packet.Tait.Codeplug;
 
 /// <summary>
 /// The narrow byte-level seam the programmer drives the wire over. Same shape as
-/// <c>Packet.Radio.Tait.ISerialIo</c>: blocking finite-timeout reads, blocking writes, a name,
-/// and a live baud change (programming opens at 9600 then re-clocks to 19200). Production wraps a
-/// <see cref="SerialPort"/>; tests substitute a scripted mock radio.
+/// <c>Packet.Radio.Tait.ISerialIo</c>: blocking finite-timeout reads, blocking writes, a name, and a
+/// live baud change. Programming runs reliably at 19200 (the default), so no baud probing is needed;
+/// <see cref="SetBaudRate"/> stays on the seam for the historical open-at-9600 path. Production wraps
+/// a <see cref="SerialPort"/>; tests substitute a scripted mock radio.
 /// </summary>
 public interface ISerialLine : IDisposable
 {
@@ -30,8 +31,9 @@ public sealed class SerialPortLine : ISerialLine
 {
     private readonly SerialPort _port;
 
-    /// <summary>Open <paramref name="portName"/> at <paramref name="baudRate"/> 8N1.</summary>
-    public SerialPortLine(string portName, int baudRate, int readTimeoutMs = 2000)
+    /// <summary>Open <paramref name="portName"/> at <paramref name="baudRate"/> (default 19200, the
+    /// programming rate) 8N1.</summary>
+    public SerialPortLine(string portName, int baudRate = 19200, int readTimeoutMs = 2000)
     {
         _port = new SerialPort(portName, baudRate, Parity.None, 8, StopBits.One)
         {

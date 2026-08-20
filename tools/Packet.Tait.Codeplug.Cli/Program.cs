@@ -10,14 +10,13 @@
 //   dump  <file.m8p>              decode the identity + known fields
 //
 // Hardware verbs (radio in programming mode on <port>):
-//   version <port> [--baud N]                 interrogate: model / firmware / serial
-//   read    <port> <out.m8p> [--baud N]       read the whole codeplug to a file
+//   version <port>                            interrogate: model / firmware / serial
+//   read    <port> [out.m8p]                  read the codeplug (to a file, or stdout if omitted)
 //
 // GOLDEN RULES (docs/research/tait-codeplug-programming-brief.md): always back up before a write
 // (patch does this), never touch firmware (this only writes the codeplug region), version-pin on
 // DBVer (the write path refuses an unvalidated database version), and bench on a sacrificial radio first.
 
-using System.Globalization;
 using Packet.Tait.Codeplug;
 
 if (args.Length == 0)
@@ -39,11 +38,11 @@ try
         case "set":
             return CmdSet(Arg(args, 1), Arg(args, 2), Arg(args, 3));
         case "patch":
-            return CmdPatch(Arg(args, 1), Arg(args, 2), Arg(args, 3), Baud(args));
+            return CmdPatch(Arg(args, 1), Arg(args, 2), Arg(args, 3));
         case "version":
-            return CmdVersion(Arg(args, 1), Baud(args));
+            return CmdVersion(Arg(args, 1));
         case "read":
-            return CmdRead(Arg(args, 1), Arg(args, 2), Baud(args));
+            return CmdRead(Arg(args, 1), args.Length > 2 ? args[2] : null);
         default:
             PrintUsage();
             return 1;
@@ -129,36 +128,48 @@ static int CmdSet(string path, string field, string value)
     }
 }
 
-static int CmdVersion(string port, int baud)
+static int CmdVersion(string port)
 {
-    using var programmer = new TaitProgrammer(new SerialPortLine(port, baud), HardwareOptions(baud));
-    Console.WriteLine($"opening {port} at {baud} 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
+    using var programmer = new TaitProgrammer(new SerialPortLine(port), HardwareOptions());
+    Console.Error.WriteLine($"opening {port} at 19200 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
     TaitIdentity id = programmer.Interrogate();
     Console.WriteLine("identity:");
     Console.WriteLine($"  {id}");
     return 0;
 }
 
-static ProgrammerOptions HardwareOptions(int baud) => new()
+static ProgrammerOptions HardwareOptions() => new()
 {
     ConnectWaitMs = 90_000, // wait up to 90s for the operator to power-cycle into programming mode
-    ProbeBauds = baud == 19200 ? [19200, 9600] : [baud, baud == 9600 ? 19200 : 9600],
 };
 
-static int CmdRead(string port, string outPath, int baud)
+// read <port>            -> print the .m8p to stdout (pipe it, e.g. `... read /dev/ttyUSB0 > radio.m8p`)
+// read <port> <out.m8p>  -> write the .m8p to a file
+static int CmdRead(string port, string? outPath)
 {
-    using var programmer = new TaitProgrammer(new SerialPortLine(port, baud), HardwareOptions(baud));
-    Console.WriteLine($"opening {port} at {baud} 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
+    using var programmer = new TaitProgrammer(new SerialPortLine(port), HardwareOptions());
+    // Progress goes to stderr so stdout carries only the .m8p when no file is given.
+    Console.Error.WriteLine($"opening {port} at 19200 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
     CodeplugImage image = programmer.ReadImage();
-    File.WriteAllText(outPath, image.ToM8p());
-    Console.WriteLine($"wrote {image.Records.Count} records to {outPath}");
+    string m8p = image.ToM8p();
+    if (outPath is null)
+    {
+        Console.Out.Write(m8p);
+        Console.Error.WriteLine($"read {image.Records.Count} records.");
+    }
+    else
+    {
+        File.WriteAllText(outPath, m8p);
+        Console.Error.WriteLine($"wrote {image.Records.Count} records to {outPath}");
+    }
+
     return 0;
 }
 
-static int CmdPatch(string port, string field, string value, int baud)
+static int CmdPatch(string port, string field, string value)
 {
-    using var programmer = new TaitProgrammer(new SerialPortLine(port, baud), HardwareOptions(baud));
-    Console.WriteLine($"opening {port} at {baud} 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
+    using var programmer = new TaitProgrammer(new SerialPortLine(port), HardwareOptions());
+    Console.Error.WriteLine($"opening {port} at 19200 8N1; POWER-CYCLE THE RADIO NOW to latch programming mode...");
 
     CodeplugImage image = programmer.ReadImage();
     var snapshot = image.Records.ToDictionary(r => (r.Section, r.Index), r => (byte[])r.Data.Clone());
@@ -208,19 +219,6 @@ static string Arg(string[] args, int index)
     return args[index];
 }
 
-static int Baud(string[] args)
-{
-    for (int i = 0; i < args.Length - 1; i++)
-    {
-        if (args[i] == "--baud")
-        {
-            return int.Parse(args[i + 1], CultureInfo.InvariantCulture);
-        }
-    }
-
-    return 19200; // programming transfer rate (session opens at 9600 then switches to 19200)
-}
-
 static void PrintUsage()
 {
     Console.WriteLine("usage:");
@@ -229,8 +227,8 @@ static void PrintUsage()
     Console.WriteLine("  get     <file.m8p> [field]             read one field (or all as name=value)");
     Console.WriteLine("  set     <file.m8p> <field> <value>     set one field and save (e.g. ch0.bandwidth Wide)");
     Console.WriteLine("  set     <file.m8p> profile <name>      apply a PDN upgrade profile to a file");
-    Console.WriteLine("  version <port> [--baud N]              interrogate a radio");
-    Console.WriteLine("  read    <port> <out.m8p> [--baud N]    read the codeplug");
+    Console.WriteLine("  version <port>                         interrogate a radio");
+    Console.WriteLine("  read    <port> [out.m8p]               read the codeplug (to a file, or stdout if omitted)");
     Console.WriteLine("  patch   <port> <field> <value>         live-set one field (full read-modify-write)");
     Console.WriteLine("  patch   <port> profile <name>          live-apply a PDN upgrade profile");
     Console.WriteLine();

@@ -50,8 +50,8 @@ dotnet run --project tools/Packet.Tait.Codeplug.Cli -- set   <file.m8p> <field> 
 dotnet run --project tools/Packet.Tait.Codeplug.Cli -- set   <file.m8p> profile <name>  # apply a PDN profile
 
 # hardware (radio latched into programming mode on <port>: power-cycle as you trigger)
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- version <port> [--baud N]
-dotnet run --project tools/Packet.Tait.Codeplug.Cli -- read    <port> <out.m8p> [--baud N]
+dotnet run --project tools/Packet.Tait.Codeplug.Cli -- version <port>
+dotnet run --project tools/Packet.Tait.Codeplug.Cli -- read    <port> [out.m8p]           # to a file, or stdout if omitted
 dotnet run --project tools/Packet.Tait.Codeplug.Cli -- patch   <port> <field> <value>   # live-set one field (backs up first)
 dotnet run --project tools/Packet.Tait.Codeplug.Cli -- patch   <port> profile <name>    # live-apply a PDN profile
 ```
