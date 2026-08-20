@@ -1367,6 +1367,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-20 - Tait codeplug: whole-manual guard sweep (two more Data-form guards)
+
+Swept the entire programming manual (not just the sections for mapped fields) for input-rule language. 161 fields carry a guard; cross-referencing against what the tool maps found two that had been missed, now added: the **Power-up State** FFSK / THSD Transparent options are only available when the matching mode is enabled, and **Tx Back-off Time (Max)** must be greater than the minimum (or both 0 to disable). Everything else the sweep surfaced is on fields the tool does not map (Selcall, DTMF, scan/voting, keys, signalling, emergency, the digital Programmable-I/O actions) or keys off unmapped fields (Tx Frequency and Power gate on the Band and FCC-compliance flags; the Tx-back-off vs THSD-lead-out rule gates on the trimmed Channel Access Method), so there is nothing else enforceable for the currently-mapped fields. Every mapped field now carries the manual's value and availability guards. 44 tests.
+
 ### 2026-08-20 - Tait codeplug: channel/audio guard pass (Tx Inhibit needs a receive frequency)
 
 Followed the "apply the CPS guards, from the manual" work into the other mapped forms. Scanned the programming manual's Channels-form and Programmable-I/O Audio sections for input rules on the fields the tool has mapped. Result: one enforceable guard, TX Inhibit is greyed (unavailable) when the channel's receive frequency is 0, now enforced in `SetTxInhibit`. The remaining channel-form rules the manual documents (frequency-band ranges, FCC-itinerant power, wideband licensing) key off fields not mapped here (Band, the FCC flags), and the audio-tab rules are all interdependencies of the Tap In/Out Type fields, which are deliberately not mapped (the tool ships the packet-audio preset instead), so there is nothing else cleanly enforceable for the currently-mapped fields. 43 tests.
