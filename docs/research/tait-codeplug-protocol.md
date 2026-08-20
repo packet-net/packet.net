@@ -98,7 +98,7 @@ Every offset below is validated against a real-radio CPS save, either a single-s
 | XON character | 1 | 8 | flow-control byte (CPS shows it in hex; 0x11 = DC1) |
 | XOFF character | 9 | 8 | flow-control byte (0x13 = DC3) |
 | power-up state | 17 | 2 | 0 = Command, 1 = FFSK Transparent, 2 = THSD Transparent |
-| unit data identity | 19 | 56 | 7-byte identity (not exposed; encoding unconfirmed, blank in every sample) |
+| unit data identity | 19 | 56 | eight 7-bit ASCII characters (the CPS "Unit Data Identity"; blank = all zero) |
 | FFSK lead-in delay | 75 | 10 | 5 ms steps, 0..5100 ms |
 | ignore subaudible on data | 85 | 1 | flag: modem not gated by CTCSS/DCS |
 | SDM enabled | 86 | 1 | (the CPS also cascades the text-SDM flags at 155..157) |
@@ -144,7 +144,34 @@ Every offset below is validated against a real-radio CPS save, either a single-s
 | TOTAL destination ID | 222 | 16 | 0..65535 (default 0xFFFF) |
 | TOTAL link ID | 238 | 8 | 0..255 |
 
-Fields past bit 245 (TOTAL MTU size, validate-CRC, confirmed-mode retries/timeout, busy back-off, channel-access method) are trimmed from the 32-byte stored record; the CPS fills their schema defaults. Setting them would require the record to grow, which none of the available samples do (no codeplug here enables TOTAL layer-2), so they are left unmapped pending a TOTAL-enabled sample. The GPS and Customer Data tabs are separate records, not item 9, and are not mapped here.
+Fields past bit 245 (TOTAL MTU size, validate-CRC, confirmed-mode retries/timeout, busy back-off, channel-access method) are trimmed from the 32-byte stored record; the CPS fills their schema defaults. Setting them would require the record to grow. The CPS only un-greys those TOTAL controls when the RF-Modems **Layer 2 Protocol** is set to **TOTAL** (which needs THSD Modem Enabled), so a sample in that state is what would let the tail be mapped; none of the available codeplugs are, so those five plus the channel-access method are left unmapped.
+
+The **unit data identity** is exposed: it is an eight-character 7-bit-ASCII field at bit 19 (the same packed encoding as the GPS dispatcher address below). The **GPS** and **Customer Data** tabs are separate records, covered next.
+
+## GPS tab (record 0x45/0)
+
+The Data form's GPS tab is its own record, an LSB-first bit-stream. Offsets validated against a GPS-enabled real-radio save (a non-default dispatcher address "12345678" pins the packed-ASCII field):
+
+| field | stream bit | width | encoding / CPS control |
+|-------|-----------|-------|------------------------|
+| GPS serial port | 0 | 2 | 0 = Mic, 1 = Aux, 2 = Internal Options ("GPS Port") |
+| GPS baud rate | 2 | 4 | index into 1200..28800 ("Baud Rate") |
+| poll-response channel | 6 | 7 | 0..99 dedicated channel ("Channel") |
+| callout interval | 13 | 6 | 5 s steps, 0..300 s ("Callout Interval") |
+| max number of callouts | 19 | 8 | 0..250 ("Maximum Number of Callouts") |
+| connection time-out | 30 | 8 | 20 s steps, 20..600 s ("Connection Time Out") |
+| GPS lead-in delay | 38 | 8 | 5 ms steps, 0..1200 ms ("GPS Lead-In Delay") |
+| send on emergency callout | 49 | 1 | flag ("Send Position on Emergency Callout") |
+| dispatcher address | 50 | 56 | eight 7-bit ASCII characters ("Dispatcher Address", default "00000000") |
+| GPS position reporting enabled | 136 | 1 | flag ("GPS Position Reporting Enabled"; the CPS needs SDM on to set it) |
+| poll-response channel type | 137 | 1 | 0 = Current, 1 = Dedicated ("Poll Response Channel Type") |
+| poll-response delay time | 138 | 9 | 10 ms steps, 0..5000 ms ("Poll Response Delay Time") |
+
+(The three per-network "send position" fields occupy bits 106..135; the caller-ID, PTT-suppression, NMEA and SDM-ack GPS fields sit past bit 146 and are not on the main GPS form, so they are not mapped.)
+
+## Customer Data tab (records 0x4C/0 and 0x4D/n)
+
+Plain bytes. Record 0x4C/0 is eight bytes: four leading pad bytes then the four global bytes (the CPS "Global Byte 1..4"). Each network row is record 0x4D at that network's index (network 1 = 0x4D/0), four bytes = the CPS "Byte 1..4".
 
 Transparent-mode enable additionally sets bit 0 (data options) plus bits 158 and 160; SDM enable sets bit 86 and cascades bits 155..157; these composite writes reproduce the CPS byte-for-byte.
 

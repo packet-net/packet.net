@@ -24,9 +24,9 @@ the captures). Short version:
 - `Fields/` - the typed, version-pinned field map (`CodeplugFields`, `CodeplugEnums`,
   `ChannelBits`): channels (frequency, bandwidth, power, split-TX, CTCSS/DCS), the whole CPS **Data**
   form (its General, Serial Communications, RF Modems, SDM and TOTAL Transparent Mode tabs live in the
-  one data/signalling record: the CCDI / SDM / transparent runtime-feature enablers, the flow-control
-  and character fields, the FFSK and THSD modem settings and delays, and the TOTAL addressing), and
-  audio taps. See `docs/research/tait-codeplug-protocol.md` for the map. Each field is pinned by a test.
+  one data/signalling record; the GPS and Customer Data tabs are separate records; plus the unit data
+  identity), and audio taps. See `docs/research/tait-codeplug-protocol.md` for the map. Each field is
+  pinned by a test.
 - `FieldConsole` - name/value access used by the `dump`/`get`/`set` CLI verbs.
 - `ISerialLine` / `SerialPortLine` - the byte seam (mirrors `Packet.Radio.Tait.ISerialIo`); tests
   substitute a scripted mock radio.

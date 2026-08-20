@@ -83,6 +83,40 @@ public static class FieldConsole
         rows.Add(("totalsystemid", "0x" + f.TotalSystemId.ToString("X2", CultureInfo.InvariantCulture)));
         rows.Add(("totaldestid", "0x" + f.TotalDestinationId.ToString("X4", CultureInfo.InvariantCulture)));
         rows.Add(("totallinkid", "0x" + f.TotalLinkId.ToString("X2", CultureInfo.InvariantCulture)));
+        rows.Add(("unitdataidentity", f.UnitDataIdentity));
+        // GPS tab (record 0x45; only if present)
+        if (f.HasGps)
+        {
+            rows.Add(("gpsenabled", f.GpsEnabled ? "true" : "false"));
+            rows.Add(("gpsport", f.GpsSerialPort.ToString()));
+            rows.Add(("gpsbaud", f.GpsBaudRate.ToString()));
+            rows.Add(("gpschanneltype", f.GpsPollResponseChannelType.ToString()));
+            rows.Add(("gpschannel", f.GpsPollResponseChannel.ToString(CultureInfo.InvariantCulture)));
+            rows.Add(("gpscalloutinterval", f.GpsCalloutIntervalSeconds.ToString(CultureInfo.InvariantCulture)));
+            rows.Add(("gpsmaxcallouts", f.GpsMaxNumberOfCallouts.ToString(CultureInfo.InvariantCulture)));
+            rows.Add(("gpsconntimeout", f.GpsConnectionTimeoutSeconds.ToString(CultureInfo.InvariantCulture)));
+            rows.Add(("gpsleadin", f.GpsLeadInDelayMs.ToString(CultureInfo.InvariantCulture)));
+            rows.Add(("gpspolldelay", f.GpsPollResponseDelayMs.ToString(CultureInfo.InvariantCulture)));
+            rows.Add(("gpsemergency", f.GpsSendOnEmergencyCallout ? "true" : "false"));
+            rows.Add(("gpsdispatcher", f.GpsDispatcherAddress));
+        }
+
+        // Customer Data tab (records 0x4C/0x4D; only if present)
+        if (f.HasCustomerData)
+        {
+            for (int i = 1; i <= 4; i++)
+            {
+                rows.Add(($"custglobal{i}", "0x" + f.GetCustomerGlobalByte(i).ToString("X2", CultureInfo.InvariantCulture)));
+            }
+
+            if (f.HasRecord(0x4D, 0))
+            {
+                for (int i = 1; i <= 4; i++)
+                {
+                    rows.Add(($"custnet{i}", "0x" + f.GetCustomerNetworkByte(1, i).ToString("X2", CultureInfo.InvariantCulture)));
+                }
+            }
+        }
         rows.Add(("rxtap", "R" + Int(f.GetRxTapOutNode())));
         rows.Add(("txtap", "T" + Int(f.GetEptt1TapInNode())));
         rows.Add(("tapunmute", f.TapOutUnmute.ToString()));
@@ -192,6 +226,29 @@ public static class FieldConsole
             case "totalsystemid": f.TotalSystemId = Num(value); return;
             case "totaldestid": f.TotalDestinationId = Num(value); return;
             case "totallinkid": f.TotalLinkId = Num(value); return;
+            case "unitdataidentity": f.UnitDataIdentity = value; return;
+            // GPS tab
+            case "gpsenabled": f.GpsEnabled = Bool(value); return;
+            case "gpsport": f.GpsSerialPort = Enum<DataPort>(value); return;
+            case "gpsbaud": f.GpsBaudRate = Enum<FfskBaud>(value); return;
+            case "gpschanneltype": f.GpsPollResponseChannelType = Enum<GpsPollResponseChannelType>(value); return;
+            case "gpschannel": f.GpsPollResponseChannel = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "gpscalloutinterval": f.GpsCalloutIntervalSeconds = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "gpsmaxcallouts": f.GpsMaxNumberOfCallouts = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "gpsconntimeout": f.GpsConnectionTimeoutSeconds = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "gpsleadin": f.GpsLeadInDelayMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "gpspolldelay": f.GpsPollResponseDelayMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "gpsemergency": f.GpsSendOnEmergencyCallout = Bool(value); return;
+            case "gpsdispatcher": f.GpsDispatcherAddress = value; return;
+            // Customer Data tab (bytes accept hex or decimal); custnetN targets network 1
+            case "custglobal1": f.SetCustomerGlobalByte(1, (byte)Num(value)); return;
+            case "custglobal2": f.SetCustomerGlobalByte(2, (byte)Num(value)); return;
+            case "custglobal3": f.SetCustomerGlobalByte(3, (byte)Num(value)); return;
+            case "custglobal4": f.SetCustomerGlobalByte(4, (byte)Num(value)); return;
+            case "custnet1": f.SetCustomerNetworkByte(1, 1, (byte)Num(value)); return;
+            case "custnet2": f.SetCustomerNetworkByte(1, 2, (byte)Num(value)); return;
+            case "custnet3": f.SetCustomerNetworkByte(1, 3, (byte)Num(value)); return;
+            case "custnet4": f.SetCustomerNetworkByte(1, 4, (byte)Num(value)); return;
             case "rxtap": f.SetRxTapOutNode(Node(value, 'R')); return;
             case "txtap": f.SetEptt1TapInNode(Node(value, 'T')); return;
             case "tapunmute": f.TapOutUnmute = Enum<TapOutUnmute>(value); return;

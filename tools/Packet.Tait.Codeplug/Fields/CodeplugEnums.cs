@@ -82,6 +82,14 @@ public enum TotalModeService : byte
     Confirmed = 1,
 }
 
+/// <summary>GPS poll-response channel selection (the CPS "Poll Response Channel Type" combo, a 1-bit
+/// index): reply on the current channel, or on a dedicated one.</summary>
+public enum GpsPollResponseChannelType : byte
+{
+    Current = 0,
+    Dedicated = 1,
+}
+
 /// <summary>Data-port routing: where the data modem's audio is sourced and sunk. Low two bits
 /// of a byte in the data/signalling block.</summary>
 public enum DataPort : byte

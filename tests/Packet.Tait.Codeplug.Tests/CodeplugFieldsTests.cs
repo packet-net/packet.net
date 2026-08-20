@@ -266,6 +266,74 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
+    public void Unit_data_identity_is_eight_char_ascii()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[37])));
+        f.UnitDataIdentity.Should().BeEmpty();               // all-zero = blank
+        f.UnitDataIdentity = "SOMEVALU";
+        f.UnitDataIdentity.Should().Be("SOMEVALU");
+        f.UnitDataIdentity = "NODE1";                        // shorter, trailing slots blank
+        f.UnitDataIdentity.Should().Be("NODE1");
+        f.UnitDataIdentity = "";
+        f.UnitDataIdentity.Should().BeEmpty();
+        ((Action)(() => f.UnitDataIdentity = "TOOLONG12")).Should().Throw<ArgumentException>(); // > 8 chars
+    }
+
+    [Fact]
+    public void Gps_fields_round_trip()
+    {
+        CodeplugFields f = CodeplugFields.Open(ImageWith(
+            new CodeplugRecord(0x05, 0, new byte[23]), new CodeplugRecord(0x45, 0, new byte[21])));
+        f.HasGps.Should().BeTrue();
+
+        f.GpsEnabled = true; f.GpsEnabled.Should().BeTrue();
+        f.GpsSerialPort = DataPort.Aux; f.GpsSerialPort.Should().Be(DataPort.Aux);
+        f.GpsBaudRate = FfskBaud.Baud14400; f.GpsBaudRate.Should().Be(FfskBaud.Baud14400);
+        f.GpsPollResponseChannelType = GpsPollResponseChannelType.Dedicated;
+        f.GpsPollResponseChannelType.Should().Be(GpsPollResponseChannelType.Dedicated);
+        f.GpsPollResponseChannel = 99; f.GpsPollResponseChannel.Should().Be(99);
+        f.GpsCalloutIntervalSeconds = 300; f.GpsCalloutIntervalSeconds.Should().Be(300);
+        f.GpsMaxNumberOfCallouts = 5; f.GpsMaxNumberOfCallouts.Should().Be(5);
+        f.GpsConnectionTimeoutSeconds = 600; f.GpsConnectionTimeoutSeconds.Should().Be(600);
+        f.GpsLeadInDelayMs = 500; f.GpsLeadInDelayMs.Should().Be(500);
+        f.GpsPollResponseDelayMs = 100; f.GpsPollResponseDelayMs.Should().Be(100);
+        f.GpsSendOnEmergencyCallout = true; f.GpsSendOnEmergencyCallout.Should().BeTrue();
+        f.GpsDispatcherAddress = "12345678"; f.GpsDispatcherAddress.Should().Be("12345678");
+
+        ((Action)(() => f.GpsCalloutIntervalSeconds = 7)).Should().Throw<ArgumentOutOfRangeException>(); // not a 5 s step
+        ((Action)(() => f.GpsConnectionTimeoutSeconds = 10)).Should().Throw<ArgumentOutOfRangeException>(); // below 20
+    }
+
+    [Fact]
+    public void Customer_data_bytes_round_trip()
+    {
+        CodeplugFields f = CodeplugFields.Open(ImageWith(
+            new CodeplugRecord(0x05, 0, new byte[23]),
+            new CodeplugRecord(0x4C, 0, new byte[8]),
+            new CodeplugRecord(0x4D, 0, new byte[4])));
+        f.HasCustomerData.Should().BeTrue();
+
+        for (int i = 1; i <= 4; i++) { f.SetCustomerGlobalByte(i, (byte)i); }
+        for (int i = 1; i <= 4; i++) { f.GetCustomerGlobalByte(i).Should().Be((byte)i); }
+        // global bytes live after four pad bytes
+        f.Image.Require(0x4C, 0).Data[4].Should().Be(1);
+
+        for (int i = 1; i <= 4; i++) { f.SetCustomerNetworkByte(1, i, (byte)(i + 4)); }
+        for (int i = 1; i <= 4; i++) { f.GetCustomerNetworkByte(1, i).Should().Be((byte)(i + 4)); }
+        f.Image.Require(0x4D, 0).Data[0].Should().Be(5);
+
+        ((Action)(() => f.SetCustomerGlobalByte(5, 0))).Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Optional_blocks_report_absent()
+    {
+        CodeplugFields f = CodeplugFields.Open(ImageWith(new CodeplugRecord(0x05, 0, new byte[23])));
+        f.HasGps.Should().BeFalse();
+        f.HasCustomerData.Should().BeFalse();
+    }
+
+    [Fact]
     public void Audio_block_tap_fields_round_trip()
     {
         var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));
