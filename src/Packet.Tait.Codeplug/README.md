@@ -80,6 +80,16 @@ There is no raw whole-file write verb: the underlying write method refuses a rad
 version is not in its validated set (the write init argument and field offsets are version-specific).
 Reading is unrestricted.
 
+## Releases
+
+Tagging `tait-cli-v<version>` (e.g. `tait-cli-v0.1.0`) runs `.github/workflows/publish-tait-cli.yml`,
+which cross-publishes self-contained, single-file executables for `linux-x64`, `linux-arm64`,
+`linux-arm` (armv7), `win-x64`, `osx-x64` and `osx-arm64`, and attaches them (plus `SHA256SUMS`) to a
+GitHub Release. Each binary embeds the .NET runtime and the native serial library, so it runs with no
+.NET install: download the one for your platform, `chmod +x`, run. The release notes live in
+`.github/release-notes/tait-cli.md`. The workflow gates on the test suite first, so a build that fails
+its tests never reaches a release.
+
 ## Status and safety
 
 The read + write path is hardware-validated against a real TM8100 (a same-image write round-tripped

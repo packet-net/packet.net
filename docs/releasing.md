@@ -100,6 +100,23 @@ Verify the release is **non-draft with 7 assets** (three `.deb`s + three binarie
 gh release view headend-v<semver> --repo packet-net/packet.net
 ```
 
+## Step 2c - tag the Tait codeplug CLI → cross-platform binaries GitHub Release (`publish-tait-cli.yml`)
+
+The standalone Tait codeplug CLI (`tools/Packet.Tait.Codeplug.Cli`) releases on its **own cadence** with its own tag - only when the CLI or its library (`src/Packet.Tait.Codeplug`) changed this cycle, and only when a public release is wanted. It is **not** in lockstep with `lib-v*`/`node-v*` (the codeplug library is not a NuGet package).
+
+```sh
+git tag -a tait-cli-v<semver> origin/main -m "tait-cli-v<semver> - <one-line summary>"
+git push origin tait-cli-v<semver>
+```
+
+The `tait-cli-v*` tag triggers [`.github/workflows/publish-tait-cli.yml`](../.github/workflows/publish-tait-cli.yml): it runs the local gate (`dotnet test` on `Packet.Tait.Codeplug.Tests`) first, then `dotnet publish` cross-publishes a **self-contained, single-file** executable for **linux-x64 / linux-arm64 / linux-arm / win-x64 / osx-x64 / osx-arm64** from the one x64 runner (each embeds the .NET runtime and the native serial library via `IncludeNativeLibrariesForSelfExtract`; compressed to ~37 MB), and `gh release create tait-cli-v<semver>` attaches the six version-stamped binaries + `SHA256SUMS`, with notes from [`.github/release-notes/tait-cli.md`](../.github/release-notes/tait-cli.md). No `.deb` and no Actions artifacts (all in one job's working tree, like the head-end).
+
+Verify the release is **non-draft with 7 assets** (six binaries + `SHA256SUMS`):
+
+```sh
+gh release view tait-cli-v<semver> --repo packet-net/packet.net
+```
+
 ### Optional - move the lab to the release `.deb`
 
 The lab (`root@pdn-lab`, M9YYY) is usually running a dev `.deb` from [`scripts/deploy-node.sh`](../scripts/deploy-node.sh) (version `0.1.0+dev<stamp>`). It already has the released *code* (deploy-node ships the same build), so a redeploy is optional; do it only to align versions or pick up the release artifact shape. `deploy-node.sh` keeps the box's edited `/etc/packetnet/packetnet.yaml`.

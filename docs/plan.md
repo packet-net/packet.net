@@ -1367,6 +1367,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-20 - Tait codeplug CLI: cross-platform GitHub Releases workflow
+
+Added [`.github/workflows/publish-tait-cli.yml`](../.github/workflows/publish-tait-cli.yml) so the standalone codeplug CLI can ship to people who want it without building it. A `tait-cli-v*` tag (its own cadence, like `headend-v*`) cross-publishes a self-contained, single-file executable for linux-x64/arm64/arm, win-x64 and osx-x64/arm64 from the one self-hosted x64 runner, and attaches the six binaries + `SHA256SUMS` to a GitHub Release with notes from `.github/release-notes/tait-cli.md`. Follows the established publish-* pattern (self-hosted only, one job, no Actions artifacts, gate-before-release). The single-file + `System.IO.Ports` native-lib gotcha is handled with `IncludeNativeLibrariesForSelfExtract=true` (and `EnableCompressionInSingleFile=true` keeps each binary ~37 MB); no trimming (System.IO.Ports is not trim-safe). Release doc updated (step 2c). Workflow-only, no code change.
+
 ### 2026-08-20 - Tait codeplug: library-ize + the pdn-basic / pdn-extra upgrade profiles
 
 Pivoting the Tait codeplug tooling toward node integration. Extracted the core out of the spike CLI into a real library, `src/Packet.Tait.Codeplug` (the record/checksum/`.m8p` model, the field map, the programmer, `FieldConsole`, the presets), with the CLI kept as a thin front-end `tools/Packet.Tait.Codeplug.Cli`; the tests and the node can now reference the library. No behaviour change from the move.
