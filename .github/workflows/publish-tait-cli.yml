@@ -1,0 +1,113 @@
+name: publish-tait-cli
+
+# Builds the standalone Tait codeplug CLI (tools/Packet.Tait.Codeplug.Cli) for the
+# common desktop/server arches and attaches self-contained, single-file executables
+# to a GitHub Release. Each asset embeds the .NET runtime and the native serial
+# library, so it runs on a machine with no .NET installed - just download, chmod,
+# run. Triggered by `tait-cli-v*` tags - distinct from the `lib-v*` / `node-v*` /
+# `headend-v*` tags; the CLI is a small standalone utility with its own cadence.
+#
+# Self-hosted x64 only (no GitHub-hosted runners - see CLAUDE.md). `dotnet publish`
+# cross-publishes every RID from the one x64 host, so a single job produces all
+# arches; nothing goes through the Actions artifact quota (mirrors publish-headend.yml).
+#
+# Single-file gotcha handled: System.IO.Ports ships a native library that a naive
+# single-file publish drops. `IncludeNativeLibrariesForSelfExtract=true` bundles it
+# (extracted to a temp dir on first run); `EnableCompressionInSingleFile=true` keeps
+# the download to ~37 MB instead of ~70 MB. No trimming (System.IO.Ports is not
+# trim-safe and a broken cross-arch binary can't be caught here).
+
+on:
+  push:
+    tags:
+      - 'tait-cli-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version without the tait-cli-v prefix, e.g. 0.1.0'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: v
+        name: Resolve version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF#refs/tags/tait-cli-v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: .NET toolchain
+        # System .NET on the self-hosted runner (pinned by global.json), same as ci.yml.
+        # Fail loud if it's missing rather than silently building against a surprise SDK.
+        run: |
+          command -v dotnet >/dev/null 2>&1 || { echo "dotnet not found on runner" >&2; exit 2; }
+          dotnet --version
+
+      - name: Local gate (test the CLI's library)
+        # A build that fails its own tests must never reach the Release - the CLI
+        # analogue of publish-headend.yml's install-smoke gate.
+        run: dotnet test tests/Packet.Tait.Codeplug.Tests/Packet.Tait.Codeplug.Tests.csproj --filter "Category!=HardwareLoop&Category!=Interop" -c Release
+
+      - name: Build self-contained single-file binaries (all arches)
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          proj=tools/Packet.Tait.Codeplug.Cli/Packet.Tait.Codeplug.Cli.csproj
+          rm -rf release && mkdir -p release
+          for rid in linux-x64 linux-arm64 linux-arm win-x64 osx-x64 osx-arm64; do
+            echo "==> publishing $rid"
+            out="publish/$rid"
+            rm -rf "$out"
+            dotnet publish "$proj" -c Release -r "$rid" --self-contained true \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:EnableCompressionInSingleFile=true \
+              -p:DebugType=none -p:GenerateDocumentationFile=false \
+              -o "$out"
+            # The AssemblyName is tait-codeplug (+ .exe on Windows). Stage a
+            # version-stamped, arch-named copy as the release asset.
+            if [ "$rid" = "win-x64" ]; then
+              cp "$out/tait-codeplug.exe" "release/tait-codeplug-${VERSION}-${rid}.exe"
+            else
+              cp "$out/tait-codeplug" "release/tait-codeplug-${VERSION}-${rid}"
+            fi
+          done
+          file release/*
+          ls -l release/
+
+      - name: Checksums + create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum tait-codeplug-* > SHA256SUMS
+          cat SHA256SUMS
+          cd ..
+          # Release notes from the committed template; fill in the version + repo.
+          sed "s/__VER__/${VERSION}/g; s#__REPO__#${REPO}#g" .github/release-notes/tait-cli.md > release/NOTES.md
+          gh release create "tait-cli-v${VERSION}" \
+            release/tait-codeplug-"${VERSION}"-linux-x64 \
+            release/tait-codeplug-"${VERSION}"-linux-arm64 \
+            release/tait-codeplug-"${VERSION}"-linux-arm \
+            release/tait-codeplug-"${VERSION}"-win-x64.exe \
+            release/tait-codeplug-"${VERSION}"-osx-x64 \
+            release/tait-codeplug-"${VERSION}"-osx-arm64 \
+            release/SHA256SUMS \
+            --repo "${REPO}" \
+            --title "tait-codeplug ${VERSION}" \
+            --notes-file release/NOTES.md
