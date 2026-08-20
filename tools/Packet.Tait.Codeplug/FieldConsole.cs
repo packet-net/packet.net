@@ -50,6 +50,39 @@ public static class FieldConsole
         rows.Add(("sdmwaitack", f.SdmWaitForAck.ToString(CultureInfo.InvariantCulture)));
         rows.Add(("ignoreesc", f.IgnoreEscapeSequence ? "true" : "false"));
         rows.Add(("ignoresubaud", f.IgnoreSubaudibleOnData ? "true" : "false"));
+        // General tab
+        rows.Add(("openmonitor", f.OpenMonitorOnDialledCall ? "true" : "false"));
+        rows.Add(("selcallout", f.SelcallOutputEnabled ? "true" : "false"));
+        rows.Add(("maxframelen", f.MaximumInitialFrameLength ? "true" : "false"));
+        rows.Add(("uartdelay", f.UartWriteDelayMs.ToString(CultureInfo.InvariantCulture)));
+        rows.Add(("txbackoffmin", f.TxBackoffTimeMinMs.ToString(CultureInfo.InvariantCulture)));
+        rows.Add(("txbackoffmax", f.TxBackoffTimeMaxMs.ToString(CultureInfo.InvariantCulture)));
+        // Serial Communications tab
+        rows.Add(("xon", "0x" + f.XonCharacter.ToString("X2", CultureInfo.InvariantCulture)));
+        rows.Add(("xoff", "0x" + f.XoffCharacter.ToString("X2", CultureInfo.InvariantCulture)));
+        rows.Add(("cmflow", f.CommandModeFlowControl.ToString()));
+        rows.Add(("tmflow", f.FfskTransparentFlowControl.ToString()));
+        rows.Add(("hsdflow", f.HsdFlowControl.ToString()));
+        // RF Modems tab
+        rows.Add(("checkpacketlen", f.CheckPacketLength ? "true" : "false"));
+        rows.Add(("toneblank", f.FfskToneBlanking ? "true" : "false"));
+        rows.Add(("ffskleadin", f.FfskLeadInDelayMs.ToString(CultureInfo.InvariantCulture)));
+        rows.Add(("ffskleadout", f.FfskLeadOutDelayMs.ToString(CultureInfo.InvariantCulture)));
+        rows.Add(("widebandmodem", f.WidebandModemEnabled ? "true" : "false"));
+        rows.Add(("layer2", f.ThsdLayer2Protocol.ToString()));
+        rows.Add(("fec", f.ThsdForwardErrorCorrection ? "true" : "false"));
+        rows.Add(("fecblocks", f.ThsdNumberOfBlocks.ToString(CultureInfo.InvariantCulture)));
+        rows.Add(("thsdleadin", f.ThsdLeadInDelayMs.ToString(CultureInfo.InvariantCulture)));
+        rows.Add(("thsdleadout", f.ThsdLeadOutDelayMs.ToString(CultureInfo.InvariantCulture)));
+        // SDM tab
+        rows.Add(("sdmbufoverwrite", f.SdmBufferOverwrite ? "true" : "false"));
+        rows.Add(("sdmcallerid", f.SdmCallerId ? "true" : "false"));
+        // TOTAL Transparent Mode tab (IDs shown in hex, as the CPS does)
+        rows.Add(("totalservice", f.TotalService.ToString()));
+        rows.Add(("totalradioid", "0x" + f.TotalRadioId.ToString("X4", CultureInfo.InvariantCulture)));
+        rows.Add(("totalsystemid", "0x" + f.TotalSystemId.ToString("X2", CultureInfo.InvariantCulture)));
+        rows.Add(("totaldestid", "0x" + f.TotalDestinationId.ToString("X4", CultureInfo.InvariantCulture)));
+        rows.Add(("totallinkid", "0x" + f.TotalLinkId.ToString("X2", CultureInfo.InvariantCulture)));
         rows.Add(("rxtap", "R" + Int(f.GetRxTapOutNode())));
         rows.Add(("txtap", "T" + Int(f.GetEptt1TapInNode())));
         rows.Add(("tapunmute", f.TapOutUnmute.ToString()));
@@ -126,6 +159,39 @@ public static class FieldConsole
             case "sdmwaitack": f.SdmWaitForAck = int.Parse(value, CultureInfo.InvariantCulture); return;
             case "ignoreesc": f.IgnoreEscapeSequence = Bool(value); return;
             case "ignoresubaud": f.IgnoreSubaudibleOnData = Bool(value); return;
+            // General tab
+            case "openmonitor": f.OpenMonitorOnDialledCall = Bool(value); return;
+            case "selcallout": f.SelcallOutputEnabled = Bool(value); return;
+            case "maxframelen": f.MaximumInitialFrameLength = Bool(value); return;
+            case "uartdelay": f.UartWriteDelayMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "txbackoffmin": f.TxBackoffTimeMinMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "txbackoffmax": f.TxBackoffTimeMaxMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            // Serial Communications tab
+            case "xon": f.XonCharacter = (byte)Num(value); return;
+            case "xoff": f.XoffCharacter = (byte)Num(value); return;
+            case "cmflow": f.CommandModeFlowControl = Enum<DataFlowControl>(value); return;
+            case "tmflow": f.FfskTransparentFlowControl = Enum<DataFlowControl>(value); return;
+            case "hsdflow": f.HsdFlowControl = Enum<DataFlowControl>(value); return;
+            // RF Modems tab
+            case "checkpacketlen": f.CheckPacketLength = Bool(value); return;
+            case "toneblank": f.FfskToneBlanking = Bool(value); return;
+            case "ffskleadin": f.FfskLeadInDelayMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "ffskleadout": f.FfskLeadOutDelayMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "widebandmodem": f.WidebandModemEnabled = Bool(value); return;
+            case "layer2": f.ThsdLayer2Protocol = Enum<ThsdLayer2>(value); return;
+            case "fec": f.ThsdForwardErrorCorrection = Bool(value); return;
+            case "fecblocks": f.ThsdNumberOfBlocks = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "thsdleadin": f.ThsdLeadInDelayMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            case "thsdleadout": f.ThsdLeadOutDelayMs = int.Parse(value, CultureInfo.InvariantCulture); return;
+            // SDM tab
+            case "sdmbufoverwrite": f.SdmBufferOverwrite = Bool(value); return;
+            case "sdmcallerid": f.SdmCallerId = Bool(value); return;
+            // TOTAL Transparent Mode tab (IDs accept hex like FFFF or 0xFFFF, or decimal)
+            case "totalservice": f.TotalService = Enum<TotalModeService>(value); return;
+            case "totalradioid": f.TotalRadioId = Num(value); return;
+            case "totalsystemid": f.TotalSystemId = Num(value); return;
+            case "totaldestid": f.TotalDestinationId = Num(value); return;
+            case "totallinkid": f.TotalLinkId = Num(value); return;
             case "rxtap": f.SetRxTapOutNode(Node(value, 'R')); return;
             case "txtap": f.SetEptt1TapInNode(Node(value, 'T')); return;
             case "tapunmute": f.TapOutUnmute = Enum<TapOutUnmute>(value); return;
@@ -213,5 +279,28 @@ public static class FieldConsole
         }
 
         throw new FormatException($"'{s}' is not a valid {typeof(T).Name} (one of: {string.Join(", ", System.Enum.GetNames<T>())})");
+    }
+
+    // Parse an integer that is either hex (a "0x" prefix, or bare hex digits containing a letter, as the
+    // CPS shows the character and TOTAL-ID fields) or plain decimal.
+    private static int Num(string s)
+    {
+        string t = s.Trim();
+        bool hex = t.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+        if (hex)
+        {
+            t = t[2..];
+        }
+        else
+        {
+            foreach (char c in t)
+            {
+                if (c is >= 'a' and <= 'f' or >= 'A' and <= 'F') { hex = true; break; }
+            }
+        }
+
+        return hex
+            ? int.Parse(t, NumberStyles.HexNumber, CultureInfo.InvariantCulture)
+            : int.Parse(t, CultureInfo.InvariantCulture);
     }
 }

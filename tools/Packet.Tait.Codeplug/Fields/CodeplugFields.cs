@@ -669,6 +669,347 @@ public sealed class CodeplugFields
         set => SetDataBits(85, 1, value ? 1 : 0);
     }
 
+    // ---- Remaining Data-form (item 9) fields, by CPS tab --------------------------------
+    //
+    // The rest of the Data form's controls, all in the same item-9 bit-stream and all validated
+    // against a real-radio CPS save. The stored record is 32 bytes (256 bits); fields past bit 245
+    // (the TOTAL MTU / retries / timeout / busy-backoff / channel-access tail) are trimmed off and the
+    // CPS fills schema defaults, so they are not exposed here.
+
+    // -- General tab --
+
+    /// <summary>Open the monitor (mute override) on a dialled call (the CPS "Open Monitor On Dialled
+    /// Call" checkbox, Data > General > Command Mode; bit 173).</summary>
+    public bool OpenMonitorOnDialledCall
+    {
+        get => GetDataBits(173, 1) != 0;
+        set => SetDataBits(173, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Output all selcall receptions to the host (the CPS "Output All Selcall Receptions"
+    /// checkbox, Data > General > Command Mode; bit 150).</summary>
+    public bool SelcallOutputEnabled
+    {
+        get => GetDataBits(150, 1) != 0;
+        set => SetDataBits(150, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Maximum initial FFSK frame length flag (the CPS "Maximum Initial Frame Length" checkbox,
+    /// Data > General > Transparent Mode; bit 160).</summary>
+    public bool MaximumInitialFrameLength
+    {
+        get => GetDataBits(160, 1) != 0;
+        set => SetDataBits(160, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Transparent-mode UART write delay in ms (the CPS "UART Write Delay", Data > General >
+    /// Transparent Mode; bits 161..169, 0..500).</summary>
+    public int UartWriteDelayMs
+    {
+        get => (int)GetDataBits(161, 9);
+        set
+        {
+            if (value is < 0 or > 500)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..500");
+            }
+
+            SetDataBits(161, 9, value);
+        }
+    }
+
+    /// <summary>Transmit back-off time minimum in ms (the CPS "Tx Back-off Time (Min)", Data > General >
+    /// Transparent Mode; bits 178..186, 0..500).</summary>
+    public int TxBackoffTimeMinMs
+    {
+        get => (int)GetDataBits(178, 9);
+        set
+        {
+            if (value is < 0 or > 500)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..500");
+            }
+
+            SetDataBits(178, 9, value);
+        }
+    }
+
+    /// <summary>Transmit back-off time maximum in ms (the CPS "Tx Back-off Time (Max)", Data > General >
+    /// Transparent Mode; bits 187..196, 0..1000).</summary>
+    public int TxBackoffTimeMaxMs
+    {
+        get => (int)GetDataBits(187, 10);
+        set
+        {
+            if (value is < 0 or > 1000)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..1000");
+            }
+
+            SetDataBits(187, 10, value);
+        }
+    }
+
+    // -- Serial Communications tab --
+
+    /// <summary>Software-flow-control XON character code (the CPS "XON Character", Data > Serial
+    /// Communications; bits 1..8, a byte - the CPS shows it in hex, e.g. 0x11 = DC1).</summary>
+    public byte XonCharacter
+    {
+        get => (byte)GetDataBits(1, 8);
+        set => SetDataBits(1, 8, value);
+    }
+
+    /// <summary>Software-flow-control XOFF character code (the CPS "XOFF Character", Data > Serial
+    /// Communications; bits 9..16, a byte - the CPS shows it in hex, e.g. 0x13 = DC3).</summary>
+    public byte XoffCharacter
+    {
+        get => (byte)GetDataBits(9, 8);
+        set => SetDataBits(9, 8, value);
+    }
+
+    /// <summary>Command-mode serial flow control (the CPS "Flow Control" Command Mode column, Data >
+    /// Serial Communications; bits 100..101).</summary>
+    public DataFlowControl CommandModeFlowControl
+    {
+        get => (DataFlowControl)GetDataBits(100, 2);
+        set => SetDataBits(100, 2, (byte)value);
+    }
+
+    /// <summary>FFSK transparent-mode serial flow control (the CPS "Flow Control" FFSK Transparent Mode
+    /// column, Data > Serial Communications; bits 105..106).</summary>
+    public DataFlowControl FfskTransparentFlowControl
+    {
+        get => (DataFlowControl)GetDataBits(105, 2);
+        set => SetDataBits(105, 2, (byte)value);
+    }
+
+    /// <summary>THSD transparent-mode serial flow control (the CPS "Flow Control" THSD Transparent Mode
+    /// column, Data > Serial Communications; bits 110..111).</summary>
+    public DataFlowControl HsdFlowControl
+    {
+        get => (DataFlowControl)GetDataBits(110, 2);
+        set => SetDataBits(110, 2, (byte)value);
+    }
+
+    // -- RF Modems tab --
+
+    /// <summary>Check the FFSK packet length (the CPS "Check Packet Length" checkbox, Data > RF Modems >
+    /// FFSK Modem; bit 158).</summary>
+    public bool CheckPacketLength
+    {
+        get => GetDataBits(158, 1) != 0;
+        set => SetDataBits(158, 1, value ? 1 : 0);
+    }
+
+    /// <summary>Mute the receiver while receiving FFSK (the CPS "FFSK Tone Blanking" checkbox, Data >
+    /// RF Modems > FFSK Modem; bit 126).</summary>
+    public bool FfskToneBlanking
+    {
+        get => GetDataBits(126, 1) != 0;
+        set => SetDataBits(126, 1, value ? 1 : 0);
+    }
+
+    /// <summary>FFSK lead-in delay in ms (the CPS "FFSK Lead-In Delay", Data > RF Modems > FFSK Modem;
+    /// bits 75..84, a 10-bit count in 5 ms steps, 0..5100 ms).</summary>
+    public int FfskLeadInDelayMs
+    {
+        get => (int)GetDataBits(75, 10) * 5;
+        set
+        {
+            if (value is < 0 or > 5100 || value % 5 != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..5100 ms in 5 ms steps");
+            }
+
+            SetDataBits(75, 10, value / 5);
+        }
+    }
+
+    /// <summary>FFSK lead-out delay in ms (the CPS "FFSK Lead-Out Delay", Data > RF Modems > FFSK Modem;
+    /// bits 115..122, 0..250).</summary>
+    public int FfskLeadOutDelayMs
+    {
+        get => (int)GetDataBits(115, 8);
+        set
+        {
+            if (value is < 0 or > 250)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..250");
+            }
+
+            SetDataBits(115, 8, value);
+        }
+    }
+
+    /// <summary>THSD wideband (Tait wideband) modem enable (the CPS "Wide Band Modem Enabled" checkbox,
+    /// Data > RF Modems > THSD Modem; bit 154).</summary>
+    public bool WidebandModemEnabled
+    {
+        get => GetDataBits(154, 1) != 0;
+        set => SetDataBits(154, 1, value ? 1 : 0);
+    }
+
+    /// <summary>THSD layer-2 protocol (the CPS "Layer 2 Protocol" combo, Data > RF Modems > THSD Modem;
+    /// bits 124..125).</summary>
+    public ThsdLayer2 ThsdLayer2Protocol
+    {
+        get => (ThsdLayer2)GetDataBits(124, 2);
+        set => SetDataBits(124, 2, (byte)value);
+    }
+
+    /// <summary>THSD forward error correction enable (the CPS "Forward Error Correction (FEC)" checkbox,
+    /// Data > RF Modems > THSD Modem; bit 127).</summary>
+    public bool ThsdForwardErrorCorrection
+    {
+        get => GetDataBits(127, 1) != 0;
+        set => SetDataBits(127, 1, value ? 1 : 0);
+    }
+
+    /// <summary>THSD FEC codeword count (the CPS "Number of Blocks", Data > RF Modems > THSD Modem;
+    /// bits 174..176, 1..7).</summary>
+    public int ThsdNumberOfBlocks
+    {
+        get => (int)GetDataBits(174, 3);
+        set
+        {
+            if (value is < 1 or > 7)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "1..7");
+            }
+
+            SetDataBits(174, 3, value);
+        }
+    }
+
+    /// <summary>THSD lead-in delay in ms (the CPS "THSD Lead-In Delay", Data > RF Modems > THSD Modem;
+    /// bits 128..140, 0..5000).</summary>
+    public int ThsdLeadInDelayMs
+    {
+        get => (int)GetDataBits(128, 13);
+        set
+        {
+            if (value is < 0 or > 5000)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..5000");
+            }
+
+            SetDataBits(128, 13, value);
+        }
+    }
+
+    /// <summary>THSD lead-out delay in ms (the CPS "THSD Lead-Out Delay", Data > RF Modems > THSD Modem;
+    /// bits 141..148, 0..250).</summary>
+    public int ThsdLeadOutDelayMs
+    {
+        get => (int)GetDataBits(141, 8);
+        set
+        {
+            if (value is < 0 or > 250)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..250");
+            }
+
+            SetDataBits(141, 8, value);
+        }
+    }
+
+    // -- SDM tab --
+
+    /// <summary>Allow a received SDM to overwrite a full buffer (the CPS "SDM Buffer Overwrite" checkbox,
+    /// Data > SDM > All SDMs; bit 159).</summary>
+    public bool SdmBufferOverwrite
+    {
+        get => GetDataBits(159, 1) != 0;
+        set => SetDataBits(159, 1, value ? 1 : 0);
+    }
+
+    /// <summary>SDM caller-ID enable (the CPS "SDM Caller ID" checkbox, Data > SDM > Text SDMs Only).
+    /// The CPS keeps the encode and decode bits (152 and 153) equal, so this drives both.</summary>
+    public bool SdmCallerId
+    {
+        get => GetDataBits(152, 1) != 0;
+        set
+        {
+            SetDataBits(152, 1, value ? 1 : 0);
+            SetDataBits(153, 1, value ? 1 : 0);
+        }
+    }
+
+    // -- TOTAL Transparent Mode tab (the fields that fall within the stored record) --
+
+    /// <summary>TOTAL service class (the CPS "TOTAL Service" combo, Data > TOTAL Transparent Mode;
+    /// bit 197).</summary>
+    public TotalModeService TotalService
+    {
+        get => (TotalModeService)GetDataBits(197, 1);
+        set => SetDataBits(197, 1, (byte)value);
+    }
+
+    /// <summary>TOTAL radio ID (the CPS "Radio ID", Data > TOTAL Transparent Mode; bits 198..213,
+    /// 0..65535).</summary>
+    public int TotalRadioId
+    {
+        get => (int)GetDataBits(198, 16);
+        set
+        {
+            if (value is < 0 or > 65535)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..65535");
+            }
+
+            SetDataBits(198, 16, value);
+        }
+    }
+
+    /// <summary>TOTAL system ID (the CPS "System ID", Data > TOTAL Transparent Mode; bits 214..221,
+    /// 0..255).</summary>
+    public int TotalSystemId
+    {
+        get => (int)GetDataBits(214, 8);
+        set
+        {
+            if (value is < 0 or > 255)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..255");
+            }
+
+            SetDataBits(214, 8, value);
+        }
+    }
+
+    /// <summary>TOTAL destination ID (the CPS "Destination ID", Data > TOTAL Transparent Mode; bits
+    /// 222..237, 0..65535; the default is 0xFFFF).</summary>
+    public int TotalDestinationId
+    {
+        get => (int)GetDataBits(222, 16);
+        set
+        {
+            if (value is < 0 or > 65535)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..65535");
+            }
+
+            SetDataBits(222, 16, value);
+        }
+    }
+
+    /// <summary>TOTAL link ID (the CPS "Link ID", Data > TOTAL Transparent Mode; bits 238..245,
+    /// 0..255).</summary>
+    public int TotalLinkId
+    {
+        get => (int)GetDataBits(238, 8);
+        set
+        {
+            if (value is < 0 or > 255)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "0..255");
+            }
+
+            SetDataBits(238, 8, value);
+        }
+    }
+
     // ---- Audio tap block (record 0x3B/0) ------------------------------------------------
 
     private byte[] Audio => Image.Require(0x3B, 0).Data;

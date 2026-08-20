@@ -208,6 +208,64 @@ public class CodeplugFieldsTests
     }
 
     [Fact]
+    public void Remaining_data_form_fields_round_trip()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[32])));
+        byte[] P() => f.Image.Require(0x09, 0).Data;
+
+        // General
+        f.OpenMonitorOnDialledCall = true; f.OpenMonitorOnDialledCall.Should().BeTrue();
+        f.SelcallOutputEnabled = true; f.SelcallOutputEnabled.Should().BeTrue();
+        f.MaximumInitialFrameLength = true; f.MaximumInitialFrameLength.Should().BeTrue();
+        f.UartWriteDelayMs = 250; f.UartWriteDelayMs.Should().Be(250);
+        f.TxBackoffTimeMinMs = 100; f.TxBackoffTimeMinMs.Should().Be(100);
+        f.TxBackoffTimeMaxMs = 800; f.TxBackoffTimeMaxMs.Should().Be(800);
+
+        // Serial: XON/XOFF are byte character codes (bits 1..8 / 9..16).
+        f.XonCharacter = 0x11; f.XonCharacter.Should().Be(0x11);
+        f.XoffCharacter = 0x13; f.XoffCharacter.Should().Be(0x13);
+        f.CommandModeFlowControl = DataFlowControl.Software; f.CommandModeFlowControl.Should().Be(DataFlowControl.Software);
+        f.FfskTransparentFlowControl = DataFlowControl.Hardware; f.FfskTransparentFlowControl.Should().Be(DataFlowControl.Hardware);
+        f.HsdFlowControl = DataFlowControl.Software; f.HsdFlowControl.Should().Be(DataFlowControl.Software);
+
+        // RF Modems
+        f.CheckPacketLength = true; f.CheckPacketLength.Should().BeTrue();
+        f.FfskToneBlanking = true; f.FfskToneBlanking.Should().BeTrue();
+        f.FfskLeadInDelayMs = 500; f.FfskLeadInDelayMs.Should().Be(500); // 100 x 5 ms
+        f.FfskLeadOutDelayMs = 200; f.FfskLeadOutDelayMs.Should().Be(200);
+        f.WidebandModemEnabled = true; f.WidebandModemEnabled.Should().BeTrue();
+        f.ThsdLayer2Protocol = ThsdLayer2.Total; f.ThsdLayer2Protocol.Should().Be(ThsdLayer2.Total);
+        f.ThsdForwardErrorCorrection = true; f.ThsdForwardErrorCorrection.Should().BeTrue();
+        f.ThsdNumberOfBlocks = 7; f.ThsdNumberOfBlocks.Should().Be(7);
+        f.ThsdLeadInDelayMs = 5000; f.ThsdLeadInDelayMs.Should().Be(5000);
+        f.ThsdLeadOutDelayMs = 250; f.ThsdLeadOutDelayMs.Should().Be(250);
+
+        // SDM: the caller-ID checkbox drives both the encode (bit 152) and decode (bit 153) bits.
+        f.SdmBufferOverwrite = true; f.SdmBufferOverwrite.Should().BeTrue();
+        f.SdmCallerId = true; f.SdmCallerId.Should().BeTrue();
+        (P()[19] & 0x03).Should().Be(0x03); // bits 152, 153 = byte 19 bits 0,1
+
+        // TOTAL Transparent Mode
+        f.TotalService = TotalModeService.Confirmed; f.TotalService.Should().Be(TotalModeService.Confirmed);
+        f.TotalRadioId = 0x1234; f.TotalRadioId.Should().Be(0x1234);
+        f.TotalSystemId = 0xAB; f.TotalSystemId.Should().Be(0xAB);
+        f.TotalDestinationId = 0xFFFF; f.TotalDestinationId.Should().Be(0xFFFF);
+        f.TotalLinkId = 0x5A; f.TotalLinkId.Should().Be(0x5A);
+    }
+
+    [Fact]
+    public void Remaining_data_form_fields_reject_out_of_range()
+    {
+        var f = CodeplugFields.Open(ImageWith(Data(new byte[32])));
+        ((Action)(() => f.FfskLeadInDelayMs = 3)).Should().Throw<ArgumentOutOfRangeException>();   // not a 5 ms step
+        ((Action)(() => f.FfskLeadInDelayMs = 5105)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.ThsdNumberOfBlocks = 0)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.ThsdNumberOfBlocks = 8)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.TotalRadioId = 0x10000)).Should().Throw<ArgumentOutOfRangeException>();
+        ((Action)(() => f.TotalSystemId = 256)).Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public void Audio_block_tap_fields_round_trip()
     {
         var f = CodeplugFields.Open(ImageWith(Audio(new byte[16])));
