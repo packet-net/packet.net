@@ -237,6 +237,7 @@ const FIXTURES: Record<string, string> = {
   "LoginResult.json": "LoginResult",
   "SetupState.json": "SetupState",
   "SetupResult.json": "SetupResult",
+  "ModemScan.json": "ModemScan",
   "WebAuthnCredential.json": "WebAuthnCredential",
   "RegisterCompleteResponse.json": "RegisterCompleteResponse",
   "TotpEnrollState.json": "TotpEnrollState",

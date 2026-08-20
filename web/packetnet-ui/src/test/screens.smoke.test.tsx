@@ -502,7 +502,7 @@ describe("screens render without crashing", () => {
     // Step one is the callsign, and it gates Continue - the wizard cannot be walked past an
     // empty identity, which is the only thing the node genuinely cannot default.
     expect(screen.getByText(/Callsign \(required\)/i)).toBeInTheDocument();
-    const callsign = screen.getByPlaceholderText("GB7RDG") as HTMLInputElement;
+    const callsign = screen.getByPlaceholderText("GB7AAA") as HTMLInputElement;
     expect(callsign.value).toBe("");
     expect(screen.getByRole("button", { name: /Continue/i })).toBeDisabled();
     fireEvent.change(callsign, { target: { value: "m0lte" } });

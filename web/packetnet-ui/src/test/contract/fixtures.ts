@@ -16,7 +16,7 @@
 // checked at runtime instead, by contract.test.ts, against the server's own closed sets.
 import type {
   AppPackage, AvailableApp, DoctorReport, HeadEndKeyupResult, HeadEndScan, HeardStation,
-  InstallOutcome, LinkStats, LoginResult, MonitorEvent, NetRomRoutingSnapshot, NodeApp,
+  InstallOutcome, LinkStats, LoginResult, ModemScan, MonitorEvent, NetRomRoutingSnapshot, NodeApp,
   NodeConfig, NodeStatus, PeerCapability, PingResult, PortStatus, RadioScanResult, RadioStatus,
   ReconcileResult, RegisterCompleteResponse, RigModelCatalogue, RigScan, RigStatus, SessionInfo,
   SetupResult, SetupState, SoundModemQualitySnapshot, SystemInfo, TailscaleStatus,
@@ -33,6 +33,7 @@ import heardStation from "./HeardStation.json";
 import installOutcome from "./InstallOutcome.json";
 import linkStats from "./LinkStats.json";
 import loginResult from "./LoginResult.json";
+import modemScan from "./ModemScan.json";
 import monitorEvent from "./MonitorEvent.json";
 import netRomRoutingSnapshot from "./NetRomRoutingSnapshot.json";
 import nodeApp from "./NodeApp.json";
@@ -85,6 +86,7 @@ export const CONTRACT = {
   installOutcome: installOutcome satisfies Widen<InstallOutcome>,
   linkStats: linkStats satisfies Widen<LinkStats>[],
   loginResult: loginResult satisfies Widen<LoginResult>,
+  modemScan: modemScan satisfies Widen<ModemScan>,
   monitorEvent: monitorEvent satisfies Widen<MonitorEvent>[],
   netRomRoutingSnapshot: netRomRoutingSnapshot satisfies Widen<NetRomRoutingSnapshot>,
   nodeApp: nodeApp satisfies Widen<NodeApp>[],

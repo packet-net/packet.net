@@ -11,6 +11,17 @@ case "$1" in
               --home /var/lib/packetnet --shell /usr/sbin/nologin packetnet
     fi
     install -d -o packetnet -g packetnet -m 0750 /var/lib/packetnet
+    # Serial access. A USB TNC (/dev/ttyACM*) and a CAT/CCDI cable (/dev/ttyUSB*) are
+    # root:dialout 0660 on every Debian-family box, so without this the node's very first
+    # port faults with "Access to the port '/dev/ttyACM0' is denied" and the first-run
+    # wizard cannot even see the modem to offer it. This used to be a documented manual
+    # step; it is not one an operator should have to discover from a journal line. Group
+    # membership only, which grants nothing beyond the serial devices, and idempotent, so
+    # it is safe on every upgrade. Guarded on the group existing (it is base-passwd on
+    # Debian, but a container image could be without it).
+    if getent group dialout >/dev/null; then
+      usermod -aG dialout packetnet || true
+    fi
     # Where a generated self-signed TLS cert (management.https) is persisted - owned
     # by the service user so it can write the .pfx on first start (HTTPS is opt-in;
     # this just makes the dir ready). 0750 keeps the private key non-world-readable.

@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Packet.Node;
 using Packet.Node.Api;
@@ -158,6 +159,13 @@ builder.Services.AddSingleton(sp => new Packet.Node.Core.Rigs.RigModelCatalogue(
     sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IProcessRunner>()));
 builder.Services.AddSingleton<Packet.Node.Core.Rigs.IRigScanner>(sp =>
     new Packet.Node.Core.Rigs.RigScanner(sp.GetRequiredService<Packet.Node.Core.Rigs.RigModelCatalogue>()));
+
+// Modem plug-and-play scan (GET /api/v1/setup/devices), behind the first-run wizard's device
+// picker: enumerate the local serial devices, mark the ones the config already claims, and ask the
+// plausible NinoTNCs among them for their firmware version (GETVER) so the operator picks an
+// identified modem instead of typing a device path. Unlike the rig scan this one DOES open ports,
+// so the probe is limited to devices that could actually be a NinoTNC (see ModemScanner).
+builder.Services.AddSingleton<Packet.Node.Core.Modems.IModemScanner>(new Packet.Node.Core.Modems.ModemScanner());
 
 // Split-station head-end discovery + fleet scanner (Stage 3b). mDNS discovery (_pdnhead._tcp) is a
 // thin Zeroconf wrapper; NodeHostedService picks the discovery singleton up via its optional ctor
@@ -472,6 +480,34 @@ builder.Services.AddHttpForwarder();
 
 builder.Services.AddSingleton<ITransportFactory>(TransportFactory.Instance);
 builder.Services.AddSingleton(TimeProvider.System);
+
+// ASP.NET Core's data-protection key ring. Configured explicitly for two reasons.
+//
+// (1) WHERE. Left alone it lands under HOME, which the unit points at the StateDirectory - so it
+// works, but only by coincidence of an environment variable, and a dev run scatters keys wherever
+// HOME happens to be. Pin it beside pdn.db instead: inside the state directory, which the postinst
+// creates 0750 packetnet:packetnet, so nothing but the service user (and root) can traverse to it,
+// and with the same lifetime as the node's other state.
+//
+// (2) THE WARNING. Without a configured XML encryptor the key manager logs, at Warning, once per
+// generated key: "No XML encryptor configured. Key {...} may be persisted to storage in
+// unencrypted form." On a Linux box that warning has no action behind it. The encryptors that
+// would silence it are DPAPI (Windows-only) and a certificate - and encrypting the key ring with
+// a certificate kept in the same 0750 directory, readable by the same service user, protects the
+// keys from nobody: anyone who can read the key ring can read the certificate. The real boundary
+// is the filesystem (owner-only dir, ProtectSystem=strict, ProtectHome=true, an unprivileged
+// dedicated user), and it is already in place. So the warning is a statement of a design fact,
+// not a defect to fix, and it is filtered out below rather than left to alarm every operator who
+// reads the log after a first boot.
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(
+        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath)) ?? ".", "dataprotection-keys")))
+    // A stable purpose root, so keys survive a rename of the entry assembly.
+    .SetApplicationName("packetnet");
+// See (2) above. Scoped to the one category that emits it; Error still gets through, so a key
+// ring that genuinely cannot be written is still loud.
+builder.Logging.AddFilter(
+    "Microsoft.AspNetCore.DataProtection.KeyManagement.XmlKeyManager", LogLevel.Error);
 
 // Runtime, restart-free log-level overrides. The node's appsettings.json is read-only under
 // ProtectSystem=strict and a restart drops every session, so an operator who needs to raise a

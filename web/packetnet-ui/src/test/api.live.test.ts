@@ -324,6 +324,15 @@ const CASES: Case[] = [
     body: { identity: { callsign: "M0LTE-1", alias: "TEST", grid: null }, admin: { username: "admin", password: "hunter2hunter2" }, firstPort: PORT },
   },
   {
+    // The wizard's device picker. Open like the rest of the bootstrap path, and the ONE api
+    // member that must never reject: a scan failure falls back to typing a path, it does not
+    // strand the operator halfway through claiming a node.
+    key: "setupDevices", call: (a) => a.setupDevices(),
+    responses: [jsonResponse({ devices: [{ devicePath: "/dev/ttyACM0", kernelPath: "/dev/ttyACM0", descriptor: null, kind: "nino-tnc", firmwareVersion: "3.44", claimedBy: null, probeError: null }], permissionDenied: false })],
+    method: "GET", url: "/api/v1/setup/devices", bearer: false,
+    then: (r) => expect((r as { devices: unknown[] }).devices).toHaveLength(1),
+  },
+  {
     key: "login", call: (a) => a.login("admin", "pw"),
     responses: [jsonResponse({ token: "jwt", expiresAt: "2026-08-17T00:00:00Z", scopes: "admin", refreshToken: "rt", username: "admin" })],
     method: "POST", url: "/api/v1/auth/login", bearer: false,

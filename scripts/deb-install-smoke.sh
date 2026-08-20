@@ -65,12 +65,18 @@ grep -q "^CapabilityBoundingSet=CAP_NET_BIND_SERVICE\b"   /lib/systemd/system/pa
 # (and its upgrade prompt) is gone by design.
 [ -f /usr/share/packetnet/packetnet.yaml.example ] || fail "config template missing (config-in-DB bootstrap, #473)"
 id packetnet >/dev/null 2>&1                        || fail "postinst did not create the packetnet user"
+# The service user must be in dialout, or the first serial port faults with an
+# access-denied error and the first-run wizard cannot even see the modem to offer it.
+# /dev/ttyACM* and /dev/ttyUSB* are root:dialout 0660 everywhere in the Debian family,
+# so this membership is what makes a USB TNC work out of the box.
+# (No single quotes anywhere in here: INNER is one single-quoted string.)
+id -nG packetnet | grep -qw dialout                 || fail "postinst did not add packetnet to the dialout group (a USB TNC would never open)"
 # The declared Depends must cover what the shipped maintainer/helper scripts actually run.
 # curl is the one with teeth: packetnet-github-update downloads the release .deb and the
 # release SHA256SUMS with it, so a node whose Depends omits it cannot self-update at all
 # (packet.net#699 / C100). Nothing installed it here - only the .deb could have.
 command -v curl >/dev/null 2>&1                     || fail "curl absent: the declared Depends do not cover the github self-update helper"
-echo "  ok: installed; binary+unit+config-template present; user created; curl pulled in by Depends; systemctl correctly skipped"
+echo "  ok: installed; binary+unit+config-template present; user created (in dialout); curl pulled in by Depends; systemctl correctly skipped"
 
 echo "== 3. binary boots + serves /healthz on a bare base =="
 export DOTNET_BUNDLE_EXTRACT_BASE_DIR=/tmp/pnx HOME=/root

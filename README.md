@@ -16,8 +16,11 @@ Most visitors will probably just be interested in running a packet radio node of
 pdn is distributed two ways, both from [Releases](https://github.com/packet-net/packet.net/releases): a **`.deb`** for Debian, Ubuntu and Raspberry Pi OS, and a **`.tar.gz`** archive of the same node for anything else. On a Debian-ish box (a Raspberry Pi is ideal), grab the `.deb` for your architecture and:
 
 ```sh
-sudo apt install ./packetnet_<version>_<arch>.deb
+cd /tmp && curl -fsSLO <the .deb URL for your arch>
+sudo apt install /tmp/packetnet_<version>_<arch>.deb
 ```
+
+(Downloading to `/tmp` rather than your home directory keeps apt from printing a *"Download is performed unsandboxed as root"* notice: apt fetches even a local file as the `_apt` user, which cannot read a `0750` home directory.)
 
 The install finishes by printing your node's control panel address - `http://your-node:8080`, reachable from any machine on your network. Open it in a browser, and a three-step wizard asks for your callsign, an admin login, and your first port.
 

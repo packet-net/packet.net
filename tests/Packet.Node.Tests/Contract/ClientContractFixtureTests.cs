@@ -182,6 +182,16 @@ public sealed class ClientContractFixtureTests
             Scopes: "admin", RefreshToken: "rt-0123456789abcdef", Username: "tom"),
         ["SetupState.json"] = new PdnAuthApi.SetupStateResponse(NeedsSetup: false),
         ["SetupResult.json"] = new PdnAuthApi.SetupResponse(Username: "admin", Scope: "admin"),
+        // The wizard's device picker (GET /setup/devices). Both rows matter: an identified
+        // NinoTNC bound to its stable by-id path, and an unidentified port that carries the
+        // reason it could not be identified.
+        ["ModemScan.json"] = new ModemScan(
+        [
+            new ModemScanDevice(
+                "/dev/serial/by-id/usb-Microchip_Technology_Inc._NinoTNC-if00", "/dev/ttyACM0",
+                "usb-Microchip_Technology_Inc._NinoTNC-if00", "nino-tnc", "3.44", null, null),
+            new ModemScanDevice("/dev/ttyUSB0", "/dev/ttyUSB0", null, "serial", null, null, "no reply"),
+        ], PermissionDenied: false),
         ["WebAuthnCredential.json"] = new[]
         {
             new WebAuthnCredentialSummary("Y3JlZC1pZA", "internal,hybrid", At.AddDays(-30), At.AddHours(-2)),

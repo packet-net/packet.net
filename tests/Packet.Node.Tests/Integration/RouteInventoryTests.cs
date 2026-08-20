@@ -104,12 +104,14 @@ public sealed class RouteInventoryTests : IDisposable
     {
         // The always-open set, and why each one is: the SPA has to discover whether the
         // node needs setting up before it holds any credential; /setup itself is one-shot
-        // and refuses once a user exists; login and the WebAuthn assertion ceremony are
-        // how a credential is obtained in the first place.
+        // and refuses once a user exists, and /setup/devices carries the same one-shot gate
+        // in its own handler (403 the moment a user exists); login and the WebAuthn
+        // assertion ceremony are how a credential is obtained in the first place.
         string[] alwaysOpen =
         [
             "/api/v1/setup/state",
             "/api/v1/setup",
+            "/api/v1/setup/devices",
             "/api/v1/auth/login",
             "/api/v1/auth/refresh",
             "/api/v1/auth/logout",

@@ -1091,6 +1091,29 @@ export interface SetupRequest { identity: SetupIdentityInput; admin: SetupAdminI
 // POST /setup success body (the created admin - no token).
 export interface SetupResult { username: string; scope: string }
 
+// GET /setup/devices body - the first-run wizard's modem picker (mirrors
+// Packet.Node.Core.Api.ModemScan). One row per local serial device that could carry a KISS TNC.
+// `kind` is "nino-tnc" when the device answered the NinoTNC firmware query, "serial" otherwise -
+// unidentified is NOT "not a TNC", because generic KISS has no identify handshake to answer.
+// `devicePath` is the stable value to bind a port to (a /dev/serial/by-id link when udev gave an
+// unambiguous one, else the kernel path); `kernelPath` is what it is called right now.
+// `claimedBy` non-null = something in the config already uses it. `probeError` is a short reason
+// the identify did not land ("permission denied", "no reply"). `permissionDenied` on the scan is
+// the install-level version of that: the node cannot open serial devices at all.
+export interface ModemScanDevice {
+  devicePath: string;
+  kernelPath: string;
+  descriptor: string | null;
+  kind: string;
+  firmwareVersion: string | null;
+  claimedBy: string | null;
+  probeError: string | null;
+}
+export interface ModemScan {
+  devices: ModemScanDevice[];
+  permissionDenied: boolean;
+}
+
 // ---- WebAuthn / passkeys (mirror Packet.Node.Api.PdnWebAuthnApi DTOs) ----
 // One enrolled passkey, projected for the API (no key material). Matches
 // WebAuthnCredentialSummary (server). `id` is the base64url credential id (the handle

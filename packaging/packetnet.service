@@ -70,10 +70,14 @@ ProtectKernelModules=true
 # startup. (Tailscale's own systemd unit allows AF_NETLINK for the same reason.)
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 
-# A serial/USB TNC (serial-kiss / nino-tnc ports) needs device access: add the
-# service user to dialout (`usermod -aG dialout packetnet`) and drop in an
-# override with DeviceAllow=/dev/ttyACM0 + SupplementaryGroups=dialout. Loopback
-# / kiss-tcp / AXUDP nodes need nothing extra.
+# A serial/USB TNC (serial-kiss / nino-tnc ports) needs device access, and the
+# package's postinst arranges it: it puts the packetnet user in the `dialout` group,
+# which owns /dev/ttyACM* and /dev/ttyUSB* on every Debian-family box. systemd calls
+# initgroups() for User=, so the membership applies with no SupplementaryGroups= line
+# here - and leaving it out means a host without a dialout group still starts the node
+# rather than failing the unit. No DeviceAllow= is needed either: this unit sets no
+# DevicePolicy, so the device cgroup is not restricted. Loopback / kiss-tcp / AXUDP
+# nodes need none of it.
 
 [Install]
 WantedBy=multi-user.target
