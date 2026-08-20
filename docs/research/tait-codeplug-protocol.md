@@ -88,6 +88,8 @@ Fields are bit-packed into record payloads. [`CodeplugFields`](../../tools/Packe
 | network | 106 | 3 | network reference (the CPS "Network" column), 0..7 |
 | TX power | 109 | 3 | 0 = Off, 1 = VeryLow, 2 = Low, 3 = Medium, 4 = High |
 
+The CPS greys a channel's TX Inhibit field when the channel's receive frequency is 0, so the field map refuses to set it there. Most other channel-form rules the manual documents depend on fields not mapped here (the frequency band, FCC-compliance flags, wideband licensing), so they are not enforced.
+
 **Data / signalling** is record 0x09/0, a single LSB-first bit-stream packed in schema field order. This one record holds the whole CPS **Data** form (its General, Serial Communications, RF Modems, SDM and TOTAL Transparent Mode tabs). Three fields near the front are wider on disk than a naive read of the field table's length column suggests: the two flow-control character codes (XON and XOFF) are a byte each rather than a flag, and the unit-data-identity field is 7 bytes (56 bits). Those extra widths are what shift every field from the SDM-options field onward by a constant 63 bits. The whole logical record is 293 bits, but the **stored record is trimmed to 32 bytes (256 bits)**, so the trailing TOTAL fields past bit 245 (MTU size, validate-CRC, confirmed-mode retries/timeout, busy back-off, and the General tab's channel-access method) are not written and the CPS fills schema defaults for them.
 
 Every offset below is validated against a real-radio CPS save, either a single-setting diff or by decoding a codeplug the CPS displays in full (a non-default like TOTAL destination ID = 0xFFFF confirms the tail offsets too).
