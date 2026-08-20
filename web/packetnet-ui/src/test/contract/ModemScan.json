@@ -1,0 +1,23 @@
+{
+  "devices": [
+    {
+      "devicePath": "/dev/serial/by-id/usb-Microchip_Technology_Inc._NinoTNC-if00",
+      "kernelPath": "/dev/ttyACM0",
+      "descriptor": "usb-Microchip_Technology_Inc._NinoTNC-if00",
+      "kind": "nino-tnc",
+      "firmwareVersion": "3.44",
+      "claimedBy": null,
+      "probeError": null
+    },
+    {
+      "devicePath": "/dev/ttyUSB0",
+      "kernelPath": "/dev/ttyUSB0",
+      "descriptor": null,
+      "kind": "serial",
+      "firmwareVersion": null,
+      "claimedBy": null,
+      "probeError": "no reply"
+    }
+  ],
+  "permissionDenied": false
+}

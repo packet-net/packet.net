@@ -28,6 +28,7 @@ public sealed class EndpointAuthorizationSweepTests : IDisposable
     {
         ["api/v1/setup/state"] = "the first-run probe, before any account exists",
         ["api/v1/setup"] = "the first-run bootstrap itself (one-shot; refuses once a user exists)",
+        ["api/v1/setup/devices"] = "the wizard's modem picker (same one-shot gate as /setup: 403 once a user exists)",
         ["api/v1/auth/login"] = "you cannot present a token to get a token",
         ["api/v1/auth/refresh"] = "the access token has, by definition, expired",
         ["api/v1/auth/logout"] = "idempotent teardown of a session whose token may be gone",

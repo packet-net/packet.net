@@ -14,7 +14,7 @@ import type {
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
   LinkStats, PeerCapability, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
   RadioStatus, RadioScanResult, DoctorReport, HeadEndScan, HeadEndAdoptRequest, HeadEndKeyupResult,
-  PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
+  PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult, ModemScan,
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
@@ -494,6 +494,9 @@ export const api = {
   // Always open; one-shot (403 once a user exists). Returns the created admin summary
   // (no token — the operator then logs in).
   setup: (payload: SetupRequest) => setup(payload),
+  // The first-run wizard's modem picker: local serial devices, NinoTNCs among them identified
+  // by their own firmware reply. Always open while the node is unclaimed; 403 afterwards.
+  setupDevices: () => setupDevices(),
   // Password login → JWT + refresh token. Resolves the LoginResult
   // ({ token, expiresAt, scopes, refreshToken }) on 200; throws Unauthorized on 401
   // (caller shows an inline error — note this 401 is expected and NOT a session expiry,
@@ -1313,6 +1316,29 @@ setLogoutRevoker(() => { void logoutServerSide(); });
 // tab regains focus; it renews the access token only when it's near/at expiry, reusing the
 // single locked/deduped rotation, and resolves the freshly-persisted pair (or null).
 setFocusRefresher(() => refreshIfExpiringSoon());
+
+// The wizard's device picker. Always open while the node is unclaimed (same window as
+// POST /setup); 403 once it is claimed. A failure here must never block setup - the caller
+// falls back to typing a device path - so this resolves an empty scan rather than throwing.
+async function setupDevices(): Promise<ModemScan> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 150));
+    return {
+      devices: [
+        { devicePath: "/dev/serial/by-id/usb-Microchip_Technology_Inc._NinoTNC_N9600A4-if00", kernelPath: "/dev/ttyACM0", descriptor: "usb-Microchip_Technology_Inc._NinoTNC_N9600A4-if00", kind: "nino-tnc", firmwareVersion: "3.44", claimedBy: null, probeError: null },
+        { devicePath: "/dev/ttyUSB0", kernelPath: "/dev/ttyUSB0", descriptor: null, kind: "serial", firmwareVersion: null, claimedBy: null, probeError: null },
+      ],
+      permissionDenied: false,
+    };
+  }
+  try {
+    const res = await fetch(`${BASE}/setup/devices`, { headers: { accept: "application/json" } });
+    if (!res.ok) return { devices: [], permissionDenied: false };
+    return (await res.json()) as ModemScan;
+  } catch {
+    return { devices: [], permissionDenied: false };
+  }
+}
 
 // First-run bootstrap. Always open; one-shot (403 once a user exists). Returns the
 // created admin summary (no token — the caller sends the operator to login).

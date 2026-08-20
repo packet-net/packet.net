@@ -113,7 +113,11 @@ Generated from `EndpointDataSource` with every conditional surface enabled (`/mc
 mapped only when `mcp.enabled` and `mcp.sse.enabled` are both set; the OAuth routes are
 always mapped but every handler 404s unless `mcp.oauth.enabled`). `anonymous` means the
 route carries no scope policy, which for the bootstrap endpoints is the point: a node with
-no users has to be able to answer the setup wizard and a login.
+no users has to be able to answer the setup wizard and a login. Two of those endpoints carry
+their own gate in the handler instead of a policy: `POST /setup` and `GET /setup/devices` (the
+wizard's modem picker, which enumerates the node's serial devices and identifies the NinoTNCs
+among them) both refuse with 403 once any user exists, so the window they are open in is exactly
+the window in which the node is unclaimed.
 
 To regenerate after adding or moving a route: `scripts/update-node-api.sh`.
 
@@ -202,6 +206,7 @@ To regenerate after adding or moving a route: `scripts/update-node-api.sh`.
 | POST | `/api/v1/sessions/{id}/send` | `operate` |
 | GET | `/api/v1/sessions/{id}/stream` | `operate` (SSE, also takes `?access_token=`) |
 | POST | `/api/v1/setup` | anonymous |
+| GET | `/api/v1/setup/devices` | anonymous |
 | GET | `/api/v1/setup/state` | anonymous |
 | GET | `/api/v1/status` | `read` |
 | GET | `/api/v1/system/info` | `read` |

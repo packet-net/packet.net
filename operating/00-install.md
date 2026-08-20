@@ -34,12 +34,16 @@ Grab the `.deb` for your architecture from [Releases](https://github.com/packet-
 arch=$(dpkg --print-architecture)
 ver=$(curl -fsSL https://api.github.com/repos/packet-net/packet.net/releases/latest \
         | sed -n 's/.*"tag_name": *"node-v\([^"]*\)".*/\1/p')
+cd /tmp
 curl -fsSLO "https://github.com/packet-net/packet.net/releases/download/node-v$ver/packetnet_${ver}_${arch}.deb"
-sudo apt install "./packetnet_${ver}_${arch}.deb"
+sudo apt install "/tmp/packetnet_${ver}_${arch}.deb"
 ```
 
 > [!IMPORTANT]
 > Use `apt install ./file.deb`, not `dpkg -i`. The package declares real dependencies (`adduser`, `polkitd`, `libhamlib-utils`) and apt resolves them; `dpkg -i` will stop on the first missing one.
+
+> [!TIP]
+> Download to `/tmp`, not to your home directory. apt fetches even a local file as the unprivileged `_apt` user, and home directories are `0750` on current Raspberry Pi OS and Debian, so `_apt` cannot read a `.deb` sitting in one. The install still works, but apt prints a confusing notice first: *"Download is performed unsandboxed as root as file '/home/pi/packetnet_….deb' couldn't be accessed by user '_apt'"*. It is a warning about apt's own sandbox, not about the package, and installing from `/tmp` avoids it entirely.
 
 That is the whole install. The package:
 
@@ -150,14 +154,9 @@ Ports reconcile live: adding, editing, or removing one brings that port up or do
 
 ### If your modem is on a serial port
 
-The node runs as the unprivileged `packetnet` user, which is **not** in `dialout` after install - so a USB TNC will not open until you say it may:
+Nothing to do: the package puts the `packetnet` user in the `dialout` group, which owns `/dev/ttyACM*` and `/dev/ttyUSB*`, so a USB TNC opens out of the box. (Older installs, before 0.43.0, needed `sudo usermod -aG dialout packetnet` by hand; upgrading runs it for you.)
 
-```sh
-sudo usermod -aG dialout packetnet
-sudo systemctl restart packetnet
-```
-
-If it still cannot open the device, drop in a unit override (`sudo systemctl edit packetnet`) with `SupplementaryGroups=dialout` and `DeviceAllow=/dev/ttyACM0` - the reasoning is in the comments at the foot of `/lib/systemd/system/packetnet.service`. Ports over TCP, UDP, or a sound card need none of this.
+If a device still will not open, check that it really is `dialout`-owned (`ls -l /dev/ttyACM0`) and that the service picked the membership up (`sudo systemctl restart packetnet`). Ports over TCP, UDP, or a sound card need none of this.
 
 Bind serial devices by a stable path (`/dev/serial/by-id/...`) rather than `/dev/ttyUSB0`, which moves around between reboots - [chapter 1](01-attach-a-radio.md#why-bind-by-serial-not-device-path) explains why in more detail.
 
@@ -246,8 +245,9 @@ sudo deluser --system packetnet
 | Panel reachable on the node, "connection refused" from another machine | Something narrowed the bind to `127.0.0.1` - check **Config → Management → HTTP**, and remember a bind change needs a service restart. Or a firewall on the box is dropping 8080. |
 | Wizard never appears / it goes straight to a login | Setup is one-shot - a user already exists. Log in, or reset by stopping the node and removing `pdn.db` (this drops **all** config). |
 | Passkey buttons are missing | Not a secure origin - expected on a plain-HTTP LAN address. Password login works; for a passkey use the SSH tunnel to `http://localhost:8080`, HTTPS, or Tailscale. |
-| A serial port never opens | The `packetnet` user needs access to the device: `sudo usermod -aG dialout packetnet`, then restart. `journalctl` names the device it tried. |
+| A serial port never opens | Access to the device. The package puts `packetnet` in `dialout`; confirm with `id -nG packetnet`, add it with `sudo usermod -aG dialout packetnet` if something removed it, then restart. `journalctl` names the device it tried. |
 | `apt install` fails on dependencies | You used `dpkg -i`, or the box has no network to fetch the dependencies from its own distro mirrors. Use `apt install ./file.deb`. |
+| `apt` prints "Download is performed unsandboxed as root..." | Harmless. The `.deb` is in a directory apt's `_apt` user cannot read (a `0750` home directory). The install proceeds as root anyway. Download to `/tmp` to skip the notice. |
 
 ## Where next
 

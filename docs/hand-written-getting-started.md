@@ -25,17 +25,23 @@ Get a shell on the system you're installing it on.
 
 Find the latest pdn node release from https://github.com/packet-net/packet.net/releases- expand Assets and grab the URL for the release. For 64 bit Pi 4 this will end with `_arm64.deb`.
 
-Download it to the Pi with wget. For example
+Download it to the Pi with wget, into `/tmp`. For example
 
 ```
-wget https://github.com/packet-net/packet.net/releases/download/node-v0.42.0/packetnet_0.42.0_arm64.deb
+cd /tmp
+wget https://github.com/packet-net/packet.net/releases/download/node-v0.43.0/packetnet_0.43.0_arm64.deb
 ```
 
 Install it:
 
 ```
-sudo apt install -y ./packetnet_0.42.0_arm64.deb
+sudo apt install -y /tmp/packetnet_0.43.0_arm64.deb
 ```
+
+(Download it to `/tmp` rather than your home directory. apt fetches even a local file as the
+unprivileged `_apt` user, and `/home/pi` is `0750` on current Raspberry Pi OS, so from there apt
+prints a confusing `Download is performed unsandboxed as root as file ... couldn't be accessed by
+user '_apt'` notice before installing perfectly happily. From `/tmp` it just installs.)
 
 You should see a message:
 

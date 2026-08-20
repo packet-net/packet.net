@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Packet.Node.Core.Api;
 using Packet.Node.Core.Audit;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Modems;
 
 namespace Packet.Node.Api;
 
@@ -15,7 +18,7 @@ namespace Packet.Node.Api;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Always-open (never gated):</b> <c>GET /setup/state</c>, <c>POST /auth/login</c>,
+/// <b>Always-open (never gated):</b> <c>GET /setup/state</c>, <c>GET /setup/devices</c>, <c>POST /auth/login</c>,
 /// <c>POST /auth/refresh</c>, <c>POST /auth/logout</c> and <c>POST /setup</c> are
 /// reachable without a token - they are the bootstrap / session-lifecycle path (you
 /// cannot present a bearer access token to refresh or log out a session that has, by
@@ -98,6 +101,30 @@ public static class PdnAuthApi
         // gate for POST /setup below (C026).
         v1.MapGet("/setup/state", (IUserStore users) =>
             Results.Ok(new SetupStateResponse(NeedsSetup: users.TryCount() == 0)));
+
+        // The first-run wizard's device picker: which local serial devices could carry a KISS TNC,
+        // with the NinoTNCs among them identified by their own firmware reply. Unauthenticated for
+        // the same reason POST /setup is - it is consumed before any account exists - and closed by
+        // the same one-shot gate: once the node is claimed, 403. That keeps the "anyone on your
+        // network can claim an unclaimed node" window exactly as wide as it already was, and not a
+        // moment wider. Post-claim the same information is on the Ports screen, behind auth.
+        // A store fault reads as "claimed" (fails closed), matching POST /setup.
+        v1.MapGet("/setup/devices", async (
+            [FromServices] IModemScanner? scanner,
+            IUserStore users,
+            IConfigProvider config,
+            CancellationToken ct) =>
+        {
+            if (users.TryCount() != 0)
+            {
+                return Results.Problem("Setup has already been completed.", statusCode: StatusCodes.Status403Forbidden);
+            }
+            // Unregistered in a stripped embedder; an empty scan is then honest.
+            var scan = scanner is null
+                ? new ModemScan([], PermissionDenied: false)
+                : await scanner.ScanAsync(config.Current, ct).ConfigureAwait(false);
+            return Results.Ok(scan);
+        });
 
         // Password login → access JWT + opaque refresh token. Generic 401 on any
         // failure; same timing for unknown-user vs bad-password (see the type remarks).
