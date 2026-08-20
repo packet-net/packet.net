@@ -426,7 +426,9 @@ public sealed class CodeplugFields
 
     private byte[] Data => Image.Require(0x09, 0).Data;
 
-    /// <summary>SDM (short data message) reception/transmission enabled.</summary>
+    /// <summary>SDM (short data message) reception/transmission enabled (the CPS "SDM Enabled" checkbox,
+    /// Data > SDM > All SDMs). Enabling it also cascades the CPS defaults for the text-SDM flags
+    /// (bits 155..157), matching what the CPS writes.</summary>
     public bool SdmEnabled
     {
         get => (Data[10] & 0x40) != 0;
@@ -438,15 +440,16 @@ public sealed class CodeplugFields
         }
     }
 
-    /// <summary>THSD (high-speed data) modem master enable. The transparent-mode baud field is only
-    /// meaningful when this is on.</summary>
+    /// <summary>THSD (high-speed data) modem master enable (the CPS "THSD Modem Enabled" checkbox,
+    /// Data > General > Transparent Mode). The HSD baud field is only meaningful when this is on.</summary>
     public bool ThsdModemEnabled
     {
         get => (Data[15] & 0x08) != 0;
         set { if (value) { Data[15] |= 0x08; } else { Data[15] &= 0xF7; } }
     }
 
-    /// <summary>THSD transparent-mode (FFSK data operation) enabled.</summary>
+    /// <summary>FFSK Transparent-mode (byte-pipe data operation) enabled (the CPS "Transparent Mode
+    /// Enabled" checkbox, Data > General > Transparent Mode).</summary>
     public bool TransparentModeEnabled
     {
         get => (Data[0] & 0x01) != 0;
@@ -458,15 +461,17 @@ public sealed class CodeplugFields
         }
     }
 
-    /// <summary>Data-port routing (low two bits of payload byte 14).</summary>
+    /// <summary>Data-port routing (the CPS "Data Port", Data > Serial Communications; low two bits of
+    /// payload byte 14).</summary>
     public DataPort DataPort
     {
         get => (DataPort)(Data[14] & 0x03);
         set => Data[14] = (byte)((Data[14] & 0xFC) | ((byte)value & 0x03));
     }
 
-    /// <summary>FFSK transparent-mode baud, a 3-bit index split across payload[12] bits[7:6] (low
-    /// two bits of the index) and payload[13] bit0 (its high bit).</summary>
+    /// <summary>FFSK transparent-mode terminal baud (the CPS "Baud Rate" FFSK Transparent Mode column,
+    /// Data > Serial Communications), a 3-bit index split across payload[12] bits[7:6] (low two bits of
+    /// the index) and payload[13] bit0 (its high bit).</summary>
     public FfskBaud FfskTransparentBaud
     {
         get => (FfskBaud)(((Data[13] & 0x01) << 2) | ((Data[12] & 0xC0) >> 6));
@@ -479,9 +484,10 @@ public sealed class CodeplugFields
         }
     }
 
-    /// <summary>Over-air FFSK modem data rate (the CPS "FFSK Baud Rate" field), a 2-bit index in
-    /// payload byte 21 bits[4:3]. This is the on-air symbol rate the modem runs and must match at both
-    /// ends of a Transparent link; distinct from the terminal serial rate (<see cref="FfskTransparentBaud"/>).</summary>
+    /// <summary>Over-air FFSK modem data rate (the CPS "FFSK Baud Rate", Data > RF Modems > FFSK Modem),
+    /// a 2-bit index in payload byte 21 bits[4:3]. This is the on-air symbol rate the modem runs and must
+    /// match at both ends of a Transparent link; distinct from the terminal serial rate
+    /// (<see cref="FfskTransparentBaud"/>).</summary>
     public FfskModemRate FfskModemBaud
     {
         get => (FfskModemRate)((Data[21] >> 3) & 0x03);
@@ -524,88 +530,96 @@ public sealed class CodeplugFields
         }
     }
 
-    /// <summary>Master switch that lets the radio drop into CCDI command mode (the CPS "CCDI mode
-    /// allowed" field, bit 177). Every CCDI runtime feature - RSSI, DCD / channel-busy, PTT control,
-    /// status queries - needs this on; with it off the radio never presents the CCDI command channel.</summary>
+    /// <summary>Master switch that lets the radio drop into CCDI command mode (the CPS "CCDI Mode
+    /// Allowed" checkbox, Data > General > Command Mode; bit 177). Every CCDI runtime feature - RSSI,
+    /// DCD / channel-busy, PTT control, status queries - needs this on; with it off the radio never
+    /// presents the CCDI command channel.</summary>
     public bool CcdiModeAllowed
     {
         get => GetDataBits(177, 1) != 0;
         set => SetDataBits(177, 1, value ? 1 : 0);
     }
 
-    /// <summary>Which data mode the radio powers up in (bits 17..18; the two flow-control character
-    /// fields ahead of it are a byte each, so it sits higher than a naive field-order count suggests).
-    /// CCDI features need a command-capable power-up state; the transparent modes bring the radio
-    /// straight up as a byte pipe.</summary>
+    /// <summary>Which data mode the radio powers up in (the CPS "Powerup State", Data > General; bits
+    /// 17..18 - the XON/XOFF character fields ahead of it are a byte each, so it sits higher than a
+    /// naive field-order count suggests). CCDI features need a command-capable power-up state; the
+    /// transparent modes bring the radio straight up as a byte pipe.</summary>
     public DataPowerupMode PowerupState
     {
         get => (DataPowerupMode)GetDataBits(17, 2);
         set => SetDataBits(17, 2, (byte)value);
     }
 
-    /// <summary>CCDI command-mode serial baud (bits 97..99), the rate the host talks CCDI over the data
-    /// port. A 3-bit index into the shared baud table.</summary>
+    /// <summary>CCDI command-mode serial baud (the CPS "Baud Rate" Command Mode column, Data > Serial
+    /// Communications; bits 97..99), the rate the host talks CCDI over the data port. A 3-bit index
+    /// into the shared baud table.</summary>
     public FfskBaud CommandModeBaud
     {
         get => (FfskBaud)GetDataBits(97, 3);
         set => SetDataBits(97, 3, (byte)value);
     }
 
-    /// <summary>THSD (high-speed data) modem baud (bits 107..109), a 3-bit index into the shared baud
-    /// table. Meaningful when <see cref="ThsdModemEnabled"/> is on.</summary>
+    /// <summary>THSD (high-speed data) modem baud (the CPS "Baud Rate" THSD Transparent Mode column,
+    /// Data > Serial Communications; bits 107..109), a 3-bit index into the shared baud table.
+    /// Meaningful when <see cref="ThsdModemEnabled"/> is on.</summary>
     public FfskBaud HsdBaud
     {
         get => (FfskBaud)GetDataBits(107, 3);
         set => SetDataBits(107, 3, (byte)value);
     }
 
-    /// <summary>Route received SDMs out to the CCDI host (the CPS "CCDI SDM output" field, bit 151).
-    /// Needed for a host to see incoming short data messages over the CCDI channel.</summary>
+    /// <summary>Route received SDMs out to the CCDI host (the CPS "Output SDMs Automatically" checkbox,
+    /// Data > General > Command Mode; bit 151). Needed for a host to see incoming short data messages
+    /// over the CCDI channel.</summary>
     public bool CcdiSdmOutputEnabled
     {
         get => GetDataBits(151, 1) != 0;
         set => SetDataBits(151, 1, value ? 1 : 0);
     }
 
-    /// <summary>Emit CCDI progress / result messages to the host (bit 149). Lets a host see command
-    /// acknowledgements and send progress.</summary>
+    /// <summary>Emit CCDI progress / result messages to the host (the CPS "Output Progress Messages"
+    /// checkbox, Data > General > Command Mode; bit 149). Lets a host see command acknowledgements.</summary>
     public bool CcdiProgressMessageEnabled
     {
         get => GetDataBits(149, 1) != 0;
         set => SetDataBits(149, 1, value ? 1 : 0);
     }
 
-    /// <summary>Deliver SDMs to the host as text only, suppressing the binary form (bit 170).</summary>
+    /// <summary>Deliver SDMs to the host as text only, suppressing the binary form (the CPS "CCDI SDM
+    /// Text Only" checkbox, Data > General > Command Mode; bit 170).</summary>
     public bool CcdiSdmTextOnly
     {
         get => GetDataBits(170, 1) != 0;
         set => SetDataBits(170, 1, value ? 1 : 0);
     }
 
-    /// <summary>Show the received-SDM indicator (bit 155). Part of the text-SDM behaviour group that
-    /// <see cref="SdmEnabled"/> defaults on when SDM is enabled.</summary>
+    /// <summary>Show the received-SDM indicator (the CPS "Indicate When SDM Received" checkbox, Data >
+    /// SDM > Text SDMs Only; bit 155). Part of the text-SDM behaviour group that <see cref="SdmEnabled"/>
+    /// defaults on when SDM is enabled.</summary>
     public bool TextSdmIndicator
     {
         get => GetDataBits(155, 1) != 0;
         set => SetDataBits(155, 1, value ? 1 : 0);
     }
 
-    /// <summary>Auto-acknowledge transmitted text SDMs (bit 156).</summary>
+    /// <summary>Auto-acknowledge transmitted text SDMs (the CPS "Transmit SDM Auto Acknowledgement"
+    /// checkbox, Data > SDM > Text SDMs Only; bit 156).</summary>
     public bool TextSdmAutoAckTransmission
     {
         get => GetDataBits(156, 1) != 0;
         set => SetDataBits(156, 1, value ? 1 : 0);
     }
 
-    /// <summary>Auto-acknowledge received text SDMs (bit 157).</summary>
+    /// <summary>Auto-acknowledge received text SDMs (the CPS "Receive SDM Auto Acknowledgement"
+    /// checkbox, Data > SDM > Text SDMs Only; bit 157).</summary>
     public bool TextSdmAutoAckReception
     {
         get => GetDataBits(157, 1) != 0;
         set => SetDataBits(157, 1, value ? 1 : 0);
     }
 
-    /// <summary>SDM auto-acknowledge delay in milliseconds (bits 87..92, a 6-bit count of 100 ms steps,
-    /// 0..5000 ms).</summary>
+    /// <summary>SDM auto-acknowledge delay in milliseconds (the CPS "SDM Auto Acknowledge Delay", Data >
+    /// SDM > Text SDMs Only; bits 87..92, a 6-bit count of 100 ms steps, 0..5000 ms).</summary>
     public int SdmAutoAckDelayMs
     {
         get => (int)GetDataBits(87, 6) * 100;
@@ -620,7 +634,9 @@ public sealed class CodeplugFields
         }
     }
 
-    /// <summary>SDM wait-for-acknowledge count (bits 93..96, 1..15).</summary>
+    /// <summary>SDM wait-for-acknowledge count (the CPS "SDM Wait For Acknowledgement Time", Data > SDM >
+    /// Text SDMs Only; bits 93..96, 1..15). The CPS only lets you edit this box when "Receive SDM Auto
+    /// Acknowledgement" is on, but the value is stored regardless.</summary>
     public int SdmWaitForAck
     {
         get => (int)GetDataBits(93, 4);
@@ -635,17 +651,18 @@ public sealed class CodeplugFields
         }
     }
 
-    /// <summary>Ignore the FFSK Transparent-mode escape sequence (the CPS "Ignore escape sequence"
-    /// field, bit 114). For a raw byte pipe this must be OFF, otherwise the escape bytes are swallowed
-    /// and the link wedges; it is the classic TNC-less-Tait gotcha.</summary>
+    /// <summary>Ignore the FFSK Transparent-mode escape sequence (the CPS "Ignore Escape Sequence"
+    /// checkbox, Data > General > Transparent Mode; bit 114). For a raw byte pipe this must be OFF,
+    /// otherwise the escape bytes are swallowed and the link wedges; it is the classic TNC-less-Tait gotcha.</summary>
     public bool IgnoreEscapeSequence
     {
         get => GetDataBits(114, 1) != 0;
         set => SetDataBits(114, 1, value ? 1 : 0);
     }
 
-    /// <summary>Ignore subaudible (CTCSS / DCS) signalling on the data path (bit 85). For a transparent
-    /// data link both ends generally set this so the modem is not gated by tone squelch.</summary>
+    /// <summary>Ignore subaudible (CTCSS / DCS) signalling on the data path (the CPS "Ignore DCS/CTCSS"
+    /// checkbox, Data > RF Modems > FFSK Modem; bit 85). For a transparent data link both ends generally
+    /// set this so the modem is not gated by tone squelch.</summary>
     public bool IgnoreSubaudibleOnData
     {
         get => GetDataBits(85, 1) != 0;
