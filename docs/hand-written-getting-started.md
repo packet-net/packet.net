@@ -33,7 +33,7 @@ wget -q https://github.com/packet-net/packet.net/releases/latest/download/packet
 Install it:
 
 ```
-sudo apt install -y /tmp/packetnet_arm64.deb
+sudo apt install -qy /tmp/packetnet_arm64.deb
 ```
 
 You should see a message:
@@ -65,3 +65,11 @@ You will then be taken to the dashboard.
 ### Dashboard
 
 pausing here
+
+
+
+## Removing Packet.NET
+
+```
+sudo apt remove packetnet
+```
