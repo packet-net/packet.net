@@ -82,3 +82,6 @@ src/Packet.Node/wwwroot/
 # Tait codeplug reverse-engineering captures: large binary serial logs plus a real radio's
 # saved configuration. The protocol write-up lives in docs/research/tait-codeplug-protocol.md.
 tait-programming-research/
+
+# scripts/backfill-release-notes.sh saves the release bodies it replaces here.
+.release-notes-backup/

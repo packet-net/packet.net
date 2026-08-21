@@ -1369,6 +1369,18 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-21 - Release descriptions are change notes now, not install boilerplate
+
+Every GitHub Release this repo has ever cut carried the same paragraph: a fixed block of install instructions baked into the `--notes` argument in the workflow. 83 releases, 83 identical descriptions, and nothing anywhere saying what a given version actually changed. The release page is where an operator lands when they wonder whether to upgrade, and it was answering a different question.
+
+- **One generator, used everywhere.** [`scripts/release-notes.sh`](../scripts/release-notes.sh) walks `git log` from the previous tag in the same series (`node-v*` / `headend-v*`, version-sorted so `0.13.9` -> `0.13.10` orders correctly) and buckets each subject by conventional-commit type into Breaking / New / Fixed / Performance / Changed / Documentation / Internal, then adds a compare link and the commit count. A subject with a bare subsystem prefix (`catalog:`, `tune:` - this repo writes plenty) keeps the prefix as a bold scope and lands in **Changed**, not Internal: those are usually the user-visible commits, and demoting them was the failure mode worth avoiding. `[skip-plan]` / `[no-plan-update]` markers and non-ASCII punctuation are stripped on the way out.
+- **Install instructions shrink to one line.** `.github/release-notes/<series>.md` holds a single sentence pointing at [`operating/00-install.md`](../operating/00-install.md) (node) or [`operating/08-split-station-head-end.md`](../operating/08-split-station-head-end.md) (head end). The operating guide is the place that stays current; a copy frozen into a workflow argument is not.
+- **`fetch-depth: 0` is now load-bearing** in [`publish-node.yml`](../.github/workflows/publish-node.yml) and [`publish-headend.yml`](../.github/workflows/publish-headend.yml). A shallow checkout has neither history nor tags and the generator would quietly emit an empty changelog, so this is the one thing to keep an eye on if a future edit touches those checkout steps.
+- **The back catalogue was rewritten.** [`scripts/backfill-release-notes.sh`](../scripts/backfill-release-notes.sh) ran the same generator over all 83 existing releases (78 `node-v*` + 5 `headend-v*`) and replaced each body, saving the old one to `.release-notes-backup/<tag>.md` first. Deterministic from git history, so an old release now reads exactly as it would have had the workflow always worked this way; re-running the sweep is a no-op.
+- **What this costs.** The notes are only as good as the squash-merge subjects, which are now world-readable prose rather than an internal convenience. [`docs/releasing.md` § Release notes](releasing.md#release-notes) says so explicitly.
+
+CI and docs only; no library or node behaviour moved, so no `lib-v*` leg and no ax25-ts parity surface.
+
 ### 2026-08-20 - RELEASE: node-v0.43.0
 
 The first-contact UX pass ([entry below](#17-amendment-log), [#764](https://github.com/packet-net/packet.net/pull/764)) reaches the world.
