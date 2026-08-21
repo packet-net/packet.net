@@ -64,6 +64,14 @@ fi
 
 tag="${prefix}${version}"
 
+# A shallow checkout has neither the history nor the tags, so the range walk below
+# would find no previous tag and quietly emit an empty changelog. Fail loudly
+# instead - the fix is `fetch-depth: 0` on the workflow's checkout step.
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo false)" = "true" ]; then
+  echo "release-notes.sh: shallow repository - need the full history and tags (checkout with fetch-depth: 0)" >&2
+  exit 3
+fi
+
 # End of the range. At tag-push time the tag is checked out; on workflow_dispatch
 # it does not exist yet, so fall back to HEAD.
 if [ -z "$head_ref" ]; then
