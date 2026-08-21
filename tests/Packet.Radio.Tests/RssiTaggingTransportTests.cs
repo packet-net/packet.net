@@ -24,26 +24,24 @@ public class RssiTaggingTransportTests
     [Fact]
     public async Task First_Frame_In_A_Window_Gets_Stats_Rise_Burst0_And_PreDataCarrier()
     {
-        var time = new FakeTimeProvider();
+        var time = new SamplerClock();
         var radio = new FakeRadio { ChannelBusy = false, RssiDbm = -128f };
         var transport = new FakeTransport();
         await using var tagged = new RssiTaggingTransport(transport, radio, Options, time);
 
         // Two idle polls establish the noise floor at -128.
-        await radio.WaitForReadsAsync(1);
-        time.Advance(TimeSpan.FromMilliseconds(400));
-        await radio.WaitForReadsAsync(1);
+        await time.WaitUntilParkedAsync();
+        await time.TickAsync(TimeSpan.FromMilliseconds(400));
 
         // Carrier rises; the channel now reads -90. (Nudge the clock so the rise instant is
         // strictly after the last idle sample - inclusive window boundaries.)
-        time.Advance(TimeSpan.FromMilliseconds(1));
+        time.AdvanceWithoutSampling(TimeSpan.FromMilliseconds(1));
         var rise = time.GetUtcNow();
         radio.RssiDbm = -90f;
         radio.RaiseCarrierSense(true, rise);
         for (int i = 0; i < 5; i++)
         {
-            time.Advance(TimeSpan.FromMilliseconds(400)); // covers whichever period is pending
-            await radio.WaitForReadsAsync(1);
+            await time.TickAsync(TimeSpan.FromMilliseconds(400)); // covers whichever period is pending
         }
 
         // 147-byte frame at 1200 bd -> (147+3)*8/1200 = 1.0 s estimated airtime.
@@ -69,17 +67,16 @@ public class RssiTaggingTransportTests
     [Fact]
     public async Task Later_Frames_In_The_Same_Window_Get_Burst_Indices_And_No_PreDataCarrier()
     {
-        var time = new FakeTimeProvider();
+        var time = new SamplerClock();
         var radio = new FakeRadio { ChannelBusy = false, RssiDbm = -128f };
         var transport = new FakeTransport();
         await using var tagged = new RssiTaggingTransport(transport, radio, Options, time);
-        await radio.WaitForReadsAsync(1);
+        await time.WaitUntilParkedAsync();
 
         var rise = time.GetUtcNow();
         radio.RssiDbm = -95f;
         radio.RaiseCarrierSense(true, rise);
-        time.Advance(TimeSpan.FromMilliseconds(400));
-        await radio.WaitForReadsAsync(1);
+        await time.TickAsync(TimeSpan.FromMilliseconds(400));
 
         // Three frames delivered inside one carrier window: an AX.25 train.
         transport.Push(new Ax25InboundFrame(new byte[57], 0, time.GetUtcNow()));
@@ -105,7 +102,7 @@ public class RssiTaggingTransportTests
     [Fact]
     public async Task Without_CarrierSense_Falls_Back_To_Threshold_Attribution()
     {
-        var time = new FakeTimeProvider();
+        var time = new SamplerClock();
         var radio = new FakeRadio
         {
             Capabilities = RadioCapabilities.RssiRead,
@@ -115,10 +112,9 @@ public class RssiTaggingTransportTests
         var transport = new FakeTransport();
         await using var tagged = new RssiTaggingTransport(transport, radio, Options, time);
 
-        await radio.WaitForReadsAsync(1); // seeds the floor at -128
+        await time.WaitUntilParkedAsync(); // seeds the floor at -128
         radio.RssiDbm = -85f;
-        time.Advance(TimeSpan.FromMilliseconds(40));
-        await radio.WaitForReadsAsync(1); // one signal sample
+        await time.TickAsync(TimeSpan.FromMilliseconds(40)); // one signal sample
 
         transport.Push(new Ax25InboundFrame(new byte[57], 0, time.GetUtcNow()));
         var frame = await ReadOneAsync(tagged);
@@ -135,7 +131,7 @@ public class RssiTaggingTransportTests
     [Fact]
     public async Task A_Frame_Delivered_After_The_Next_Station_Keys_Stays_With_Its_Own_Window()
     {
-        var time = new FakeTimeProvider();
+        var time = new SamplerClock();
         var radio = new FakeRadio { ChannelBusy = false, RssiDbm = -128f };
         var transport = new FakeTransport();
         await using var tagged = new RssiTaggingTransport(transport, radio, TwoStationOptions, time);
@@ -167,7 +163,7 @@ public class RssiTaggingTransportTests
     [Fact]
     public async Task A_Frame_That_Fits_Since_The_New_Rise_Belongs_To_The_Open_Window()
     {
-        var time = new FakeTimeProvider();
+        var time = new SamplerClock();
         var radio = new FakeRadio { ChannelBusy = false, RssiDbm = -128f };
         var transport = new FakeTransport();
         await using var tagged = new RssiTaggingTransport(transport, radio, TwoStationOptions, time);
@@ -175,8 +171,7 @@ public class RssiTaggingTransportTests
         var (_, fallA, riseB) = await RunTwoStationSceneAsync(time, radio);
         for (int i = 0; i < 3; i++)
         {
-            time.Advance(TimeSpan.FromMilliseconds(100));
-            await radio.WaitForReadsAsync(1);
+            await time.TickAsync(TimeSpan.FromMilliseconds(100));
         }
 
         // B's own first frame: 200 ms of TXDELAY then a 27-byte frame (200 ms airtime), so
@@ -200,7 +195,7 @@ public class RssiTaggingTransportTests
     [Fact]
     public async Task With_No_Bit_Rate_A_Late_Delivery_Keeps_The_Window_That_Was_On_Air()
     {
-        var time = new FakeTimeProvider();
+        var time = new SamplerClock();
         var radio = new FakeRadio { ChannelBusy = false, RssiDbm = -128f };
         var transport = new FakeTransport();
         var noBitRate = TwoStationOptions with { BitRateHzProvider = null };
@@ -227,32 +222,30 @@ public class RssiTaggingTransportTests
     /// with says which window it was attributed to. Returns A's rise, A's fall and B's rise.
     /// </summary>
     private static async Task<(DateTimeOffset RiseA, DateTimeOffset FallA, DateTimeOffset RiseB)>
-        RunTwoStationSceneAsync(FakeTimeProvider time, FakeRadio radio)
+        RunTwoStationSceneAsync(SamplerClock time, FakeRadio radio)
     {
         var poll = TimeSpan.FromMilliseconds(100);
-        await radio.WaitForReadsAsync(1); // one idle sample seeds the noise floor at -128
+        await time.WaitUntilParkedAsync(); // one idle sample seeds the noise floor at -128
 
         // Nudge the clock so A's rise is strictly after that idle sample (inclusive boundaries).
-        time.Advance(TimeSpan.FromMilliseconds(1));
+        time.AdvanceWithoutSampling(TimeSpan.FromMilliseconds(1));
         var riseA = time.GetUtcNow();
         radio.RssiDbm = -80f;
         radio.RaiseCarrierSense(true, riseA);
         for (int i = 0; i < 5; i++)
         {
-            time.Advance(poll);
-            await radio.WaitForReadsAsync(1);
+            await time.TickAsync(poll);
         }
 
         var fallA = time.GetUtcNow();
         radio.RssiDbm = -128f;
         radio.RaiseCarrierSense(false, fallA);
 
-        time.Advance(TimeSpan.FromMilliseconds(50));
+        time.AdvanceWithoutSampling(TimeSpan.FromMilliseconds(50));
         var riseB = time.GetUtcNow();
         radio.RssiDbm = -100f;
         radio.RaiseCarrierSense(true, riseB);
-        time.Advance(poll);
-        await radio.WaitForReadsAsync(1);
+        await time.TickAsync(poll);
 
         return (riseA, fallA, riseB);
     }
