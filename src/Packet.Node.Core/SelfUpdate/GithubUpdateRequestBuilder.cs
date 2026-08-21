@@ -9,8 +9,9 @@ namespace Packet.Node.Core.SelfUpdate;
 
 /// <summary>
 /// Builds the validated github-channel Apply request the privileged helper applies: resolve the
-/// latest <c>node-v*</c> release, find the per-arch <c>packetnet_&lt;ver&gt;_&lt;arch&gt;.deb</c>
-/// asset, and look up its expected SHA-256 from the release's <c>SHA256SUMS</c> asset - all over
+/// latest <c>node-v*</c> release, find the per-arch <c>packetnet_&lt;arch&gt;.deb</c> asset
+/// (falling back to the older versioned <c>packetnet_&lt;ver&gt;_&lt;arch&gt;.deb</c> name),
+/// and look up its expected SHA-256 from the release's <c>SHA256SUMS</c> asset - all over
 /// HTTPS (the github channel's trust root), and stamp on the node's effective health URL so the
 /// helper's post-install gate follows this node's bind/port. The node passes this to the helper,
 /// which re-fetches the release checksums itself and <em>re-verifies</em> the sha256 against the
@@ -76,11 +77,21 @@ public sealed partial class GithubUpdateRequestBuilder
         }
         var ver = version.ToString();
 
-        var debName = $"packetnet_{ver}_{arch}.deb";
+        // The release's .deb assets carry no version in their filenames - `packetnet_<arch>.deb`
+        // - so that /releases/latest/download/packetnet_<arch>.deb is a permanent link
+        // (publish-node.yml). The versioned `packetnet_<ver>_<arch>.deb` name is the older
+        // scheme, still attached to releases during the transition and still the name every
+        // node built before that change asks for; accept either, newest scheme first, so this
+        // node can update from a release of either shape.
+        var debName = $"packetnet_{arch}.deb";
         if (!release.Assets.TryGetValue(debName, out var debUrl))
         {
-            LogNoAsset(debName);
-            return null;
+            debName = $"packetnet_{ver}_{arch}.deb";
+            if (!release.Assets.TryGetValue(debName, out debUrl))
+            {
+                LogNoAsset($"packetnet_{arch}.deb");
+                return null;
+            }
         }
         if (!string.Equals(debUrl.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal))
         {

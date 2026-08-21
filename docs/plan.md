@@ -1369,6 +1369,22 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-21 - Release assets lose the version from their filenames, so the download URL is permanent
+
+`https://github.com/packet-net/packet.net/releases/download/node-v0.43.0/packetnet_0.43.0_arm64.deb` is a URL nobody can remember, nobody can put in a wiki, and everybody has to re-derive every release. The install guide worked around it by resolving the tag from the API first and interpolating it into the filename twice - four lines to do one download. That is now:
+
+```sh
+curl -fsSLO "https://github.com/packet-net/packet.net/releases/latest/download/packetnet_$(dpkg --print-architecture).deb"
+```
+
+**The mechanism.** GitHub's `/releases/latest/download/<name>` redirect resolves an asset by *exact* name on whichever release currently holds the "Latest" pointer, so any version inside the name defeats it. `publish-node.yml` therefore stages its assets under version-free names - `packetnet_<arch>.deb`, `packetnet_<arch>.tar.gz` - before upload (hard links into `artifacts/release/`, so no extra disk and no change to `scripts/build-deb.sh`, which keeps the versioned Debian-convention name locally for `deploy-node.sh` and the install smoke). Nothing needed the version in the filename: `dpkg` reads it from the package's own control metadata, the release tag states it, and `SHA256SUMS` pins the bytes.
+
+**The pointer is now claimed explicitly.** This repo cuts two release series into one namespace, and "Latest" is a single per-repo pointer that by default follows the newest release of *any* series. So `publish-node.yml` passes `--latest` and `publish-headend.yml` passes `--latest=false`: without that pairing, cutting a head-end release would silently 404 every documented node download link until the next node release. Any future series added to this repo must decline the pointer the same way.
+
+**The installed base is the reason this is a two-step change.** `GithubUpdateRequestBuilder` *constructs* the asset name it asks the release for, so every node built before today asks for `packetnet_<ver>_<arch>.deb` by name - and would have quietly reported "no update available" forever if that name vanished. The builder now prefers `packetnet_<arch>.deb` and falls back to the versioned name (so it can still update from an older-shaped release), and the workflow keeps attaching the versioned `.deb` copies alongside the new ones until the fleet has rolled forward. Both paths, and the precedence between them when a release carries both names, are covered in `SystemUpdateApiTests`. The clean-up is three flagged lines in `publish-node.yml`, to be deleted once no node older than `node-v0.44.0` is still in service.
+
+Workflow + docs + one resolution change in `Packet.Node.Core`. No wire behaviour, no library API, no ax25-ts parity surface.
+
 ### 2026-08-20 - RELEASE: node-v0.43.0
 
 The first-contact UX pass ([entry below](#17-amendment-log), [#764](https://github.com/packet-net/packet.net/pull/764)) reaches the world.
