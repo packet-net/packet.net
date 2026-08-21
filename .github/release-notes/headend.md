@@ -1,0 +1,1 @@
+**Install:** [Split-station head end](https://github.com/__REPO__/blob/main/operating/08-split-station-head-end.md). The `.deb` enables and starts the daemon on install; the raw static binary is there for non-deb systems. `SHA256SUMS` covers every asset attached here.
