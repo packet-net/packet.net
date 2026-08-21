@@ -1369,6 +1369,22 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-21 - RELEASE: node-v0.44.0
+
+The version-free release asset names ([entry below](#17-amendment-log), [#767](https://github.com/packet-net/packet.net/pull/767)) reach the world, and the permanent download URL exists for the first time.
+
+- **Gate.** `interop`, `deb-smoke`, `live-smoke` and `plan-check` green first time on the merge commit `78493833`; `ci` went red on two tests and was re-run only *after* both were diagnosed (below), then green. Node train only: nothing on the published library surface moved (the change is `Packet.Node.Core/SelfUpdate` plus workflows and docs), so no `lib-v*` leg - libs stay at `lib-v0.27.0`.
+- **Tag.** `node-v0.44.0` on `origin/main`. `publish-node.yml` and `publish-docker.yml` both succeeded.
+- **Published.** **10 assets**, non-draft: the three version-free `.deb`s (`packetnet_<arch>.deb`), the three `.tar.gz` archives, `SHA256SUMS`, and the three transitional `packetnet_0.44.0_<arch>.deb` copies. `SHA256SUMS` covers **both** naming schemes, which is what lets a node built before this release still resolve and checksum its update. The release holds the repo's "Latest" pointer, as `--latest` now asserts.
+- **Verified on the artifact, not just the workflow:** `https://github.com/packet-net/packet.net/releases/latest/download/packetnet_arm64.deb` was fetched (HTTP 200, 54,851,690 bytes), its sha256 matched the published `SHA256SUMS` line, and `dpkg-deb -f` read `Version: 0.44.0` / `Architecture: arm64` out of the package - the whole point of the change: the version is discoverable from the package, not the filename.
+- **Lab.** `packetdotnet` upgraded `0.42.0+dev20260817231205` -> `0.44.0` by having the box itself `curl` the **permanent URL**, verify the checksum against the published `SHA256SUMS`, and `dpkg -i` the result. That dogfoods the new URL as a real node's install path rather than only asserting it from a dev box. Service active, `/healthz` ok.
+- **Downstream:** none. `axcall` and `packet-term-tui` pin `Packet.*` packages, and none of them moved.
+
+**The two `ci` failures were pre-existing, load-sensitive, and in code this change does not touch** - recorded here because the release doc says to chase these rather than wave them through, and one of them is a real defect:
+
+- `Packet.Radio.Tests.RssiTaggingTransportTests.A_Frame_Delivered_After_The_Next_Station_Keys_Stays_With_Its_Own_Window` - `FakeRadio.WaitForReadsAsync` hits its 5 s real-time guard. Passes 5/5 on an idle box (51 ms); fails 2/5 under 15 busy loops on 16 cores. Looks test-side: `RunTwoStationSceneAsync` advances the `FakeTimeProvider` and then waits for the sampler's next poll, so a tick advanced before the sampler has re-armed is lost and the wait runs to the guard.
+- `Packet.Node.Tests.Tuning.PortTuningSessionTests.A_link_that_closes_without_a_goodbye_ends_in_error_and_still_restores` - **a genuine ordering defect in production code, not a slow test.** `PortTuningSession.CleanupAsync` completes the subscriber channels (`TryComplete()`) *before* it awaits `restore(...)`. A consumer that waits for the event stream to end - which is how you learn a tuning session is over - can therefore observe completion while the port is still paused. The test asserts exactly the documented contract ("an error path must still restore the port") and catches the window when the restore continuation is descheduled; it fails ~1/6 under load, never idle. **Not fixed here** - it is outside this release's scope and reordering teardown deserves its own change and test.
+
 ### 2026-08-21 - Release assets lose the version from their filenames, so the download URL is permanent
 
 `https://github.com/packet-net/packet.net/releases/download/node-v0.43.0/packetnet_0.43.0_arm64.deb` is a URL nobody can remember, nobody can put in a wiki, and everybody has to re-derive every release. The install guide worked around it by resolving the tag from the API first and interpolating it into the filename twice - four lines to do one download. That is now:
