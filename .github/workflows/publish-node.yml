@@ -106,22 +106,20 @@ jobs:
         # bytes. Local builds (scripts/build-deb.sh) keep the versioned Debian-convention name;
         # only the uploaded copies are renamed. Hard links, so this costs no extra disk.
         #
-        # TRANSITION - remove after the fleet is past node-v0.44.0. Nodes released BEFORE this
-        # change ask the release for `packetnet_<ver>_<arch>.deb` by name (their
-        # GithubUpdateRequestBuilder constructs it), so dropping that name outright would
-        # silently strand every deployed node on "no update available". We therefore also
-        # attach the versioned .deb name until those nodes have rolled forward onto a build
-        # that prefers the version-free asset. Delete the three lines flagged below (and this
-        # paragraph) once that is true; the archives were never resolved by name, so they get
-        # no such copy.
+        # These are the ONLY .deb names a release carries. node-v0.44.0 also attached the older
+        # `packetnet_<ver>_<arch>.deb` names so that nodes predating the rename - which build
+        # that filename themselves rather than reading it off the release - could still
+        # self-update; that transition was dropped deliberately (Tom, 2026-08-21). A node older
+        # than node-v0.44.0 therefore finds no asset it recognises and reports no update
+        # available; it needs one manual install to get current, after which self-update works
+        # again. Do not reintroduce a second name here without also restoring the fallback in
+        # GithubUpdateRequestBuilder.
         run: |
           rm -rf artifacts/release
           mkdir -p artifacts/release
           for arch in amd64 arm64 armhf; do
             ln "artifacts/packetnet_${VERSION}_${arch}.deb"    "artifacts/release/packetnet_${arch}.deb"
             ln "artifacts/packetnet_${VERSION}_${arch}.tar.gz" "artifacts/release/packetnet_${arch}.tar.gz"
-            # TRANSITION (see above) - delete this line to stop shipping versioned .deb names.
-            ln "artifacts/packetnet_${VERSION}_${arch}.deb"    "artifacts/release/packetnet_${VERSION}_${arch}.deb"
           done
 
       - name: Checksum + create GitHub Release
@@ -151,4 +149,4 @@ jobs:
             --repo "${{ github.repository }}" \
             --latest \
             --title "pdn node-v${VERSION}" \
-            --notes "Packet.NET node host (pdn) ${VERSION}. **New here? Read [Getting started](https://github.com/${{ github.repository }}/blob/main/operating/00-install.md)** - install, reach the control panel, add a port. **Debian / Ubuntu / Raspberry Pi OS (recommended):** install the \`.deb\` for your arch - \`sudo apt install ./packetnet_<arch>.deb\` (\`apt\`, not \`dpkg -i\`, so dependencies resolve; no .NET runtime required), runs as a hardened systemd unit. The asset names carry no version, so \`https://github.com/${{ github.repository }}/releases/latest/download/packetnet_<arch>.deb\` always fetches the current release - the version is inside the package (\`dpkg -I\`), not the filename. A fresh node serves its panel on \`0.0.0.0:8080\` and requires a login (first visit is the setup wizard); an existing node keeps whatever posture its stored config already has. Config lives in /var/lib/packetnet/pdn.db - edit it in the panel, or \`pdn config export|import\`. **Anywhere else:** the \`*.tar.gz\` for your arch is the same node as a plain archive - unpack it, run \`./packetnet\`, and wire up the bundled \`packetnet.service.example\` yourself. Nothing manages an archive install, so the panel offers no in-app update: unpack the next release over it. \`SHA256SUMS\` covers every artifact here. (The \`packetnet_${VERSION}_<arch>.deb\` copies exist only so nodes released before 0.44.0 can still self-update; they will be dropped.)"
+            --notes "Packet.NET node host (pdn) ${VERSION}. **New here? Read [Getting started](https://github.com/${{ github.repository }}/blob/main/operating/00-install.md)** - install, reach the control panel, add a port. **Debian / Ubuntu / Raspberry Pi OS (recommended):** install the \`.deb\` for your arch - \`sudo apt install ./packetnet_<arch>.deb\` (\`apt\`, not \`dpkg -i\`, so dependencies resolve; no .NET runtime required), runs as a hardened systemd unit. The asset names carry no version, so \`https://github.com/${{ github.repository }}/releases/latest/download/packetnet_<arch>.deb\` always fetches the current release - the version is inside the package (\`dpkg -I\`), not the filename. A fresh node serves its panel on \`0.0.0.0:8080\` and requires a login (first visit is the setup wizard); an existing node keeps whatever posture its stored config already has. Config lives in /var/lib/packetnet/pdn.db - edit it in the panel, or \`pdn config export|import\`. **Anywhere else:** the \`*.tar.gz\` for your arch is the same node as a plain archive - unpack it, run \`./packetnet\`, and wire up the bundled \`packetnet.service.example\` yourself. Nothing manages an archive install, so the panel offers no in-app update: unpack the next release over it. \`SHA256SUMS\` covers every artifact here."

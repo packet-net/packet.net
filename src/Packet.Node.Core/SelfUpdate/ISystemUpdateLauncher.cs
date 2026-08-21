@@ -51,8 +51,7 @@ public sealed record SystemUpdateRequest(string Channel, GithubUpdateRequest? Gi
 /// </summary>
 /// <param name="TargetVersion">The release version being applied (e.g. <c>0.9.0</c>).</param>
 /// <param name="Arch">The Debian arch of the <c>.deb</c> to fetch (<c>amd64</c>/<c>arm64</c>/<c>armhf</c>).</param>
-/// <param name="DebUrl">The HTTPS GitHub-release download URL of <c>packetnet_&lt;arch&gt;.deb</c>
-/// (or the older <c>packetnet_&lt;ver&gt;_&lt;arch&gt;.deb</c> on a release predating the rename).</param>
+/// <param name="DebUrl">The HTTPS GitHub-release download URL of <c>packetnet_&lt;arch&gt;.deb</c>.</param>
 /// <param name="Sha256">The expected SHA-256 (lowercase hex) the helper cross-checks against the
 /// release's own <c>SHA256SUMS</c> (which it fetches itself) before verifying the download.</param>
 /// <param name="HealthUrl">The node's effective loopback health URL (<c>http://127.0.0.1:&lt;port&gt;/healthz</c>

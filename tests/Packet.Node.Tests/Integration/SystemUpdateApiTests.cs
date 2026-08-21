@@ -109,10 +109,8 @@ public sealed class SystemUpdateApiTests : IDisposable
         resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
     }
 
-    // Releases now attach the .deb under a version-free name (`packetnet_<arch>.deb`) so that
-    // /releases/latest/download/ is a permanent link; the older `packetnet_<ver>_<arch>.deb`
-    // name is still attached during the transition. Both must resolve, and when a release
-    // carries both, the version-free one must win.
+    // A release attaches its .deb under a version-free name (`packetnet_<arch>.deb`) so that
+    // /releases/latest/download/ is a permanent link. That is the only name resolved.
     [Fact]
     public async Task Update_on_the_github_channel_resolves_the_version_free_asset_then_launches_with_a_request()
     {
@@ -120,47 +118,52 @@ public sealed class SystemUpdateApiTests : IDisposable
         await AssertGithubUpdateResolvesAsync($"packetnet_{arch}.deb", arch);
     }
 
+    // Releases up to node-v0.43.0 named the asset `packetnet_<ver>_<arch>.deb`. Reading that name
+    // was deliberately dropped, so such a release must be declined outright rather than installed
+    // - and it must fail closed (409, helper untouched), not by guessing a URL.
     [Fact]
-    public async Task Update_on_the_github_channel_falls_back_to_the_legacy_versioned_asset_name()
+    public async Task Update_on_the_github_channel_declines_a_release_that_only_carries_the_legacy_asset_name()
     {
+        WriteConfig(authEnabled: false);
+        await using var factory = Factory(InstallChannel.Github);
         var arch = GithubUpdateRequestBuilder.CurrentDebArch ?? "amd64";
-        await AssertGithubUpdateResolvesAsync($"packetnet_0.9.0_{arch}.deb", arch);
-    }
+        const string baseUrl = "https://github.com/packet-net/packet.net/releases/download/node-v0.9.0";
+        var legacy = $"packetnet_0.9.0_{arch}.deb";
+        const string sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        factory.Github = new FakeGithub(
+            release: new GitHubRelease("node-v0.9.0", new Dictionary<string, Uri>
+            {
+                [legacy] = new($"{baseUrl}/{legacy}"),
+                ["SHA256SUMS"] = new($"{baseUrl}/SHA256SUMS"),
+            }),
+            sha256Sums: $"{sha}  {legacy}\n");
+        using var client = factory.CreateClient();
 
-    [Fact]
-    public async Task Update_on_the_github_channel_prefers_the_version_free_asset_over_the_legacy_name()
-    {
-        var arch = GithubUpdateRequestBuilder.CurrentDebArch ?? "amd64";
-        var expected = $"packetnet_{arch}.deb";
-        await AssertGithubUpdateResolvesAsync(expected, arch, alsoAttach: $"packetnet_0.9.0_{arch}.deb");
+        var resp = await client.PostAsync("/api/v1/system/update", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        factory.Launcher.Calls.Should().Be(0, "no recognisable asset means nothing to install");
     }
 
     /// <summary>
     /// Drives a real POST /api/v1/system/update on the github channel against a fake release that
-    /// attaches the .deb as <paramref name="debName"/> (plus, optionally, a decoy under
-    /// <paramref name="alsoAttach"/> whose checksum differs), and asserts the launcher received a
-    /// request resolved to <paramref name="debName"/> and its checksum.
+    /// attaches the .deb as <paramref name="debName"/>, and asserts the launcher received a
+    /// request resolved to that asset and its checksum.
     /// </summary>
-    private async Task AssertGithubUpdateResolvesAsync(string debName, string arch, string? alsoAttach = null)
+    private async Task AssertGithubUpdateResolvesAsync(string debName, string arch)
     {
         WriteConfig(authEnabled: false);
         await using var factory = Factory(InstallChannel.Github);
         const string baseUrl = "https://github.com/packet-net/packet.net/releases/download/node-v0.9.0";
         const string sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        const string decoySha = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
         var assets = new Dictionary<string, Uri>
         {
             [debName] = new($"{baseUrl}/{debName}"),
             ["SHA256SUMS"] = new($"{baseUrl}/SHA256SUMS"),
         };
-        var sums = $"{sha}  {debName}\n";
-        if (alsoAttach is not null)
-        {
-            assets[alsoAttach] = new($"{baseUrl}/{alsoAttach}");
-            sums += $"{decoySha}  {alsoAttach}\n";
-        }
         // A fake release the real GithubUpdateRequestBuilder resolves into a download request.
-        factory.Github = new FakeGithub(release: new GitHubRelease("node-v0.9.0", assets), sha256Sums: sums);
+        factory.Github = new FakeGithub(
+            release: new GitHubRelease("node-v0.9.0", assets), sha256Sums: $"{sha}  {debName}\n");
         using var client = factory.CreateClient();
 
         var resp = await client.PostAsync("/api/v1/system/update", content: null);
