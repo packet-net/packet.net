@@ -27,7 +27,7 @@ Download the current pdn node release to the Pi with wget, into `/tmp`. The down
 
 ```
 cd /tmp
-wget https://github.com/packet-net/packet.net/releases/latest/download/packetnet_arm64.deb
+wget -q https://github.com/packet-net/packet.net/releases/latest/download/packetnet_arm64.deb
 ```
 
 Install it:
