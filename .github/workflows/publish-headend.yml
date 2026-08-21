@@ -115,6 +115,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.v.outputs.version }}
+        # --latest=false: the head-end is a separate product that happens to share this repo,
+        # and the repo's single "Latest" pointer belongs to the node series. The node's .deb
+        # assets carry no version in their filenames precisely so that
+        # /releases/latest/download/packetnet_<arch>.deb is a permanent link (see
+        # publish-node.yml) - and that link resolves through whichever release holds the
+        # pointer. A head-end release taking it would 404 every documented node download until
+        # the next node release, so this workflow declines it.
         run: |
           set -euo pipefail
           cd headend/release
@@ -133,5 +140,6 @@ jobs:
             headend/release/packetnet-headend-"${VERSION}"-linux-amd64 \
             headend/release/SHA256SUMS \
             --repo "${{ github.repository }}" \
+            --latest=false \
             --title "packetnet-headend ${VERSION}" \
             --notes "Split-station RF head-end daemon (\`packetnet-headend\`) for arm64 / arm v7 / amd64. **apt / Debian:** install the \`.deb\` for your arch — \`sudo apt install ./packetnet-headend_${VERSION}_<arch>.deb\` — a static binary at /usr/lib/packetnet, a hardened systemd unit that enables + starts on install (plug-and-go on defaults; hostname-derived instanceId, auto-enumerate every serial device), and a config example at /usr/share/packetnet/packetnet-headend.json.example. **Raw binary:** for non-deb systems — \`sudo install -m0755 packetnet-headend-${VERSION}-linux-<arch> /usr/local/bin/packetnet-headend\` (see operating/08-split-station-head-end.md for the unit). \`SHA256SUMS\` covers every asset."

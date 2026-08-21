@@ -23,19 +23,17 @@ Get a shell on the system you're installing it on.
 
 `ssh pi@my-pi`
 
-Find the latest pdn node release from https://github.com/packet-net/packet.net/releases- expand Assets and grab the URL for the release. For 64 bit Pi 4 this will end with `_arm64.deb`.
-
-Download it to the Pi with wget, into `/tmp`. For example
+Download the current pdn node release to the Pi with wget, into `/tmp`. The download URL is the same every time - it carries no version, and always gives you the latest release. Pick the file for your architecture: for a 64 bit Pi 4 that is `_arm64.deb`.
 
 ```
 cd /tmp
-wget https://github.com/packet-net/packet.net/releases/download/node-v0.43.0/packetnet_0.43.0_arm64.deb
+wget https://github.com/packet-net/packet.net/releases/latest/download/packetnet_arm64.deb
 ```
 
 Install it:
 
 ```
-sudo apt install -y /tmp/packetnet_0.43.0_arm64.deb
+sudo apt install -y /tmp/packetnet_arm64.deb
 ```
 
 You should see a message:

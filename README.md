@@ -16,9 +16,11 @@ Most visitors will probably just be interested in running a packet radio node of
 pdn is distributed two ways, both from [Releases](https://github.com/packet-net/packet.net/releases): a **`.deb`** for Debian, Ubuntu and Raspberry Pi OS, and a **`.tar.gz`** archive of the same node for anything else. On a Debian-ish box (a Raspberry Pi is ideal), grab the `.deb` for your architecture and:
 
 ```sh
-cd /tmp && curl -fsSLO <the .deb URL for your arch>
-sudo apt install /tmp/packetnet_<version>_<arch>.deb
+cd /tmp && curl -fsSLO "https://github.com/packet-net/packet.net/releases/latest/download/packetnet_$(dpkg --print-architecture).deb"
+sudo apt install "/tmp/packetnet_$(dpkg --print-architecture).deb"
 ```
+
+That URL always resolves to the current release: the `.deb` filenames carry no version, so there is nothing to look up first and nothing to edit next time. The version is inside the package - `dpkg -I packetnet_arm64.deb`.
 
 (Downloading to `/tmp` rather than your home directory keeps apt from printing a *"Download is performed unsandboxed as root"* notice: apt fetches even a local file as the `_apt` user, which cannot read a `0750` home directory.)
 

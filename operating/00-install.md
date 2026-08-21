@@ -32,12 +32,13 @@ Grab the `.deb` for your architecture from [Releases](https://github.com/packet-
 
 ```sh
 arch=$(dpkg --print-architecture)
-ver=$(curl -fsSL https://api.github.com/repos/packet-net/packet.net/releases/latest \
-        | sed -n 's/.*"tag_name": *"node-v\([^"]*\)".*/\1/p')
 cd /tmp
-curl -fsSLO "https://github.com/packet-net/packet.net/releases/download/node-v$ver/packetnet_${ver}_${arch}.deb"
-sudo apt install "/tmp/packetnet_${ver}_${arch}.deb"
+curl -fsSLO "https://github.com/packet-net/packet.net/releases/latest/download/packetnet_${arch}.deb"
+sudo apt install "/tmp/packetnet_${arch}.deb"
 ```
+
+> [!TIP]
+> Those lines do not change between releases. The release assets carry no version in their filenames, so `.../releases/latest/download/packetnet_<arch>.deb` always fetches the current node and nothing has to look up a version number first. To see which version you got, `dpkg -I packetnet_${arch}.deb`. To install an older release deliberately, take the asset URL from that release's own page instead.
 
 > [!IMPORTANT]
 > Use `apt install ./file.deb`, not `dpkg -i`. The package declares real dependencies (`adduser`, `polkitd`, `libhamlib-utils`) and apt resolves them; `dpkg -i` will stop on the first missing one.
@@ -67,7 +68,7 @@ The `.tar.gz` for your architecture is the same node as the `.deb`, minus the pa
 
 ```sh
 sudo install -d /opt/packetnet/app
-sudo tar -C /opt/packetnet/app -xzf packetnet_<version>_<arch>.tar.gz
+sudo tar -C /opt/packetnet/app -xzf packetnet_<arch>.tar.gz
 sudo adduser --system --group --no-create-home --home /var/lib/packetnet \
      --shell /usr/sbin/nologin packetnet
 sudo install -d -o packetnet -g packetnet -m 0750 /var/lib/packetnet

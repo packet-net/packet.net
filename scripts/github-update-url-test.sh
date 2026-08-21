@@ -63,8 +63,11 @@ expect_reject --check-url ''                                              'empty
 
 echo "== download URL guard: the real release-asset forms must still be accepted =="
 expect_accept --check-url \
+    'https://github.com/packet-net/packet.net/releases/download/node-v0.44.0/packetnet_amd64.deb' \
+    'the browser_download_url the node spools (version-free asset name)'
+expect_accept --check-url \
     'https://github.com/packet-net/packet.net/releases/download/node-v0.40.0/packetnet_0.40.0_amd64.deb' \
-    'the browser_download_url the node spools'
+    'the same, on a release predating the version-free rename'
 expect_accept --check-url \
     'https://objects.githubusercontent.com/github-production-release-asset-2e65be/1234/abcd?X-Amz-Algorithm=AWS4-HMAC-SHA256&actor_id=0' \
     'the signed redirect target, query string and all'
