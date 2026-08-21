@@ -19,7 +19,7 @@ import type {
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
   TuningStartRequest, TuningSessionInfo, TuningEvent,
-  RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot,
+  RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot, NinoModeCatalogue,
 } from "./types";
 import * as mock from "./mock";
 import { passkeysAvailable } from "./secureContext";
@@ -340,6 +340,12 @@ export const api = {
   // section's searchable model picker source. available:false = hamlib isn't installed on the
   // node (the picker disables with a note; the node-managed rig shape can't run there).
   getRigModels: () => get<RigModelCatalogue>("/rigs/models", () => mock.RIG_MODELS),
+  // The node's NinoTNC DIP-switch mode table (GET /api/v1/modems/nino-tnc/modes, read scope) -
+  // the Ports editor's "Modem mode" picker source. Static: 16 rows served straight from the
+  // node's NinoTncCatalog, present whether or not a TNC is attached. Fetched rather than
+  // hard-coded so the picker and the TNC can never disagree about what a mode number means;
+  // NINO_MODES is the offline fallback.
+  getNinoModes: () => get<NinoModeCatalogue>("/modems/nino-tnc/modes", () => mock.NINO_MODE_CATALOGUE),
   // ---- split-station head-end fleet scan + adopt (read + operate) ----
   // Discover every head-end instance (config ∪ mDNS), reach through each free device to identify it,
   // and preview the matched TNC↔radio pairs + any duplicate-instance-id conflicts (GET

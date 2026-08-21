@@ -8,6 +8,7 @@ using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.Transports;
+using Packet.Kiss.NinoTnc;
 using Packet.NetRom;
 using Packet.NetRom.Wire;
 
@@ -244,6 +245,14 @@ public sealed class ClientContractFixtureTests
                 new RigCatalogueModel(3073, "Icom", "IC-7300", null),
             },
         },
+        // GET /modems/nino-tnc/modes answers an anonymous { modes } (PdnModemsApi.cs), so the
+        // envelope is mirrored here. Unlike the other fixtures this carries the WHOLE table, not
+        // a representative row or two: the UI keeps a NINO_MODES fallback for the offline/
+        // pre-fetch render, and contract.test.ts asserts that fallback equals this fixture. So
+        // the chain NinoTncCatalog -> fixture -> NINO_MODES is pinned end to end, and the UI
+        // cannot go back to inventing mode names (it did: its mode 5 read "9600 baud GFSK AX.25
+        // (G3RUH)" where a NinoTNC's mode 5 is 3600 QPSK IL2P+CRC).
+        ["NinoModeCatalogue.json"] = new { modes = NinoTncModeRows() },
         ["SoundModemQualitySnapshot.json"] = new SoundModemQualitySnapshot(
             Frames: 1842, CumulativeCorrectedBytes: 271, FramesWithCorrections: 63,
             LastFrameCorrectedBytes: 2,
@@ -505,6 +514,14 @@ public sealed class ClientContractFixtureTests
             },
         },
     };
+
+    /// <summary>The whole NinoTNC mode table, projected exactly as
+    /// <see cref="PdnModemsApi"/> projects it for the wire.</summary>
+    private static PdnModemsApi.NinoTncModeRow[] NinoTncModeRows() =>
+        [.. NinoTncCatalog.ByMode.Values
+            .OrderBy(m => m.Mode)
+            .Select(m => new PdnModemsApi.NinoTncModeRow(
+                m.Mode, m.Name, m.BitRateHz, NinoTncCatalog.RequiresWideChannel(m.Mode)))];
 
     private static HeadEndScan SampleHeadEnds() => new(
     [

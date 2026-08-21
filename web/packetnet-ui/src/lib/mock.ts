@@ -19,8 +19,9 @@ import type {
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
   RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot,
+  NinoModeCatalogue,
 } from "./types";
-import { FRAME_TYPES, PIDS } from "./catalogue";
+import { FRAME_TYPES, PIDS, NINO_MODES } from "./catalogue";
 
 // 6.1 NodeConfig tree ----------------------------------------
 export const NODE_CONFIG: NodeConfig = {
@@ -365,6 +366,12 @@ export const RIG_MODELS: RigModelCatalogue = {
     { number: 3081, manufacturer: "Icom", model: "IC-9700", status: "Stable" },
   ],
 };
+
+// The node's NinoTNC mode table (GET /api/v1/modems/nino-tnc/modes). The catalogue is a fixed
+// 16-row constant, not sample data, so the mock IS the real table - NINO_MODES, the same
+// fallback the editor renders offline. Nothing to invent here, and inventing it is exactly the
+// mistake this endpoint exists to undo.
+export const NINO_MODE_CATALOGUE: NinoModeCatalogue = { modes: NINO_MODES };
 
 // Split-station head-end fleet scan (GET /api/v1/radios/headends) — the "plug into any port and go"
 // preview the Head-ends screen renders. Covers every state the operator surface must handle:

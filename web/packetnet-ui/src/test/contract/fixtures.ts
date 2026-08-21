@@ -17,7 +17,8 @@
 import type {
   AppPackage, AvailableApp, DoctorReport, HeadEndKeyupResult, HeadEndScan, HeardStation,
   InstallOutcome, LinkStats, LoginResult, ModemScan, MonitorEvent, NetRomRoutingSnapshot, NodeApp,
-  NodeConfig, NodeStatus, PeerCapability, PingResult, PortStatus, RadioScanResult, RadioStatus,
+  NinoModeCatalogue, NodeConfig, NodeStatus, PeerCapability, PingResult, PortStatus,
+  RadioScanResult, RadioStatus,
   ReconcileResult, RegisterCompleteResponse, RigModelCatalogue, RigScan, RigStatus, SessionInfo,
   SetupResult, SetupState, SoundModemQualitySnapshot, SystemInfo, TailscaleStatus,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, TuningEvent,
@@ -36,6 +37,7 @@ import loginResult from "./LoginResult.json";
 import modemScan from "./ModemScan.json";
 import monitorEvent from "./MonitorEvent.json";
 import netRomRoutingSnapshot from "./NetRomRoutingSnapshot.json";
+import ninoModeCatalogue from "./NinoModeCatalogue.json";
 import nodeApp from "./NodeApp.json";
 import nodeConfig from "./NodeConfig.json";
 import nodeStatus from "./NodeStatus.json";
@@ -89,6 +91,7 @@ export const CONTRACT = {
   modemScan: modemScan satisfies Widen<ModemScan>,
   monitorEvent: monitorEvent satisfies Widen<MonitorEvent>[],
   netRomRoutingSnapshot: netRomRoutingSnapshot satisfies Widen<NetRomRoutingSnapshot>,
+  ninoModeCatalogue: ninoModeCatalogue satisfies Widen<NinoModeCatalogue>,
   nodeApp: nodeApp satisfies Widen<NodeApp>[],
   nodeConfig: nodeConfig satisfies Widen<NodeConfig>,
   nodeStatus: nodeStatus satisfies Widen<NodeStatus>,

@@ -137,6 +137,7 @@ const CASES: Case[] = [
   { key: "getRigs", call: (a) => a.getRigs(), method: "GET", url: "/api/v1/rigs" },
   { key: "scanRigs", call: (a) => a.scanRigs(), method: "GET", url: "/api/v1/rigs/scan" },
   { key: "getRigModels", call: (a) => a.getRigModels(), method: "GET", url: "/api/v1/rigs/models" },
+  { key: "getNinoModes", call: (a) => a.getNinoModes(), method: "GET", url: "/api/v1/modems/nino-tnc/modes" },
   { key: "getHeadEnds", call: (a) => a.getHeadEnds(), method: "GET", url: "/api/v1/radios/headends" },
   { key: "recentFrames", call: (a) => a.recentFrames(), method: "GET", url: "/api/v1/monitor/recent?limit=250" },
   { key: "recentFrames", label: "explicit limit", call: (a) => a.recentFrames(40), method: "GET", url: "/api/v1/monitor/recent?limit=40" },

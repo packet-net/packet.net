@@ -202,10 +202,13 @@ describe("Login - the passkey path", () => {
 
   it("hides the passkey affordance entirely on a plain-HTTP LAN node", () => {
     // jsdom's default: not a secure context. A button that can only fail is worse than none,
-    // so the screen says why and password login carries the flow.
+    // so the affordance is absent - and so is any hint about it. The page does not tell the
+    // operator to reach the node some other way; password login just carries the flow.
     mountLogin();
     expect(screen.queryByRole("button", { name: /Continue with passkey/i })).toBeNull();
-    expect(screen.getByText(/Passkeys need HTTPS/i)).toBeInTheDocument();
+    expect(screen.queryByText(/passkey/i)).toBeNull();
+    expect(screen.queryByText(/HTTPS/i)).toBeNull();
+    expect(screen.queryByText(/Tailscale/i)).toBeNull();
     expect(screen.getByRole("button", { name: /^Sign in$/i })).toBeInTheDocument();
   });
 });

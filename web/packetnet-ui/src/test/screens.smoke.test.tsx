@@ -487,7 +487,9 @@ describe("screens render without crashing", () => {
     // jsdom default: isSecureContext is falsy → no passkey button, password remains.
     mount(<Login />, "/login");
     expect(screen.queryByText(/Continue with passkey/i)).toBeNull();
-    expect(screen.getByText(/Passkeys need HTTPS/i)).toBeInTheDocument();
+    // No affordance and no hint - the node does not prescribe how to reach it.
+    expect(screen.queryByText(/Passkeys need HTTPS/i)).toBeNull();
+    expect(screen.queryByText(/Tailscale/i)).toBeNull();
     // Password login stays fully available (the LAN flow).
     expect(screen.getByText(/Username/i)).toBeInTheDocument();
     expect(screen.getByText(/Password/i)).toBeInTheDocument();

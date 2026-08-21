@@ -1032,7 +1032,19 @@ export interface MonitorEvent {
 }
 
 // ---- operator-facing helper models (UI layer) --------------
-export interface NinoMode { mode: number; label: string }
+// ---- NinoTNC mode catalogue (GET /api/v1/modems/nino-tnc/modes) ----
+// The node's NinoTNC DIP-switch table (server: PdnModemsApi.NinoTncModeRow, itself a projection
+// of NinoTncCatalog.ByMode) - the source for the Ports editor's "Modem mode" picker. Static:
+// 16 rows, the same whether or not a TNC is attached. `name` is Nino's own mode name
+// ("3600 QPSK IL2P+CRC"); `bitRateHz` is 0 for mode 15 ("Set from KISS"), which is variable.
+export interface NinoMode {
+  mode: number;
+  name: string;
+  bitRateHz: number;
+  /** The mode's published occupied bandwidth needs a wide (25 kHz) channel. */
+  requiresWideChannel: boolean;
+}
+export interface NinoModeCatalogue { modes: NinoMode[] }
 export interface RadioProfile {
   id: string; name: string; ninoMode: number;
   baseline: Record<string, number>;

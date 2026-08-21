@@ -17,10 +17,10 @@ import type {
   PortConfig, PortStatus, TransportConfig, TransportKind, AuthorableTransportKind, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
   PortCompatConfig, CompatPreset, PortLinkConfig, LinkDialPreference, LinkPreConnectXid,
   RadioConfig, RadioScanResult, ReconcileResult, ValidationProblem,
-  RigConfig, RigScan, RigScanDevice, RigModelCatalogue,
+  RigConfig, RigScan, RigScanDevice, RigModelCatalogue, NinoMode,
 } from "@/lib/types";
 import {
-  RADIO_PROFILES, NINO_MODES, SOUNDMODEM_MODES, CHANNEL_MODES,
+  RADIO_PROFILES, NINO_MODES, ninoModeLabel, SOUNDMODEM_MODES, CHANNEL_MODES,
   LINK_DIFFICULTY, PARAM_HELP,
   LINK_DIAL_OPTIONS, LINK_DIAL_HELP, LINK_XID_OPTIONS, LINK_XID_HELP,
   KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs,
@@ -102,16 +102,37 @@ export interface PortDraft {
   _orig?: PortConfig;
 }
 
-// ---- transport descriptor line (e.g. "/dev/ttyACM0 · 9600 baud · GFSK · IL2P") ----
-function transportDesc(t: TransportConfig): string {
+// ---- the shared NinoTNC mode table ----------------------------------------
+// One fetch of GET /api/v1/modems/nino-tnc/modes per page load, shared by every consumer (the
+// port cards' descriptor lines and the editor's picker). The node's NinoTncCatalog is the ONE
+// mode table; NINO_MODES is the fallback rendered before it lands or when the node can't be
+// reached, so a mode number never gets shown under a name the TNC doesn't agree with.
+let ninoModesPromise: Promise<NinoMode[]> | null = null;
+function useNinoModes(): NinoMode[] {
+  const [modes, setModes] = useState<NinoMode[]>(NINO_MODES);
+  useEffect(() => {
+    let live = true;
+    ninoModesPromise ??= api.getNinoModes()
+      .then((c) => (c.modes.length > 0 ? c.modes : NINO_MODES))
+      // An unreachable node is not worth an error surface for a constant table - the fallback
+      // IS the node's table. Clear the cache so a later mount retries.
+      .catch(() => { ninoModesPromise = null; return NINO_MODES; });
+    void ninoModesPromise.then((m) => { if (live) setModes(m); });
+    return () => { live = false; };
+  }, []);
+  return modes;
+}
+
+// ---- transport descriptor line (e.g. "/dev/ttyACM0 · mode 5 - 3600 QPSK IL2P+CRC") ----
+function transportDesc(t: TransportConfig, ninoModes: NinoMode[] = NINO_MODES): string {
   switch (t.kind) {
     case "kiss-tcp":
       return `${t.host}:${t.port}`;
     case "serial-kiss":
       return `${t.device} @ ${t.baud}`;
     case "nino-tnc": {
-      const m = NINO_MODES.find((x) => x.mode === t.mode);
-      return `${t.device} · ${m ? m.label : "mode " + t.mode}`;
+      const m = ninoModes.find((x) => x.mode === t.mode);
+      return `${t.device} · ${m ? ninoModeLabel(m) : "mode " + t.mode}`;
     }
     case "axudp":
       return `${t.host}:${t.port}`;
@@ -262,6 +283,8 @@ export function Ports() {
   const { data: config, loading: configLoading, error: configError, reload: reloadConfig } = useQuery(api.config, []);
   const { data: portStatus, reload: reloadPorts } = useQuery(api.ports, []);
   const { data: links } = useQuery(api.linkStats, []);
+  // The node's NinoTNC mode table, for the nino-tnc cards' descriptor lines.
+  const ninoModes = useNinoModes();
 
   const [edit, setEdit] = useState<PortDraft | null>(null);
   // Bumped on every open. It keys the PortEditor, so each open REMOUNTS it against the draft the
@@ -462,7 +485,7 @@ export function Ports() {
                         <Tooltip text={h.reason}><Badge variant="warning">needs attention</Badge></Tooltip>
                       )}
                     </div>
-                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">{transportDesc(p.transport)}</p>
+                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">{transportDesc(p.transport, ninoModes)}</p>
                   </div>
                 </div>
                 <Badge variant="secondary">{KIND_LABEL[p.transport.kind]}</Badge>
@@ -597,6 +620,9 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
   const [previewing, setPreviewing] = useState(false);
   const [problem, setProblem] = useState<ValidationProblem | null>(null);
   const [saving, setSaving] = useState(false);
+  // The node's NinoTNC mode table, for the "Modem mode" picker. A hook, so it runs before the
+  // no-draft early return below.
+  const ninoModes = useNinoModes();
 
   if (!draft || !model) return null;
 
@@ -840,7 +866,7 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
                 // device-inventory picker to re-bind with. It round-trips untouched on save.
                 <div data-testid="transport-locked" className="flex h-9 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm">
                   <span className="font-mono">{KIND_LABEL[t.kind]}</span>
-                  <span className="truncate font-mono text-xs text-muted-foreground">{transportDesc(t)}</span>
+                  <span className="truncate font-mono text-xs text-muted-foreground">{transportDesc(t, ninoModes)}</span>
                 </div>
               ) : (
                 <Select value={t.kind} onChange={(e) => setKind(e.target.value as AuthorableTransportKind)}>
@@ -888,7 +914,7 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
                   className="col-span-2"
                 >
                   <Select value={t.mode} onChange={(e) => setT({ mode: +e.target.value })}>
-                    {NINO_MODES.map((m) => <option key={m.mode} value={m.mode}>mode {m.mode} — {m.label}</option>)}
+                    {ninoModes.map((m) => <option key={m.mode} value={m.mode}>{ninoModeLabel(m)}</option>)}
                   </Select>
                 </Field>
               </>

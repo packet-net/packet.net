@@ -167,6 +167,7 @@ To regenerate after adding or moving a route: `scripts/update-node-api.sh`.
 | GET | `/api/v1/links` | `read` |
 | GET | `/api/v1/log` | `read` |
 | POST | `/api/v1/mcp/token` | `admin` |
+| GET | `/api/v1/modems/nino-tnc/modes` | `read` |
 | GET | `/api/v1/monitor/recent` | `read` |
 | GET | `/api/v1/netrom/routes` | `read` |
 | POST | `/api/v1/ping` | `operate` |
