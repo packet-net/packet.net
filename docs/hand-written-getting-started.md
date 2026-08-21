@@ -38,11 +38,6 @@ Install it:
 sudo apt install -y /tmp/packetnet_0.43.0_arm64.deb
 ```
 
-(Download it to `/tmp` rather than your home directory. apt fetches even a local file as the
-unprivileged `_apt` user, and `/home/pi` is `0750` on current Raspberry Pi OS, so from there apt
-prints a confusing `Download is performed unsandboxed as root as file ... couldn't be accessed by
-user '_apt'` notice before installing perfectly happily. From `/tmp` it just installs.)
-
 You should see a message:
 
 ```
