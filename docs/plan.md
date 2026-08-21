@@ -1369,6 +1369,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-21 - The legacy asset-name fallback is dropped
+
+`node-v0.44.0` shipped the version-free release asset names with a compatibility transition on both sides: the release also attached the old `packetnet_<ver>_<arch>.deb` names, and `GithubUpdateRequestBuilder` fell back to reading them. Both halves are now removed (Tom's call, 2026-08-21).
+
+**What this costs, stated plainly.** A node running `node-v0.43.0` or older builds the asset filename it asks for rather than reading it off the release, so from the next release it finds nothing it recognises and reports no update available. Getting such a node current takes one manual install; self-update works normally from then on. That is an accepted trade, not an oversight - the deployed population is small and known.
+
+**Why the code half went too.** The fallback only ever existed to read the copies the workflow attached. With those gone it is unreachable: a node resolves the *latest* release and nothing else, and every release from `node-v0.44.0` on carries the version-free name. Keeping it would have left dead code whose comment described a transition that no longer existed.
+
+A release is back to **7 assets**. The test that covered the fallback is replaced by one asserting the opposite: a release carrying only the legacy name is declined with a 409 and the privileged helper is never invoked, so the decision fails closed rather than by guessing at a URL. `publish-node.yml` carries a note not to reintroduce a second asset name without restoring the resolver fallback with it.
+
 ### 2026-08-21 - RELEASE: node-v0.44.0
 
 The version-free release asset names ([entry below](#17-amendment-log), [#767](https://github.com/packet-net/packet.net/pull/767)) reach the world, and the permanent download URL exists for the first time.

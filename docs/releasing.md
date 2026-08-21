@@ -67,16 +67,16 @@ The `node-v*` tag triggers [`.github/workflows/publish-node.yml`](../.github/wor
 
 The GitHub release is the **only** distribution channel: a `.deb` and a `.tar.gz`, nothing else. There is no update feed or installer script to publish alongside it, so this step is the whole of getting a node build to the world.
 
-Verify the release is **non-draft with 10 assets**: three `.deb`s + three `.tar.gz`s + `SHA256SUMS`, plus - for now - three legacy-named `.deb` copies (see below).
-
-The assets carry **no version in their filenames** (`packetnet_<arch>.deb`, `packetnet_<arch>.tar.gz`), which is what makes `https://github.com/packet-net/packet.net/releases/latest/download/packetnet_<arch>.deb` a permanent download URL; the version lives in the package metadata and the tag. Two consequences to keep in mind when releasing:
-
-- **Node releases must hold the repo's "Latest" pointer.** That pointer is per-repo, not per-series, and `/releases/latest/download/` resolves through it. `publish-node.yml` passes `--latest` and `publish-headend.yml` passes `--latest=false` so a head-end release can't take it. If you ever cut a release by hand, keep that discipline or the documented node download links 404.
-- **The three `packetnet_<ver>_<arch>.deb` copies are transitional.** Nodes built before `node-v0.44.0` ask a release for that name by construction, so dropping it would strand them on "no update available". Delete the three flagged lines in `publish-node.yml` (and drop this note, and put the asset count back to 7) once no node older than `node-v0.44.0` is in service.
+Verify the release is **non-draft with 7 assets** (three `.deb`s + three `.tar.gz`s + `SHA256SUMS`):
 
 ```sh
 gh release view node-v<semver> --repo packet-net/packet.net
 ```
+
+The assets carry **no version in their filenames** (`packetnet_<arch>.deb`, `packetnet_<arch>.tar.gz`), which is what makes `https://github.com/packet-net/packet.net/releases/latest/download/packetnet_<arch>.deb` a permanent download URL; the version lives in the package metadata and the tag. Two things follow, and both matter when releasing:
+
+- **Node releases must hold the repo's "Latest" pointer.** It is one pointer per repo, not one per series, and `/releases/latest/download/` resolves through it. `publish-node.yml` passes `--latest` and `publish-headend.yml` passes `--latest=false` so a head-end release can't take it. Cutting a release by hand? Keep that discipline, or every documented node download link 404s until the next node release.
+- **A node's self-update reads only that name.** `GithubUpdateRequestBuilder` looks for `packetnet_<arch>.deb` and nothing else, so a release that fails to attach it leaves every node reporting no update available. (Releases up to `node-v0.43.0` used `packetnet_<ver>_<arch>.deb`; nodes on those builds can't read a current release and need one manual install to get across.)
 
 Both tags can be pushed together; the two workflows run independently.
 
