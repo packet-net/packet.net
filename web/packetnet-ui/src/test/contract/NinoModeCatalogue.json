@@ -1,0 +1,100 @@
+{
+  "modes": [
+    {
+      "mode": 0,
+      "name": "9600 GFSK AX.25",
+      "bitRateHz": 9600,
+      "requiresWideChannel": true
+    },
+    {
+      "mode": 1,
+      "name": "19200 C4FSK IL2P\u002BCRC",
+      "bitRateHz": 19200,
+      "requiresWideChannel": true
+    },
+    {
+      "mode": 2,
+      "name": "9600 GFSK IL2P\u002BCRC",
+      "bitRateHz": 9600,
+      "requiresWideChannel": true
+    },
+    {
+      "mode": 3,
+      "name": "9600 C4FSK IL2P\u002BCRC",
+      "bitRateHz": 9600,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 4,
+      "name": "4800 GFSK IL2P\u002BCRC",
+      "bitRateHz": 4800,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 5,
+      "name": "3600 QPSK IL2P\u002BCRC",
+      "bitRateHz": 3600,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 6,
+      "name": "1200 AFSK AX.25",
+      "bitRateHz": 1200,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 7,
+      "name": "1200 AFSK IL2P\u002BCRC",
+      "bitRateHz": 1200,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 8,
+      "name": "300 BPSK IL2P\u002BCRC",
+      "bitRateHz": 300,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 9,
+      "name": "600 QPSK IL2P\u002BCRC",
+      "bitRateHz": 600,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 10,
+      "name": "1200 BPSK IL2P\u002BCRC",
+      "bitRateHz": 1200,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 11,
+      "name": "2400 QPSK IL2P\u002BCRC",
+      "bitRateHz": 2400,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 12,
+      "name": "300 AFSK AX.25",
+      "bitRateHz": 300,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 13,
+      "name": "300 AFSK IL2P",
+      "bitRateHz": 300,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 14,
+      "name": "300 AFSK IL2P\u002BCRC",
+      "bitRateHz": 300,
+      "requiresWideChannel": false
+    },
+    {
+      "mode": 15,
+      "name": "Set from KISS",
+      "bitRateHz": 0,
+      "requiresWideChannel": false
+    }
+  ]
+}

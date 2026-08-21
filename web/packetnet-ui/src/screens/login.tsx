@@ -14,6 +14,7 @@ import { Logo, ThemeToggle } from "@/components/layout/shell";
 import { useAuth } from "@/app/auth";
 import { api, Unauthorized } from "@/lib/api";
 import { passkeysAvailable } from "@/lib/secureContext";
+import { cn } from "@/lib/utils";
 
 function AuthFrame({ children }: { children: ReactNode }) {
   return (
@@ -121,10 +122,14 @@ export function Login() {
         <h1 className="text-lg font-semibold">Sign in</h1>
         <p className="mt-1 text-sm text-muted-foreground">Authenticate to manage this node.</p>
 
-        {/* Passwordless WebAuthn — offered ONLY in a secure context (HTTPS / localhost).
-            On plain-HTTP LAN the ceremony can't run, so we HIDE the affordance entirely
-            and show a short hint; password (+ over-RF TOTP) login below stays the path. */}
-        {passkeySupported ? (
+        {/* Passwordless WebAuthn is offered ONLY where the browser can actually run the
+            ceremony (a secure context: HTTPS or localhost). Where it can't, the affordance
+            is simply absent - no explanatory hint. The node has no way to know how the
+            operator SHOULD have reached it (Tailscale, a reverse proxy, a real certificate,
+            localhost), so the old "reach this node over Tailscale or localhost" line was
+            guessing on the operator's behalf; password (+ over-RF TOTP) login below is the
+            path either way, and it is right there. */}
+        {passkeySupported && (
           <>
             <Button className="mt-5 w-full" onClick={passkey} disabled={passkeyBusy}
               title="Sign in with a passkey">
@@ -135,13 +140,9 @@ export function Login() {
               <div className="h-px flex-1 bg-border" />or password<div className="h-px flex-1 bg-border" />
             </div>
           </>
-        ) : (
-          <p className="mb-4 mt-5 text-center text-[11px] text-muted-foreground">
-            Passkeys need HTTPS — reach this node over Tailscale or localhost.
-          </p>
         )}
 
-        <form className="space-y-3" onSubmit={submit}>
+        <form className={cn("space-y-3", !passkeySupported && "mt-5")} onSubmit={submit}>
           <Field label="Username">
             <Input value={username} onChange={(e) => setUsername(e.target.value)} className="font-mono" autoComplete="username" autoFocus />
           </Field>

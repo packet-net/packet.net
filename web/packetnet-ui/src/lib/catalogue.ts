@@ -113,27 +113,62 @@ export const SOUNDMODEM_MODES: string[] = [
   "ms110d-wn0", "ms110d-wn1", "ms110d-wn2", "ms110d-wn3", "ms110d-wn4", "ms110d-wn5", "ms110d-wn6", "ms110d-wn13",
 ];
 
+// The NinoTNC DIP-switch mode table, mirroring the node's own catalogue (server:
+// NinoTncCatalog.ByMode, served as GET /api/v1/modems/nino-tnc/modes). This copy is the
+// FALLBACK the editor renders before the fetch lands and when the node is unreachable (the
+// mock/offline path) - the live list always comes from the node, so the two cannot silently
+// disagree about a mode the operator picks.
+//
+// It replaces a hand-written table that was simply invented: it ran modes 0-8 with names that
+// were not a NinoTNC's (mode 5 was "9600 baud GFSK AX.25 (G3RUH)"; a NinoTNC's mode 5 is
+// 3600 QPSK IL2P+CRC), and the editor wrote the chosen number straight through to the TNC - so
+// every one of those nine choices set a DIP mode that meant something other than its label.
+// The real table is 16 rows: 0-14 concrete modes plus 15 "Set from KISS".
+// Sources: Nino's v44 mode table (ninocarrillo/flashtnc, v44-op-modes.png + release-notes.txt)
+// and the OARC wiki mode tables (https://wiki.oarc.uk/packet:ninotnc#operating_modes).
 export const NINO_MODES: NinoMode[] = [
-  { mode: 0, label: "300 baud · AFSK · AX.25 (HF/NBEMS)" },
-  { mode: 1, label: "1200 baud · AFSK · AX.25" },
-  { mode: 2, label: "1200 baud · AFSK · IL2P" },
-  { mode: 3, label: "2400 baud · AFSK · IL2P" },
-  { mode: 4, label: "9600 baud · GFSK · IL2P" },
-  { mode: 5, label: "9600 baud · GFSK · AX.25 (G3RUH)" },
-  { mode: 6, label: "4800 baud · GFSK · IL2P" },
-  { mode: 7, label: "19200 baud · GFSK · IL2P" },
-  { mode: 8, label: "38400 baud · GFSK · IL2P" },
+  // FM, dedicated data port (GFSK / C4FSK).
+  { mode: 0,  name: "9600 GFSK AX.25",     bitRateHz: 9600,  requiresWideChannel: true  },
+  { mode: 1,  name: "19200 C4FSK IL2P+CRC", bitRateHz: 19200, requiresWideChannel: true  },
+  { mode: 2,  name: "9600 GFSK IL2P+CRC",  bitRateHz: 9600,  requiresWideChannel: true  },
+  { mode: 3,  name: "9600 C4FSK IL2P+CRC", bitRateHz: 9600,  requiresWideChannel: false },
+  { mode: 4,  name: "4800 GFSK IL2P+CRC",  bitRateHz: 4800,  requiresWideChannel: false },
+  // FM, fine through a speaker/mic connection.
+  { mode: 5,  name: "3600 QPSK IL2P+CRC",  bitRateHz: 3600,  requiresWideChannel: false },
+  { mode: 6,  name: "1200 AFSK AX.25",     bitRateHz: 1200,  requiresWideChannel: false },
+  { mode: 7,  name: "1200 AFSK IL2P+CRC",  bitRateHz: 1200,  requiresWideChannel: false },
+  // Shaped PSK on a 1500 Hz tone (SSB, or FM at 1200).
+  { mode: 8,  name: "300 BPSK IL2P+CRC",   bitRateHz: 300,   requiresWideChannel: false },
+  { mode: 9,  name: "600 QPSK IL2P+CRC",   bitRateHz: 600,   requiresWideChannel: false },
+  { mode: 10, name: "1200 BPSK IL2P+CRC",  bitRateHz: 1200,  requiresWideChannel: false },
+  { mode: 11, name: "2400 QPSK IL2P+CRC",  bitRateHz: 2400,  requiresWideChannel: false },
+  // SSB AFSK: legacy HF packet, 1600/1800 Hz tone FSK.
+  { mode: 12, name: "300 AFSK AX.25",      bitRateHz: 300,   requiresWideChannel: false },
+  { mode: 13, name: "300 AFSK IL2P",       bitRateHz: 300,   requiresWideChannel: false },
+  { mode: 14, name: "300 AFSK IL2P+CRC",   bitRateHz: 300,   requiresWideChannel: false },
+  // The DIP escape: the effective mode is chosen at runtime by a SETHW KISS command.
+  { mode: 15, name: "Set from KISS",       bitRateHz: 0,     requiresWideChannel: false },
 ];
+
+/** One mode as the editor labels it, e.g. "mode 5 - 3600 QPSK IL2P+CRC (25 kHz channel)". */
+export function ninoModeLabel(m: NinoMode): string {
+  return `mode ${m.mode} - ${m.name}${m.requiresWideChannel ? " (25 kHz channel)" : ""}`;
+}
 
 // The radio-preset catalogue is a UI-ONLY starting-point table: picking one writes its
 // baseline into the port's ax25:/kiss: blocks client-side. These ids are NOT server channel
 // profiles (server: ChannelProfiles.Names) and never travel to the API as `profile` - sending
 // one 422s the port (#690 C002). The server profile is carried verbatim on PortDraft.profile.
+// Each preset's `ninoMode` is a DIP-switch position from NINO_MODES and MUST name the mode the
+// preset's own title describes - picking a preset writes it straight into a nino-tnc transport.
+// They previously indexed the fabricated 0-8 table, so every one of them set the wrong mode:
+// "VHF FM 1200 AFSK" wrote mode 1 (19200 C4FSK), "9600 G3RUH" wrote mode 5 (3600 QPSK),
+// "9600 GFSK IL2P" wrote mode 4 (4800 GFSK) and "HF 300 AFSK" wrote mode 0 (9600 GFSK).
 export const RADIO_PROFILES: RadioProfile[] = [
-  { id: "vhf-fm-1200", name: "VHF FM · 1200 AFSK", ninoMode: 1, baseline: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 } },
-  { id: "vhf-fm-9600", name: "VHF FM · 9600 G3RUH", ninoMode: 5, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
-  { id: "uhf-data-9600", name: "UHF data · 9600 GFSK IL2P", ninoMode: 4, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
-  { id: "hf-robust-300", name: "HF robust · 300 AFSK", ninoMode: 0, baseline: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, txDelay: 25, slotTime: 10, txTail: 10, persistence: 32 } },
+  { id: "vhf-fm-1200", name: "VHF FM · 1200 AFSK", ninoMode: 6, baseline: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 } },
+  { id: "vhf-fm-9600", name: "VHF FM · 9600 G3RUH", ninoMode: 0, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
+  { id: "uhf-data-9600", name: "UHF data · 9600 GFSK IL2P", ninoMode: 2, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
+  { id: "hf-robust-300", name: "HF robust · 300 AFSK", ninoMode: 14, baseline: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, txDelay: 25, slotTime: 10, txTail: 10, persistence: 32 } },
 ];
 export const CHANNEL_MODES: ChannelMode[] = [
   { id: "shared", name: "Shared", help: "Several stations share this RF channel. pdn listens before transmitting and backs off (CSMA) to avoid collisions." },

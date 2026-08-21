@@ -28,6 +28,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import * as mock from "@/lib/mock";
+import { NINO_MODES, RADIO_PROFILES } from "@/lib/catalogue";
+import type { NinoModeCatalogue } from "@/lib/types";
 
 const SRC = join(__dirname, "..");
 const CONTRACT_DIR = join(__dirname, "contract");
@@ -248,6 +250,7 @@ const FIXTURES: Record<string, string> = {
   "RigStatus.json": "RigStatus",
   "RigScan.json": "RigScan",
   "RigModelCatalogue.json": "RigModelCatalogue",
+  "NinoModeCatalogue.json": "NinoModeCatalogue",
   "SoundModemQualitySnapshot.json": "SoundModemQualitySnapshot",
   "DoctorReport.json": "DoctorReport",
   "HeadEndScan.json": "HeadEndScan",
@@ -356,6 +359,7 @@ const MOCKS: [string, string, unknown][] = [
   ["RIGS", "RigStatus", mock.RIGS],
   ["RIG_SCAN", "RigScan", mock.RIG_SCAN],
   ["RIG_MODELS", "RigModelCatalogue", mock.RIG_MODELS],
+  ["NINO_MODE_CATALOGUE", "NinoModeCatalogue", mock.NINO_MODE_CATALOGUE],
   ["SOUNDMODEM_QUALITY", "SoundModemQualitySnapshot", mock.SOUNDMODEM_QUALITY],
   ["HEADEND_SCAN", "HeadEndScan", mock.HEADEND_SCAN],
   ["HEARD_STATIONS", "HeardStation", mock.HEARD_STATIONS],
@@ -383,6 +387,33 @@ describe("contract: the mock node describes a node the server could actually be"
     checker.top("HeadEndKeyupResult", mock.headEndKeyup("garage-pi"), "mock.headEndKeyup");
     checker.top("TuningSessionInfo", mock.tuneSession("vhf-1", { role: "tuned", peerSdmId: "12345678" }), "mock.tuneSession");
     expect(checker.problems).toEqual([]);
+  });
+
+  it("the UI's offline NinoTNC mode table IS the node's, mode for mode", () => {
+    // NINO_MODES is what the Ports editor renders before the fetch lands and when the node is
+    // unreachable, so a wrong row there is a mode number shown under a name the TNC does not
+    // agree with - and the editor writes that number straight through to the DIP setting. The
+    // UI used to keep an invented table (modes 0-8; its mode 5 read "9600 baud GFSK AX.25
+    // (G3RUH)" where a NinoTNC's mode 5 is 3600 QPSK IL2P+CRC). Pin the whole thing to the
+    // server's NinoTncCatalog, via the fixture that test generates.
+    const fromServer = (loadFixture("NinoModeCatalogue.json") as NinoModeCatalogue).modes;
+    expect(NINO_MODES).toEqual(fromServer);
+  });
+
+  it("every radio preset's ninoMode names the mode the preset's own title describes", () => {
+    // Picking a preset writes its ninoMode into a nino-tnc transport. They used to index the
+    // invented table, so all four set a mode that contradicted their label (the 1200 AFSK
+    // preset set 19200 C4FSK; the 9600 G3RUH preset set 3600 QPSK).
+    const byMode = new Map(NINO_MODES.map((m) => [m.mode, m]));
+    const expected: Record<string, string> = {
+      "vhf-fm-1200": "1200 AFSK AX.25",
+      "vhf-fm-9600": "9600 GFSK AX.25",
+      "uhf-data-9600": "9600 GFSK IL2P+CRC",
+      "hf-robust-300": "300 AFSK IL2P+CRC",
+    };
+    for (const p of RADIO_PROFILES) {
+      expect(byMode.get(p.ninoMode)?.name, `preset ${p.id} ("${p.name}")`).toBe(expected[p.id]);
+    }
   });
 
   it("the mock config's top-level blocks are exactly the server's", () => {

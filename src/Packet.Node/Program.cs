@@ -911,6 +911,13 @@ app.MapPdnPortsApi();
 app.MapPdnRadiosApi();
 app.MapPdnRigsApi();
 
+// Modem catalogues: the fixed NinoTNC DIP-switch mode table the Ports editor's "Modem mode"
+// picker is built from (GET /api/v1/modems/nino-tnc/modes). Read-scoped and entirely static -
+// no device, no serial I/O - so it answers whether or not a TNC is plugged in, which is what
+// configuring a not-yet-attached port needs. Served from NinoTncCatalog so the product has ONE
+// mode table; the UI used to keep its own, and it was wrong. See PdnModemsApi.
+app.MapPdnModemsApi();
+
 // Capability doctor: an operator's "Check radio setup" for one port. GET is safe + read-scoped
 // (non-transmitting probes only); POST ?interrupt=true is admin-scoped + audited and briefly
 // transmits. Mapped before the catch-all; specific routes win. See PdnPortDoctorApi.
