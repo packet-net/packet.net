@@ -156,7 +156,8 @@ public class SoundModemConfigTests
     public void The_1200_baud_diversity_bank_is_not_exposed()
     {
         // bpsk1200-multi is a valid ModemCatalog mode but deliberately not surfaced by the node
-        // (no over-the-air evidence for the bank at 1200 baud yet — bpsk1200 stays the legacy modem).
+        // (no over-the-air evidence for the bank at 1200 baud yet - bpsk1200 stays the legacy
+        // single-carrier modem, via the override in SoundModemFrameTransport.CreateModem).
         Validator.Validate(Valid(new SoundModemTransportConfig { Mode = "bpsk1200-multi" }))
             .IsValid.Should().BeFalse();
     }

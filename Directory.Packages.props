@@ -61,7 +61,7 @@
 
     <!-- Soundmodem (GPL-3.0-or-later sibling repo packet-net/pdn-soundmodem; AGPL node
          combines with it under GPLv3 §13 / AGPLv3 §13) -->
-    <PackageVersion Include="pdn-soundmodem" Version="0.37.2" />
+    <PackageVersion Include="pdn-soundmodem" Version="0.42.0" />
     <!-- POCSAG paging codec (arrives transitively via pdn-soundmodem; referenced explicitly for
          the PagingHostedService's PocsagPolarity). -->
     <PackageVersion Include="M0LTE.Pocsag" Version="0.1.0" />

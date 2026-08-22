@@ -965,13 +965,13 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
                   </Field>
                   {isPskFamily && (
                     <>
-                      <Field label="Offset pairs" info="bpsk300 frequency-diversity bank width: 2·pairs+1 stepped decoder branches (0 = a plain single modem). Blank = the mode default (4). Ignored by non-bank modes.">
+                      <Field label="Offset pairs" info="PSK frequency-diversity bank width: 2·pairs+1 stepped decoder branches (0 = a plain single modem). Blank = the mode default (4, except qpsk3600's 0). Ignored by non-bank modes.">
                         <Input type="number" min={0} value={t.offsetPairs ?? ""} placeholder="default" onChange={(e) => setT({ offsetPairs: e.target.value === "" ? undefined : +e.target.value })} className="font-mono" />
                       </Field>
-                      <Field label="Offset step (Hz)" info="Hz step between bpsk300 diversity-bank branches. Blank = the baud-derived default (baud/40).">
+                      <Field label="Offset step (Hz)" info="Hz step between diversity-bank branches. Blank = the baud-derived default (baud/40).">
                         <Input type="number" value={t.offsetStepHz ?? ""} placeholder="default" onChange={(e) => setT({ offsetStepHz: e.target.value === "" ? undefined : +e.target.value })} className="font-mono" />
                       </Field>
-                      <Field label="PSK detector" info="Detector for the bpsk*/qpsk* modes. Blank = the per-family default (BPSK differential, QPSK coherent).">
+                      <Field label="PSK detector" info="Detector for the bpsk*/qpsk* modes. Blank = the catalogue default, differential for every PSK mode.">
                         <Select
                           value={t.pskDetector ?? ""}
                           onChange={(e) => setT({ pskDetector: e.target.value === "" ? undefined : (e.target.value as "coherent" | "differential") })}

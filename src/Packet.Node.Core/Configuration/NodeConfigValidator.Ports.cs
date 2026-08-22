@@ -650,7 +650,8 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
 {
     // The exposed mode set is the shared catalogue's, minus bpsk1200-multi: the 1200-baud
     // diversity bank is not exposed (no over-the-air evidence yet - bpsk1200 stays the legacy
-    // single-carrier modem). Sourcing this from ModemCatalog keeps it from drifting again.
+    // single-carrier modem, via the deliberate override in SoundModemFrameTransport.CreateModem).
+    // Sourcing this from ModemCatalog keeps it from drifting again.
     private static readonly string[] KnownModes =
         ModemCatalog.KnownModes.Where(m => m != "bpsk1200-multi").ToArray();
 
@@ -695,7 +696,8 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
             .WithMessage(t =>
                 $"soundmodem `frequency` is not settable for mode '{t.Mode}' (a DC-to-Nyquist baseband mode) - use 0.");
 
-        // Diversity-bank knobs (bpsk300): range-checked here; ignored by non-bank modes.
+        // Diversity-bank knobs (the bpsk300*/qpsk* banks): range-checked here; ignored by
+        // non-bank modes.
         RuleFor(t => t.OffsetPairs)
             .Must(p => p is null or >= 0)
             .WithMessage("soundmodem `offsetPairs` must be >= 0 (0 = a single modem; null = the mode default).");
@@ -708,7 +710,7 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
             .Must(d => d is null
                 || d.Equals("coherent", StringComparison.OrdinalIgnoreCase)
                 || d.Equals("differential", StringComparison.OrdinalIgnoreCase))
-            .WithMessage("soundmodem `pskDetector` must be `coherent` or `differential` (null = the per-family default).");
+            .WithMessage("soundmodem `pskDetector` must be `coherent` or `differential` (null = the catalogue default).");
 
         RuleFor(t => t.Ptt)
             .Must(ValidPttSpec)

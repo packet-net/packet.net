@@ -77,12 +77,13 @@ so a band plan can place them anywhere in the passband. Nothing changes on air:
 the RF centre still sets interop. In every accepting case, 0 = the mode
 convention, otherwise 300-3300 Hz.
 
-### The bpsk300 differential frequency-diversity bank
+### The PSK differential frequency-diversity banks
 
-`bpsk300` is a **differential frequency-diversity bank**, not a single carrier.
-It runs `2·offsetPairs + 1` stepped decoder branches across the passband and
-combines them, which buys robustness on a drifting or selective-fade HF channel.
-Tune it with two knobs (both ignored by non-bank modes):
+Every `bpsk300*` mode, and since pdn-soundmodem 0.40.0 every `qpsk*` mode, is a
+**differential frequency-diversity bank**, not a single carrier. A bank runs
+`2·offsetPairs + 1` stepped decoder branches across the passband and combines
+them, which buys robustness on a drifting or selective-fade HF channel. Tune it
+with two knobs (both ignored by non-bank modes):
 
 ```yaml
 transport:
@@ -90,18 +91,23 @@ transport:
   device: plughw:1,0
   mode: bpsk300
   offsetPairs: 4        # bank width: 2*pairs+1 branches (0 = a plain single modem;
-                        # omit = the mode default, 4).
+                        # omit = the mode default: 4, except qpsk3600's 0).
   offsetStepHz: 7.5     # Hz step between branches (omit = the baud-derived default, baud/40).
-  pskDetector: differential   # coherent | differential (omit = per-family default:
-                              # BPSK differential, QPSK coherent).
+  pskDetector: differential   # coherent | differential (omit = the catalogue default,
+                              # differential for every PSK mode).
 ```
 
-`bpsk1200` is deliberately **not** a bank - it stays the legacy single-carrier
-modem (the 1200-baud diversity variant `bpsk1200-multi` is not exposed, pending
-over-the-air evidence).
+`qpsk3600` defaults to a **single branch** (`offsetPairs: 0`): it arrives
+through FM, where the audio tones land on frequency whatever the RF offset, so
+the bank's carrier-offset tolerance buys nothing unless asked for.
+
+`bpsk1200` is deliberately **not** a bank - the node keeps it as the legacy
+single-carrier modem (the 1200-baud diversity variant `bpsk1200-multi` is not
+exposed, pending over-the-air evidence).
 
 `pskDetector` (`coherent` | `differential`) applies to all the `bpsk*` / `qpsk*`
-modes; omit it for the per-family default (BPSK differential, QPSK coherent).
+modes; omit it for the catalogue default, which is differential for every PSK
+mode (the NinoTNC off-air corpus retired the old coherent defaults upstream).
 
 ### FlexRadio (`flex:`) devices
 

@@ -376,9 +376,13 @@ public sealed record SoundModemTransportConfig : TransportConfig
     /// <c>bpsk1200-multi</c>, which is not exposed): the NinoTNC-compatible AFSK/BPSK/QPSK/FSK
     /// modes, the C4FSK modes (<c>c4fsk9600</c>/<c>c4fsk19200</c>), the FreeDV HF OFDM modes
     /// (<c>freedv-datac0/1/3/4/13/14</c>) and the MIL-STD-188-110D App-D modes
-    /// (<c>ms110d-wn0…6/13</c>). <c>bpsk300</c> is the differential frequency-diversity bank
-    /// (tune it with <see cref="OffsetPairs"/>/<see cref="OffsetStepHz"/>); <c>bpsk1200</c>
-    /// stays the legacy single-carrier modem.</summary>
+    /// (<c>ms110d-wn0…6/13</c>). The <c>bpsk300*</c> modes and (since pdn-soundmodem 0.40.0)
+    /// the <c>qpsk*</c> modes are differential frequency-diversity banks, tuned with
+    /// <see cref="OffsetPairs"/>/<see cref="OffsetStepHz"/>; <c>qpsk3600</c> defaults to a
+    /// single branch because it arrives through FM, where the audio tones land on frequency
+    /// whatever the RF offset. <c>bpsk1200</c> stays the legacy single-carrier modem - a
+    /// deliberate node-side override in the transport, pending over-the-air evidence for the
+    /// bank at 1200 baud.</summary>
     public string Mode { get; init; } = "afsk1200";
 
     /// <summary>Centre/carrier frequency in Hz; 0 = the mode's convention (1700 AFSK —
@@ -389,17 +393,20 @@ public sealed record SoundModemTransportConfig : TransportConfig
     /// baseband fsk*/c4fsk* modes, which have no centre to move.</summary>
     public double Frequency { get; init; }
 
-    /// <summary>Frequency-diversity bank width for the <c>bpsk300</c> bank: <c>2·OffsetPairs+1</c>
-    /// stepped decoder branches (0 = a plain single modem). Null ⇒ 4. Ignored by non-bank
-    /// modes.</summary>
+    /// <summary>Frequency-diversity bank width for the <c>bpsk300*</c>/<c>qpsk*</c> banks:
+    /// <c>2·OffsetPairs+1</c> stepped decoder branches (0 = a plain single modem). Null ⇒ the
+    /// catalogue default, 4 for every bank except <c>qpsk3600</c>'s 0. Ignored by non-bank
+    /// modes (<c>bpsk1200</c> included - the node keeps it single-carrier).</summary>
     public int? OffsetPairs { get; init; }
 
-    /// <summary>Hz step between <c>bpsk300</c> diversity-bank branches. Null ⇒ the baud-derived
+    /// <summary>Hz step between diversity-bank branches. Null ⇒ the baud-derived
     /// default (baud/40).</summary>
     public double? OffsetStepHz { get; init; }
 
     /// <summary>PSK detector for the bpsk*/qpsk* modes: <c>differential</c> or <c>coherent</c>.
-    /// Null ⇒ the per-family default (BPSK differential, QPSK coherent).</summary>
+    /// Null ⇒ the catalogue default, which is differential for every PSK mode
+    /// (<see cref="ModemCatalog.DefaultDetectorFor"/>; the NinoTNC off-air corpus retired the
+    /// old coherent defaults upstream).</summary>
     public string? PskDetector { get; init; }
 
     /// <summary>PTT control spec: empty for VOX, <c>serial:/dev/ttyUSB0[:rts|:dtr]</c>,
