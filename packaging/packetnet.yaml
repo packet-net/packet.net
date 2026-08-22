@@ -87,15 +87,18 @@ ports: []
 #                          # ms110d-wn0..6/13. See docs/soundmodem.md for the full mode set.
 #      # frequency: 1700   # centre Hz; 0/omit = mode convention. Only afsk/bpsk/qpsk accept one.
 #      # ptt: serial:/dev/ttyUSB0:rts   # empty=VOX , serial:<dev>[:rts|:dtr] , cm108:<hidraw>[:gpio]
-#  # bpsk300 is the differential frequency-diversity BANK (bpsk1200 stays the legacy modem):
+#  # The bpsk300*/qpsk* modes are differential frequency-diversity BANKS (qpsk3600 defaults
+#  # to a single branch; it arrives through FM. bpsk1200 stays the legacy single-carrier modem):
 #  #  - id: hf-bank
 #  #    transport:
 #  #      kind: soundmodem
 #  #      device: plughw:1,0
 #  #      mode: bpsk300
-#  #      offsetPairs: 4        # bank width: 2*pairs+1 branches (0 = single modem; omit = default 4)
+#  #      offsetPairs: 4        # bank width: 2*pairs+1 branches (0 = single modem; omit = the
+#  #                            # mode default: 4, except qpsk3600's 0)
 #  #      offsetStepHz: 7.5     # Hz step between branches (omit = baud-derived default, baud/40)
-#  #      pskDetector: differential   # coherent | differential (omit = per-family default)
+#  #      pskDetector: differential   # coherent | differential (omit = the catalogue default,
+#  #                                  # differential for every PSK mode)
 #  # A flex: device drives a FlexRadio headless slice - key it with a flex: block and NO ptt:
 #  #  - id: flex
 #  #    transport:
