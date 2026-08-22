@@ -202,14 +202,15 @@ public static class NodeConfigTemplate
         #                          # (300..3300); rejected only for the baseband fsk*/c4fsk* modes.
         #      # ptt: serial:/dev/ttyUSB0:rts  # PTT: empty=VOX, serial:<dev>[:rts|:dtr], cm108:<hidraw>[:gpio].
         #                          # Leave empty for a flex: device - the radio keys itself.
-        #    # bpsk300 is the differential frequency-diversity BANK - tune it with the two knobs
-        #    # below (bpsk1200 stays the legacy single-carrier modem):
+        #    # The bpsk300*/qpsk* modes are differential frequency-diversity BANKS - tune them
+        #    # with the two knobs below (qpsk3600 defaults to a single branch; it arrives through
+        #    # FM. bpsk1200 stays the legacy single-carrier modem):
         #    #  mode: bpsk300
         #    #  offsetPairs: 4      # bank width: 2*pairs+1 stepped decoder branches (0 = single modem;
-        #    #                      # omit = the mode default, 4).
+        #    #                      # omit = the mode default: 4, except qpsk3600's 0).
         #    #  offsetStepHz: 7.5   # Hz step between branches (omit = the baud-derived default, baud/40).
-        #    #  pskDetector: differential  # coherent | differential (omit = per-family default:
-        #    #                             # BPSK differential, QPSK coherent).
+        #    #  pskDetector: differential  # coherent | differential (omit = the catalogue default,
+        #    #                             # differential for every PSK mode).
         #    # A flex: device drives a FlexRadio headless slice - key it with a flex: block and NO ptt:
         #    #  device: "flex:MyFlex"
         #    #  flex:

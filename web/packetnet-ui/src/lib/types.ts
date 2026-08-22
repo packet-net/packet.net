@@ -71,10 +71,10 @@ export interface SoundModemFlex {
 }
 // In-process soundcard modem (the pdn-soundmodem engine) - native DCD, sample-accurate
 // TX-complete (server: Packet.Node.Core.Configuration.SoundModemTransportConfig).
-//   offsetPairs/offsetStepHz - the bpsk300 differential frequency-diversity bank knobs
-//     (2·offsetPairs+1 stepped decoder branches; ignored by non-bank modes).
+//   offsetPairs/offsetStepHz - the bpsk300*/qpsk* differential frequency-diversity bank
+//     knobs (2·offsetPairs+1 stepped decoder branches; ignored by non-bank modes).
 //   pskDetector - "coherent" | "differential" for the bpsk*/qpsk* modes (null = the
-//     per-family default: BPSK differential, QPSK coherent).
+//     catalogue default, differential for every PSK mode).
 //   flex - FlexRadio slice tuning, only for a `flex:` device.
 export interface SoundModemTransport extends TransportComputed {
   kind: "soundmodem"; device: string; captureRate: number; mode: string;
