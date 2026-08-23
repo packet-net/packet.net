@@ -1372,6 +1372,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-23 - node-v0.44.0 through node-v0.47.0 regressed to install boilerplate, because this branch never merged
+
+The change-notes work below was written on 2026-08-21, opened as [#766](https://github.com/packet-net/packet.net/pull/766), and then left open. The backfill sweep had already rewritten the whole back catalogue by hand, so `node-v0.43.0` and everything before it read as change notes and the job looked done; but `main` still carried the fixed `--notes` paragraph, so the next four releases cut from it (`node-v0.44.0`, `0.45.0`, `0.46.0`, `0.47.0`) went out with the same install blurb as each other and said nothing about what had changed. Tom spotted it on the release page.
+
+Two things were done about it. The four bodies were regenerated with `scripts/backfill-release-notes.sh --tag node-v0.44.0 ... --tag node-v0.47.0` from this branch, which is exactly what the workflow would have produced at tag time, with the replaced bodies saved off first. And this branch was rebased onto current `main` and merged, so the generator is now what cuts the notes rather than a script somebody has to remember to run.
+
+The rebase had two real conflicts, both from work that landed while the branch sat: `publish-node.yml` had gained the version-free asset staging step (the notes step now sits after it, and `--notes-file release-notes.md` replaces the rewritten `--notes` paragraph), and the amendment log had gained the entries above this one. Nothing about the generator itself changed.
+
+The lesson worth keeping is that a hand-run backfill hides an unmerged workflow fix perfectly: every release visible at the time reads correctly, and the regression only shows up on the next tag. A CI-side change is not done until it is on `main`.
+
 ### 2026-08-22 - pdn-soundmodem 0.42.0 -> 0.43.0: qpsk600's transmit roll-off moves 0.20 -> 0.35, the first bump in this chain that changes what a station radiates
 
 One upstream change ([pdn-soundmodem#344](https://github.com/packet-net/pdn-soundmodem/issues/344), PR [#348](https://github.com/packet-net/pdn-soundmodem/pull/348)): `QpskModem.Qpsk600`'s factory roll-off stops overriding the QPSK default and keeps `QpskModulator.DefaultRollOff` (0.35), the #340 campaign re-run for qpsk600 on its own evidence. Everything before it in this chain was receive-side or identity-side. **This one alters the transmitted waveform**, which is why it was held for an explicit go-ahead before the release went out.
@@ -1478,6 +1488,17 @@ curl -fsSLO "https://github.com/packet-net/packet.net/releases/latest/download/p
 **The installed base is the reason this is a two-step change.** `GithubUpdateRequestBuilder` *constructs* the asset name it asks the release for, so every node built before today asks for `packetnet_<ver>_<arch>.deb` by name - and would have quietly reported "no update available" forever if that name vanished. The builder now prefers `packetnet_<arch>.deb` and falls back to the versioned name (so it can still update from an older-shaped release), and the workflow keeps attaching the versioned `.deb` copies alongside the new ones until the fleet has rolled forward. Both paths, and the precedence between them when a release carries both names, are covered in `SystemUpdateApiTests`. The clean-up is three flagged lines in `publish-node.yml`, to be deleted once no node older than `node-v0.44.0` is still in service.
 
 Workflow + docs + one resolution change in `Packet.Node.Core`. No wire behaviour, no library API, no ax25-ts parity surface.
+### 2026-08-21 - Release descriptions are change notes now, not install boilerplate
+
+Every GitHub Release this repo has ever cut carried the same paragraph: a fixed block of install instructions baked into the `--notes` argument in the workflow. 83 releases, 83 identical descriptions, and nothing anywhere saying what a given version actually changed. The release page is where an operator lands when they wonder whether to upgrade, and it was answering a different question.
+
+- **One generator, used everywhere.** [`scripts/release-notes.sh`](../scripts/release-notes.sh) walks `git log` from the previous tag in the same series (`node-v*` / `headend-v*`, version-sorted so `0.13.9` -> `0.13.10` orders correctly) and buckets each subject by conventional-commit type into Breaking / New / Fixed / Performance / Changed / Documentation / Internal, then adds a compare link and the commit count. A subject with a bare subsystem prefix (`catalog:`, `tune:` - this repo writes plenty) keeps the prefix as a bold scope and lands in **Changed**, not Internal: those are usually the user-visible commits, and demoting them was the failure mode worth avoiding. `[skip-plan]` / `[no-plan-update]` markers and non-ASCII punctuation are stripped on the way out.
+- **Install instructions shrink to one line.** `.github/release-notes/<series>.md` holds a single sentence pointing at [`operating/00-install.md`](../operating/00-install.md) (node) or [`operating/08-split-station-head-end.md`](../operating/08-split-station-head-end.md) (head end). The operating guide is the place that stays current; a copy frozen into a workflow argument is not.
+- **`fetch-depth: 0` is now load-bearing** in [`publish-node.yml`](../.github/workflows/publish-node.yml) and [`publish-headend.yml`](../.github/workflows/publish-headend.yml). A shallow checkout has neither history nor tags and the generator would quietly emit an empty changelog, so this is the one thing to keep an eye on if a future edit touches those checkout steps.
+- **The back catalogue was rewritten.** [`scripts/backfill-release-notes.sh`](../scripts/backfill-release-notes.sh) ran the same generator over all 83 existing releases (78 `node-v*` + 5 `headend-v*`) and replaced each body, saving the old one to `.release-notes-backup/<tag>.md` first. Deterministic from git history, so an old release now reads exactly as it would have had the workflow always worked this way; re-running the sweep is a no-op.
+- **What this costs.** The notes are only as good as the squash-merge subjects, which are now world-readable prose rather than an internal convenience. [`docs/releasing.md` § Release notes](releasing.md#release-notes) says so explicitly.
+
+CI and docs only; no library or node behaviour moved, so no `lib-v*` leg and no ax25-ts parity surface.
 
 ### 2026-08-20 - RELEASE: node-v0.43.0
 

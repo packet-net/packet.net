@@ -42,6 +42,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          # release-notes.sh walks the commit range since the previous headend-v
+          # tag, so this job needs the whole history and every tag.
+          fetch-depth: 0
 
       - id: v
         name: Resolve version
@@ -111,6 +115,19 @@ jobs:
         # (native, no QEMU). Container-isolated — nothing touches the runner.
         run: scripts/headend-deb-install-smoke.sh "artifacts/packetnet-headend_${VERSION}_amd64.deb"
 
+      - name: Generate release notes
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        # Bullet-point change notes from the commit range since the previous
+        # headend-v tag, plus a one-line pointer at the install docs (same
+        # generator as publish-node.yml).
+        run: |
+          scripts/release-notes.sh \
+            --series headend \
+            --version "$VERSION" \
+            --repo "${{ github.repository }}" > release-notes.md
+          cat release-notes.md
+
       - name: Checksums + create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -126,7 +143,7 @@ jobs:
           set -euo pipefail
           cd headend/release
           # Covers the raw binaries (packetnet-headend-<ver>-linux-<arch>) AND the
-          # .debs (packetnet-headend_<ver>_<arch>.deb) — disjoint globs, no overlap.
+          # .debs (packetnet-headend_<ver>_<arch>.deb) - disjoint globs, no overlap.
           sha256sum packetnet-headend-*-linux-* packetnet-headend_*.deb > SHA256SUMS
           cat SHA256SUMS
           ls -l
@@ -142,4 +159,4 @@ jobs:
             --repo "${{ github.repository }}" \
             --latest=false \
             --title "packetnet-headend ${VERSION}" \
-            --notes "Split-station RF head-end daemon (\`packetnet-headend\`) for arm64 / arm v7 / amd64. **apt / Debian:** install the \`.deb\` for your arch — \`sudo apt install ./packetnet-headend_${VERSION}_<arch>.deb\` — a static binary at /usr/lib/packetnet, a hardened systemd unit that enables + starts on install (plug-and-go on defaults; hostname-derived instanceId, auto-enumerate every serial device), and a config example at /usr/share/packetnet/packetnet-headend.json.example. **Raw binary:** for non-deb systems — \`sudo install -m0755 packetnet-headend-${VERSION}-linux-<arch> /usr/local/bin/packetnet-headend\` (see operating/08-split-station-head-end.md for the unit). \`SHA256SUMS\` covers every asset."
+            --notes-file release-notes.md

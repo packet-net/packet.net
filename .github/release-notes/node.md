@@ -1,0 +1,1 @@
+**Install or upgrade:** [Getting started](https://github.com/__REPO__/blob/main/operating/00-install.md). On Debian / Ubuntu / Raspberry Pi OS install the `.deb` for your architecture with `apt` (not `dpkg -i`, so dependencies resolve); no .NET runtime is required. `SHA256SUMS` covers every asset attached here.
