@@ -19,6 +19,7 @@ import type {
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
   TuningStartRequest, TuningSessionInfo, TuningEvent,
+  TaitProgramRequest, TaitProgramInfo, TaitProgramEvent,
   RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot, NinoModeCatalogue,
 } from "./types";
 import * as mock from "./mock";
@@ -377,6 +378,18 @@ export const api = {
   // Stop the session and restore the port (admin scope, audited). Resolves true when a session was
   // stopped, false when none was active.
   tuneStop: (id: string) => tuneStop(id),
+  // ---- Tait codeplug programming (POST/GET /api/v1/ports/{id}/radio/program*, #779) ----
+  // Start a run (admin scope, audited). It STOPS THE PORT for a few minutes, needs the operator to
+  // power-cycle the radio when the feed asks, and rewrites the radio's channel table. 404 unknown
+  // port · 400 no Tait radio / head-end-bound / bad settings · 409 the port is busy - each surfaces
+  // its { error } as a thrown Error. Watch it with subscribeRadioProgram(id, ...).
+  startRadioProgram: (id: string, body: TaitProgramRequest) => startRadioProgram(id, body),
+  // The run on a port - live or the last one that finished - or null when there has been none since
+  // the node started. The panel calls it on mount so a reload re-attaches to a run in flight.
+  radioProgram: (id: string) => radioProgram(id),
+  // Abandon a live run (admin scope, audited). Resolves true when one was cancelled, false when
+  // there was none. The port comes back either way.
+  cancelRadioProgram: (id: string) => cancelRadioProgram(id),
   // Recent frames (oldest→newest) the monitor seeds with so it isn't empty on open.
   recentFrames: (limit = 250) => get<MonitorEvent[]>(`/monitor/recent?limit=${limit}`, () => mock.seedFrames(limit)),
   users: () => get<User[]>("/users", () => mock.USERS),
@@ -854,6 +867,45 @@ async function tuneStop(id: string): Promise<boolean> {
   });
   if (res.status === 404) return false;
   if (!res.ok) throw new Error(await errorMessage(res, `Stop failed (${res.status}).`));
+  return true;
+}
+
+// ---- Tait codeplug programming (#779) --------------------------
+// Start a run on a port. The POST returns as soon as the run is accepted - it is minutes long, so
+// the panel watches subscribeRadioProgram for the rest. A 400/404/409 surfaces its { error }.
+async function startRadioProgram(id: string, body: TaitProgramRequest): Promise<TaitProgramInfo> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 200));
+    return mock.startRadioProgram(id, body);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/radio/program`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not program the radio on '${id}' (${res.status}).`));
+  return ((await res.json()) as { run: TaitProgramInfo }).run;
+}
+
+// The run on a port, or null when there has never been one (the server's honest 404).
+async function radioProgram(id: string): Promise<TaitProgramInfo | null> {
+  if (MODE === "mock") return mock.radioProgram(id);
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/radio/program`, {
+    headers: { accept: "application/json" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not read the programming run (${res.status}).`));
+  return (await res.json()) as TaitProgramInfo;
+}
+
+// Abandon a live run. True when one was cancelled, false (404) when there was none.
+async function cancelRadioProgram(id: string): Promise<boolean> {
+  if (MODE === "mock") { mock.cancelRadioProgram(id); return true; }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/radio/program/cancel`, {
+    method: "POST", headers: { accept: "application/json" },
+  });
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(await errorMessage(res, `Cancel failed (${res.status}).`));
   return true;
 }
 
@@ -1813,6 +1865,34 @@ export function subscribeTune(
     onStatus: opts?.onStatus,
     // A new subscriber is sent the session's history first, so a reconnect re-renders the
     // trend rather than losing it. onError means "the session is over" - after the retries.
+    onGone: onError,
+    maxRetries: SESSION_STREAM_RETRIES,
+  });
+}
+
+// ---- the live codeplug-programming stream (SSE `program` events) --
+// Subscribes to a port's programming run: state transitions (starting -> power-cycle -> reading ->
+// writing -> restoring -> done/failed/cancelled), progress fractions within a state, and log lines.
+// onEvent is called per event; onError fires once when the stream terminally closes (the run
+// ended). Returns an unsubscribe. Mock mode scripts a believable run on a timer.
+export function subscribeRadioProgram(
+  id: string,
+  onEvent: (e: TaitProgramEvent) => void,
+  onError?: () => void,
+  opts?: StreamOptions,
+): () => void {
+  if (MODE === "mock") {
+    opts?.onStatus?.(true);
+    return mock.driveRadioProgramStream(id, onEvent, onError);
+  }
+  return openStream({
+    path: `/ports/${encodeURIComponent(id)}/radio/program/events`,
+    events: {
+      program: (e) => { try { onEvent(JSON.parse(e.data) as TaitProgramEvent); } catch { /* ignore malformed */ } },
+    },
+    onStatus: opts?.onStatus,
+    // A new subscriber is replayed the run's whole history first, so re-opening the panel (or a
+    // browser reload) re-renders it rather than losing it. onGone means "the run is over".
     onGone: onError,
     maxRetries: SESSION_STREAM_RETRIES,
   });

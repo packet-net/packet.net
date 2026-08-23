@@ -102,13 +102,13 @@ public sealed class RadioControlFactory : IRadioControlFactory
             $"(expected one of: {string.Join(", ", RadioKinds.Names)}).");
     }
 
-    /// <summary>Open a locally-cabled Tait radio: resolve its <c>(device path, baud)</c> (an explicit
-    /// <c>port</c>, or a scan for the <c>serial</c>-bound radio's CCDI serial) and open the serial
-    /// port - exactly today's behaviour.</summary>
+    /// <summary>Open a locally-cabled Tait radio: resolve its <c>(device path, baud)</c> through the
+    /// shared <see cref="TaitEndpointResolver"/> (an explicit <c>port</c>, or a scan for the
+    /// <c>serial</c>-bound radio's CCDI serial) and open the serial port.</summary>
     private static async Task<TaitCcdiRadio> OpenLocalTaitAsync(
         PortRadioConfig radio, TimeProvider? timeProvider, CancellationToken cancellationToken)
     {
-        var (devicePath, baud) = await ResolveTaitEndpointAsync(radio, cancellationToken).ConfigureAwait(false);
+        var (devicePath, baud) = await TaitEndpointResolver.ResolveAsync(radio, cancellationToken).ConfigureAwait(false);
         return TaitCcdiRadio.Open(devicePath, baud, options: null, timeProvider);
     }
 
@@ -138,40 +138,5 @@ public sealed class RadioControlFactory : IRadioControlFactory
         return await TaitCcdiRadio.OpenTcp(
             binding.Host, binding.TcpPort, radio.Baud,
             setBaud: binding.SetBaud, options: null, timeProvider, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Resolve a Tait radio's config to the concrete <c>(device path, baud)</c> to open. A
-    /// <c>port</c>-bound radio resolves to itself; a <c>serial</c>-bound radio is located by scanning
-    /// the machine's candidate ports (at the configured baud) for the CCDI serial number - so a
-    /// re-enumerated <c>/dev/ttyUSBn</c>, or two dongles that swapped numbers, still resolves to the
-    /// right physical radio. A serial with no plugged-in match throws
-    /// <see cref="InvalidOperationException"/>; the caller (the port supervisor) treats that as the
-    /// same clean radio-open failure as an unplugged control cable and runs the port without radio
-    /// metadata.
-    /// </summary>
-    private static async Task<(string Port, int Baud)> ResolveTaitEndpointAsync(
-        PortRadioConfig radio, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(radio.Serial))
-        {
-            return (radio.Port, radio.Baud);
-        }
-
-        var found = new List<TaitDiscoveredRadio>();
-        await foreach (var candidate in TaitRadioPortDiscovery
-                           .DiscoverAsync([radio.Baud], cancellationToken).ConfigureAwait(false))
-        {
-            found.Add(candidate);
-        }
-
-        if (RadioSerialResolver.Match(found, radio.Serial) is { } match)
-        {
-            return (match.Port, match.BaudRate);
-        }
-
-        throw new InvalidOperationException(
-            $"no tait-ccdi radio with CCDI serial '{radio.Serial}' found among {found.Count} " +
-            $"probed port(s) at {radio.Baud} baud - is it plugged in and powered?");
     }
 }

@@ -131,9 +131,14 @@ Two limitations to know:
 
 ## The setup gotchas (program the radio right)
 
-These are radio **programming** settings, done in the Tait programming application -
-not PDN config. Get them wrong and you'll see a radio that won't leave Transparent,
-or garbled data, and no obvious reason why.
+These are radio **programming** settings, not PDN config. Get them wrong and you'll
+see a radio that won't leave Transparent, or garbled data, and no obvious reason why.
+
+> [!TIP]
+> **You can set all five from the panel.** The **pdn-extra** profile in
+> [11. Program your Tait](11-program-your-tait.md) applies exactly this checklist in
+> one go, without the Tait programming application. The list below is what it does,
+> and what to check by hand if you are programming the radio some other way.
 
 > [!WARNING]
 > **"Ignore Escape Sequence" must be OFF.**

@@ -68,6 +68,11 @@
     <!-- ARDOP virtual TNC engine (arrives transitively via pdn-soundmodem; referenced explicitly
          for the ArdopHostedService's ArdopHostTnc/ArdopHostServer). -->
     <PackageVersion Include="M0LTE.Ardop" Version="0.4.0" />
+    <!-- Tait TM8100/TM8200 codeplug read/write over the serial programming interface
+         (AGPL-3.0-or-later, sibling repo M0LTE/tait-codeplug - split out of this repo
+         2026-08-20). Backs the port editor's "Program radio" panel: a live read-modify-write
+         of the radio's channel table plus the pdn-basic / pdn-extra upgrade profiles. -->
+    <PackageVersion Include="M0LTE.Tait.Codeplug" Version="0.8.0" />
 
     <!-- Serial / IO -->
     <PackageVersion Include="System.IO.Ports" Version="10.0.11" />

@@ -51,7 +51,7 @@ The **[developer guide](guide/index.md)** builds that up properly - a raw frame 
 | Read | For |
 | --- | --- |
 | [Getting started](operating/00-install.md) | Install pdn, reach the panel, add a port, get on the air |
-| [Operator guide](operating/index.md) | Attach a radio, then see and improve your link: RSSI/SNR, the radio doctor, deviation tuning, metrics, CAT rig control, split-station head-ends |
+| [Operator guide](operating/index.md) | Attach a radio, then see and improve your link: RSSI/SNR, the radio doctor, deviation tuning, metrics, CAT rig control, split-station head-ends, programming a Tait from the panel |
 | [Developer guide](guide/index.md) | Build packet-radio software on the libraries, layer by layer |
 | [Packages](docs/packages.md) | What each `Packet.*` library does and where it publishes |
 | [About](docs/about.md) | Scope, provenance, sibling repos, licence |

@@ -50,6 +50,7 @@ Start with the row that matches what you are trying to do.
 |---|---|---|
 | Install the node in the first place | [0. Install pdn](00-install.md) | A Linux box (a Pi will do) and a callsign |
 | Point the node at my radio | [1. Attach a radio](01-attach-a-radio.md) | A control cable + a couple of config fields (or one scan-and-click) |
+| Program a Tait's frequency / power / bandwidth | [11. Program your Tait](11-program-your-tait.md) | The programming cable, and to be stood next to the radio |
 | Control my rig (CAT) from the node | [1. Attach a radio](01-attach-a-radio.md#kind-rig--re-use-the-ports-cat-rig-as-its-radio) | hamlib `rigctld` or flrig - or let the node run `rigctld` for you |
 | See how good my link is | [2. See your link quality](02-see-your-link-quality.md) | A radio attached (step 1) |
 | Find out why a link is bad | [3. Check your setup (the doctor)](03-check-your-setup-doctor.md) | Nothing extra - the safe check never transmits |
@@ -61,6 +62,7 @@ Start with the row that matches what you are trying to do.
 | Run **existing software** (native AX.25 apps, or IP tools) over the node | [9. Running existing software](09-running-existing-software.md) | A node with an `ax25` port + its RHPv2 server on |
 | Fix connects to a **BPQ / LinBPQ** node that just time out | [9. Running existing software](09-running-existing-software.md#talking-to-a-bpq-or-linbpq-node-on-air) | One line of port config, or one field in the panel |
 | Work out which radio "port 1" (or a bare `C`) means | [10. Your ports, in order](10-your-ports-in-order.md) | Two or more ports |
+| Set up a surplus commercial Tait from scratch | [11. Program your Tait](11-program-your-tait.md) | Physical access to the radio (it must be power-cycled) |
 
 ## Three ways a radio can join a port
 
