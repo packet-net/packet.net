@@ -203,8 +203,8 @@ internal sealed partial class TaitProgrammingSession : IDisposable
         {
             await gateway.RunWithPortDownAsync(PortId, ProgramAsync, cancellation.Token).ConfigureAwait(false);
             Publish("state", TaitProgramState.Done, Plan is null
-                ? "done - the codeplug was read and the port is back in service. Power-cycle the radio to take it out of programming mode."
-                : "done - the radio is programmed and the port is back in service. Power-cycle the radio for the new settings to take effect.");
+                ? "done - the codeplug was read and the port is back in service"
+                : "done - the radio is programmed, it has restarted on the new codeplug, and the port is back in service");
         }
         catch (OperationCanceledException)
         {

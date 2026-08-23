@@ -53,8 +53,8 @@ written, and says so.
    | Profile | What it writes |
    |---|---|
    | **Don't apply one** | Nothing. The radio's data and signalling settings are left exactly as they are - use this when the radio is already provisioned and you only want to move it to a different frequency. |
-   | **pdn-basic** | Four settings, which between them turn on the **CCDI command channel** everything in [chapter 2](02-see-your-link-quality.md) rides on: `CCDI Mode Allowed` on, `Powerup State` = command mode, `Output Progress Messages` on, and the command-mode baud set to **28800**. That buys RSSI and SNR per frame, PA temperature, forward and reverse power, transmitter keying, and the carrier-sense (DCD) that stops your node transmitting over somebody else. |
-   | **pdn-extra** | pdn-basic, **plus** seven more: transparent mode on (the radio's own FFSK modem, for a [TNC-less link](06-tnc-less-tait-links.md)), `Ignore Escape Sequence` **off**, `Ignore DCS/CTCSS` on the data path, the FFSK transparent baud at 28800 on the wire, the **FFSK over-air rate at 2400 baud**, and SDM on for the side channel [deviation tuning](04-tune-your-link.md) and station hail use. |
+   | **pdn-basic** | Enables RSSI, PA temp, fwd/rev power, keying, carrier sense. Note: radio powers up in command mode and requires power cycle for future programming cycles. Four codeplug fields: `CCDI Mode Allowed` on, `Powerup State` = command mode, `Output Progress Messages` on, and the command-mode baud set to **28800**. |
+   | **pdn-extra** | Everything in pdn-basic, plus enables the radio's own FFSK and SDM modems for experimental features. Seven more fields: transparent mode on (the [TNC-less link](06-tnc-less-tait-links.md)), `Ignore Escape Sequence` **off**, `Ignore DCS/CTCSS` on the data path, the FFSK transparent baud at 28800 on the wire, the **FFSK over-air rate at 2400 baud**, and SDM on for the side channel [deviation tuning](04-tune-your-link.md) and station hail use. |
 
    Neither profile touches frequencies, channels, power or the radio's audio
    wiring, so you can lay one onto a radio that is already right for its site.
@@ -71,12 +71,8 @@ written, and says so.
 7. When the panel says **"Power-cycle the radio now"**, switch the radio off and
    on again. It waits about 90 seconds for you.
 8. Watch it read the codeplug, write it back, and bring the port up again. The
-   whole thing takes two or three minutes.
-9. **Power-cycle the radio once more** at the end. The radio is still latched in
-   programming mode until it reboots, and it only operates on the new codeplug
-   after that. The node brings the port back the moment the write commits, which is
-   before you have done that - so if the port shows degraded, restart it (**Ports ->
-   the port -> Restart**) once the radio is back up.
+   whole thing takes two or three minutes. The radio restarts on the new codeplug by
+   itself when the write commits; there is no second power-cycle to do.
 
 If you picked **pdn-extra** you have just set all five of the
 [TNC-less link gotchas](06-tnc-less-tait-links.md#the-setup-gotchas-program-the-radio-right)
@@ -152,6 +148,74 @@ In every one of those the port is back in service and the radio is untouched -
 each of them is caught before the write block opens. A failure *during* the write
 (a cable pulled, the radio switched off mid-transfer) is the one case where the
 codeplug may be partly applied: re-run it, or restore the backup with the CLI.
+
+## Check the antenna: Test transmit
+
+Under the programming panel there is a **Test transmit** button. It keys the radio
+for about a second with nothing modulating it, reads the forward and reverse power
+detectors on its directional coupler while it is up, and tells you what they said.
+It is the "is the antenna actually connected" check, without a test set.
+
+> [!WARNING]
+> This **transmits** a carrier on the radio's current channel. Have an antenna or a
+> dummy load on it. Keying into an open socket is exactly what the test is for, but
+> it is still a transmission into a mismatch.
+
+It works on any attached Tait, including one on a [head-end](08-split-station-head-end.md),
+and the port stays in service throughout - so the node may briefly key over the top
+of it. It is **admin**-scoped and audited.
+
+### What you get back
+
+| Field | What it is |
+|---|---|
+| **Forward** | CCTM 318, the forward detector's DC millivolts, with the idle offset subtracted |
+| **Reverse** | CCTM 319, the same for the reverse detector |
+| **VSWR (est.)** | An **estimate** derived from those two. See below. |
+| **Verdict** | Looks fine / Slightly high / High reverse power / PA folded back / Radio refused to transmit / Nothing came out |
+
+### Why the VSWR is an estimate and not a measurement
+
+Because Tait never published what would make it a measurement. CCTM 318 and 319
+return raw detector-diode millivolts (Service Manual MMA-00005-05, Table 4.5); there
+is no millivolts-to-watts curve anywhere in the documentation, and Tait's own service
+tooling never computes VSWR from them - the reverse detector is there to drive
+mismatch *protection*, not measurement.
+
+What can be said is that detector voltage goes as the square root of power (the
+calibration database stores "Power Level Sqrt" constants), so the offset-corrected
+reverse/forward **voltage** ratio is an estimate of the reflection coefficient
+directly, and (1+r)/(1-r) an estimate of VSWR. That holds only if the two detectors
+share a transfer constant and the coupler's directivity floor is well below the
+reflected signal, neither of which is specified. So: **treat the number as an
+indication, and a change in it between runs on one station as the real signal.**
+Below 200 mV of corrected forward power the panel refuses to give a figure at all,
+because down there the reverse reading is diode knee and directivity floor rather
+than reflected power.
+
+The service manual does tabulate go/no-go figures per band split at High power into
+a good load (Tables 11.3 and 12.3), and the panel quotes them when it knows the
+band. They are High-power-only and they span both the 25 W and the larger bodies,
+which the product code does not tell apart, so they are context rather than a test.
+
+### The two failures worth knowing about
+
+**"PA folded back"** is the strongest signal here, and it comes straight out of the
+manual's own fault-finding: a momentarily very high reverse power means the antenna
+VSWR threshold has been exceeded and the PA has shut back to very low power (Task 4,
+p.280). From the node that looks like the forward reading falling off a cliff
+part-way through the key, which is what the panel watches for. On the radio itself
+this is the **two-warble High Reverse Power warning** - if you have heard your radio
+warble at you on PTT, this is what it was saying.
+
+There is no CCDI message for that warning: the radio beeps at whoever is standing
+next to it and tells software nothing, which is why the node has to infer it from
+the detectors. The one exception is a radio whose codeplug has *Override VSWR
+Foldback Power* set - that one refuses to transmit outright, and the refusal *does*
+reach software as a Tx Inhibited progress message. The panel reports that as **"Radio
+refused to transmit"**, and lists the manual's other causes for it (over-temperature,
+synthesiser out of lock, channel power set to Off, Tx Inhibit on channel activity, a
+Tx lockout timer), because the radio does not say which one fired.
 
 ## The same thing from a terminal
 

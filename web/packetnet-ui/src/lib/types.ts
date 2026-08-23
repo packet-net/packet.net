@@ -1045,6 +1045,42 @@ export interface TaitProgramInfo {
   failedState?: TaitProgramState | null;
   log?: string[] | null;
 }
+// ---- test transmission (POST /ports/{id}/radio/test-tx) ----
+// The radio is keyed for about a second with no modulation and its forward/reverse power detectors
+// are read. The millivolts are raw CCTM 318/319 detector readings, uncalibrated - vswr is an
+// ESTIMATE derived from their ratio, never a measurement. See TaitTestTransmitService.
+export type TaitTestTxVerdict =
+  | "ok" | "elevated" | "high-reverse" | "foldback" | "inhibited" | "no-transmit" | "unknown";
+export interface TaitPowerDetectorReference {
+  code: string;
+  highPowerForwardMinMillivolts: number;
+  highPowerForwardMaxMillivolts: number;
+  reverseCeilingMillivolts: number;
+}
+export interface TaitTestTxResult {
+  portId: string;
+  at: string;
+  keyedMilliseconds: number;
+  radioModel?: string | null;
+  radioSerial?: string | null;
+  band?: string | null;
+  keyed: boolean;
+  inhibited: boolean;
+  idleForwardMillivolts?: number | null;
+  idleReverseMillivolts?: number | null;
+  forwardMillivolts?: number | null;
+  reverseMillivolts?: number | null;
+  forwardOverIdleMillivolts?: number | null;
+  reverseOverIdleMillivolts?: number | null;
+  reflectionCoefficient?: number | null;
+  vswr?: number | null;
+  foldback: boolean;
+  verdict: TaitTestTxVerdict;
+  reference?: TaitPowerDetectorReference | null;
+  notes: string[];
+  samples: number;
+}
+
 export interface TaitProgramEvent {
   kind: TaitProgramEventKind;
   at: string;

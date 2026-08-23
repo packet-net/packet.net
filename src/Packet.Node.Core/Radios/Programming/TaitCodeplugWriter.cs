@@ -158,7 +158,7 @@ internal sealed class TaitCodeplugWriter : ITaitCodeplugWriter
         report(TaitProgramState.Writing, null, $"writing {plan}");
         int written = programmer.WriteImage(fields.Image, cancellationToken);
         report(TaitProgramState.Writing, null,
-            $"{written} records committed - power-cycle the radio again to bring it back out of programming mode");
+            $"{written} records committed - the radio restarts on the new codeplug by itself");
 
         return new TaitCodeplugWriteOutcome(identity.Model, identity.Serial, backupPath, written, current);
     }

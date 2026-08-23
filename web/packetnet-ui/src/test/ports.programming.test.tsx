@@ -14,7 +14,7 @@ import { AuthProvider } from "@/app/auth";
 import { Ports, isProgrammableRadio, parseFrequencyHz } from "@/screens/ports";
 import { api } from "@/lib/api";
 import { NODE_CONFIG } from "@/lib/mock";
-import type { NodeConfig, PortConfig, TaitProgramInfo } from "@/lib/types";
+import type { NodeConfig, PortConfig, TaitProgramInfo, TaitTestTxResult } from "@/lib/types";
 
 function seedScope(scope: "read" | "operate" | "admin" = "admin") {
   localStorage.setItem(
@@ -79,6 +79,14 @@ const READ_RUN: TaitProgramInfo = {
     channelCount: 6, databaseVersion: "0095", rxTone: "none", txTone: "none",
   },
 };
+
+// Bandwidth and power start blank, so a test that means to START a run has to choose them the way
+// an operator would. Reading the radio fills them in instead; typing them is the other half.
+function fillChannel(panel: HTMLElement, mhz: string) {
+  fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: mhz } });
+  fireEvent.change(within(panel).getByLabelText("Bandwidth"), { target: { value: "narrow" } });
+  fireEvent.change(within(panel).getByLabelText("Transmit power"), { target: { value: "high" } });
+}
 
 function seedConfig(...ports: PortConfig[]) {
   const cfg: NodeConfig = { ...NODE_CONFIG, ports };
@@ -206,8 +214,8 @@ describe("PortEditor - the Program radio panel", () => {
     const panel = await screen.findByTestId("radio-programming");
 
     fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.9375" } });
-    fireEvent.change(within(panel).getByDisplayValue("Narrow - 12.5 kHz"), { target: { value: "wide" } });
-    fireEvent.change(within(panel).getByDisplayValue("High"), { target: { value: "low" } });
+    fireEvent.change(within(panel).getByLabelText("Bandwidth"), { target: { value: "wide" } });
+    fireEvent.change(within(panel).getByLabelText("Transmit power"), { target: { value: "low" } });
     fireEvent.click(within(panel).getByLabelText(/pdn-extra/i, { selector: "input" }));
 
     fireEvent.click(within(panel).getByRole("button", { name: /Program radio/i }));
@@ -232,7 +240,7 @@ describe("PortEditor - the Program radio panel", () => {
     await openEditor("vhf-1");
     const panel = await screen.findByTestId("radio-programming");
 
-    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144812500" } });
+    fillChannel(panel, "144812500");
     // The box says back what it made of it, so a mistyped unit is visible before the run starts.
     expect(panel).toHaveTextContent("144.812500 MHz");
 
@@ -251,7 +259,7 @@ describe("PortEditor - the Program radio panel", () => {
     await openEditor("vhf-1");
     const panel = await screen.findByTestId("radio-programming");
 
-    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.8125" } });
+    fillChannel(panel, "144.8125");
     fireEvent.click(within(panel).getByLabelText(/Delete the radio's other channels/i));
 
     fireEvent.click(within(panel).getByRole("button", { name: /Program radio/i }));
@@ -279,8 +287,8 @@ describe("PortEditor - the Program radio panel", () => {
     await waitFor(() => expect(read).toHaveBeenCalledWith("vhf-1"));
     // Nothing was written, and the form now says what the radio is actually set to.
     await waitFor(() => expect(within(panel).getByLabelText("Frequency")).toHaveValue("145.287500"));
-    expect(within(panel).getByDisplayValue("Wide - 25 kHz")).toBeInTheDocument();
-    expect(within(panel).getByDisplayValue("Medium")).toBeInTheDocument();
+    expect(within(panel).getByLabelText("Bandwidth")).toHaveValue("wide");
+    expect(within(panel).getByLabelText("Transmit power")).toHaveValue("medium");
     expect(panel).toHaveTextContent("6 channels");
     expect(panel).toHaveTextContent("database 0095");
   });
@@ -298,7 +306,16 @@ describe("PortEditor - the Program radio panel", () => {
     expect(button).toBeDisabled();
     expect(panel).toHaveTextContent(/Not a frequency a Tait can reach/i);
 
+    // A reachable frequency is not enough on its own: bandwidth and power start blank, because the
+    // panel has no idea what the radio is set to until it has read it.
     fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.8125" } });
+    expect(within(panel).getByLabelText("Bandwidth")).toHaveValue("");
+    expect(within(panel).getByLabelText("Transmit power")).toHaveValue("");
+    expect(button).toBeDisabled();
+
+    fireEvent.change(within(panel).getByLabelText("Bandwidth"), { target: { value: "narrow" } });
+    expect(button).toBeDisabled();
+    fireEvent.change(within(panel).getByLabelText("Transmit power"), { target: { value: "high" } });
     expect(button).toBeEnabled();
   });
 
@@ -308,7 +325,7 @@ describe("PortEditor - the Program radio panel", () => {
     await openEditor("vhf-1");
     const panel = await screen.findByTestId("radio-programming");
 
-    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.8125" } });
+    fillChannel(panel, "144.8125");
 
     const button = within(panel).getByRole("button", { name: /Program radio/i });
     expect(button).toBeDisabled();
@@ -337,7 +354,7 @@ describe("PortEditor - the Program radio panel", () => {
     await openEditor("vhf-1");
     const panel = await screen.findByTestId("radio-programming");
 
-    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.8125" } });
+    fillChannel(panel, "144.8125");
     fireEvent.click(within(panel).getByRole("button", { name: /Program radio/i }));
     await screen.findByText("Program this radio?");
     fireEvent.click(screen.getByRole("button", { name: /^Program radio$/ }));
@@ -374,5 +391,125 @@ describe("PortEditor - the Program radio panel", () => {
 
     const outcome = await within(panel).findByTestId("radio-programming-outcome");
     await waitFor(() => expect(outcome).toHaveTextContent("journalctl -u packetnet"));
+  });
+});
+
+// The Test transmit panel: key the radio for a second, read its power detectors, say what they mean.
+// The thing that must never happen here is a reassuring verdict over a disconnected antenna, so what
+// is asserted is that the failure verdicts and the "this is an estimate" caveat both reach the page.
+const TEST_TX_OK: TaitTestTxResult = {
+  portId: "vhf-1",
+  at: "2026-08-23T12:00:00Z",
+  keyedMilliseconds: 1000,
+  radioModel: "TMAB12-B100_0201",
+  radioSerial: "19925328",
+  band: "B1",
+  keyed: true,
+  inhibited: false,
+  idleForwardMillivolts: 10,
+  idleReverseMillivolts: 4,
+  forwardMillivolts: 1730,
+  reverseMillivolts: 176,
+  forwardOverIdleMillivolts: 1720,
+  reverseOverIdleMillivolts: 172,
+  reflectionCoefficient: 0.1,
+  vswr: 1.2222,
+  foldback: false,
+  verdict: "ok",
+  reference: {
+    code: "B1", highPowerForwardMinMillivolts: 1100,
+    highPowerForwardMaxMillivolts: 3400, reverseCeilingMillivolts: 500,
+  },
+  notes: ["The VSWR figure is an ESTIMATE from uncalibrated detectors."],
+  samples: 8,
+};
+
+describe("PortEditor - the Test transmit panel", () => {
+  it("says out loud that it transmits, and needs confirming before it does", async () => {
+    const test = vi.spyOn(api, "radioTestTx").mockResolvedValue(TEST_TX_OK);
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-test-tx");
+
+    expect(panel).toHaveTextContent(/transmits/i);
+    expect(panel).toHaveTextContent(/antenna or a dummy load/i);
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Test TX/i }));
+    expect(test).not.toHaveBeenCalled();
+
+    await screen.findByText("Transmit a test carrier?");
+    fireEvent.click(screen.getByRole("button", { name: /^Transmit$/ }));
+    await waitFor(() => expect(test).toHaveBeenCalledWith("vhf-1"));
+  });
+
+  it("shows the detector readings and the estimated VSWR, with the estimate said to be one", async () => {
+    vi.spyOn(api, "radioTestTx").mockResolvedValue(TEST_TX_OK);
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-test-tx");
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Test TX/i }));
+    await screen.findByText("Transmit a test carrier?");
+    fireEvent.click(screen.getByRole("button", { name: /^Transmit$/ }));
+
+    const result = await within(panel).findByTestId("radio-test-tx-result");
+    expect(result).toHaveTextContent("1720 mV");
+    expect(result).toHaveTextContent("172 mV");
+    expect(result).toHaveTextContent("1.22:1");
+    expect(result).toHaveTextContent(/ESTIMATE/);
+    expect(panel).toHaveTextContent("Looks fine");
+  });
+
+  it("does not dress a folded-back PA up as a healthy antenna", async () => {
+    vi.spyOn(api, "radioTestTx").mockResolvedValue({
+      ...TEST_TX_OK,
+      verdict: "foldback",
+      foldback: true,
+      vswr: null,
+      reflectionCoefficient: null,
+      notes: ["The forward power COLLAPSED during the key. Check the antenna, the feeder and the connectors."],
+    });
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-test-tx");
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Test TX/i }));
+    await screen.findByText("Transmit a test carrier?");
+    fireEvent.click(screen.getByRole("button", { name: /^Transmit$/ }));
+
+    await waitFor(() => expect(panel).toHaveTextContent("PA folded back"));
+    expect(panel).toHaveTextContent(/COLLAPSED/);
+  });
+
+  it("surfaces a refusal from the node rather than a silent no-op", async () => {
+    vi.spyOn(api, "radioTestTx").mockRejectedValue(new Error("port 'vhf-1' is busy with a tuning session - stop it first"));
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-test-tx");
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Test TX/i }));
+    await screen.findByText("Transmit a test carrier?");
+    fireEvent.click(screen.getByRole("button", { name: /^Transmit$/ }));
+
+    await waitFor(() => expect(panel).toHaveTextContent("busy with a tuning session"));
+  });
+
+  it("is disabled without the admin scope, and stays away from a port with no Tait", async () => {
+    seedConfig(TAIT_PORT);
+    await mountPorts("operate");
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-test-tx");
+    expect(within(panel).getByRole("button", { name: /Test TX/i })).toBeDisabled();
+  });
+
+  it("stays away for a port with no radio at all", async () => {
+    seedConfig(BARE_PORT);
+    await mountPorts();
+    await openEditor("sim");
+    expect(screen.queryByTestId("radio-test-tx")).not.toBeInTheDocument();
   });
 });

@@ -18,7 +18,7 @@ import type {
   RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
-  TaitProgramRequest, TaitProgramInfo, TaitProgramEvent, TaitProgramState,
+  TaitProgramRequest, TaitProgramInfo, TaitProgramEvent, TaitProgramState, TaitTestTxResult,
   RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot,
   NinoModeCatalogue,
 } from "./types";
@@ -738,6 +738,45 @@ export function readRadioProgram(portId: string): TaitProgramInfo {
   };
   programRuns.set(portId, run);
   return run;
+}
+
+// A scripted test transmission for VITE_API_MODE=mock: a healthy antenna on a 2 m radio.
+export function radioTestTx(portId: string, milliseconds?: number): TaitTestTxResult {
+  const fwd = 1720;
+  const rev = 190;
+  const rho = rev / fwd;
+  return {
+    portId,
+    at: new Date().toISOString(),
+    keyedMilliseconds: milliseconds ?? 1000,
+    radioModel: "TMAB12-B100_0201",
+    radioSerial: "19925328",
+    band: "B1",
+    keyed: true,
+    inhibited: false,
+    idleForwardMillivolts: 12,
+    idleReverseMillivolts: 4,
+    forwardMillivolts: fwd + 12,
+    reverseMillivolts: rev + 4,
+    forwardOverIdleMillivolts: fwd,
+    reverseOverIdleMillivolts: rev,
+    reflectionCoefficient: rho,
+    vswr: (1 + rho) / (1 - rho),
+    foldback: false,
+    verdict: "ok",
+    reference: {
+      code: "B1",
+      highPowerForwardMinMillivolts: 1100,
+      highPowerForwardMaxMillivolts: 3400,
+      reverseCeilingMillivolts: 500,
+    },
+    notes: [
+      "The VSWR figure is an ESTIMATE from uncalibrated detectors: CCTM 318/319 are raw detector millivolts, " +
+      "Tait publishes no millivolts-to-watts curve, and its own service tooling never computes VSWR from them. " +
+      "Trust a change between runs on this station over the absolute number.",
+    ],
+    samples: 8,
+  };
 }
 
 export function radioProgram(portId: string): TaitProgramInfo | null {

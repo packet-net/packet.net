@@ -108,8 +108,32 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// PTT activated/deactivated) - whether keyed by CCDI, the microphone, or a data PTT line.</summary>
     public event EventHandler<TransmitterStateChange>? TransmitterStateChanged;
 
+    /// <summary>
+    /// The radio refused a transmission it was asked for: PROGRESS <c>02</c> "Tx Inhibited", which
+    /// the manual defines as "sent whenever transmission is requested but is inhibited"
+    /// (MMA-00038-06 §1.10.5).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Worth its own event because the refusal is otherwise <b>silent to software</b>: the radio
+    /// beeps at whoever is standing next to it and <see cref="SetTransmitterAsync"/> still returns
+    /// normally, the FUNCTION 9 command having been accepted. A node that never sees this reports a
+    /// healthy transmitter while nothing is going out.
+    /// </para>
+    /// <para>
+    /// The manual lists the causes together and does not say which one fired: over-temperature, the
+    /// synthesiser out of lock, the channel's power set to Off, channel activity with Tx Inhibit
+    /// programmed, a Tx lockout timer - and, when <c>Override VSWR Foldback Power</c> is set in the
+    /// codeplug, high reverse power. High reverse power <b>without</b> that override is a different
+    /// thing entirely and does not appear here: the radio transmits at reduced power and only warns
+    /// locally (two warbles), which is why <c>TaitTestTransmit</c> also looks at the detectors.
+    /// </para>
+    /// </remarks>
+    public event EventHandler<TaitTransmitInhibited>? TransmitInhibited;
+
     /// <summary>Every unsolicited PROGRESS message, decoded. The DCD and PTT edges also surface
-    /// through <see cref="CarrierSenseChanged"/> / <see cref="TransmitterStateChanged"/>.</summary>
+    /// through <see cref="CarrierSenseChanged"/> / <see cref="TransmitterStateChanged"/>, and a
+    /// refused transmission through <see cref="TransmitInhibited"/>.</summary>
     public event EventHandler<CcdiProgressMessage>? ProgressReceived;
 
     /// <summary>Unsolicited ERROR messages (system errors outside any transaction).</summary>
@@ -1319,6 +1343,10 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
                 {
                     TransmitterStateChanged?.Invoke(this, new TransmitterStateChange(
                         progress.Type == CcdiProgressType.PttActivated, clock.GetUtcNow()));
+                }
+                else if (progress.Type == CcdiProgressType.TxInhibited)
+                {
+                    TransmitInhibited?.Invoke(this, new TaitTransmitInhibited(clock.GetUtcNow()));
                 }
                 ProgressReceived?.Invoke(this, progress);
                 break;

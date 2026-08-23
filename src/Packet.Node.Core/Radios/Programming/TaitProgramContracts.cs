@@ -231,15 +231,15 @@ public static class TaitProgramCaveat
         "This TAKES THE PORT OFF THE AIR for the whole run (a few minutes) and REWRITES the radio's " +
         "codeplug: channel 1 is replaced by the channel given here, any CTCSS/DCS on it is cleared, " +
         "and unless replaceChannelTable is false the radio's other channels are deleted. The radio " +
-        "must be POWER-CYCLED when the run asks for it, and again afterwards before it will operate " +
-        "on the new settings. The pre-change codeplug is snapshotted to a .m8p file on the node " +
+        "must be POWER-CYCLED when the run asks for it; it restarts on the new codeplug by itself " +
+        "once the write commits. The pre-change codeplug is snapshotted to a .m8p file on the node " +
         "first, and the port is brought back into service whether the run succeeds or fails.";
 
     /// <summary>The caveat on a read-only run: nothing is written, but the port still goes down and
-    /// the radio still has to be power-cycled twice.</summary>
+    /// the radio still has to be power-cycled into programming mode.</summary>
     public const string ReadText =
         "This TAKES THE PORT OFF THE AIR while it runs (up to a couple of minutes) but WRITES " +
-        "NOTHING. The radio must be POWER-CYCLED when the run asks for it, and again afterwards to " +
-        "take it back out of programming mode. The codeplug read is snapshotted to a .m8p file on " +
-        "the node, and the port is brought back into service either way.";
+        "NOTHING. The radio must be POWER-CYCLED when the run asks for it. The codeplug read is " +
+        "snapshotted to a .m8p file on the node, and the port is brought back into service either " +
+        "way.";
 }

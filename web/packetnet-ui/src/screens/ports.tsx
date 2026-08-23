@@ -19,7 +19,7 @@ import type {
   RadioConfig, RadioScanResult, ReconcileResult, ValidationProblem,
   RigConfig, RigScan, RigScanDevice, RigModelCatalogue, NinoMode,
   TaitProgramInfo, TaitProgramEvent, TaitProgramState, TaitProgramMode, TaitRadioSettings,
-  TaitProgramBandwidth, TaitProgramPower, TaitProgramProfile,
+  TaitProgramBandwidth, TaitProgramPower, TaitProgramProfile, TaitTestTxResult, TaitTestTxVerdict,
 } from "@/lib/types";
 import {
   RADIO_PROFILES, NINO_MODES, ninoModeLabel, SOUNDMODEM_MODES, CHANNEL_MODES,
@@ -1077,6 +1077,13 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
           <RadioProgrammingSection portId={orig._origId ?? orig.id} />
         )}
 
+        {/* Key the attached Tait briefly and read its power detectors. Gated on the SAVED radio for
+            the same reason as programming, but offered for a head-end-bound Tait too: it runs over
+            the CCDI control channel, which reaches through the head-end's pipe perfectly well. */}
+        {!orig._new && before?.radio?.kind === "tait-ccdi" && (
+          <RadioTestTxSection portId={orig._origId ?? orig.id} />
+        )}
+
         {/* rig-control (CAT) attachment — every transport kind (the rig never touches the packet path) */}
         <RigControlSection rig={model.rig} onChange={setRig} />
 
@@ -1429,16 +1436,13 @@ const PROFILE_OPTIONS: { id: TaitProgramProfile; label: string; hint: string }[]
   {
     id: "pdn-basic",
     label: "pdn-basic",
-    hint: "Turns on the CCDI command channel pdn's telemetry and control ride on: RSSI, PA temperature, " +
-      "forward and reverse power, transmitter keying, and carrier-sense / external-PTT edges. Also sets " +
-      "the command-mode baud to 28800 and makes the radio power up in command mode.",
+    hint: "Enables RSSI, PA temp, fwd/rev power, keying, carrier sense. Note: radio powers up in command " +
+      "mode and requires power cycle for future programming cycles.",
   },
   {
     id: "pdn-extra",
     label: "pdn-extra",
-    hint: "Everything pdn-basic does, plus the radio's own FFSK modem for a TNC-less link (transparent " +
-      "mode on, 2400 baud on air, 28800 on the wire, tone squelch ignored on data) and the SDM side " +
-      "channel - which also switches on the radio's SDM auto-acknowledgements.",
+    hint: "Everything in pdn-basic, plus enables the radio's own FFSK and SDM modems for experimental features.",
   },
 ];
 // The states a run is still working in - the panel shows progress rather than the form.
@@ -1508,8 +1512,10 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
   const { has } = useAuth();
   const canProgram = has("admin");   // a run rewrites the radio and stops the port
   const [freq, setFreq] = useState("");
-  const [bandwidth, setBandwidth] = useState<TaitProgramBandwidth>("narrow");
-  const [power, setPower] = useState<TaitProgramPower>("high");
+  // Blank until either the operator picks one or a Read fills it in: the panel has no way of
+  // knowing what a radio it has never read is set to, and a pre-picked value reads as though it did.
+  const [bandwidth, setBandwidth] = useState<TaitProgramBandwidth | "">("");
+  const [power, setPower] = useState<TaitProgramPower | "">("");
   const [profile, setProfile] = useState<TaitProgramProfile>("none");
   const [replaceChannels, setReplaceChannels] = useState(true);
   const [confirming, setConfirming] = useState<"program" | "read" | null>(null);
@@ -1573,8 +1579,8 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
     if (filledFrom.current === run.startedAt) return;
     filledFrom.current = run.startedAt;
     if (current.rxFrequencyHz != null) setFreq(mhzText(current.rxFrequencyHz));
-    if (current.bandwidth) setBandwidth(current.bandwidth);
-    if (current.power && current.power !== "off") setPower(current.power);
+    setBandwidth(current.bandwidth ?? "");
+    setPower(current.power && current.power !== "off" ? current.power : "");
     if (current.profile) setProfile(current.profile);
   }, [run, current]);
 
@@ -1584,10 +1590,10 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
   const running = !!run && PROGRAM_RUNNING.includes(state);
   const hz = parseFrequencyHz(freq);
   const typed = freq.trim().length > 0;
-  const ready = hz != null && !busy;
+  const ready = hz != null && bandwidth !== "" && power !== "" && !busy;
 
   const start = async (mode: "program" | "read") => {
-    if (mode === "program" && hz == null) return;
+    if (mode === "program" && (hz == null || bandwidth === "" || power === "")) return;
     setConfirming(null);
     setBusy(true);
     setError(null);
@@ -1598,8 +1604,8 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
         ? await api.readRadioProgram(portId)
         : await api.startRadioProgram(portId, {
           rxFrequencyHz: hz!,
-          bandwidth,
-          power,
+          bandwidth: bandwidth as TaitProgramBandwidth,
+          power: power as TaitProgramPower,
           profile,
           replaceChannelTable: replaceChannels,
         }));
@@ -1663,12 +1669,14 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
               </p>
             </Field>
             <Field label="Bandwidth" info="Channel spacing. UK amateur packet is normally narrow (12.5 kHz); wide (25 kHz) buys deviation headroom for the faster modes where the band plan allows it.">
-              <Select value={bandwidth} onChange={(e) => setBandwidth(e.target.value as TaitProgramBandwidth)}>
+              <Select value={bandwidth} aria-label="Bandwidth" onChange={(e) => setBandwidth(e.target.value as TaitProgramBandwidth | "")}>
+                <option value="">Not set</option>
                 {BANDWIDTH_OPTIONS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
               </Select>
             </Field>
             <Field label="Transmit power" info="The radio's power step for this channel. What each step is in watts depends on the band, the variant and the radio's calibration.">
-              <Select value={power} onChange={(e) => setPower(e.target.value as TaitProgramPower)}>
+              <Select value={power} aria-label="Transmit power" onChange={(e) => setPower(e.target.value as TaitProgramPower | "")}>
+                <option value="">Not set</option>
                 {POWER_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </Select>
             </Field>
@@ -1716,8 +1724,9 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
             <span>
               This <strong>stops the port</strong> for a few minutes and rewrites the radio's codeplug: channel 1
               becomes the channel above, any CTCSS/DCS on it is cleared{replaceChannels ? ", and the radio's other channels are deleted" : ""}.
-              You will be asked to <strong>power-cycle the radio</strong> to start, and again afterwards before the new settings
-              take effect. The current codeplug is saved to a .m8p file on the node first, and the port comes back either way.
+              You will be asked to <strong>power-cycle the radio</strong> to start; it restarts on the new settings by
+              itself when the write commits. The current codeplug is saved to a .m8p file on the node first, and the
+              port comes back either way.
             </span>
           </div>
 
@@ -1743,7 +1752,7 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
               onClick={() => setConfirming("program")}
               disabled={!ready || !canProgram}
               title={canProgram
-                ? (ready ? "Program this radio" : "Enter a frequency the radio can reach first")
+                ? (ready ? "Program this radio" : "Fill in a frequency, a bandwidth and a power step first")
                 : "Programming a radio requires the admin scope"}
             >
               <Icon name="config" size={14} />
@@ -1772,8 +1781,7 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
               Port <strong>{portId}</strong> goes off the air while its radio's codeplug is read. <strong>Nothing is written.</strong>
             </p>
             <p className="text-xs text-muted-foreground">
-              Have the radio in reach: you will be asked to switch it off and on again while the node waits for it,
-              and again at the end to take it back out of programming mode.
+              Have the radio in reach: you will be asked to switch it off and on again while the node waits for it.
             </p>
           </div>
         ) : (
@@ -1788,8 +1796,7 @@ function RadioProgrammingSection({ portId }: { portId: string }) {
               <li>other channels: {replaceChannels ? "deleted" : "left alone"}</li>
             </ul>
             <p className="text-xs text-muted-foreground">
-              Have the radio in reach: you will be asked to switch it off and on again while the node waits for it,
-              and again at the end before the new settings take effect.
+              Have the radio in reach: you will be asked to switch it off and on again while the node waits for it.
             </p>
           </div>
         )}
@@ -1891,7 +1898,7 @@ function ProgramOutcome({ run, state, live }: {
   const summary = state === "done"
     ? read
       ? `Read ${run.radioModel ?? "the radio"}${run.radioSerial ? ` (s/n ${run.radioSerial})` : ""}. Nothing was written; the form above is filled in from it.`
-      : `Programmed ${run.radioModel ?? "the radio"}${run.radioSerial ? ` (s/n ${run.radioSerial})` : ""}${run.plan ? ` to ${mhzText(run.plan.rxFrequencyHz)} MHz` : ""}. Power-cycle the radio for the new settings to take effect.`
+      : `Programmed ${run.radioModel ?? "the radio"}${run.radioSerial ? ` (s/n ${run.radioSerial})` : ""}${run.plan ? ` to ${mhzText(run.plan.rxFrequencyHz)} MHz` : ""}.`
     : state === "cancelled"
       ? "The last run was cancelled. The port is back in service."
       : reason
@@ -1915,6 +1922,146 @@ function ProgramOutcome({ run, state, live }: {
           </div>
         </details>
       )}
+    </div>
+  );
+}
+
+// ---- test transmission: key the Tait for a second and read its power detectors ----
+// The "is the antenna actually connected" check, without a test set. The node keys the radio over
+// CCDI with no modulation, reads CCTM 318/319 (the forward and reverse detector diodes on the
+// directional coupler) through the key, and reports the readings plus an ESTIMATED VSWR.
+//
+// The estimate is labelled as one everywhere it appears, and deliberately: those detectors are
+// uncalibrated, Tait publishes no millivolts-to-watts curve, and its own service tooling never
+// computes VSWR from them. What IS solid is the failure detection - the forward reading collapsing
+// mid-key is the service manual's own signature for the antenna VSWR threshold having been
+// exceeded, and a flat refusal to transmit arrives as a CCDI progress message.
+const TESTTX_VERDICT: Record<TaitTestTxVerdict, { label: string; tone: "success" | "warning" | "danger" | "muted" }> = {
+  "ok": { label: "Looks fine", tone: "success" },
+  "elevated": { label: "Slightly high", tone: "warning" },
+  "high-reverse": { label: "High reverse power", tone: "danger" },
+  "foldback": { label: "PA folded back", tone: "danger" },
+  "inhibited": { label: "Radio refused to transmit", tone: "danger" },
+  "no-transmit": { label: "Nothing came out", tone: "danger" },
+  "unknown": { label: "Not enough power to judge", tone: "muted" },
+};
+
+function RadioTestTxSection({ portId }: { portId: string }) {
+  const { has } = useAuth();
+  const canTransmit = has("admin");   // it puts a carrier on the air
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<TaitTestTxResult | null>(null);
+
+  const run = async () => {
+    setConfirming(false);
+    setBusy(true);
+    setError(null);
+    try {
+      setResult(await api.radioTestTx(portId));
+    } catch (e) {
+      setResult(null);
+      setError(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verdict = result ? TESTTX_VERDICT[result.verdict] ?? TESTTX_VERDICT.unknown : null;
+
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid="radio-test-tx">
+      <div className="mb-3 flex items-center justify-between">
+        <Label className="text-foreground">Test transmit</Label>
+        {verdict && <Badge variant={verdict.tone}>{verdict.label}</Badge>}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Keys the radio for about a second with no modulation and reads its forward and reverse power
+        detectors. Tells a connected antenna from a dead feeder without a test set. The port stays in
+        service, so the node may key over the top of it.
+      </p>
+
+      <div className="mt-2 flex items-start gap-2 rounded-md bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+        <Icon name="alert" size={13} className="mt-px shrink-0" />
+        <span>
+          This <strong>transmits</strong> a carrier on the radio's current channel. Have an antenna or a
+          dummy load connected.
+        </span>
+      </div>
+
+      {result && <TestTxResult result={result} />}
+      {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
+
+      <div className="mt-3 flex justify-end">
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => setConfirming(true)}
+          disabled={busy || !canTransmit}
+          title={canTransmit
+            ? "Key the radio for a second and read its power detectors"
+            : "Transmitting requires the admin scope"}
+        >
+          <Icon name="config" size={14} />
+          {busy ? "Transmitting..." : result ? "Test again" : "Test TX"}
+        </Button>
+      </div>
+
+      <Modal
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title="Transmit a test carrier?"
+        footer={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Cancel</Button>
+            <Button variant="destructive" size="sm" onClick={() => void run()}>Transmit</Button>
+          </>
+        }
+      >
+        <div className="space-y-2 text-sm">
+          <p>
+            Port <strong>{portId}</strong>'s radio will be keyed for about a second on its current channel,
+            with nothing modulating it.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Check that an antenna or a dummy load is connected first. Keying into an open socket is exactly
+            what this test is for, but it is still a transmission into a mismatch.
+          </p>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// The numbers a test transmission came back with. Raw detector millivolts get equal billing with the
+// derived VSWR, because they are the part that is actually measured.
+function TestTxResult({ result }: { result: TaitTestTxResult }) {
+  const cell = (label: string, value: string) => (
+    <div key={label}>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="font-mono text-sm">{value}</div>
+    </div>
+  );
+  const mv = (v: number | null | undefined) => (v == null ? "-" : `${v} mV`);
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-border px-2.5 py-2" data-testid="radio-test-tx-result">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {cell("Forward", mv(result.forwardOverIdleMillivolts))}
+        {cell("Reverse", mv(result.reverseOverIdleMillivolts))}
+        {cell("VSWR (est.)", result.vswr == null ? "-" : `${result.vswr.toFixed(2)}:1`)}
+        {cell("Keyed", `${result.keyedMilliseconds} ms`)}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {result.radioModel ?? "the radio"}
+        {result.radioSerial ? ` (s/n ${result.radioSerial})` : ""}
+        {result.band ? `, ${result.band} band split` : ""} - {result.samples} detector reads while keyed,
+        idle offsets {mv(result.idleForwardMillivolts)} forward / {mv(result.idleReverseMillivolts)} reverse.
+      </p>
+      {result.notes.map((n, i) => (
+        <p key={i} className={cn("text-[11px]", i === 0 && result.verdict !== "ok" ? "text-warning" : "text-muted-foreground")}>{n}</p>
+      ))}
     </div>
   );
 }
