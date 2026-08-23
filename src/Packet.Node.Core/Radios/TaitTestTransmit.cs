@@ -68,6 +68,14 @@ public sealed class TaitTestTxException : Exception
 /// the ceiling used for a verdict is the more forgiving of the two, which is the direction that
 /// does not cry wolf.
 /// </para>
+/// <para>
+/// <b>The manual contradicts itself on the range</b> and this follows the tables. Table 4.5 (p.127)
+/// describes CCTM 318's answer as "a value from 0 to 1100 mV", which cannot be reconciled with
+/// Tables 11.3 and 12.3 expecting 1100-4000 mV at High power. Our own bench capture on a TM8110
+/// (docs/research/tait-ccdi-spike.md: 388 mV forward at Very Low) scales toward the tables, not the
+/// 1100 mV ceiling, so the tables are treated as authoritative. A reading from a real radio at High
+/// power into a dummy load would settle it outright, and is worth taking when one is to hand.
+/// </para>
 /// </remarks>
 /// <param name="Code">The band designator, e.g. <c>B1</c>.</param>
 /// <param name="HighPowerForwardMinMillivolts">Bottom of the expected forward reading at High power.</param>
