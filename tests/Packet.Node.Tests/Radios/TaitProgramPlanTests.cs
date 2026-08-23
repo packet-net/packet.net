@@ -32,7 +32,7 @@ public sealed class TaitProgramPlanTests
         plan.Bandwidth.Should().Be(Bandwidth.Narrow);
         plan.Power.Should().Be(PowerLevel.High);
         plan.Profile.Should().Be(TaitPdnProfile.Extra);
-        plan.ToWire().Should().Be(new TaitProgramPlanInfo(TwoMetres, TwoMetres, "narrow", "high", "pdn-extra"));
+        plan.ToWire().Should().Be(new TaitProgramPlanInfo(TwoMetres, TwoMetres, "narrow", "high", "pdn-extra", true));
     }
 
     [Theory]

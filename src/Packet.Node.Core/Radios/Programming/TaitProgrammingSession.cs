@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using Packet.Node.Core.Configuration;
 
 namespace Packet.Node.Core.Radios.Programming;
@@ -21,11 +22,12 @@ namespace Packet.Node.Core.Radios.Programming;
 /// terminal state is only published after that has happened.
 /// </para>
 /// </remarks>
-internal sealed class TaitProgrammingSession : IDisposable
+internal sealed partial class TaitProgrammingSession : IDisposable
 {
     private const int MaxHistory = 500;
 
     private readonly PortRadioConfig radio;
+    private readonly ILogger logger;
     private readonly ITaitProgrammingGateway gateway;
     private readonly ITaitCodeplugWriter writer;
     private readonly string? backupDirectory;
@@ -40,32 +42,40 @@ internal sealed class TaitProgrammingSession : IDisposable
     private string? radioModel;
     private string? radioSerial;
     private string? backupPath;
+    private TaitRadioSettings? current;
     private string? error;
+    private string? failedState;
     private DateTimeOffset? finishedAt;
     private Task? runTask;
 
     /// <summary>Create a run. Nothing happens until <see cref="Start"/>.</summary>
     /// <param name="portId">The port whose radio is being programmed.</param>
-    /// <param name="plan">What to write.</param>
+    /// <param name="mode">Whether the run writes the codeplug or only reads it.</param>
+    /// <param name="plan">What to write, or null on a read-only run.</param>
     /// <param name="radio">The port's radio block (how to find the device when it is not open).</param>
     /// <param name="devicePathHint">The device path already known from the live radio or the config,
     /// or null to resolve it once the port is down.</param>
     /// <param name="gateway">Node-host operations (port down / up, device resolution).</param>
     /// <param name="writer">The hardware seam.</param>
     /// <param name="backupDirectory">Where to snapshot the pre-change codeplug, or null.</param>
+    /// <param name="logger">Where a run failure is logged, with the exception, for journalctl.</param>
     /// <param name="clock">Time source for event timestamps.</param>
     internal TaitProgrammingSession(
         string portId,
-        TaitProgramPlan plan,
+        TaitProgramMode mode,
+        TaitProgramPlan? plan,
         PortRadioConfig radio,
         string? devicePathHint,
         ITaitProgrammingGateway gateway,
         ITaitCodeplugWriter writer,
         string? backupDirectory,
+        ILogger logger,
         TimeProvider clock)
     {
         PortId = portId;
+        Mode = mode;
         Plan = plan;
+        this.logger = logger;
         this.radio = radio;
         devicePath = devicePathHint;
         this.gateway = gateway;
@@ -78,8 +88,11 @@ internal sealed class TaitProgrammingSession : IDisposable
     /// <summary>The port this run holds (the registry key).</summary>
     internal string PortId { get; }
 
-    /// <summary>What this run is writing.</summary>
-    internal TaitProgramPlan Plan { get; }
+    /// <summary>Whether this run writes the codeplug or only reads it.</summary>
+    internal TaitProgramMode Mode { get; }
+
+    /// <summary>What this run is writing, or null on a read-only run.</summary>
+    internal TaitProgramPlan? Plan { get; }
 
     /// <summary>When the run was accepted.</summary>
     internal DateTimeOffset StartedAt { get; }
@@ -104,8 +117,10 @@ internal sealed class TaitProgrammingSession : IDisposable
             lock (gate)
             {
                 return new TaitProgramInfo(
-                    PortId, TaitProgramStates.ToWire(state), StartedAt, finishedAt, devicePath,
-                    Plan.ToWire(), radioModel, radioSerial, backupPath, error);
+                    PortId, TaitProgramModes.ToWire(Mode), TaitProgramStates.ToWire(state), StartedAt,
+                    finishedAt, devicePath, Plan?.ToWire(), current, radioModel, radioSerial, backupPath,
+                    error, failedState,
+                    [.. history.Where(e => !string.IsNullOrWhiteSpace(e.Message)).Select(e => e.Message!)]);
             }
         }
     }
@@ -113,7 +128,9 @@ internal sealed class TaitProgrammingSession : IDisposable
     /// <summary>Begin the run on a background task. Call once.</summary>
     internal void Start()
     {
-        Publish("state", TaitProgramState.Starting, $"programming {PortId}: {Plan}");
+        Publish("state", TaitProgramState.Starting, Plan is null
+            ? $"reading the codeplug of the radio on {PortId}"
+            : $"programming {PortId}: {Plan}");
         runTask = Task.Run(RunAsync);
     }
 
@@ -185,7 +202,9 @@ internal sealed class TaitProgrammingSession : IDisposable
         try
         {
             await gateway.RunWithPortDownAsync(PortId, ProgramAsync, cancellation.Token).ConfigureAwait(false);
-            Publish("state", TaitProgramState.Done, "done - the radio is programmed and the port is back in service");
+            Publish("state", TaitProgramState.Done, Plan is null
+                ? "done - the codeplug was read and the port is back in service"
+                : "done - the radio is programmed, it has restarted on the new codeplug, and the port is back in service");
         }
         catch (OperationCanceledException)
         {
@@ -197,7 +216,7 @@ internal sealed class TaitProgrammingSession : IDisposable
             // (a TimeoutException from the connect probe), an unvalidated codeplug database version,
             // a frequency the radio's band split does not cover, a serial fault mid-transfer. The
             // operator gets the reason, not a status code.
-            Fail(Describe(ex));
+            Fail(ex);
         }
     }
 
@@ -209,7 +228,7 @@ internal sealed class TaitProgrammingSession : IDisposable
             devicePath = path;
         }
 
-        Log($"port stopped; programming the radio on {path}");
+        Log($"port stopped; {(Plan is null ? "reading" : "programming")} the radio on {path}");
 
         var outcome = await Task.Run(
             () => writer.Program(path, Plan, backupDirectory, Report, cancellationToken),
@@ -220,10 +239,12 @@ internal sealed class TaitProgrammingSession : IDisposable
             radioModel = outcome.Model;
             radioSerial = outcome.Serial;
             backupPath = outcome.BackupPath;
+            current = outcome.Current;
         }
 
-        Publish("state", TaitProgramState.Restoring,
-            $"{outcome.RecordsWritten} records written; bringing the port back into service");
+        Publish("state", TaitProgramState.Restoring, Plan is null
+            ? "codeplug read; bringing the port back into service"
+            : $"{outcome.RecordsWritten} records written; bringing the port back into service");
     }
 
     private async Task<string> LocateAsync(CancellationToken cancellationToken)
@@ -261,17 +282,36 @@ internal sealed class TaitProgrammingSession : IDisposable
         Publish(moved ? "state" : "progress", reported, message, fraction);
     }
 
-    private void Fail(string reason)
+    private void Fail(Exception ex)
     {
+        TaitProgramState during;
+        lock (gate)
+        {
+            during = state;
+        }
+
+        // Whatever the panel ends up showing, the full exception is in the node's log: an
+        // unexpected fault is only ever diagnosable from the stack trace, and a run that failed on
+        // a radio the operator has since walked away from cannot be reproduced on demand.
+        LogRunFailed(logger, PortId, TaitProgramStates.ToWire(during), ex);
+
+        string reason = Describe(ex, during);
         lock (gate)
         {
             error = reason;
+            failedState = TaitProgramStates.ToWire(during);
         }
 
-        Publish("state", TaitProgramState.Failed, "failed - the port is back in service", error: reason);
+        Publish(
+            "state", TaitProgramState.Failed,
+            $"failed while {DescribeState(during)} - the port is back in service",
+            error: reason,
+            failedState: TaitProgramStates.ToWire(during));
     }
 
-    private void Publish(string kind, TaitProgramState newState, string? message, double? fraction = null, string? error = null)
+    private void Publish(
+        string kind, TaitProgramState newState, string? message, double? fraction = null,
+        string? error = null, string? failedState = null)
     {
         TaitProgramEvent evt;
         lock (gate)
@@ -283,7 +323,8 @@ internal sealed class TaitProgrammingSession : IDisposable
             }
 
             evt = new TaitProgramEvent(
-                kind, clock.GetUtcNow(), TaitProgramStates.ToWire(newState), message, fraction, error);
+                kind, clock.GetUtcNow(), TaitProgramStates.ToWire(newState), message, fraction, error,
+                failedState);
 
             history.Add(evt);
             if (history.Count > MaxHistory)
@@ -308,20 +349,63 @@ internal sealed class TaitProgrammingSession : IDisposable
         }
     }
 
-    /// <summary>An exception as the operator should read it. The library's own messages are already
-    /// written for a human ("power-cycle it as the read is triggered", "refusing to write: the
-    /// radio's database version..."), so they pass through; a serial-open failure gets the device
-    /// path and the two things worth checking; anything else is prefixed with its type so an
-    /// unexpected fault is still identifiable.</summary>
-    private string Describe(Exception ex) => ex switch
+    /// <summary>What the run was doing, in words, for the failure line.</summary>
+    private static string DescribeState(TaitProgramState state) => state switch
     {
-        TimeoutException => "the radio never entered programming mode - power-cycle it while the run is asking you to. " + ex.Message,
-        UnauthorizedAccessException or IOException =>
-            $"could not open the radio's serial port{(devicePath is { } path ? $" ({path})" : string.Empty)}: {ex.Message}. " +
-            "Is the cable on that device, and is anything else holding it open?",
-        InvalidOperationException or NotSupportedException or ArgumentException => ex.Message,
-        _ => $"{ex.GetType().Name}: {ex.Message}",
+        TaitProgramState.Starting => "taking the port out of service",
+        TaitProgramState.PowerCycle => "waiting for the radio to enter programming mode",
+        TaitProgramState.Reading => "reading the codeplug",
+        TaitProgramState.Writing => "writing the codeplug",
+        TaitProgramState.Restoring => "bringing the port back into service",
+        _ => "running",
     };
+
+    /// <summary>
+    /// An exception as the operator should read it. The library's own messages are already written
+    /// for a human ("refusing to write: the radio's database version..."), so they pass through; a
+    /// serial-open failure gets the device path and the two things worth checking; anything else is
+    /// prefixed with its type so an unexpected fault is still identifiable. Inner exceptions are
+    /// appended, because a serial fault's reason usually lives one level down.
+    /// </summary>
+    /// <remarks>
+    /// A timeout means two completely different things depending on when it lands, and saying the
+    /// wrong one sends the operator to power-cycle a radio that is already talking: before the
+    /// handshake it is "you did not power-cycle it", and after it is "it stopped answering
+    /// mid-transfer", which is a cable, a baud rate or a radio that rejected a command.
+    /// </remarks>
+    private string Describe(Exception ex, TaitProgramState during) => ex switch
+    {
+        TimeoutException when during is TaitProgramState.PowerCycle =>
+            "the radio never entered programming mode. It only latches programming mode as it boots, so it has " +
+            "to be power-cycled while the run is asking for it - and the programming lead has to be on " +
+            $"{devicePath ?? "the radio's data connector"}. ({ex.Message})",
+        TimeoutException =>
+            $"the radio stopped answering while {DescribeState(during)}: {ex.Message}. It had already entered " +
+            "programming mode, so this is the link or the radio refusing a command rather than a missed " +
+            "power-cycle - check the lead, and try again with a fresh power-cycle.",
+        UnauthorizedAccessException or IOException =>
+            $"could not use the radio's serial port{(devicePath is { } path ? $" ({path})" : string.Empty)}: " +
+            $"{Chain(ex)}. Is the cable on that device, and is anything else holding it open?",
+        InvalidOperationException or NotSupportedException or ArgumentException => Chain(ex),
+        _ => $"{ex.GetType().Name}: {Chain(ex)}",
+    };
+
+    /// <summary>An exception's message plus its inner messages, which is where a serial fault's
+    /// actual reason usually is.</summary>
+    private static string Chain(Exception ex)
+    {
+        string text = ex.Message;
+        for (Exception? inner = ex.InnerException; inner is not null; inner = inner.InnerException)
+        {
+            text += $" ({inner.Message})";
+        }
+
+        return text;
+    }
+
+    [LoggerMessage(EventId = 7793, Level = LogLevel.Error,
+        Message = "port {PortId}: the codeplug programming run failed while in state {State}")]
+    private static partial void LogRunFailed(ILogger logger, string portId, string state, Exception exception);
 
     private sealed class Subscription(TaitProgrammingSession owner, Guid id) : IDisposable
     {

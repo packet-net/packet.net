@@ -14,6 +14,9 @@ namespace Packet.Node.Api;
 ///   <item><c>POST /api/v1/ports/{id}/radio/program</c> - start a run (404 unknown port · 400 no
 ///     Tait radio / head-end-bound / bad settings · 409 the port is already busy). Returns the run
 ///     plus the caveat describing what it costs.</item>
+///   <item><c>POST /api/v1/ports/{id}/radio/program/read</c> - start a <b>read-only</b> run: the
+///     same port-down and power-cycle, no write. The settings read off the radio land in the run's
+///     <c>current</c>. Same refusals as a write.</item>
 ///   <item><c>GET /api/v1/ports/{id}/radio/program</c> - the run on this port, live or last
 ///     finished (404 when there has been none).</item>
 ///   <item><c>GET /api/v1/ports/{id}/radio/program/events</c> - SSE feed of the run: state changes,
@@ -47,6 +50,7 @@ public static class PdnRadioProgrammingApi
 
         var admin = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Admin);
         admin.MapPost("/ports/{id}/radio/program", StartAsync);
+        admin.MapPost("/ports/{id}/radio/program/read", StartReadAsync);
         admin.MapPost("/ports/{id}/radio/program/cancel", CancelAsync);
     }
 
@@ -62,12 +66,41 @@ public static class PdnRadioProgrammingApi
         audit.RecordRest(
             ctx, clock, "radio_program", id, "requested",
             $"rxHz={body?.RxFrequencyHz} txHz={body?.TxFrequencyHz} bandwidth={body?.Bandwidth} " +
-            $"power={body?.Power} profile={body?.Profile} - rewrites the radio's codeplug and stops the port");
+            $"power={body?.Power} profile={body?.Profile} replaceChannelTable={body?.ReplaceChannelTable} " +
+            "- rewrites the radio's codeplug and stops the port");
 
         try
         {
             var info = await programming.StartAsync(id, body, ct).ConfigureAwait(false);
             return Results.Ok(new { run = info, caveat = TaitProgramCaveat.Text });
+        }
+        catch (TaitProgramStartException ex)
+        {
+            return ex.Error switch
+            {
+                TaitProgramStartError.NotFound => Results.NotFound(new { error = ex.Message }),
+                TaitProgramStartError.Conflict => Results.Conflict(new { error = ex.Message }),
+                _ => Results.BadRequest(new { error = ex.Message }),
+            };
+        }
+    }
+
+    private static async Task<IResult> StartReadAsync(
+        string id,
+        HttpContext ctx,
+        TaitProgrammingService programming,
+        IAuditLog audit,
+        TimeProvider clock,
+        CancellationToken ct)
+    {
+        audit.RecordRest(
+            ctx, clock, "radio_program_read", id, "requested",
+            "reads the radio's codeplug and stops the port; writes nothing");
+
+        try
+        {
+            var info = await programming.StartReadAsync(id, ct).ConfigureAwait(false);
+            return Results.Ok(new { run = info, caveat = TaitProgramCaveat.ReadText });
         }
         catch (TaitProgramStartException ex)
         {

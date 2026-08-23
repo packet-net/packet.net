@@ -144,12 +144,35 @@ public sealed partial class TaitProgrammingService : IAsyncDisposable
         string portId, TaitProgramRequest? request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(portId);
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
 
         if (!TaitProgramPlan.TryParse(request, out var plan, out string parseError))
         {
             throw new TaitProgramStartException(TaitProgramStartError.BadRequest, parseError);
         }
+
+        return await StartAsync(portId, TaitProgramMode.Program, plan, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Start a <b>read-only</b> run on <paramref name="portId"/>: the same port-down, power-cycle
+    /// and codeplug read, with no write. What the radio is currently set to lands in the run's
+    /// <see cref="TaitProgramInfo.Current"/>, which is what the panel's Read button fills the form
+    /// from. It costs the port the same few minutes off the air, so it is refused for the same
+    /// reasons a write is.
+    /// </summary>
+    /// <param name="portId">The port whose attached radio to read.</param>
+    /// <param name="cancellationToken">Abandons the <em>start</em> (not the run it starts).</param>
+    /// <exception cref="TaitProgramStartException">The run was refused.</exception>
+    public Task<TaitProgramInfo> StartReadAsync(string portId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(portId);
+        return StartAsync(portId, TaitProgramMode.Read, plan: null, cancellationToken);
+    }
+
+    private async Task<TaitProgramInfo> StartAsync(
+        string portId, TaitProgramMode mode, TaitProgramPlan? plan, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
 
         await startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -164,7 +187,7 @@ public sealed partial class TaitProgrammingService : IAsyncDisposable
                 ?? (string.IsNullOrWhiteSpace(radio.Port) ? null : radio.Port);
 
             var session = new TaitProgrammingSession(
-                portId, plan, radio, devicePath, gateway, writer, backupDirectory, clock);
+                portId, mode, plan, radio, devicePath, gateway, writer, backupDirectory, logger, clock);
             // Preflight has already established that anything here is terminal, so superseding it
             // is safe - and releases its cancellation source.
             if (runs.TryRemove(portId, out var previous))
@@ -174,7 +197,7 @@ public sealed partial class TaitProgrammingService : IAsyncDisposable
 
             runs[portId] = session;
             session.Start();
-            string summary = plan.ToString();
+            string summary = plan?.ToString() ?? "read only";
             LogRunStarted(portId, devicePath ?? "(to be located)", summary);
             return session.Info;
         }

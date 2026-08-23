@@ -229,6 +229,18 @@ builder.Services.AddSingleton(sp => new Packet.Node.Core.Radios.Programming.Tait
     portBusy: id => sp.GetRequiredService<Packet.Node.Core.Tuning.PortTuningService>().Get(id) is not null,
     clock: sp.GetService<TimeProvider>()));
 
+// Test transmission (POST /api/v1/ports/{id}/radio/test-tx): key the port's Tait for about a second
+// and read its forward/reverse power detectors, so an operator can tell a connected antenna from a
+// dead one without a test set. Transmits, so admin-scoped + audited; refuses a port a tuning session
+// or a programming run already holds. See PdnRadioTestTxApi.
+builder.Services.AddSingleton(sp => new Packet.Node.Core.Radios.TaitTestTransmitService(
+    sp.GetRequiredService<Packet.Node.Core.Hosting.NodeHostedService>(),
+    sp.GetRequiredService<ILogger<Packet.Node.Core.Radios.TaitTestTransmitService>>(),
+    portBusy: id => sp.GetRequiredService<Packet.Node.Core.Tuning.PortTuningService>().Get(id) is not null
+        || sp.GetRequiredService<Packet.Node.Core.Radios.Programming.TaitProgrammingService>().Get(id)
+            is { State: "starting" or "power-cycle" or "reading" or "writing" or "restoring" },
+    clock: sp.GetService<TimeProvider>()));
+
 // SDM station hail (POST /api/v1/ports/{id}/hail): query a peer's mode/modem/capabilities over the
 // radios' SDM side channel - works across a mode mismatch that blocks the packet path. Also the
 // opt-in resident hail responder (PortRadioConfig.hailResponder) - a hosted loop reconciles it
@@ -944,6 +956,11 @@ app.MapPdnPortDoctorApi();
 // status + SSE event feeds are read-scoped. Mapped before the catch-all; specific routes win. See
 // PdnRadioProgrammingApi.
 app.MapPdnRadioProgrammingApi();
+
+// Test transmission: POST /api/v1/ports/{id}/radio/test-tx keys the port's Tait briefly and reports
+// what its power detectors read. Admin-scoped + audited - it puts a carrier on the air. Mapped
+// before the catch-all; specific routes win. See PdnRadioTestTxApi.
+app.MapPdnRadioTestTxApi();
 
 // Guided deviation tuning: an operator-initiated, transmitting, SDM-coordinated session on a port.
 // Mutating verbs (session/next/stop) are admin-scoped + audited; the SSE event feed is read-scoped.

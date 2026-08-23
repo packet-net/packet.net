@@ -18,7 +18,7 @@ import type {
   RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
-  TaitProgramRequest, TaitProgramInfo, TaitProgramEvent, TaitProgramState,
+  TaitProgramRequest, TaitProgramInfo, TaitProgramEvent, TaitProgramState, TaitTestTxResult,
   RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot,
   NinoModeCatalogue,
 } from "./types";
@@ -677,9 +677,24 @@ export function driveTuneStream(
 const programRuns = new Map<string, TaitProgramInfo>();
 const programCancels = new Map<string, () => void>();
 
+// What the scripted radio is "currently" set to: reported by a read run, and by a write run as the
+// record of what it replaced.
+const MOCK_CURRENT = {
+  rxFrequencyHz: 144_850_000,
+  txFrequencyHz: 144_850_000,
+  bandwidth: "narrow" as const,
+  power: "medium" as const,
+  profile: "none" as const,
+  channelCount: 6,
+  databaseVersion: "0095",
+  rxTone: "none",
+  txTone: "none",
+};
+
 export function startRadioProgram(portId: string, body: TaitProgramRequest): TaitProgramInfo {
   const run: TaitProgramInfo = {
     portId,
+    mode: "program",
     state: "starting",
     startedAt: new Date().toISOString(),
     finishedAt: null,
@@ -690,14 +705,78 @@ export function startRadioProgram(portId: string, body: TaitProgramRequest): Tai
       bandwidth: body.bandwidth,
       power: body.power,
       profile: body.profile,
+      replaceChannelTable: body.replaceChannelTable ?? true,
     },
+    current: null,
     radioModel: null,
     radioSerial: null,
     backupPath: null,
     error: null,
+    failedState: null,
+    log: [],
   };
   programRuns.set(portId, run);
   return run;
+}
+
+export function readRadioProgram(portId: string): TaitProgramInfo {
+  const run: TaitProgramInfo = {
+    portId,
+    mode: "read",
+    state: "starting",
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    devicePath: "/dev/ttyUSB1",
+    plan: null,
+    current: null,
+    radioModel: null,
+    radioSerial: null,
+    backupPath: null,
+    error: null,
+    failedState: null,
+    log: [],
+  };
+  programRuns.set(portId, run);
+  return run;
+}
+
+// A scripted test transmission for VITE_API_MODE=mock: a healthy antenna on a 2 m radio.
+export function radioTestTx(portId: string, milliseconds?: number): TaitTestTxResult {
+  const fwd = 1720;
+  const rev = 190;
+  const rho = rev / fwd;
+  return {
+    portId,
+    at: new Date().toISOString(),
+    keyedMilliseconds: milliseconds ?? 1000,
+    radioModel: "TMAB12-B100_0201",
+    radioSerial: "19925328",
+    band: "B1",
+    keyed: true,
+    inhibited: false,
+    idleForwardMillivolts: 12,
+    idleReverseMillivolts: 4,
+    forwardMillivolts: fwd + 12,
+    reverseMillivolts: rev + 4,
+    forwardOverIdleMillivolts: fwd,
+    reverseOverIdleMillivolts: rev,
+    reflectionCoefficient: rho,
+    vswr: (1 + rho) / (1 - rho),
+    foldback: false,
+    verdict: "ok",
+    reference: {
+      code: "B1",
+      highPowerForwardMinMillivolts: 1100,
+      highPowerForwardMaxMillivolts: 3400,
+      reverseCeilingMillivolts: 500,
+    },
+    notes: [
+      "The VSWR figure is an ESTIMATE from uncalibrated detectors: CCTM 318/319 are raw detector millivolts, " +
+      "Tait publishes no millivolts-to-watts curve, and its own service tooling never computes VSWR from them. " +
+      "Trust a change between runs on this station over the absolute number.",
+    ],
+    samples: 8,
+  };
 }
 
 export function radioProgram(portId: string): TaitProgramInfo | null {
@@ -721,7 +800,7 @@ export function driveRadioProgramStream(
     if (run) {
       programRuns.set(portId, {
         ...run, state, error: error ?? null, finishedAt: new Date().toISOString(),
-        radioModel: "TMAB12-B100_0201", radioSerial: "19925328",
+        radioModel: "TMAB12-B100_0201", radioSerial: "19925328", current: MOCK_CURRENT,
         backupPath: "/var/lib/packetnet/codeplug-backups/tait-19925328-20260823-101500.m8p",
       });
     }
@@ -729,28 +808,38 @@ export function driveRadioProgramStream(
   const emit = (e: TaitProgramEvent) => {
     if (stopped) return;
     const run = programRuns.get(portId);
-    if (run && !run.finishedAt) programRuns.set(portId, { ...run, state: e.state });
+    if (run && !run.finishedAt) {
+      programRuns.set(portId, {
+        ...run, state: e.state,
+        log: e.message ? [...(run.log ?? []), e.message] : (run.log ?? []),
+      });
+    }
     onEvent(e);
   };
   const after = (ms: number, fn: () => void) => { timers.push(setTimeout(() => { if (!stopped) fn(); }, ms)); };
+  const readOnly = programRuns.get(portId)?.mode === "read";
   const end = (state: TaitProgramState, message: string, error?: string) => {
     settle(state, error);
-    emit({ kind: "state", at: now(), state, message, fraction: null, error: error ?? null });
+    emit({ kind: "state", at: now(), state, message, fraction: null, error: error ?? null, failedState: null });
     onError?.();
   };
 
-  emit({ kind: "state", at: now(), state: "starting", message: `programming ${portId}`, fraction: null, error: null });
-  after(600, () => emit({ kind: "state", at: now(), state: "power-cycle", message: "power-cycle the radio now", fraction: null, error: null }));
-  after(3000, () => emit({ kind: "state", at: now(), state: "reading", message: "radio TMAB12-B100_0201 s/n 19925328", fraction: null, error: null }));
+  emit({ kind: "state", at: now(), state: "starting", message: readOnly ? `reading the radio on ${portId}` : `programming ${portId}`, fraction: null, error: null, failedState: null });
+  after(600, () => emit({ kind: "state", at: now(), state: "power-cycle", message: "power-cycle the radio now", fraction: null, error: null, failedState: null }));
+  after(3000, () => emit({ kind: "state", at: now(), state: "reading", message: "radio TMAB12-B100_0201 s/n 19925328", fraction: null, error: null, failedState: null }));
   for (let i = 1; i <= 4; i++) {
-    after(3000 + i * 400, () => emit({ kind: "progress", at: now(), state: "reading", message: `section ${i * 11}`, fraction: i / 5, error: null }));
+    after(3000 + i * 400, () => emit({ kind: "progress", at: now(), state: "reading", message: `section ${i * 11}`, fraction: i / 5, error: null, failedState: null }));
   }
-  after(5200, () => emit({ kind: "state", at: now(), state: "writing", message: "writing the codeplug back", fraction: null, error: null }));
-  for (let i = 1; i <= 4; i++) {
-    after(5200 + i * 400, () => emit({ kind: "progress", at: now(), state: "writing", message: `record ${i * 250} of 1000`, fraction: i / 5, error: null }));
+  if (!readOnly) {
+    after(5200, () => emit({ kind: "state", at: now(), state: "writing", message: "writing the codeplug back", fraction: null, error: null, failedState: null }));
+    for (let i = 1; i <= 4; i++) {
+      after(5200 + i * 400, () => emit({ kind: "progress", at: now(), state: "writing", message: `record ${i * 250} of 1000`, fraction: i / 5, error: null, failedState: null }));
+    }
   }
-  after(7000, () => emit({ kind: "state", at: now(), state: "restoring", message: "1000 records written; bringing the port back into service", fraction: null, error: null }));
-  after(8000, () => end("done", "done - the radio is programmed and the port is back in service"));
+  after(7000, () => emit({ kind: "state", at: now(), state: "restoring", message: readOnly ? "codeplug read; bringing the port back into service" : "1000 records written; bringing the port back into service", fraction: null, error: null, failedState: null }));
+  after(8000, () => end("done", readOnly
+    ? "done - the codeplug was read and the port is back in service"
+    : "done - the radio is programmed and the port is back in service"));
 
   programCancels.set(portId, () => end("cancelled", "cancelled - the port is back in service"));
 

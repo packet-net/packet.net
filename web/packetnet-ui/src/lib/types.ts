@@ -994,15 +994,18 @@ export type TaitProgramProfile = "none" | "pdn-basic" | "pdn-extra";
 export type TaitProgramState =
   | "starting" | "power-cycle" | "reading" | "writing" | "restoring" | "done" | "failed" | "cancelled";
 export type TaitProgramEventKind = "state" | "progress" | "log";
+// A run either rewrites the codeplug or only reads it back (the panel's Read button).
+export type TaitProgramMode = "program" | "read";
 
-// Frequencies ride as hertz, the codeplug's own unit - the panel types MHz and converts, so
-// nothing depends on a decimal round-trip. txFrequencyHz omitted = simplex.
+// Frequencies ride as hertz, the codeplug's own unit - the panel accepts MHz or Hz and converts, so
+// nothing depends on a decimal round-trip. txFrequencyHz omitted = simplex, which packet always is.
 export interface TaitProgramRequest {
   rxFrequencyHz: number;
   txFrequencyHz?: number;
   bandwidth: TaitProgramBandwidth;
   power: TaitProgramPower;
   profile: TaitProgramProfile;
+  replaceChannelTable?: boolean;
 }
 export interface TaitProgramPlanInfo {
   rxFrequencyHz: number;
@@ -1010,19 +1013,74 @@ export interface TaitProgramPlanInfo {
   bandwidth: TaitProgramBandwidth;
   power: TaitProgramPower;
   profile: TaitProgramProfile;
+  replaceChannelTable: boolean;
+}
+// What the radio's codeplug held when it was read, before anything was written. Everything but
+// databaseVersion is null when the node's field map does not cover that codeplug version - the read
+// still happened, and the version is the fact that decides whether a write is possible at all.
+export interface TaitRadioSettings {
+  rxFrequencyHz?: number | null;
+  txFrequencyHz?: number | null;
+  bandwidth?: TaitProgramBandwidth | null;
+  power?: TaitProgramPower | "off" | null;
+  profile?: TaitProgramProfile | null;
+  channelCount?: number | null;
+  databaseVersion?: string | null;
+  rxTone?: string | null;
+  txTone?: string | null;
 }
 export interface TaitProgramInfo {
   portId: string;
+  mode?: TaitProgramMode;
   state: TaitProgramState;
   startedAt: string;
   finishedAt?: string | null;
   devicePath?: string | null;
-  plan: TaitProgramPlanInfo;
+  plan?: TaitProgramPlanInfo | null;
+  current?: TaitRadioSettings | null;
   radioModel?: string | null;
   radioSerial?: string | null;
   backupPath?: string | null;
   error?: string | null;
+  failedState?: TaitProgramState | null;
+  log?: string[] | null;
 }
+// ---- test transmission (POST /ports/{id}/radio/test-tx) ----
+// The radio is keyed for about a second with no modulation and its forward/reverse power detectors
+// are read. The millivolts are raw CCTM 318/319 detector readings, uncalibrated - vswr is an
+// ESTIMATE derived from their ratio, never a measurement. See TaitTestTransmitService.
+export type TaitTestTxVerdict =
+  | "ok" | "elevated" | "high-reverse" | "foldback" | "inhibited" | "no-transmit" | "unknown";
+export interface TaitPowerDetectorReference {
+  code: string;
+  highPowerForwardMinMillivolts: number;
+  highPowerForwardMaxMillivolts: number;
+  reverseCeilingMillivolts: number;
+}
+export interface TaitTestTxResult {
+  portId: string;
+  at: string;
+  keyedMilliseconds: number;
+  radioModel?: string | null;
+  radioSerial?: string | null;
+  band?: string | null;
+  keyed: boolean;
+  inhibited: boolean;
+  idleForwardMillivolts?: number | null;
+  idleReverseMillivolts?: number | null;
+  forwardMillivolts?: number | null;
+  reverseMillivolts?: number | null;
+  forwardOverIdleMillivolts?: number | null;
+  reverseOverIdleMillivolts?: number | null;
+  reflectionCoefficient?: number | null;
+  vswr?: number | null;
+  foldback: boolean;
+  verdict: TaitTestTxVerdict;
+  reference?: TaitPowerDetectorReference | null;
+  notes: string[];
+  samples: number;
+}
+
 export interface TaitProgramEvent {
   kind: TaitProgramEventKind;
   at: string;
@@ -1030,6 +1088,7 @@ export interface TaitProgramEvent {
   message?: string | null;
   fraction?: number | null;
   error?: string | null;
+  failedState?: TaitProgramState | null;
 }
 
 // ---- 6.3 monitor event (derived from FrameTraced) ----------

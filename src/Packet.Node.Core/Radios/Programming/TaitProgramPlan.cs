@@ -11,10 +11,16 @@ namespace Packet.Node.Core.Radios.Programming;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>One channel.</b> The plan replaces the radio's channel table with a single channel, which is
-/// what packet.net#779 asked for: a PDN port drives one frequency, and a leftover channel 3 from a
-/// previous life is only ever a way to be transmitting somewhere unexpected. Shrinking happens from
-/// the top so channel 0 - the one the plan then fills in - is the survivor.
+/// <b>One channel, by default.</b> The plan replaces the radio's channel table with a single
+/// channel, which is what packet.net#779 asked for: a PDN port drives one frequency, and a leftover
+/// channel 3 from a previous life is only ever a way to be transmitting somewhere unexpected.
+/// Shrinking happens from the top so channel 0 - the one the plan then fills in - is the survivor.
+/// </para>
+/// <para>
+/// <b><see cref="ReplaceChannelTable"/> = false patches channel 0 in place</b> and leaves the rest
+/// of the table alone. Resizing a channel table is the newest thing in the codeplug library and the
+/// part with the least hardware behind it, so it is worth being able to take it out of the picture:
+/// the narrower write is the one the library's own `patch` verb has been run against a radio with.
 /// </para>
 /// <para>
 /// <b>Subaudible tones are cleared</b> on that channel. A packet channel is carrier-squelch: a
@@ -45,6 +51,9 @@ public sealed record TaitProgramPlan
 
     /// <summary>The PDN upgrade profile to apply on top of the channel.</summary>
     public required TaitPdnProfile Profile { get; init; }
+
+    /// <summary>Whether to delete the radio's other channels, leaving only the one written.</summary>
+    public required bool ReplaceChannelTable { get; init; }
 
     /// <summary>The lowest frequency any known Tait band split covers - the floor a request has to
     /// clear before the port is touched. The radio's OWN split is checked later, once the
@@ -111,6 +120,7 @@ public sealed record TaitProgramPlan
             Bandwidth = bandwidth,
             Power = power,
             Profile = profile,
+            ReplaceChannelTable = request.ReplaceChannelTable ?? true,
         };
         return true;
     }
@@ -159,9 +169,12 @@ public sealed record TaitProgramPlan
 
         // Shrink from the top: RemoveChannel shifts the ones above it down, and it refuses to
         // remove the last one, so this converges on channel 0 whatever the radio arrived with.
-        while (fields.ChannelCount > 1)
+        if (ReplaceChannelTable)
         {
-            fields.RemoveChannel(fields.ChannelCount - 1);
+            while (fields.ChannelCount > 1)
+            {
+                fields.RemoveChannel(fields.ChannelCount - 1);
+            }
         }
 
         // Order matters: the split-TX flag decides whether the TX frequency field is honoured at
@@ -192,12 +205,14 @@ public sealed record TaitProgramPlan
 
     /// <summary>This plan as the API projects it.</summary>
     public TaitProgramPlanInfo ToWire() => new(
-        RxFrequencyHz, TxFrequencyHz, BandwidthToWire(Bandwidth), PowerToWire(Power), ProfileToWire(Profile));
+        RxFrequencyHz, TxFrequencyHz, BandwidthToWire(Bandwidth), PowerToWire(Power), ProfileToWire(Profile),
+        ReplaceChannelTable);
 
     /// <summary>A one-line summary for the audit log and the run's opening feed line.</summary>
     public override string ToString() =>
         $"rx={Describe(RxFrequencyHz)} tx={Describe(TxFrequencyHz)} " +
-        $"bandwidth={BandwidthToWire(Bandwidth)} power={PowerToWire(Power)} profile={ProfileToWire(Profile)}";
+        $"bandwidth={BandwidthToWire(Bandwidth)} power={PowerToWire(Power)} profile={ProfileToWire(Profile)} " +
+        $"channels={(ReplaceChannelTable ? "replace" : "keep")}";
 
     /// <summary>A frequency in MHz to 6 dp, trailing zeros trimmed - how an operator reads one.</summary>
     internal static string Describe(long hz) =>
@@ -243,7 +258,8 @@ public sealed record TaitProgramPlan
 
     private static string Normalise(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
 
-    private static string BandwidthToWire(Bandwidth bandwidth) => bandwidth switch
+    /// <summary>The wire spelling of a bandwidth (shared with <see cref="TaitCodeplugReader"/>).</summary>
+    internal static string BandwidthToWire(Bandwidth bandwidth) => bandwidth switch
     {
         Bandwidth.Narrow => "narrow",
         Bandwidth.Medium => "medium",
@@ -251,7 +267,8 @@ public sealed record TaitProgramPlan
         _ => "unknown",
     };
 
-    private static string PowerToWire(PowerLevel power) => power switch
+    /// <summary>The wire spelling of a power step (shared with <see cref="TaitCodeplugReader"/>).</summary>
+    internal static string PowerToWire(PowerLevel power) => power switch
     {
         PowerLevel.Off => "off",
         PowerLevel.VeryLow => "verylow",

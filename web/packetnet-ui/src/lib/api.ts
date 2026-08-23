@@ -19,7 +19,7 @@ import type {
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
   TuningStartRequest, TuningSessionInfo, TuningEvent,
-  TaitProgramRequest, TaitProgramInfo, TaitProgramEvent,
+  TaitProgramRequest, TaitProgramInfo, TaitProgramEvent, TaitTestTxResult,
   RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot, NinoModeCatalogue,
 } from "./types";
 import * as mock from "./mock";
@@ -384,6 +384,10 @@ export const api = {
   // port · 400 no Tait radio / head-end-bound / bad settings · 409 the port is busy - each surfaces
   // its { error } as a thrown Error. Watch it with subscribeRadioProgram(id, ...).
   startRadioProgram: (id: string, body: TaitProgramRequest) => startRadioProgram(id, body),
+  // Read the radio's codeplug without writing it: same port-down and power-cycle, nothing written.
+  readRadioProgram: (id: string) => readRadioProgram(id),
+  // Key the port's Tait briefly and read its power detectors. TRANSMITS.
+  radioTestTx: (id: string, milliseconds?: number) => radioTestTx(id, milliseconds),
   // The run on a port - live or the last one that finished - or null when there has been none since
   // the node started. The panel calls it on mount so a reload re-attaches to a run in flight.
   radioProgram: (id: string) => radioProgram(id),
@@ -885,6 +889,38 @@ async function startRadioProgram(id: string, body: TaitProgramRequest): Promise<
   });
   if (!res.ok) throw new Error(await errorMessage(res, `Could not program the radio on '${id}' (${res.status}).`));
   return ((await res.json()) as { run: TaitProgramInfo }).run;
+}
+
+// Start a READ-ONLY run: the radio's codeplug is read back and reported in the run's `current`,
+// and nothing is written. Watched on the same feed as a write.
+async function readRadioProgram(id: string): Promise<TaitProgramInfo> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 200));
+    return mock.readRadioProgram(id);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/radio/program/read`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not read the radio on '${id}' (${res.status}).`));
+  return ((await res.json()) as { run: TaitProgramInfo }).run;
+}
+
+// Key the port's radio for about a second and report what its power detectors read. This puts a
+// carrier on the air, so it is admin-scoped and audited on the node; a 400/404/409/502 surfaces its
+// { error }.
+async function radioTestTx(id: string, milliseconds?: number): Promise<TaitTestTxResult> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 1200));
+    return mock.radioTestTx(id, milliseconds);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/radio/test-tx`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ milliseconds: milliseconds ?? null }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `The test transmission on '${id}' failed (${res.status}).`));
+  return ((await res.json()) as { result: TaitTestTxResult }).result;
 }
 
 // The run on a port, or null when there has never been one (the server's honest 404).

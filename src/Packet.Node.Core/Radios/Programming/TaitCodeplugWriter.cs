@@ -3,17 +3,22 @@ using M0LTE.Tait.Codeplug;
 
 namespace Packet.Node.Core.Radios.Programming;
 
-/// <summary>What a completed programming run learned about the radio it wrote.</summary>
+/// <summary>What a completed programming run learned about the radio it read (and, on a program
+/// run, wrote).</summary>
 /// <param name="Model">The radio's product code (e.g. <c>TMAB12-B100_0201</c>).</param>
 /// <param name="Serial">The radio's serial number.</param>
-/// <param name="BackupPath">Where the pre-change codeplug was snapshotted, or null when no backup
-/// directory was configured.</param>
-/// <param name="RecordsWritten">How many codeplug records the write block committed.</param>
+/// <param name="BackupPath">Where the codeplug read off the radio was snapshotted, or null when no
+/// backup directory was configured.</param>
+/// <param name="RecordsWritten">How many codeplug records the write block committed. 0 on a
+/// read-only run.</param>
+/// <param name="Current">The settings the radio's codeplug held when it was read - before a byte of
+/// any plan was applied.</param>
 public sealed record TaitCodeplugWriteOutcome(
     string? Model,
     string? Serial,
     string? BackupPath,
-    int RecordsWritten);
+    int RecordsWritten,
+    TaitRadioSettings? Current = null);
 
 /// <summary>
 /// The hardware seam of a programming run: everything that touches the radio's serial port, behind
@@ -30,11 +35,12 @@ public sealed record TaitCodeplugWriteOutcome(
 internal interface ITaitCodeplugWriter
 {
     /// <summary>
-    /// Read the radio's codeplug, apply <paramref name="plan"/>, and write it back.
+    /// Read the radio's codeplug and, when <paramref name="plan"/> is not null, apply it and write
+    /// it back.
     /// </summary>
     /// <param name="devicePath">The serial device the radio's programming interface is on.</param>
-    /// <param name="plan">What to write.</param>
-    /// <param name="backupDirectory">Where to snapshot the pre-change codeplug, or null to skip the
+    /// <param name="plan">What to write, or null for a read-only run.</param>
+    /// <param name="backupDirectory">Where to snapshot the codeplug as read, or null to skip the
     /// snapshot (no directory configured).</param>
     /// <param name="report">Progress sink: state, an optional 0..1 fraction within it, and a line
     /// of operator-facing text. Called on the calling thread, often.</param>
@@ -42,7 +48,7 @@ internal interface ITaitCodeplugWriter
     /// opens; past that the codeplug is being modified and the write always runs to its commit.</param>
     TaitCodeplugWriteOutcome Program(
         string devicePath,
-        TaitProgramPlan plan,
+        TaitProgramPlan? plan,
         string? backupDirectory,
         Action<TaitProgramState, double?, string> report,
         CancellationToken cancellationToken);
@@ -54,10 +60,12 @@ internal interface ITaitCodeplugWriter
 /// </summary>
 /// <remarks>
 /// <para>
-/// The sequence is the CLI's <c>patch</c> verb: connect (which is where the operator power-cycles
-/// the radio), interrogate, read the whole codeplug, snapshot it to a <c>.m8p</c> file, apply the
-/// plan, write it back. Read-modify-write rather than a canned image, so everything the plan does
-/// not name - the radio's identity, its audio routing, its GPS and customer-data blocks - survives.
+/// The sequence is the CLI's <c>patch</c> verb, command for command: connect (which is where the
+/// operator power-cycles the radio), read the whole codeplug, snapshot it to a <c>.m8p</c> file,
+/// apply the plan, write it back. Read-modify-write rather than a canned image, so everything the
+/// plan does not name - the radio's identity, its audio routing, its GPS and customer-data blocks -
+/// survives. The identity comes out of the image's own section 0 rather than a separate
+/// <c>Interrogate</c>, so nothing goes down the wire that the CLI's proven path does not send.
 /// </para>
 /// <para>
 /// The port opens at 19200, the rate the programming handshake runs at; no baud probing, because
@@ -90,13 +98,12 @@ internal sealed class TaitCodeplugWriter : ITaitCodeplugWriter
     /// <inheritdoc/>
     public TaitCodeplugWriteOutcome Program(
         string devicePath,
-        TaitProgramPlan plan,
+        TaitProgramPlan? plan,
         string? backupDirectory,
         Action<TaitProgramState, double?, string> report,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(devicePath);
-        ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(report);
 
         var options = new ProgrammerOptions
@@ -110,31 +117,66 @@ internal sealed class TaitCodeplugWriter : ITaitCodeplugWriter
         // Connect is the power-cycle window: it probes for the boot banner until the radio answers
         // or the wait runs out. Report it before the first probe so the prompt is on the operator's
         // screen while they are still walking to the radio.
-        report(TaitProgramState.PowerCycle, null, "power-cycle the radio now");
+        report(TaitProgramState.PowerCycle, null, $"opening {devicePath} at {ProgrammingBaud} baud; power-cycle the radio now");
         programmer.Connect(cancellationToken);
 
-        TaitIdentity identity = programmer.Interrogate();
+        report(TaitProgramState.Reading, null, "programming mode latched; reading the codeplug");
+        CodeplugImage image = programmer.ReadImage(cancellationToken: cancellationToken);
+        TaitIdentity identity = TaitIdentity.FromSectionZero(
+            [.. image.Records.Where(r => r.Section == 0x00)]);
+
+        TaitRadioSettings current = TaitCodeplugReader.Describe(image);
+        report(TaitProgramState.Reading, null,
+            $"read {image.Records.Count} records from {identity.Model ?? "an unidentified radio"}" +
+            $" s/n {identity.Serial ?? "?"}, codeplug database {current.DatabaseVersion ?? "(unknown)"}");
+        report(TaitProgramState.Reading, null, DescribeCurrent(current));
+
+        string? backupPath = SaveBackup(image, backupDirectory, identity, report);
+
+        if (plan is null)
+        {
+            report(TaitProgramState.Reading, null, "read only - nothing was written to the radio");
+            return new TaitCodeplugWriteOutcome(identity.Model, identity.Serial, backupPath, 0, current);
+        }
+
+        // Band split first: refusing here costs the operator a power-cycle, but writing a 70 cm
+        // frequency into a 2 m radio costs them a radio that transmits nowhere useful.
         if (plan.CheckBand(identity.Model) is { } bandRefusal)
         {
             throw new InvalidOperationException(bandRefusal);
         }
 
-        report(TaitProgramState.Reading, null, $"radio {identity.Model} s/n {identity.Serial}");
-        CodeplugImage image = programmer.ReadImage(cancellationToken: cancellationToken);
-
-        string? backupPath = SaveBackup(image, backupDirectory, identity, report);
-
         CodeplugFields fields = CodeplugFields.Open(image);
+        int before = fields.ChannelCount;
         plan.ApplyTo(fields);
+        if (plan.ReplaceChannelTable && before > 1)
+        {
+            report(TaitProgramState.Writing, null,
+                $"channel table shrunk from {before} channels to 1");
+        }
 
         report(TaitProgramState.Writing, null, $"writing {plan}");
         int written = programmer.WriteImage(fields.Image, cancellationToken);
+        report(TaitProgramState.Writing, null,
+            $"{written} records committed - the radio restarts on the new codeplug by itself");
 
-        return new TaitCodeplugWriteOutcome(identity.Model, identity.Serial, backupPath, written);
+        return new TaitCodeplugWriteOutcome(identity.Model, identity.Serial, backupPath, written, current);
     }
 
+    /// <summary>One line of "what this radio is set to now", for the run's feed. A codeplug on an
+    /// unmapped database version says so instead, because that is the fact that decides whether a
+    /// write is even possible.</summary>
+    private static string DescribeCurrent(TaitRadioSettings s) =>
+        s.RxFrequencyHz is { } rx
+            ? $"currently: channel 1 rx {TaitProgramPlan.Describe(rx)}" +
+              (s.TxFrequencyHz is { } tx && tx != rx ? $" tx {TaitProgramPlan.Describe(tx)}" : " (simplex)") +
+              $", {s.Bandwidth}, {s.Power} power, tones rx={s.RxTone ?? "?"}/tx={s.TxTone ?? "?"}" +
+              $", {s.ChannelCount} channel(s), pdn profile {s.Profile}"
+            : $"this node's field map does not cover codeplug database version " +
+              $"'{s.DatabaseVersion ?? "(unknown)"}', so its settings cannot be read and a write would be refused";
+
     /// <summary>
-    /// Snapshot the codeplug exactly as it was read, before a byte of the plan is applied - the
+    /// Snapshot the codeplug exactly as it was read, before a byte of any plan is applied - the
     /// library's first safety rail, and the only way back if a write turns out to have been a
     /// mistake. A snapshot failure is reported and the run continues: refusing to program because a
     /// disk write failed would be a worse outcome than programming without the belt.
@@ -155,12 +197,12 @@ internal sealed class TaitCodeplugWriter : ITaitCodeplugWriter
             string serial = Sanitise(identity.Serial) is { Length: > 0 } s ? s : "unknown";
             string path = Path.Combine(backupDirectory, $"tait-{serial}-{stamp}.m8p");
             File.WriteAllText(path, image.ToM8p());
-            report(TaitProgramState.Reading, null, $"pre-change codeplug saved to {path}");
+            report(TaitProgramState.Reading, null, $"codeplug saved to {path}");
             return path;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            report(TaitProgramState.Reading, null, $"could not save the pre-change codeplug: {ex.Message}");
+            report(TaitProgramState.Reading, null, $"could not save the codeplug snapshot: {ex.Message}");
             return null;
         }
     }
