@@ -26,8 +26,7 @@ Get a shell on the system you're installing it on.
 Download the current pdn node release to the Pi with wget, into `/tmp`. The download URL is the same every time - it carries no version, and always gives you the latest release. Pick the file for your architecture: for a 64 bit Pi 4 that is `_arm64.deb`.
 
 ```
-cd /tmp
-wget -q https://github.com/packet-net/packet.net/releases/latest/download/packetnet_arm64.deb
+wget -qP /tmp https://github.com/packet-net/packet.net/releases/latest/download/packetnet_arm64.deb
 ```
 
 Install it:
@@ -90,8 +89,20 @@ Then click Ports, then edit the port you defined, and set the Modem mode to what
 
 PAUSING HERE
 
+## Updating pdn
+
+Very similar to installation:
+
+```
+rm -f /tmp/packetnet_*.deb
+wget -qP /tmp https://github.com/packet-net/packet.net/releases/latest/download/packetnet_arm64.deb
+sudo apt install -qy /tmp/packetnet_arm64.deb
+```
+
 ## Removing Packet.NET
 
 ```
 sudo apt remove packetnet
 ```
+
+
