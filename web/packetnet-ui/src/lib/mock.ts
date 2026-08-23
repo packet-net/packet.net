@@ -18,6 +18,7 @@ import type {
   RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
+  TaitProgramRequest, TaitProgramInfo, TaitProgramEvent, TaitProgramState,
   RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot,
   NinoModeCatalogue,
 } from "./types";
@@ -665,6 +666,97 @@ export function driveTuneStream(
   return () => {
     stopped = true;
     tuneDrivers.delete(portId);
+    for (const t of timers) clearTimeout(t);
+  };
+}
+
+// ---- Tait codeplug programming (#779) ----------------------
+// A scripted run for VITE_API_MODE=mock: the real thing spends most of its time waiting for a human
+// to power-cycle a radio, so the demo walks the same states on a short timer. Cancelling ends it
+// where a real cancel would.
+const programRuns = new Map<string, TaitProgramInfo>();
+const programCancels = new Map<string, () => void>();
+
+export function startRadioProgram(portId: string, body: TaitProgramRequest): TaitProgramInfo {
+  const run: TaitProgramInfo = {
+    portId,
+    state: "starting",
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    devicePath: "/dev/ttyUSB1",
+    plan: {
+      rxFrequencyHz: body.rxFrequencyHz,
+      txFrequencyHz: body.txFrequencyHz ?? body.rxFrequencyHz,
+      bandwidth: body.bandwidth,
+      power: body.power,
+      profile: body.profile,
+    },
+    radioModel: null,
+    radioSerial: null,
+    backupPath: null,
+    error: null,
+  };
+  programRuns.set(portId, run);
+  return run;
+}
+
+export function radioProgram(portId: string): TaitProgramInfo | null {
+  return programRuns.get(portId) ?? null;
+}
+
+export function cancelRadioProgram(portId: string): void {
+  programCancels.get(portId)?.();
+}
+
+export function driveRadioProgramStream(
+  portId: string,
+  onEvent: (e: TaitProgramEvent) => void,
+  onError?: () => void,
+): () => void {
+  let stopped = false;
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const now = () => new Date().toISOString();
+  const settle = (state: TaitProgramState, error?: string) => {
+    const run = programRuns.get(portId);
+    if (run) {
+      programRuns.set(portId, {
+        ...run, state, error: error ?? null, finishedAt: new Date().toISOString(),
+        radioModel: "TMAB12-B100_0201", radioSerial: "19925328",
+        backupPath: "/var/lib/packetnet/codeplug-backups/tait-19925328-20260823-101500.m8p",
+      });
+    }
+  };
+  const emit = (e: TaitProgramEvent) => {
+    if (stopped) return;
+    const run = programRuns.get(portId);
+    if (run && !run.finishedAt) programRuns.set(portId, { ...run, state: e.state });
+    onEvent(e);
+  };
+  const after = (ms: number, fn: () => void) => { timers.push(setTimeout(() => { if (!stopped) fn(); }, ms)); };
+  const end = (state: TaitProgramState, message: string, error?: string) => {
+    settle(state, error);
+    emit({ kind: "state", at: now(), state, message, fraction: null, error: error ?? null });
+    onError?.();
+  };
+
+  emit({ kind: "state", at: now(), state: "starting", message: `programming ${portId}`, fraction: null, error: null });
+  after(600, () => emit({ kind: "state", at: now(), state: "power-cycle", message: "power-cycle the radio now", fraction: null, error: null }));
+  after(3000, () => emit({ kind: "state", at: now(), state: "reading", message: "radio TMAB12-B100_0201 s/n 19925328", fraction: null, error: null }));
+  for (let i = 1; i <= 4; i++) {
+    after(3000 + i * 400, () => emit({ kind: "progress", at: now(), state: "reading", message: `section ${i * 11}`, fraction: i / 5, error: null }));
+  }
+  after(5200, () => emit({ kind: "state", at: now(), state: "writing", message: "writing the codeplug back", fraction: null, error: null }));
+  for (let i = 1; i <= 4; i++) {
+    after(5200 + i * 400, () => emit({ kind: "progress", at: now(), state: "writing", message: `record ${i * 250} of 1000`, fraction: i / 5, error: null }));
+  }
+  after(7000, () => emit({ kind: "state", at: now(), state: "restoring", message: "1000 records written; bringing the port back into service", fraction: null, error: null }));
+  after(8000, () => end("done", "done - the radio is programmed and the port is back in service"));
+
+  programCancels.set(portId, () => end("cancelled", "cancelled - the port is back in service"));
+
+  return () => {
+    stopped = true;
+    programCancels.delete(portId);
     for (const t of timers) clearTimeout(t);
   };
 }

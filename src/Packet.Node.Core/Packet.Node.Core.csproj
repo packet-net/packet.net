@@ -39,6 +39,12 @@
     <PackageReference Include="pdn-soundmodem" />
     <PackageReference Include="M0LTE.Pocsag" />
     <PackageReference Include="M0LTE.Ardop" />
+    <!-- Tait codeplug programming (AGPL-3.0-or-later, M0LTE/tait-codeplug) - the port
+         editor's "Program radio" panel reads the attached Tait's codeplug, replaces its
+         channel table with the single channel the operator typed, optionally applies a
+         pdn-basic / pdn-extra upgrade profile, and writes it back. See
+         Radios/Programming/. -->
+    <PackageReference Include="M0LTE.Tait.Codeplug" />
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="YamlDotNet" />
     <!-- kissproxy-compatible MQTT frame emission (default-off; docs/research/pdn-mqtt-frame-emission.md).

@@ -213,6 +213,22 @@ builder.Services.AddSingleton<Packet.Node.Core.Diagnostics.PortDoctorRunner>();
 // PdnPortTuningApi.
 builder.Services.AddSingleton<Packet.Node.Core.Tuning.PortTuningService>();
 
+// Tait codeplug programming (POST/GET /api/v1/ports/{id}/radio/program*, #779): the port editor's
+// "Program radio" panel. A run takes its port out of service, drives the attached Tait's boot-time
+// programming interface (the operator power-cycles the radio when prompted), and puts the port
+// back. Holds live runs -> singleton; the container disposes it at shutdown, which cancels every
+// run and restores its port. The pre-change codeplug of each run is snapshotted beside the db (the
+// writable StateDirectory on the packaged node, e.g. /var/lib/packetnet/codeplug-backups). A port
+// already held by a tuning session is refused rather than yanked out from under it. See
+// PdnRadioProgrammingApi.
+builder.Services.AddSingleton(sp => new Packet.Node.Core.Radios.Programming.TaitProgrammingService(
+    sp.GetRequiredService<Packet.Node.Core.Hosting.NodeHostedService>(),
+    sp.GetRequiredService<ILogger<Packet.Node.Core.Radios.Programming.TaitProgrammingService>>(),
+    backupDirectory: Path.Combine(
+        Path.GetDirectoryName(Path.GetFullPath(dbPath)) ?? ".", "codeplug-backups"),
+    portBusy: id => sp.GetRequiredService<Packet.Node.Core.Tuning.PortTuningService>().Get(id) is not null,
+    clock: sp.GetService<TimeProvider>()));
+
 // SDM station hail (POST /api/v1/ports/{id}/hail): query a peer's mode/modem/capabilities over the
 // radios' SDM side channel - works across a mode mismatch that blocks the packet path. Also the
 // opt-in resident hail responder (PortRadioConfig.hailResponder) - a hosted loop reconciles it
@@ -922,6 +938,12 @@ app.MapPdnModemsApi();
 // (non-transmitting probes only); POST ?interrupt=true is admin-scoped + audited and briefly
 // transmits. Mapped before the catch-all; specific routes win. See PdnPortDoctorApi.
 app.MapPdnPortDoctorApi();
+
+// Tait codeplug programming: the port editor's "Program radio" panel (#779). POST start/cancel are
+// admin-scoped + audited (a run rewrites the radio's codeplug and stops the port for minutes); the
+// status + SSE event feeds are read-scoped. Mapped before the catch-all; specific routes win. See
+// PdnRadioProgrammingApi.
+app.MapPdnRadioProgrammingApi();
 
 // Guided deviation tuning: an operator-initiated, transmitting, SDM-coordinated session on a port.
 // Mutating verbs (session/next/stop) are admin-scoped + audited; the SSE event feed is read-scoped.

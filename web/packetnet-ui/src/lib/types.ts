@@ -982,6 +982,56 @@ export interface TuningEvent {
   recommendedTxDelayMs?: number | null;
 }
 
+// ---- Tait codeplug programming (server: Packet.Node.Core.Radios.Programming, #779) ----
+// The port editor's "Program radio" panel: write ONE channel - frequency, bandwidth, power - into
+// the attached Tait TM8100/TM8200, optionally applying a PDN upgrade profile on top. A run takes
+// the port off the air for a few minutes, needs the operator to power-cycle the radio when asked,
+// and always puts the port back. POST .../radio/program starts one (admin, audited);
+// GET .../radio/program/events streams it (SSE `program` events, read scope).
+export type TaitProgramBandwidth = "narrow" | "medium" | "wide";
+export type TaitProgramPower = "verylow" | "low" | "medium" | "high";
+export type TaitProgramProfile = "none" | "pdn-basic" | "pdn-extra";
+export type TaitProgramState =
+  | "starting" | "power-cycle" | "reading" | "writing" | "restoring" | "done" | "failed" | "cancelled";
+export type TaitProgramEventKind = "state" | "progress" | "log";
+
+// Frequencies ride as hertz, the codeplug's own unit - the panel types MHz and converts, so
+// nothing depends on a decimal round-trip. txFrequencyHz omitted = simplex.
+export interface TaitProgramRequest {
+  rxFrequencyHz: number;
+  txFrequencyHz?: number;
+  bandwidth: TaitProgramBandwidth;
+  power: TaitProgramPower;
+  profile: TaitProgramProfile;
+}
+export interface TaitProgramPlanInfo {
+  rxFrequencyHz: number;
+  txFrequencyHz: number;
+  bandwidth: TaitProgramBandwidth;
+  power: TaitProgramPower;
+  profile: TaitProgramProfile;
+}
+export interface TaitProgramInfo {
+  portId: string;
+  state: TaitProgramState;
+  startedAt: string;
+  finishedAt?: string | null;
+  devicePath?: string | null;
+  plan: TaitProgramPlanInfo;
+  radioModel?: string | null;
+  radioSerial?: string | null;
+  backupPath?: string | null;
+  error?: string | null;
+}
+export interface TaitProgramEvent {
+  kind: TaitProgramEventKind;
+  at: string;
+  state: TaitProgramState;
+  message?: string | null;
+  fraction?: number | null;
+  error?: string | null;
+}
+
 // ---- 6.3 monitor event (derived from FrameTraced) ----------
 // Every value the server's decoder puts in MonitorEvent.type. Derived, not transcribed: the
 // contract fixture sweeps all 256 control octets through MonitorEventFactory.Classify, so this

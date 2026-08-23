@@ -771,6 +771,41 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     }
 
     /// <summary>
+    /// Take one configured port <b>out of service and leave it there</b> - a teardown with no
+    /// bring-up. Returns <c>false</c> (no-op) when the id is unknown. Single-threaded by contract,
+    /// like <see cref="RestartPortAsync"/>: the caller must serialise this against reconciles (the
+    /// host runs it under its supervisor gate via <c>RunExclusiveAsync</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For the one operation that needs the port's <em>hardware</em>, not just its air time:
+    /// programming an attached Tait's codeplug (<c>Radios/Programming</c>) drives the radio's own
+    /// serial device, which the running port holds open. Pausing the listener - what a tuning
+    /// session does - is not enough; the port has to let go of the device.
+    /// </para>
+    /// <para>
+    /// <b>The caller must bring the port back</b> (<see cref="RestartPortAsync"/>) on every exit
+    /// path. Nothing else will: a torn-down port lands in <see cref="PortState.Configured"/> with no
+    /// running half, which the running-state watchdog deliberately ignores (it only supervises ports
+    /// that are up), and a reconcile only touches ports whose <em>config</em> changed.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> StopPortAsync(string id, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await TearDownAsync(id, TeardownReason.Suspend).ConfigureAwait(false);
+        }
+        finally
+        {
+            mutationGate.Release();
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Execute a reconcile plan. Single-threaded by contract - the
     /// <see cref="NodeHostedService"/> serialises calls so two reconciles never
     /// overlap. Touches only the ports the plan names.
@@ -1557,6 +1592,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         /// <summary>The supervisor is being disposed.</summary>
         Shutdown,
+
+        /// <summary>The port was stopped deliberately so something else can use its hardware
+        /// (codeplug programming), and the caller will bring it back.</summary>
+        Suspend,
     }
 
     private async Task TearDownAsync(string id, TeardownReason reason)
@@ -1599,6 +1638,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             TeardownReason.Disable => "disabled",
             TeardownReason.Remove => "removed from config",
             TeardownReason.Fault => "faulted",
+            TeardownReason.Suspend => "stopped to program the radio",
             _ => "shutdown",
         });
 
@@ -1632,7 +1672,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         SetState(
             id,
             reason == TeardownReason.Disable ? PortState.Disabled : PortState.Configured,
-            reason == TeardownReason.Disable ? "disabled" : "torn down",
+            reason switch
+            {
+                TeardownReason.Disable => "disabled",
+                TeardownReason.Suspend => "stopped to program the radio",
+                _ => "torn down",
+            },
             degraded: []);
     }
 

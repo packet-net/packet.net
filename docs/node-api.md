@@ -181,6 +181,10 @@ To regenerate after adding or moving a route: `scripts/update-node-api.sh`.
 | POST | `/api/v1/ports/{id}/lifecycle` | `operate` |
 | GET | `/api/v1/ports/{id}/quality` | `read` |
 | GET | `/api/v1/ports/{id}/radio` | `read` |
+| GET | `/api/v1/ports/{id}/radio/program` | `read` |
+| POST | `/api/v1/ports/{id}/radio/program` | `admin` |
+| POST | `/api/v1/ports/{id}/radio/program/cancel` | `admin` |
+| GET | `/api/v1/ports/{id}/radio/program/events` | `read` (SSE, also takes `?access_token=`) |
 | GET | `/api/v1/ports/{id}/rig` | `read` |
 | POST | `/api/v1/ports/{id}/rig/frequency` | `operate` |
 | POST | `/api/v1/ports/{id}/rig/mode` | `operate` |

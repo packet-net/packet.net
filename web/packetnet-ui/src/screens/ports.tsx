@@ -18,6 +18,8 @@ import type {
   PortCompatConfig, CompatPreset, PortLinkConfig, LinkDialPreference, LinkPreConnectXid,
   RadioConfig, RadioScanResult, ReconcileResult, ValidationProblem,
   RigConfig, RigScan, RigScanDevice, RigModelCatalogue, NinoMode,
+  TaitProgramInfo, TaitProgramEvent, TaitProgramState,
+  TaitProgramBandwidth, TaitProgramPower, TaitProgramProfile,
 } from "@/lib/types";
 import {
   RADIO_PROFILES, NINO_MODES, ninoModeLabel, SOUNDMODEM_MODES, CHANNEL_MODES,
@@ -26,7 +28,7 @@ import {
   KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs,
 } from "@/lib/catalogue";
 import { portDotState, portHealth, portIsServing } from "@/lib/health";
-import { api, apiMode, useQuery, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
+import { api, apiMode, useQuery, subscribeRadioProgram, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 
 // Transport kinds that can carry a LOCALLY-CABLED radio-control attachment - the serial-modem
@@ -1067,6 +1069,14 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
           ? <RadioControlSection radio={model.radio} onChange={setRadio} />
           : model.radio && <ManagedRadioSection radio={model.radio} />}
 
+        {/* Program the attached Tait's codeplug (#779). Gated on the SAVED radio, not the draft:
+            a run acts on the live node, so a radio the operator has only just switched on in this
+            panel has nothing to program until the port is saved. Head-end-bound and rig-backed
+            radios have no local programming interface, so the section stays away for them. */}
+        {!orig._new && isProgrammableRadio(before?.radio) && (
+          <RadioProgrammingSection portId={orig._origId ?? orig.id} />
+        )}
+
         {/* rig-control (CAT) attachment — every transport kind (the rig never touches the packet path) */}
         <RigControlSection rig={model.rig} onChange={setRig} />
 
@@ -1382,6 +1392,352 @@ function RadioControlSection({ radio, onChange }: {
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ---- codeplug programming: write one channel into the attached Tait (#779) ----
+// A "Program radio" panel for a port whose SAVED radio is a locally-cabled Tait CCDI. The operator
+// types a frequency, bandwidth and power and optionally picks a PDN upgrade profile; the node stops
+// the port, drives the radio's boot-time programming interface (prompting for the power-cycle the
+// handshake needs), writes the channel, and puts the port back. A run is minutes long and outlives
+// this panel, so the panel attaches to whatever run the node already has rather than owning one.
+const BANDWIDTH_OPTIONS: { id: TaitProgramBandwidth; label: string }[] = [
+  { id: "narrow", label: "Narrow - 12.5 kHz" },
+  { id: "medium", label: "Medium - 20 kHz" },
+  { id: "wide", label: "Wide - 25 kHz" },
+];
+const POWER_OPTIONS: { id: TaitProgramPower; label: string }[] = [
+  { id: "verylow", label: "Very low" },
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+];
+const PROFILE_OPTIONS: { id: TaitProgramProfile; label: string; hint: string }[] = [
+  { id: "none", label: "Don't apply one", hint: "Leave the radio's data and signalling settings exactly as they are." },
+  { id: "pdn-basic", label: "pdn-basic", hint: "The CCDI command channel pdn's telemetry and control ride on: RSSI, PA health, PTT and carrier-sense." },
+  { id: "pdn-extra", label: "pdn-extra", hint: "pdn-basic plus the radio's own FFSK packet modem (a TNC-less link) and the SDM side channel." },
+];
+// The states a run is still working in - the panel shows progress rather than the form.
+const PROGRAM_RUNNING: TaitProgramState[] = ["starting", "power-cycle", "reading", "writing", "restoring"];
+const PROGRAM_STATE_LABEL: Record<TaitProgramState, string> = {
+  "starting": "Stopping the port",
+  "power-cycle": "Waiting for the radio",
+  "reading": "Reading the codeplug",
+  "writing": "Writing the codeplug",
+  "restoring": "Bringing the port back",
+  "done": "Programmed",
+  "failed": "Failed",
+  "cancelled": "Cancelled",
+};
+
+// Whether a SAVED radio block is one this panel can program: a Tait CCDI on a local serial line.
+// A head-end-bound radio is at the far end of a TCP bridge (the boot latch needs a cabled line, and
+// the operator has to be at the radio anyway); a `rig` radio is a CAT daemon, not a Tait.
+export function isProgrammableRadio(radio: RadioConfig | null | undefined): boolean {
+  if (!radio || radio.kind !== "tait-ccdi") return false;
+  if (radio.headEndId?.trim() && radio.deviceId?.trim()) return false;
+  return !!radio.serial?.trim() || !!radio.port?.trim();
+}
+
+// MHz in the box, hertz on the wire. Returns null for anything that is not a frequency a Tait can
+// reach - the same floor/ceiling the node checks, so the button is disabled rather than the run
+// being refused after the operator has committed to it.
+export function mhzToHz(text: string): number | null {
+  const mhz = Number.parseFloat(text.trim());
+  if (!Number.isFinite(mhz)) return null;
+  const hz = Math.round(mhz * 1_000_000);
+  return hz >= 66_000_000 && hz <= 870_000_000 ? hz : null;
+}
+
+function RadioProgrammingSection({ portId }: { portId: string }) {
+  const { has } = useAuth();
+  const canProgram = has("admin");   // a run rewrites the radio and stops the port
+  const [rx, setRx] = useState("");
+  const [tx, setTx] = useState("");
+  const [simplex, setSimplex] = useState(true);
+  const [bandwidth, setBandwidth] = useState<TaitProgramBandwidth>("narrow");
+  const [power, setPower] = useState<TaitProgramPower>("high");
+  const [profile, setProfile] = useState<TaitProgramProfile>("none");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [run, setRun] = useState<TaitProgramInfo | null>(null);
+  // The feed's latest state + note, and a short tail of the log. Kept separately from `run` so a
+  // live event renders immediately without re-fetching the run.
+  const [live, setLive] = useState<TaitProgramEvent | null>(null);
+  const [log, setLog] = useState<TaitProgramEvent[]>([]);
+
+  // Attach to whatever run the node already has for this port. A run outlives the panel, so
+  // re-opening the editor (or reloading the browser) mid-run picks it back up.
+  useEffect(() => {
+    let alive = true;
+    api.radioProgram(portId)
+      .then((r) => { if (alive) setRun(r); })
+      .catch(() => { /* no run to attach to; the form is the right thing to show */ });
+    return () => { alive = false; };
+  }, [portId]);
+
+  // Watch a run that is still going. The feed replays its whole history first, so the log is
+  // complete however late this subscribes (a reopened editor mid-run picks up the whole story); the
+  // stream closing means the run ended, which is when the final run - outcome, backup path, failure
+  // reason - is re-read. A run that had already finished when the panel opened needs no feed: its
+  // outcome is in the run itself.
+  const runKey = run?.startedAt ?? null;
+  const runLive = !!run && !run.finishedAt;
+  useEffect(() => {
+    if (!runKey || !runLive) return;
+    const stop = subscribeRadioProgram(
+      portId,
+      (e) => {
+        setLive(e);
+        if (e.message) setLog((prev) => [...prev.slice(-7), e]);
+      },
+      () => { void api.radioProgram(portId).then(setRun).catch(() => undefined); },
+    );
+    return stop;
+  }, [portId, runKey, runLive]);
+
+  // The feed's view wins over the run's, because it is newer. With no run at all the value is
+  // never rendered (the badge, the progress panel and the outcome line all require one).
+  const state: TaitProgramState = live?.state ?? run?.state ?? "done";
+  const running = !!run && PROGRAM_RUNNING.includes(state);
+  const rxHz = mhzToHz(rx);
+  const txHz = simplex ? rxHz : mhzToHz(tx);
+  const ready = rxHz != null && txHz != null && !busy;
+
+  const start = async () => {
+    if (rxHz == null || txHz == null) return;
+    setConfirming(false);
+    setBusy(true);
+    setError(null);
+    try {
+      setLive(null);
+      setLog([]);
+      setRun(await api.startRadioProgram(portId, {
+        rxFrequencyHz: rxHz,
+        txFrequencyHz: txHz,
+        bandwidth,
+        power,
+        profile,
+      }));
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = async () => {
+    setBusy(true);
+    try { await api.cancelRadioProgram(portId); }
+    catch (e) { setError(String((e as Error)?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid="radio-programming">
+      <div className="mb-3 flex items-center justify-between">
+        <Label className="text-foreground">Program radio</Label>
+        {run && <Badge variant={state === "done" ? "success" : state === "failed" ? "danger" : running ? "warning" : "muted"}>{PROGRAM_STATE_LABEL[state]}</Badge>}
+      </div>
+
+      {running ? (
+        <ProgramProgress
+          state={state}
+          event={live}
+          log={log}
+          onCancel={cancel}
+          canCancel={canProgram && !busy && state !== "restoring"}
+        />
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Write <strong>one channel</strong> into this port's Tait TM8100 / TM8200 over its programming interface -
+            no Windows CPS. Everything else in the radio's codeplug is left as it is.
+          </p>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Receive (MHz)" info="The frequency the radio listens on. Type it in MHz, e.g. 144.8125.">
+              <Input value={rx} onChange={(e) => setRx(e.target.value)} placeholder="144.812500" className="font-mono" inputMode="decimal" aria-label="Receive (MHz)" />
+            </Field>
+            <Field
+              label="Transmit (MHz)"
+              info="The frequency the radio transmits on. Leave 'same as receive' ticked for a simplex packet channel; untick it for a split (a repeater or a duplex link)."
+              badge={
+                <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <input type="checkbox" checked={simplex} onChange={(e) => setSimplex(e.target.checked)} />
+                  same as receive
+                </label>
+              }
+            >
+              <Input
+                value={simplex ? rx : tx}
+                onChange={(e) => setTx(e.target.value)}
+                disabled={simplex}
+                placeholder="145.025000"
+                className="font-mono"
+                inputMode="decimal"
+                aria-label="Transmit (MHz)"
+              />
+            </Field>
+            <Field label="Bandwidth" info="Channel spacing. UK amateur packet is normally narrow (12.5 kHz); wide (25 kHz) buys deviation headroom for the faster modes where the band plan allows it.">
+              <Select value={bandwidth} onChange={(e) => setBandwidth(e.target.value as TaitProgramBandwidth)}>
+                {BANDWIDTH_OPTIONS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+              </Select>
+            </Field>
+            <Field label="Transmit power" info="The radio's power step for this channel. What each step is in watts depends on the band, the variant and the radio's calibration.">
+              <Select value={power} onChange={(e) => setPower(e.target.value as TaitProgramPower)}>
+                {POWER_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </Select>
+            </Field>
+          </div>
+
+          <fieldset className="space-y-1.5">
+            <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">pdn upgrade profile</legend>
+            {PROFILE_OPTIONS.map((p) => (
+              <label key={p.id} className={cn("flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 transition-colors", profile === p.id ? "border-primary bg-primary/5" : "border-border hover:bg-accent")}>
+                <input
+                  type="radio"
+                  name={`pdn-profile-${portId}`}
+                  className="mt-1"
+                  checked={profile === p.id}
+                  onChange={() => setProfile(p.id)}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{p.label}</span>
+                  <span className="block text-[11px] text-muted-foreground">{p.hint}</span>
+                </span>
+              </label>
+            ))}
+            <p className="text-[11px] text-muted-foreground">Neither profile touches frequencies, channels or power.</p>
+          </fieldset>
+
+          <div className="flex items-start gap-2 rounded-md bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+            <Icon name="alert" size={13} className="mt-px shrink-0" />
+            <span>
+              This <strong>stops the port</strong> for a few minutes, <strong>replaces the radio's channel table</strong> with
+              this one channel, and clears any CTCSS/DCS on it. You will be asked to power-cycle the radio.
+              The current codeplug is saved to a .m8p file on the node first, and the port comes back either way.
+            </span>
+          </div>
+
+          {run && !running && <ProgramOutcome run={run} state={state} />}
+          {error && <p className="text-[11px] text-danger">{error}</p>}
+
+          <div className="flex justify-end">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setConfirming(true)}
+              disabled={!ready || !canProgram}
+              title={canProgram
+                ? (ready ? "Program this radio" : "Enter a frequency the radio can reach first")
+                : "Programming a radio requires the admin scope"}
+            >
+              <Icon name="config" size={14} />
+              {run ? "Program again" : "Program radio"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Modal
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title="Program this radio?"
+        footer={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Cancel</Button>
+            <Button variant="destructive" size="sm" onClick={start}>Program radio</Button>
+          </>
+        }
+      >
+        <div className="space-y-2 text-sm">
+          <p>
+            Port <strong>{portId}</strong> goes off the air, and its radio is reprogrammed to a single channel:
+          </p>
+          <ul className="ml-4 list-disc space-y-0.5 font-mono text-xs">
+            <li>receive {rx || "-"} MHz</li>
+            <li>transmit {(simplex ? rx : tx) || "-"} MHz</li>
+            <li>{bandwidth} bandwidth, {power} power</li>
+            <li>profile: {profile}</li>
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            Have the radio in reach: you will be asked to switch it off and on again while the node waits for it.
+          </p>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// The live half of the panel: what the run is doing, the power-cycle prompt when it needs one, and
+// the last few lines of the feed.
+function ProgramProgress({ state, event, log, onCancel, canCancel }: {
+  state: TaitProgramState;
+  event: TaitProgramEvent | null;
+  log: TaitProgramEvent[];
+  onCancel: () => void;
+  canCancel: boolean;
+}) {
+  const fraction = event?.fraction ?? null;
+  return (
+    <div className="space-y-3" data-testid="radio-programming-run">
+      {state === "power-cycle" ? (
+        <div className="rounded-md border border-warning bg-warning/10 px-3 py-2.5 text-sm text-warning" role="status">
+          <p className="font-semibold">Power-cycle the radio now</p>
+          <p className="mt-0.5 text-xs">
+            Switch the radio off and on again. It only enters programming mode as it boots, so the node is
+            watching for it - this waits about 90 seconds.
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm font-medium">{PROGRAM_STATE_LABEL[state]}</p>
+      )}
+
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full bg-primary transition-all", fraction == null && "animate-pulse")}
+          style={{ width: fraction == null ? "100%" : `${Math.round(fraction * 100)}%` }}
+        />
+      </div>
+
+      {log.length > 0 && (
+        <div className="max-h-28 overflow-y-auto rounded-md bg-muted/40 p-2 font-mono text-[11px] text-muted-foreground">
+          {log.map((e, i) => <div key={`${e.at}-${i}`} className="truncate">{e.message}</div>)}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-muted-foreground">
+          The port is off the air until this finishes. It comes back whether the run succeeds or not.
+        </p>
+        <Button variant="outline" size="sm" onClick={onCancel} disabled={!canCancel}
+          title={canCancel ? "Abandon the run" : "Too late to stop - the codeplug is being committed"}>
+          Stop
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// What the last run did, shown above the form so a repeat is one edit away.
+function ProgramOutcome({ run, state }: { run: TaitProgramInfo; state: TaitProgramState }) {
+  const tone = state === "done" ? "text-success" : state === "failed" ? "text-danger" : "text-muted-foreground";
+  const summary = state === "done"
+    ? `Programmed ${run.radioModel ?? "the radio"}${run.radioSerial ? ` (s/n ${run.radioSerial})` : ""} to ${(run.plan.rxFrequencyHz / 1e6).toFixed(6)} MHz.`
+    : state === "cancelled"
+      ? "The last run was cancelled. The port is back in service."
+      : run.error ?? "The last run failed.";
+  return (
+    <div className="rounded-md border border-border px-2.5 py-2 text-xs">
+      <p className={cn("font-medium", tone)}>{summary}</p>
+      {run.backupPath && (
+        <p className="mt-0.5 break-all font-mono text-[11px] text-muted-foreground">
+          codeplug backed up to {run.backupPath}
+        </p>
       )}
     </div>
   );

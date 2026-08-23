@@ -205,6 +205,48 @@ const CASES: Case[] = [
     then: (r) => expect(r).toBe(false),
   },
 
+  // ---- Tait codeplug programming (#779) ----
+  {
+    key: "startRadioProgram",
+    call: (a) => a.startRadioProgram("vhf-1", {
+      rxFrequencyHz: 144_812_500, txFrequencyHz: 144_812_500,
+      bandwidth: "narrow", power: "high", profile: "pdn-extra",
+    }),
+    responses: [jsonResponse({ run: { portId: "vhf-1", state: "starting" }, caveat: "..." })],
+    method: "POST", url: "/api/v1/ports/vhf-1/radio/program",
+    body: {
+      rxFrequencyHz: 144812500, txFrequencyHz: 144812500,
+      bandwidth: "narrow", power: "high", profile: "pdn-extra",
+    },
+    // The run is unwrapped from the { run, caveat } envelope the server answers with.
+    then: (r) => expect(r).toEqual({ portId: "vhf-1", state: "starting" }),
+  },
+  {
+    key: "radioProgram", call: (a) => a.radioProgram("vhf-1"),
+    responses: [jsonResponse({ portId: "vhf-1", state: "done" })],
+    method: "GET", url: "/api/v1/ports/vhf-1/radio/program",
+    then: (r) => expect(r).toEqual({ portId: "vhf-1", state: "done" }),
+  },
+  {
+    key: "radioProgram", label: "404 means nothing has been programmed on this port",
+    call: (a) => a.radioProgram("vhf-1"),
+    responses: [new Response(null, { status: 404 })],
+    method: "GET", url: "/api/v1/ports/vhf-1/radio/program",
+    then: (r) => expect(r).toBeNull(),
+  },
+  {
+    key: "cancelRadioProgram", call: (a) => a.cancelRadioProgram("vhf-1"),
+    method: "POST", url: "/api/v1/ports/vhf-1/radio/program/cancel",
+    then: (r) => expect(r).toBe(true),
+  },
+  {
+    key: "cancelRadioProgram", label: "404 means no run was live",
+    call: (a) => a.cancelRadioProgram("vhf-1"),
+    responses: [new Response(null, { status: 404 })],
+    method: "POST", url: "/api/v1/ports/vhf-1/radio/program/cancel",
+    then: (r) => expect(r).toBe(false),
+  },
+
   // ---- config write ----
   {
     key: "putConfig", call: (a) => a.putConfig(CONFIG), method: "PUT",
@@ -636,6 +678,7 @@ describe("openStream - the SSE subscribers", () => {
       mod.subscribeConsoleOutput("console:7", () => {}),
       mod.subscribeTune("vhf-1", () => {}),
       mod.subscribeSpectrum("vhf-1", () => {}),
+      mod.subscribeRadioProgram("vhf-1", () => {}),
     ];
 
     expect(FakeEventSource.instances.map((e) => e.path)).toEqual([
@@ -645,6 +688,7 @@ describe("openStream - the SSE subscribers", () => {
       "/api/v1/console/console%3A7/stream",
       "/api/v1/ports/vhf-1/tuning/events",
       "/api/v1/ports/vhf-1/spectrum/events",
+      "/api/v1/ports/vhf-1/radio/program/events",
     ]);
     // EventSource cannot set headers, so the JWT rides in the query string on every feed.
     for (const es of FakeEventSource.instances) expect(es.accessToken).toBe("access");
@@ -705,6 +749,28 @@ describe("openStream - the SSE subscribers", () => {
     spec.send("spectrum", { seq: 1, binHz: 2.93, bins: btoa(String.fromCharCode(0, 128, 255)) });
     expect(lines).toEqual([{ bins: [0, 128, 255], hz: 2.93 }]);
     stopSpec();
+  });
+
+  it("subscribeRadioProgram decodes each `program` event and closes when the run ends", async () => {
+    const mod = await loadLiveApi();
+    const seen: { state: string; message?: string | null }[] = [];
+    let gone = false;
+    const stop = mod.subscribeRadioProgram(
+      "vhf-1",
+      (e) => seen.push({ state: e.state, message: e.message }),
+      () => { gone = true; },
+    );
+    const es = FakeEventSource.instances[0];
+    es.open();
+    es.send("program", { kind: "state", at: "t", state: "power-cycle", message: "power-cycle the radio now" });
+    es.send("program", { kind: "progress", at: "t", state: "writing", message: "record 500 of 1000", fraction: 0.5 });
+
+    expect(seen).toEqual([
+      { state: "power-cycle", message: "power-cycle the radio now" },
+      { state: "writing", message: "record 500 of 1000" },
+    ]);
+    expect(gone).toBe(false);
+    stop();
   });
 
   it("a transient drop is left to the browser; only a CLOSED stream is re-opened by us", async () => {

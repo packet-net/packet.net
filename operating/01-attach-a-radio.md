@@ -206,5 +206,10 @@ it up (the telemetry wrap is chosen when the port is built, not live-toggled).
 
 ## Next
 
-You've attached a radio - now go **see the link**:
+**Radio not programmed for your frequency yet?** Or fresh out of somebody else's
+commercial network? Attach it and save the port, then
+[program it from the panel →](11-program-your-tait.md) - frequency, bandwidth, power
+and the pdn feature set, without the Windows CPS.
+
+Otherwise, go **see the link**:
 [2. See your link quality →](02-see-your-link-quality.md)
