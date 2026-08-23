@@ -107,10 +107,11 @@ declare -A HEADING=(
   [fix]="Fixed"
   [perf]="Performance"
   [changed]="Changed"
+  [deps]="Dependencies"
   [docs]="Documentation"
   [internal]="Internal"
 )
-ORDER=(breaking feat fix perf changed docs internal)
+ORDER=(breaking feat fix perf changed deps docs internal)
 declare -A BULLETS=()
 for b in "${ORDER[@]}"; do BULLETS[$b]=""; done
 
@@ -120,10 +121,24 @@ classify() { # $1 = lowercased type token
     fix|fixes|bugfix|hotfix|revert)                 echo fix ;;
     perf)                                           echo perf ;;
     docs|doc|plan|guide|operating|readme)           echo docs ;;
-    ci|build|chore|deps|test|tests|refactor|style|\
+    deps|dependencies)                              echo deps ;;
+    ci|build|chore|test|tests|refactor|style|\
     interop|fuzz|docker|packaging|spec|spike|\
     fixture|fixtures|licence|license|tooling)       echo internal ;;
     *)                                              echo changed ;;
+  esac
+}
+
+# Dependency subjects come in two shapes: one opens with the package name
+# ("pdn-soundmodem 0.42.0 -> 0.43.0 ..."), the other with a verb ("sweep every
+# NuGet pin ..."). Sentence-case the second, leave the first alone - capitalising
+# a package renames it ("Pdn-soundmodem"), and the release page is the one place
+# the name has to match what an operator types. A leading hyphen, dot, digit or
+# capital is the tell; ordinary English verbs have none of them.
+sentence_case_unless_package() {
+  case "${1%% *}" in
+    *[-._0-9]*|*[A-Z]*) printf '%s' "$1" ;;
+    *)                  printf '%s' "${1^}" ;;
   esac
 }
 
@@ -147,6 +162,7 @@ if [ -n "$prev" ]; then
 
     bucket="changed"
     text="$subject"
+    cap=1
     if [[ "$subject" =~ ^([A-Za-z][A-Za-z0-9_-]*)(\(([^\)]*)\))?(!)?:[[:space:]]*(.*)$ ]]; then
       type="${BASH_REMATCH[1],,}"
       scope="${BASH_REMATCH[3]}"
@@ -156,9 +172,29 @@ if [ -n "$prev" ]; then
       # A bare subsystem prefix (`catalog: ...`) is a scope, not a type: keep it
       # visible so the bullet still says which part of the node moved.
       if [ "$bucket" = "changed" ] && [ -z "$scope" ]; then scope="$type"; fi
+      # A dependency bump is not plumbing here. The node builds the DSP, AX.25 and
+      # RHP libraries in from packages, so a bump is regularly the only thing
+      # carrying a behaviour change to an operator: pdn-soundmodem 0.43.0 moved
+      # qpsk600's transmit roll-off, altering what a station radiates, and reached
+      # the node with no source change in this repo at all. Under "Internal" that
+      # reads as housekeeping, so `chore(deps)` and a bare `deps:` get their own
+      # heading. `!` still wins - a breaking bump is breaking news first.
+      if [ "$scope" = "deps" ] || [ "$type" = "deps" ]; then
+        bucket="deps"
+        # The heading already says Dependencies; a "**deps:**" scope on every
+        # bullet under it says nothing twice.
+        [ "$scope" = "deps" ] && scope=""
+        # Casing for these is decided per subject, not blanket - see
+        # sentence_case_unless_package.
+        cap=0
+      fi
       [ -n "$bang" ] && bucket="breaking"
-      text="${rest^}"
-      [ -n "$scope" ] && text="**${scope}:** ${rest^}"
+      if [ "$cap" -eq 1 ]; then
+        text="${rest^}"
+      else
+        text="$(sentence_case_unless_package "$rest")"
+      fi
+      [ -n "$scope" ] && text="**${scope}:** ${text}"
     else
       text="${subject^}"
     fi
