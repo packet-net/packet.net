@@ -1372,6 +1372,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-23 - node-v0.44.0 through node-v0.47.0 regressed to install boilerplate, because this branch never merged
+
+The change-notes work below was written on 2026-08-21, opened as [#766](https://github.com/packet-net/packet.net/pull/766), and then left open. The backfill sweep had already rewritten the whole back catalogue by hand, so `node-v0.43.0` and everything before it read as change notes and the job looked done; but `main` still carried the fixed `--notes` paragraph, so the next four releases cut from it (`node-v0.44.0`, `0.45.0`, `0.46.0`, `0.47.0`) went out with the same install blurb as each other and said nothing about what had changed. Tom spotted it on the release page.
+
+Two things were done about it. The four bodies were regenerated with `scripts/backfill-release-notes.sh --tag node-v0.44.0 ... --tag node-v0.47.0` from this branch, which is exactly what the workflow would have produced at tag time, with the replaced bodies saved off first. And this branch was rebased onto current `main` and merged, so the generator is now what cuts the notes rather than a script somebody has to remember to run.
+
+The rebase had two real conflicts, both from work that landed while the branch sat: `publish-node.yml` had gained the version-free asset staging step (the notes step now sits after it, and `--notes-file release-notes.md` replaces the rewritten `--notes` paragraph), and the amendment log had gained the entries above this one. Nothing about the generator itself changed.
+
+The lesson worth keeping is that a hand-run backfill hides an unmerged workflow fix perfectly: every release visible at the time reads correctly, and the regression only shows up on the next tag. A CI-side change is not done until it is on `main`.
+
 ### 2026-08-22 - pdn-soundmodem 0.42.0 -> 0.43.0: qpsk600's transmit roll-off moves 0.20 -> 0.35, the first bump in this chain that changes what a station radiates
 
 One upstream change ([pdn-soundmodem#344](https://github.com/packet-net/pdn-soundmodem/issues/344), PR [#348](https://github.com/packet-net/pdn-soundmodem/pull/348)): `QpskModem.Qpsk600`'s factory roll-off stops overriding the QPSK default and keeps `QpskModulator.DefaultRollOff` (0.35), the #340 campaign re-run for qpsk600 on its own evidence. Everything before it in this chain was receive-side or identity-side. **This one alters the transmitted waveform**, which is why it was held for an explicit go-ahead before the release went out.
