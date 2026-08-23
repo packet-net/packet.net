@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/app/auth";
-import { Ports, isProgrammableRadio, mhzToHz } from "@/screens/ports";
+import { Ports, isProgrammableRadio, parseFrequencyHz } from "@/screens/ports";
 import { api } from "@/lib/api";
 import { NODE_CONFIG } from "@/lib/mock";
 import type { NodeConfig, PortConfig, TaitProgramInfo } from "@/lib/types";
@@ -48,15 +48,36 @@ const BARE_PORT: PortConfig = {
 
 const RUN: TaitProgramInfo = {
   portId: "vhf-1",
+  mode: "program",
   state: "done",
   startedAt: "2026-08-23T10:15:00Z",
   finishedAt: "2026-08-23T10:18:00Z",
   devicePath: "/dev/ttyUSB1",
-  plan: { rxFrequencyHz: 144_812_500, txFrequencyHz: 144_812_500, bandwidth: "narrow", power: "high", profile: "pdn-extra" },
+  plan: {
+    rxFrequencyHz: 144_812_500, txFrequencyHz: 144_812_500,
+    bandwidth: "narrow", power: "high", profile: "pdn-extra", replaceChannelTable: true,
+  },
+  current: null,
   radioModel: "TMAB12-B100_0201",
   radioSerial: "19925328",
   backupPath: "/var/lib/packetnet/codeplug-backups/tait-19925328-20260823-101500.m8p",
   error: null,
+  failedState: null,
+  log: [],
+};
+
+// A finished READ run: no plan, and what the radio turned out to be set to.
+const READ_RUN: TaitProgramInfo = {
+  ...RUN,
+  mode: "read",
+  plan: null,
+  startedAt: "2026-08-23T11:00:00Z",
+  finishedAt: "2026-08-23T11:02:00Z",
+  current: {
+    rxFrequencyHz: 145_287_500, txFrequencyHz: 145_287_500,
+    bandwidth: "wide", power: "medium", profile: "pdn-basic",
+    channelCount: 6, databaseVersion: "0095", rxTone: "none", txTone: "none",
+  },
 };
 
 function seedConfig(...ports: PortConfig[]) {
@@ -115,17 +136,31 @@ describe("isProgrammableRadio - which radios the panel is offered for", () => {
   });
 });
 
-describe("mhzToHz - what the frequency box accepts", () => {
-  it("converts MHz to whole hertz", () => {
-    expect(mhzToHz("144.812500")).toBe(144_812_500);
-    expect(mhzToHz(" 433.4 ")).toBe(433_400_000);
+describe("parseFrequencyHz - what the frequency box accepts", () => {
+  it("reads decimal megahertz", () => {
+    expect(parseFrequencyHz("144.812500")).toBe(144_812_500);
+    expect(parseFrequencyHz(" 433.4 ")).toBe(433_400_000);
+    expect(parseFrequencyHz("144")).toBe(144_000_000);
+  });
+
+  it("reads plain hertz too - the magnitude tells them apart with no overlap to worry about", () => {
+    expect(parseFrequencyHz("144812500")).toBe(144_812_500);
+    expect(parseFrequencyHz("144,812,500")).toBe(144_812_500);
+    expect(parseFrequencyHz("433 400 000")).toBe(433_400_000);
+  });
+
+  it("honours a written-out unit over the magnitude rule", () => {
+    expect(parseFrequencyHz("144.8125 MHz")).toBe(144_812_500);
+    expect(parseFrequencyHz("144812500 Hz")).toBe(144_812_500);
+    expect(parseFrequencyHz("144812.5 kHz")).toBe(144_812_500);
   });
 
   it("refuses anything no Tait band split reaches, so the button never sends a guaranteed 400", () => {
-    expect(mhzToHz("")).toBeNull();
-    expect(mhzToHz("not a frequency")).toBeNull();
-    expect(mhzToHz("14.100")).toBeNull();
-    expect(mhzToHz("2400")).toBeNull();
+    expect(parseFrequencyHz("")).toBeNull();
+    expect(parseFrequencyHz("not a frequency")).toBeNull();
+    expect(parseFrequencyHz("14.100")).toBeNull();
+    expect(parseFrequencyHz("2400")).toBeNull();
+    expect(parseFrequencyHz("14100000")).toBeNull();
   });
 });
 
@@ -163,14 +198,14 @@ describe("PortEditor - the Program radio panel", () => {
     expect(screen.queryByTestId("radio-programming")).not.toBeInTheDocument();
   });
 
-  it("posts hertz, the chosen bandwidth/power and the chosen profile", async () => {
+  it("posts hertz, the chosen bandwidth/power and the chosen profile - and no TX frequency, because packet is simplex", async () => {
     const start = vi.spyOn(api, "startRadioProgram").mockResolvedValue({ ...RUN, state: "starting", finishedAt: null });
     seedConfig(TAIT_PORT);
     await mountPorts();
     await openEditor("vhf-1");
     const panel = await screen.findByTestId("radio-programming");
 
-    fireEvent.change(within(panel).getByLabelText("Receive (MHz)"), { target: { value: "144.9375" } });
+    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.9375" } });
     fireEvent.change(within(panel).getByDisplayValue("Narrow - 12.5 kHz"), { target: { value: "wide" } });
     fireEvent.change(within(panel).getByDisplayValue("High"), { target: { value: "low" } });
     fireEvent.click(within(panel).getByLabelText(/pdn-extra/i, { selector: "input" }));
@@ -183,31 +218,71 @@ describe("PortEditor - the Program radio panel", () => {
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
     expect(start.mock.calls[0]).toEqual(["vhf-1", {
       rxFrequencyHz: 144_937_500,
-      txFrequencyHz: 144_937_500,
       bandwidth: "wide",
       power: "low",
       profile: "pdn-extra",
+      replaceChannelTable: true,
     }]);
   });
 
-  it("sends a split channel when 'same as receive' is unticked", async () => {
+  it("takes the frequency in hertz as readily as in megahertz", async () => {
     const start = vi.spyOn(api, "startRadioProgram").mockResolvedValue({ ...RUN, state: "starting", finishedAt: null });
     seedConfig(TAIT_PORT);
     await mountPorts();
     await openEditor("vhf-1");
     const panel = await screen.findByTestId("radio-programming");
 
-    fireEvent.change(within(panel).getByLabelText("Receive (MHz)"), { target: { value: "145.625" } });
-    fireEvent.click(within(panel).getByLabelText(/same as receive/i));
-    fireEvent.change(within(panel).getByLabelText("Transmit (MHz)"), { target: { value: "145.025" } });
+    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144812500" } });
+    // The box says back what it made of it, so a mistyped unit is visible before the run starts.
+    expect(panel).toHaveTextContent("144.812500 MHz");
 
     fireEvent.click(within(panel).getByRole("button", { name: /Program radio/i }));
     await screen.findByText("Program this radio?");
     fireEvent.click(screen.getByRole("button", { name: /^Program radio$/ }));
 
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
-    expect(start.mock.calls[0][1].rxFrequencyHz).toBe(145_625_000);
-    expect(start.mock.calls[0][1].txFrequencyHz).toBe(145_025_000);
+    expect(start.mock.calls[0][1].rxFrequencyHz).toBe(144_812_500);
+  });
+
+  it("leaves the other channels alone when asked to", async () => {
+    const start = vi.spyOn(api, "startRadioProgram").mockResolvedValue({ ...RUN, state: "starting", finishedAt: null });
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-programming");
+
+    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.8125" } });
+    fireEvent.click(within(panel).getByLabelText(/Delete the radio's other channels/i));
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Program radio/i }));
+    await screen.findByText("Program this radio?");
+    fireEvent.click(screen.getByRole("button", { name: /^Program radio$/ }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(start.mock.calls[0][1].replaceChannelTable).toBe(false);
+  });
+
+  it("reads the radio without writing it, and fills the form in from what came back", async () => {
+    // Resolved already-finished: the run itself is exercised by the node-side tests, and what
+    // this asserts is that a finished read lands in the form.
+    const read = vi.spyOn(api, "readRadioProgram").mockResolvedValue(READ_RUN);
+    vi.spyOn(api, "radioProgram").mockResolvedValue(null);
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-programming");
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Read from radio/i }));
+    await screen.findByText("Read this radio?");
+    fireEvent.click(screen.getByRole("button", { name: /^Read from radio$/ }));
+
+    await waitFor(() => expect(read).toHaveBeenCalledWith("vhf-1"));
+    // Nothing was written, and the form now says what the radio is actually set to.
+    await waitFor(() => expect(within(panel).getByLabelText("Frequency")).toHaveValue("145.287500"));
+    expect(within(panel).getByDisplayValue("Wide - 25 kHz")).toBeInTheDocument();
+    expect(within(panel).getByDisplayValue("Medium")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("6 channels");
+    expect(panel).toHaveTextContent("database 0095");
   });
 
   it("will not offer to start until a reachable frequency is typed", async () => {
@@ -219,10 +294,11 @@ describe("PortEditor - the Program radio panel", () => {
     const button = within(panel).getByRole("button", { name: /Program radio/i });
     expect(button).toBeDisabled();
 
-    fireEvent.change(within(panel).getByLabelText("Receive (MHz)"), { target: { value: "14.100" } });
+    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "14.100" } });
     expect(button).toBeDisabled();
+    expect(panel).toHaveTextContent(/Not a frequency a Tait can reach/i);
 
-    fireEvent.change(within(panel).getByLabelText("Receive (MHz)"), { target: { value: "144.8125" } });
+    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.8125" } });
     expect(button).toBeEnabled();
   });
 
@@ -232,11 +308,12 @@ describe("PortEditor - the Program radio panel", () => {
     await openEditor("vhf-1");
     const panel = await screen.findByTestId("radio-programming");
 
-    fireEvent.change(within(panel).getByLabelText("Receive (MHz)"), { target: { value: "144.8125" } });
+    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.8125" } });
 
     const button = within(panel).getByRole("button", { name: /Program radio/i });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", expect.stringContaining("admin"));
+    expect(within(panel).getByRole("button", { name: /Read from radio/i })).toBeDisabled();
   });
 
   it("re-attaches to the run the node already has, so a reopened editor is not a blank panel", async () => {
@@ -260,11 +337,42 @@ describe("PortEditor - the Program radio panel", () => {
     await openEditor("vhf-1");
     const panel = await screen.findByTestId("radio-programming");
 
-    fireEvent.change(within(panel).getByLabelText("Receive (MHz)"), { target: { value: "144.8125" } });
+    fireEvent.change(within(panel).getByLabelText("Frequency"), { target: { value: "144.8125" } });
     fireEvent.click(within(panel).getByRole("button", { name: /Program radio/i }));
     await screen.findByText("Program this radio?");
     fireEvent.click(screen.getByRole("button", { name: /^Program radio$/ }));
 
     await waitFor(() => expect(panel).toHaveTextContent("busy with a tuning session"));
+  });
+
+  it("says why a run failed, what it was doing at the time, and shows the log it produced", async () => {
+    vi.spyOn(api, "radioProgram").mockResolvedValue({
+      ...RUN,
+      state: "failed",
+      failedState: "writing",
+      error: "refusing to write: the radio's database version '0091' is not one the write path is validated for (0094, 0095)",
+      backupPath: null,
+      log: ["port stopped; programming the radio on /dev/ttyUSB1", "read 1204 records", "writing rx=144.8125 MHz"],
+    });
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-programming");
+
+    const outcome = await within(panel).findByTestId("radio-programming-outcome");
+    await waitFor(() => expect(outcome).toHaveTextContent("while writing the codeplug"));
+    expect(outcome).toHaveTextContent("database version '0091'");
+    expect(outcome).toHaveTextContent("Run log (3 lines)");
+  });
+
+  it("falls back to the node's log rather than a bare 'it failed' when no reason came back", async () => {
+    vi.spyOn(api, "radioProgram").mockResolvedValue({ ...RUN, state: "failed", error: null, backupPath: null, log: [] });
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+    const panel = await screen.findByTestId("radio-programming");
+
+    const outcome = await within(panel).findByTestId("radio-programming-outcome");
+    await waitFor(() => expect(outcome).toHaveTextContent("journalctl -u packetnet"));
   });
 });

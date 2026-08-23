@@ -160,7 +160,7 @@ public sealed class TaitProgrammingServiceTests
         await h.StartAsync(Port, rxHz: 145_500_000);
         await h.WaitForTerminalAsync(Port);
 
-        h.Get(Port).Plan.RxFrequencyHz.Should().Be(145_500_000);
+        h.Get(Port).Plan!.RxFrequencyHz.Should().Be(145_500_000);
         h.Gateway.Timeline.Should().Equal(
             "down:vhf-1", "program:/dev/ttyUSB3", "up:vhf-1",
             "down:vhf-1", "program:/dev/ttyUSB3", "up:vhf-1");
@@ -308,6 +308,84 @@ public sealed class TaitProgrammingServiceTests
         h.Gateway.Timeline.Should().Equal("down:vhf-1", "program:/dev/ttyUSB3", "up:vhf-1");
     }
 
+    [Fact]
+    public async Task A_read_run_walks_the_same_orchestration_but_hands_the_writer_no_plan()
+    {
+        // The Read button exists so an operator can find out what a radio is set to without
+        // betting a codeplug on it. It costs the port the same few minutes, so it goes through the
+        // same port-down / port-back machinery - but nothing is written.
+        await using var h = new Harness();
+        h.AddTaitPort(Port, devicePath: "/dev/ttyUSB3");
+
+        await h.StartReadAsync(Port);
+        await h.WaitForTerminalAsync(Port);
+
+        h.Gateway.Timeline.Should().Equal("down:vhf-1", "read:/dev/ttyUSB3", "up:vhf-1");
+        h.Writer.LastPlan.Should().BeNull("a read must not carry a plan anywhere near the radio");
+
+        var info = h.Get(Port);
+        info.State.Should().Be("done");
+        info.Mode.Should().Be("read");
+        info.Plan.Should().BeNull();
+        info.Current!.RxFrequencyHz.Should().Be(145_287_500);
+        info.Current.ChannelCount.Should().Be(6);
+        info.Current.DatabaseVersion.Should().Be("0095");
+    }
+
+    [Fact]
+    public async Task A_write_run_records_what_the_radio_was_set_to_before_it_was_changed()
+    {
+        await using var h = new Harness();
+        h.AddTaitPort(Port, devicePath: "/dev/ttyUSB3");
+
+        await h.StartAsync(Port);
+        await h.WaitForTerminalAsync(Port);
+
+        var info = h.Get(Port);
+        info.Mode.Should().Be("program");
+        info.Plan!.RxFrequencyHz.Should().Be(144_812_500);
+        info.Current!.RxFrequencyHz.Should().Be(145_287_500, "the run reports what it replaced");
+    }
+
+    [Fact]
+    public async Task A_failure_says_which_state_it_happened_in_and_keeps_the_runs_log()
+    {
+        // "The last run failed" with nothing after it is the worst thing this panel can say. The
+        // run keeps the reason, the state it failed in, and every line it printed on the way there.
+        await using var h = new Harness();
+        h.AddTaitPort(Port, devicePath: "/dev/ttyUSB3");
+        h.Writer.Fail = new NotSupportedException("refusing to write: the radio's database version '0091'...");
+
+        await h.StartAsync(Port);
+        await h.WaitForTerminalAsync(Port);
+
+        var info = h.Get(Port);
+        info.State.Should().Be("failed");
+        info.Error.Should().Contain("database version '0091'");
+        info.FailedState.Should().Be("power-cycle", "the scripted writer throws while still in the power-cycle window");
+        info.Log.Should().NotBeEmpty();
+        h.Gateway.Timeline.Should().Equal("down:vhf-1", "program:/dev/ttyUSB3", "up:vhf-1");
+    }
+
+    [Fact]
+    public async Task A_timeout_after_the_handshake_is_not_reported_as_a_missed_power_cycle()
+    {
+        // A timeout means two different things depending on when it lands, and telling an operator
+        // to power-cycle a radio that has already answered sends them the wrong way entirely.
+        await using var h = new Harness();
+        h.AddTaitPort(Port, devicePath: "/dev/ttyUSB3");
+        h.Writer.Fail = new TimeoutException("no programming response within the transaction deadline");
+        h.Writer.ReachWritingFirst = true;
+
+        await h.StartAsync(Port);
+        await h.WaitForTerminalAsync(Port);
+
+        var info = h.Get(Port);
+        info.FailedState.Should().Be("writing");
+        info.Error.Should().Contain("stopped answering while writing the codeplug");
+        info.Error.Should().NotContain("never entered programming mode");
+    }
+
     private static CancellationTokenSource TestCts() => new(TimeSpan.FromSeconds(5));
 
     /// <summary>The service over fake node-host operations and a scripted codeplug writer.</summary>
@@ -348,6 +426,8 @@ public sealed class TaitProgrammingServiceTests
 
         internal Task<TaitProgramInfo> StartAsync(string portId, long rxHz = 144_812_500) =>
             Service.StartAsync(portId, new TaitProgramRequest(rxHz, null, "narrow", "high", "pdn-basic"));
+
+        internal Task<TaitProgramInfo> StartReadAsync(string portId) => Service.StartReadAsync(portId);
 
         internal TaitProgramInfo Get(string portId) => Service.Get(portId)!;
 
@@ -444,17 +524,28 @@ public sealed class TaitProgrammingServiceTests
         /// <summary>Sit in the write until the run is cancelled (the cancel / conflict tests).</summary>
         internal bool BlockUntilCancelled { get; set; }
 
+        /// <summary>Report having got as far as the write before throwing <see cref="Fail"/>.</summary>
+        internal bool ReachWritingFirst { get; set; }
+
         /// <summary>Completes once the writer has been entered.</summary>
         internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        /// <summary>The plan the last call was handed - null on a read-only run.</summary>
+        internal TaitProgramPlan? LastPlan { get; private set; }
+
+        /// <summary>What the scripted radio turns out to be set to.</summary>
+        internal TaitRadioSettings Current { get; } = new(
+            145_287_500, 145_287_500, "wide", "medium", "none", 6, "0095", "none", "none");
+
         public TaitCodeplugWriteOutcome Program(
             string devicePath,
-            TaitProgramPlan plan,
+            TaitProgramPlan? plan,
             string? backupDirectory,
             Action<TaitProgramState, double?, string> report,
             CancellationToken cancellationToken)
         {
-            Recorder?.Invoke($"program:{devicePath}");
+            Recorder?.Invoke($"{(plan is null ? "read" : "program")}:{devicePath}");
+            LastPlan = plan;
             Entered.TrySetResult();
 
             report(TaitProgramState.PowerCycle, null, "power-cycle the radio now");
@@ -465,13 +556,25 @@ public sealed class TaitProgrammingServiceTests
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
+            if (ReachWritingFirst)
+            {
+                report(TaitProgramState.Reading, null, "read complete");
+                report(TaitProgramState.Writing, null, "writing the codeplug back");
+            }
+
             if (Fail is { } failure)
             {
                 throw failure;
             }
 
+            if (plan is null)
+            {
+                report(TaitProgramState.Reading, null, "read only - nothing was written to the radio");
+                return new TaitCodeplugWriteOutcome("TMAB12-B100_0201", "19925328", null, 0, Current);
+            }
+
             report(TaitProgramState.Writing, 0.5, "record 500 of 1000");
-            return new TaitCodeplugWriteOutcome("TMAB12-B100_0201", "19925328", null, 1000);
+            return new TaitCodeplugWriteOutcome("TMAB12-B100_0201", "19925328", null, 1000, Current);
         }
 
         internal Action<string>? Recorder { get; set; }

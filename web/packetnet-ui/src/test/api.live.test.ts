@@ -222,6 +222,13 @@ const CASES: Case[] = [
     then: (r) => expect(r).toEqual({ portId: "vhf-1", state: "starting" }),
   },
   {
+    key: "readRadioProgram", call: (a) => a.readRadioProgram("vhf-1"),
+    responses: [jsonResponse({ run: { portId: "vhf-1", mode: "read", state: "starting" }, caveat: "..." })],
+    method: "POST", url: "/api/v1/ports/vhf-1/radio/program/read",
+    // A read takes no body at all - there is nothing to say beyond "read this radio".
+    then: (r) => expect(r).toEqual({ portId: "vhf-1", mode: "read", state: "starting" }),
+  },
+  {
     key: "radioProgram", call: (a) => a.radioProgram("vhf-1"),
     responses: [jsonResponse({ portId: "vhf-1", state: "done" })],
     method: "GET", url: "/api/v1/ports/vhf-1/radio/program",

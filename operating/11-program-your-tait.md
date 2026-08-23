@@ -8,10 +8,14 @@ the right programming database, and a Windows machine near the radio.
 You don't need any of that. **Edit the port → Program radio** writes the radio's
 codeplug over the same programming cable, from the node, in a browser.
 
+There is a **Read from radio** button next to it that does the read half only: it
+tells you what the radio is set to now and fills the form in from it, and writes
+nothing. If you are not sure what is in a radio, start there.
+
 > [!IMPORTANT]
-> This is a **write to your radio's memory**, and it is not a partial one: the
-> radio's channel list is replaced by the single channel you type. Read
-> [What it changes](#what-it-changes) before you press the button.
+> Programming is a **write to your radio's memory**, and by default it is not a
+> partial one: the radio's channel list is replaced by the single channel you type.
+> Read [What it changes](#what-it-changes) before you press the button.
 
 ## What you need
 
@@ -33,27 +37,46 @@ written, and says so.
 ## Doing it
 
 1. **Ports → the port → Edit**, and scroll to **Program radio**.
-2. Type the **receive frequency** in MHz. Leave *same as receive* ticked for a
-   normal simplex packet channel; untick it and fill in the transmit frequency for
-   a split (a duplex link, or working through a repeater).
-3. Pick the **bandwidth** - narrow (12.5 kHz) is normal for UK amateur packet -
-   and the **transmit power** step.
-4. Pick a **pdn upgrade profile**, or *Don't apply one*:
+2. Optionally press **Read from radio** first. That runs everything below except
+   the write, and comes back with the radio's frequency, bandwidth, power, tones,
+   channel count and codeplug database version - with the form filled in from them,
+   ready to edit.
+3. Type the **frequency**. Packet is simplex, so there is one box and it is both
+   receive and transmit. Megahertz (`144.8125`) or hertz (`144812500`) are both
+   accepted; the line under the box says back what the node made of it.
+4. Pick the **bandwidth** - narrow (12.5 kHz) is normal for UK amateur packet -
+   and the **transmit power** step. Leave **Delete them, leaving only this one**
+   ticked unless you want the radio's other channels kept (see
+   [What it changes](#what-it-changes)).
+5. Pick a **pdn upgrade profile**, or *Don't apply one*:
 
-   | Profile | What it turns on |
+   | Profile | What it writes |
    |---|---|
    | **Don't apply one** | Nothing. The radio's data and signalling settings are left exactly as they are - use this when the radio is already provisioned and you only want to move it to a different frequency. |
-   | **pdn-basic** | The **CCDI command channel** everything in [chapter 2](02-see-your-link-quality.md) rides on: RSSI and SNR per frame, PA health, transmitter keying, and the carrier-sense (DCD) that stops your node transmitting over somebody else. |
-   | **pdn-extra** | pdn-basic **plus** the radio's own FFSK packet modem (a [TNC-less link](06-tnc-less-tait-links.md)) and the SDM side channel [deviation tuning](04-tune-your-link.md) and station hail use. |
+   | **pdn-basic** | Four settings, which between them turn on the **CCDI command channel** everything in [chapter 2](02-see-your-link-quality.md) rides on: `CCDI Mode Allowed` on, `Powerup State` = command mode, `Output Progress Messages` on, and the command-mode baud set to **28800**. That buys RSSI and SNR per frame, PA temperature, forward and reverse power, transmitter keying, and the carrier-sense (DCD) that stops your node transmitting over somebody else. |
+   | **pdn-extra** | pdn-basic, **plus** seven more: transparent mode on (the radio's own FFSK modem, for a [TNC-less link](06-tnc-less-tait-links.md)), `Ignore Escape Sequence` **off**, `Ignore DCS/CTCSS` on the data path, the FFSK transparent baud at 28800 on the wire, the **FFSK over-air rate at 2400 baud**, and SDM on for the side channel [deviation tuning](04-tune-your-link.md) and station hail use. |
 
-   Neither profile touches frequencies, channels or power, so you can lay one onto
-   a radio that is already right for its site.
+   Neither profile touches frequencies, channels, power or the radio's audio
+   wiring, so you can lay one onto a radio that is already right for its site.
 
-5. Press **Program radio** and confirm.
-6. When the panel says **"Power-cycle the radio now"**, switch the radio off and
+   Two things worth knowing before you apply one to a working radio: **pdn-basic
+   forces the command baud to 28800 and the power-up state to command mode**, so a
+   radio deliberately set to something else (or a PDN port whose config says a
+   different baud) will stop matching. And **pdn-extra's SDM switch drags the
+   radio's SDM auto-acknowledgements on with it**, which is a transmit behaviour,
+   and fixes the over-air FFSK rate at 2400 baud - both ends of a TNC-less link
+   have to agree on that.
+
+6. Press **Program radio** and confirm.
+7. When the panel says **"Power-cycle the radio now"**, switch the radio off and
    on again. It waits about 90 seconds for you.
-7. Watch it read the codeplug, write it back, and bring the port up again. The
+8. Watch it read the codeplug, write it back, and bring the port up again. The
    whole thing takes two or three minutes.
+9. **Power-cycle the radio once more** at the end. The radio is still latched in
+   programming mode until it reboots, and it only operates on the new codeplug
+   after that. The node brings the port back the moment the write commits, which is
+   before you have done that - so if the port shows degraded, restart it (**Ports ->
+   the port -> Restart**) once the radio is back up.
 
 If you picked **pdn-extra** you have just set all five of the
 [TNC-less link gotchas](06-tnc-less-tait-links.md#the-setup-gotchas-program-the-radio-right)
@@ -63,10 +86,13 @@ in one go - the ones people otherwise get wrong one at a time in the CPS.
 
 Exactly this, and nothing else:
 
-- **The channel list becomes one channel**, with the frequency, bandwidth and power
-  you typed. Whatever else was programmed in there - channel 2, the old network's
-  channel 7 - is gone. A PDN port drives one frequency, and a leftover channel is
-  only ever a way to end up transmitting somewhere you did not intend.
+- **Channel 1 becomes the channel you typed**: frequency, bandwidth and power.
+- **The channel list becomes just that one channel**, unless you unticked *Delete
+  them, leaving only this one*. Whatever else was programmed in there - channel 2,
+  the old network's channel 7 - is gone. A PDN port drives one frequency, and a
+  leftover channel is only ever a way to end up transmitting somewhere you did not
+  intend. Untick it and only channel 1 is touched: a narrower write, which is also
+  the one to fall back on if a full replacement is refused by the radio.
 - **Any CTCSS or DCS on that channel is cleared.** A packet channel is
   carrier-squelch. An inherited receive tone would silently mute every frame from a
   peer that does not send it, with no error anywhere - a horrible fault to chase.
@@ -87,9 +113,9 @@ untouched.
   back into service whether the run succeeded, failed or was cancelled.
 - **Nothing transmits.** All of this happens over the data connector; no RF is
   generated at any point.
-- **The frequency is checked against the radio.** The interrogate reads the radio's
-  band split off its product code, and a frequency outside it (144 MHz typed into a
-  70 cm radio) is refused before the write, not discovered afterwards.
+- **The frequency is checked against the radio.** The radio's band split is read
+  off the product code in the codeplug, and a frequency outside it (144 MHz typed
+  into a 70 cm radio) is refused before the write, not discovered afterwards.
 - **Stop** abandons a run - up until the write block opens. Past that point the
   codeplug is being modified and stopping half way would leave it partly applied,
   so a started write always runs to its commit.
@@ -106,9 +132,18 @@ The section only appears for a radio it can actually program:
 
 ## If it goes wrong
 
+The panel says what the run was doing when it failed - *"Failed while writing the
+codeplug: …"* - and keeps the whole run log under **Run log**, so you can see how
+far it got. The node's own log has the full fault including the stack trace:
+
+```sh
+journalctl -u packetnet -n 200 | grep -i codeplug
+```
+
 | What you see | What it means |
 |---|---|
 | *"the radio never entered programming mode"* | The power-cycle didn't land in the window, the cable is on the wrong port, or the radio isn't powered. Try again and switch the radio off and on while the prompt is on screen. |
+| *"the radio stopped answering while writing the codeplug"* | It **did** enter programming mode and then went quiet, so this is not a missed power-cycle: suspect the lead, or the radio refusing a command. If it happens with *Delete them, leaving only this one* ticked, try it unticked - that writes the channel table at the shape the radio already has. |
 | *"refusing to write: the radio's database version … is not validated"* | The field offsets are database-version-specific and this radio's is outside the validated set. Nothing was written. |
 | *"the radio is a B1 band split … which does not cover …"* | The frequency you typed is outside what that radio's hardware can reach. Nothing was written. |
 | *"port … is busy with a tuning session"* | Stop the [tuning session](04-tune-your-link.md) first. |
@@ -131,6 +166,9 @@ tait-codeplug patch /dev/ttyUSB0 ch0.rxfreq 144.812500
 tait-codeplug patch /dev/ttyUSB0 profile pdn-extra
 tait-codeplug read  /dev/ttyUSB0 > radio-backup.m8p
 ```
+
+A split channel - a duplex link, or working through a repeater - is a CLI job:
+the panel is deliberately simplex-only, because packet is.
 
 ## Next
 

@@ -384,6 +384,8 @@ export const api = {
   // port · 400 no Tait radio / head-end-bound / bad settings · 409 the port is busy - each surfaces
   // its { error } as a thrown Error. Watch it with subscribeRadioProgram(id, ...).
   startRadioProgram: (id: string, body: TaitProgramRequest) => startRadioProgram(id, body),
+  // Read the radio's codeplug without writing it: same port-down and power-cycle, nothing written.
+  readRadioProgram: (id: string) => readRadioProgram(id),
   // The run on a port - live or the last one that finished - or null when there has been none since
   // the node started. The panel calls it on mount so a reload re-attaches to a run in flight.
   radioProgram: (id: string) => radioProgram(id),
@@ -884,6 +886,21 @@ async function startRadioProgram(id: string, body: TaitProgramRequest): Promise<
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await errorMessage(res, `Could not program the radio on '${id}' (${res.status}).`));
+  return ((await res.json()) as { run: TaitProgramInfo }).run;
+}
+
+// Start a READ-ONLY run: the radio's codeplug is read back and reported in the run's `current`,
+// and nothing is written. Watched on the same feed as a write.
+async function readRadioProgram(id: string): Promise<TaitProgramInfo> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 200));
+    return mock.readRadioProgram(id);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/radio/program/read`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not read the radio on '${id}' (${res.status}).`));
   return ((await res.json()) as { run: TaitProgramInfo }).run;
 }
 
