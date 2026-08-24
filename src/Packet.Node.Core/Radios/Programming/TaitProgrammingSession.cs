@@ -24,6 +24,19 @@ namespace Packet.Node.Core.Radios.Programming;
 /// </remarks>
 internal sealed partial class TaitProgrammingSession : IDisposable
 {
+    /// <summary>
+    /// How long a run waits for the radio to start answering CCDI again before it gives the port
+    /// back anyway. Every programming session ends by resetting the radio (the library's teardown
+    /// sends <c>^</c>, and a committed write restarts it on the new codeplug regardless), so for
+    /// several seconds afterwards there is nothing on the wire to find. Restoring the port into
+    /// that window is what left a programmed port serving traffic with no radio control until
+    /// someone restarted it by hand.
+    /// </summary>
+    internal static readonly TimeSpan RadioRestartWait = TimeSpan.FromSeconds(45);
+
+    /// <summary>How often the radio is probed while waiting for it to come back.</summary>
+    internal static readonly TimeSpan RadioRestartPoll = TimeSpan.FromSeconds(1);
+
     private const int MaxHistory = 500;
 
     private readonly PortRadioConfig radio;
@@ -242,9 +255,42 @@ internal sealed partial class TaitProgrammingSession : IDisposable
             current = outcome.Current;
         }
 
+        await WaitForRadioAsync(path, cancellationToken).ConfigureAwait(false);
+
         Publish("state", TaitProgramState.Restoring, Plan is null
             ? "codeplug read; bringing the port back into service"
             : $"{outcome.RecordsWritten} records written; bringing the port back into service");
+    }
+
+    /// <summary>
+    /// Wait for the just-reset radio to answer CCDI again, so the port restore that follows finds
+    /// it instead of coming up degraded. Best-effort in both directions: the run is never failed
+    /// over this (the codeplug is written either way), and a radio that has not come back inside
+    /// <see cref="RadioRestartWait"/> is reported and the port given back regardless - the
+    /// supervisor's own bring-up retry gets the next few seconds' worth of attempts.
+    /// </summary>
+    private async Task WaitForRadioAsync(string path, CancellationToken cancellationToken)
+    {
+        Log($"waiting for the radio on {path} to restart and answer its control channel again");
+        var deadline = clock.GetUtcNow() + RadioRestartWait;
+        while (true)
+        {
+            if (await gateway.ProbeRadioAsync(radio, path, cancellationToken).ConfigureAwait(false))
+            {
+                Log("the radio is answering again");
+                return;
+            }
+
+            if (clock.GetUtcNow() >= deadline)
+            {
+                Log("the radio has not answered its control channel within " +
+                    $"{(int)RadioRestartWait.TotalSeconds} s; bringing the port back anyway - it will " +
+                    "run without radio control until the radio is back, and a port restart picks it up");
+                return;
+            }
+
+            await Task.Delay(RadioRestartPoll, clock, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async Task<string> LocateAsync(CancellationToken cancellationToken)

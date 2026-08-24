@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.HeadEnd;
+using Packet.Node.Core.Hosting;
 using Packet.Radio;
 using Packet.Radio.Tait;
 
@@ -290,4 +291,30 @@ public static class RadioControls
     /// <summary>The live <see cref="TaitCcdiRadio"/> behind <paramref name="radio"/>, or
     /// <c>null</c> when the port's radio (facade-wrapped or bare) is not a Tait CCDI driver.</summary>
     public static TaitCcdiRadio? LiveTait(IRadioControl? radio) => Live(radio) as TaitCcdiRadio;
+
+    /// <summary>
+    /// Why a running port has no radio to offer, as a sentence to append to a "no radio attached"
+    /// refusal - or empty when the supervisor has nothing to add.
+    /// </summary>
+    /// <remarks>
+    /// A port whose radio failed to open still serves traffic, so from the outside it is simply a
+    /// port with no radio, and every feature that needs one refuses with the same flat sentence.
+    /// The reason it has none was logged once at bring-up and then only lived in the journal, which
+    /// is no help to whoever is looking at the panel. It is on the port's health all along; this
+    /// puts it in front of them.
+    /// </remarks>
+    /// <param name="health">The port health view (the supervisor), or null when there is none.</param>
+    /// <param name="portId">The port being refused.</param>
+    public static string WhyNoRadio(IPortHealthView? health, string portId)
+    {
+        if (health?.GetHealth(portId) is not { } port
+            || !port.Degraded.Contains(PortComponents.Radio, StringComparer.Ordinal)
+            || string.IsNullOrWhiteSpace(port.LastError))
+        {
+            return string.Empty;
+        }
+
+        return $" The port is up but DEGRADED: its radio control never opened ({port.LastError}). " +
+            "Once the radio is back, restart the port to pick it up.";
+    }
 }

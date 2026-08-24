@@ -202,21 +202,10 @@ public sealed class TransportFactory : ITransportFactory
             return t.Device;
         }
 
-        var found = new List<TaitDiscoveredRadio>();
-        await foreach (var candidate in TaitRadioPortDiscovery
-                           .DiscoverAsync([t.Baud], cancellationToken).ConfigureAwait(false))
-        {
-            found.Add(candidate);
-        }
-
-        if (RadioSerialResolver.Match(found, t.Serial) is { } match)
-        {
-            return match.Port;
-        }
-
-        throw new InvalidOperationException(
-            $"no tait-transparent radio with CCDI serial '{t.Serial}' found among {found.Count} " +
-            $"probed port(s) at {t.Baud} baud - is it plugged in and powered?");
+        var match = await TaitEndpointResolver
+            .FindBySerialAsync(TransportKinds.TaitTransparent, t.Serial, t.Baud, cancellationToken)
+            .ConfigureAwait(false);
+        return match.Port;
     }
 
     // Resolve a host:port to an IPEndPoint. A literal IP short-circuits DNS;

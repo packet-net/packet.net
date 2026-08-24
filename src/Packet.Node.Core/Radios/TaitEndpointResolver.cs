@@ -37,20 +37,73 @@ public static class TaitEndpointResolver
             return (radio.Port, radio.Baud);
         }
 
-        var found = new List<TaitDiscoveredRadio>();
-        await foreach (var candidate in TaitRadioPortDiscovery
-                           .DiscoverAsync([radio.Baud], cancellationToken).ConfigureAwait(false))
+        var match = await FindBySerialAsync(RadioKinds.TaitCcdi, radio.Serial, radio.Baud, cancellationToken)
+            .ConfigureAwait(false);
+        return (match.Port, match.BaudRate);
+    }
+
+    /// <summary>
+    /// Find the plugged-in Tait whose CCDI serial is <paramref name="serial"/>, by probing the
+    /// machine's candidate serial ports at <paramref name="baud"/>. Shared by the radio-attach path
+    /// and the <c>tait-transparent</c> transport, which ask the same question of the same hardware.
+    /// </summary>
+    /// <param name="kind">What is being looked for, for the failure message (the config
+    /// <c>kind</c>: <c>tait-ccdi</c> or <c>tait-transparent</c>).</param>
+    /// <param name="serial">The CCDI serial number to match.</param>
+    /// <param name="baud">The control baud to probe at.</param>
+    /// <param name="cancellationToken">Abandons the scan.</param>
+    /// <exception cref="InvalidOperationException">No plugged-in radio carries that serial.</exception>
+    public static async Task<TaitDiscoveredRadio> FindBySerialAsync(
+        string kind, string serial, int baud, CancellationToken cancellationToken = default)
+    {
+        // Probed one at a time, stopping at the match: the wanted radio is usually the first
+        // candidate, and every port past it costs a probe timeout for nothing.
+        var candidates = TaitRadioPortDiscovery.EnumerateCandidatePorts();
+        var others = new List<TaitDiscoveredRadio>();
+        foreach (string candidate in candidates)
         {
-            found.Add(candidate);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await TaitRadioPortDiscovery.ProbeAsync(candidate, baud, cancellationToken)
+                    .ConfigureAwait(false) is not { } found)
+            {
+                continue;
+            }
+
+            if (RadioSerialResolver.Match([found], serial) is { } match)
+            {
+                return match;
+            }
+
+            others.Add(found);
         }
 
-        if (RadioSerialResolver.Match(found, radio.Serial) is { } match)
-        {
-            return (match.Port, match.BaudRate);
-        }
-
+        // The failure an operator reads at 2am, so it says what was actually looked at rather than
+        // one bare count: which devices were probed, and any OTHER Tait that answered - "the radio
+        // is there but its serial is not the one in the config" and "nothing answered at all" are
+        // different problems with different fixes.
         throw new InvalidOperationException(
-            $"no tait-ccdi radio with CCDI serial '{radio.Serial}' found among {found.Count} " +
-            $"probed port(s) at {radio.Baud} baud - is it plugged in and powered?");
+            $"no {kind} radio with CCDI serial '{serial}' answered at {baud} baud. " +
+            Describe(candidates, others) +
+            " Is it plugged in, powered, and finished restarting? A radio reboots after a codeplug " +
+            "write and stays silent for a few seconds.");
+    }
+
+    private static string Describe(IReadOnlyList<string> candidates, List<TaitDiscoveredRadio> others)
+    {
+        if (candidates.Count == 0)
+        {
+            return "There were no candidate serial ports to probe at all (no /dev/ttyUSB*), so no " +
+                   "CCDI dongle is enumerated on this machine.";
+        }
+
+        string probed = $"Probed {candidates.Count} port(s): {string.Join(", ", candidates)}.";
+        if (others.Count == 0)
+        {
+            return $"{probed} Nothing on any of them answered a CCDI identity query.";
+        }
+
+        string found = string.Join(
+            ", ", others.Select(o => $"s/n {o.Identity.SerialNumber ?? "(unreported)"} on {o.Port}"));
+        return $"{probed} A Tait DID answer, but not that one: {found}.";
     }
 }

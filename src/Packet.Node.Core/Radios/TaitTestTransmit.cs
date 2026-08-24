@@ -274,7 +274,8 @@ public sealed partial class TaitTestTransmitService
             throw new TaitTestTxException(
                 TaitTestTxError.BadRequest,
                 $"port '{portId}' has no Tait CCDI radio attached - a test transmission keys the radio over its " +
-                "CCDI control channel and reads its power detectors, neither of which anything else offers");
+                "CCDI control channel and reads its power detectors, neither of which anything else offers." +
+                RadioControls.WhyNoRadio(host.Supervisor, portId));
         }
 
         if (portBusy(portId))

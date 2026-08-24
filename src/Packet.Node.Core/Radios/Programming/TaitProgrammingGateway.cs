@@ -2,6 +2,7 @@ using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
+using Packet.Radio.Tait;
 
 namespace Packet.Node.Core.Radios.Programming;
 
@@ -30,6 +31,14 @@ internal interface ITaitProgrammingGateway
     /// serial. Only valid once the port is down - the scan opens candidate ports, so a device the
     /// node still holds open cannot be found.</summary>
     Task<string> ResolveDevicePathAsync(PortRadioConfig radio, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the radio on <paramref name="devicePath"/> is answering CCDI right now: one identity
+    /// query at the radio's CONFIGURED control baud (not the 19200 the programming handshake runs
+    /// at), which is the exact question the port's radio bring-up is about to ask. Never throws for
+    /// a no.
+    /// </summary>
+    Task<bool> ProbeRadioAsync(PortRadioConfig radio, string devicePath, CancellationToken cancellationToken);
 
     /// <summary>
     /// Take the port out of service, run <paramref name="work"/>, and bring the port back - on
@@ -88,6 +97,15 @@ internal sealed partial class NodeHostProgrammingGateway : ITaitProgrammingGatew
     /// <inheritdoc/>
     public Task<string> ResolveDevicePathAsync(PortRadioConfig radio, CancellationToken cancellationToken) =>
         Resolve(radio, cancellationToken);
+
+    /// <inheritdoc/>
+    public async Task<bool> ProbeRadioAsync(
+        PortRadioConfig radio, string devicePath, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(radio);
+        return await TaitRadioPortDiscovery.ProbeAsync(devicePath, radio.Baud, cancellationToken)
+            .ConfigureAwait(false) is not null;
+    }
 
     private static async Task<string> Resolve(PortRadioConfig radio, CancellationToken cancellationToken)
     {

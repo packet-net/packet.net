@@ -117,12 +117,38 @@ public sealed class PortRadioIntegrationTests
         port.Transport.Should().NotBeOfType<RssiTaggingTransport>("the radio failed — no tagging wrapper");
         port.Radio.Should().BeNull();
         port.InnerTransport.Should().BeNull();
+        radios.Requests.Should().HaveCount(PortSupervisor.RadioOpenAttempts,
+            "a radio that never opens is retried a bounded number of times and then given up on");
 
         // And the degraded port still carries traffic.
         await using var remote = new RemoteStation(bus.Attach(), RemoteCall);
         await remote.StartAsync();
         await remote.ConnectAsync(NodeCall);
         await Wait.ForAsync(() => remote.Saw("Welcome"), "the session reached the prompt without radio metadata");
+    }
+
+    [Fact]
+    public async Task A_radio_that_is_not_answering_yet_is_retried_and_attaches_when_it_comes_back()
+    {
+        // A Tait resets itself at the end of a codeplug programming session and is silent for
+        // several seconds. Bringing the port back into that window used to leave it degraded with
+        // no radio, and nothing ever tried again: a degraded component arms no retry loop, so it
+        // took an operator noticing and restarting the port by hand.
+        var bus = new SharedRadioBus();
+        var config = new TestConfigProvider(Config(SerialPortWithRadio("a", "/dev/pty-a")));
+        var transports = new FakeTransportFactory().Provide("serial-kiss:/dev/pty-a", bus.Attach());
+        var radio = new FakeRadioControl();
+        var radios = new FakeRadioControlFactory().FaultTimes(PortSupervisor.RadioOpenAttempts - 1).Provide(radio);
+
+        await using var supervisor = new PortSupervisor(
+            config, transports, TimeProvider.System, NullLoggerFactory.Instance, radioFactory: radios);
+        await supervisor.StartAsync();
+        await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("a"), "port a up");
+
+        var port = supervisor.GetPort("a")!;
+        port.Radio.Should().BeSameAs(radio, "the retry caught the radio once it answered");
+        supervisor.GetHealth("a")!.Degraded.Should().BeEmpty("a radio that came back leaves nothing missing");
+        supervisor.GetHealth("a")!.State.Should().Be(PortState.Up);
     }
 
     /// <summary>Delegating transport that records its disposal into a shared ordering log.</summary>

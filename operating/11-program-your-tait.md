@@ -106,7 +106,11 @@ untouched.
   file opens in the Tait CPS, and `tait-codeplug` can write it back.
 - **The port always comes back.** It is stopped for the duration - it has to be,
   because the node has to let go of the radio's serial port - and it is brought
-  back into service whether the run succeeded, failed or was cancelled.
+  back into service whether the run succeeded, failed or was cancelled. The run
+  waits for the radio to finish restarting before it hands the port back, so the
+  port picks its radio control up again rather than coming back without it. If the
+  radio has not answered within 45 seconds the port comes back anyway and the panel
+  says so; get the radio talking and restart the port to attach it.
 - **Nothing transmits.** All of this happens over the data connector; no RF is
   generated at any point.
 - **The frequency is checked against the radio.** The radio's band split is read
