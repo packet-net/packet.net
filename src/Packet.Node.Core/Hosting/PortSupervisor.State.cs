@@ -27,6 +27,21 @@ public sealed partial class PortSupervisor : IPortHealthView
     /// and re-queued (a blackholing head-end: DROP firewall, dead Pi).</summary>
     public static readonly TimeSpan RetryAttemptTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// How many times the optional radio-control attachment is opened at bring-up before the port
+    /// comes up degraded without it. Unlike the transport, a radio that fails to open arms no
+    /// retry loop afterwards: the port is already serving traffic by then, and attaching a radio
+    /// later would mean rebuilding the whole inbound chain under a live listener. So the only
+    /// retry a radio gets is this one, while the port is still being built - which covers the case
+    /// that actually happens, a radio that is briefly silent because something just reset it.
+    /// </summary>
+    public const int RadioOpenAttempts = 3;
+
+    /// <summary>The gap between radio-control open attempts. Three attempts two seconds apart ride
+    /// out the several seconds a Tait spends rebooting after a codeplug write or a programming
+    /// session, at the cost of those same few seconds on a port whose radio really is unplugged.</summary>
+    public static readonly TimeSpan RadioOpenRetryDelay = TimeSpan.FromSeconds(2);
+
     // After the first failure (logged Warning), only every Nth attempt warns; the rest are
     // Debug. A head-end that is down for a week must not fill the journal.
     private const int RetryWarnEvery = 10;

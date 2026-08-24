@@ -1287,7 +1287,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                         "the port's node-managed rigctld is not running (it failed to start - " +
                         "see the log above), so the rig-backed radio has no daemon to dial.");
                 }
-                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, effectiveRig, ct).ConfigureAwait(false);
+                radio = await OpenRadioAsync(port.Id, radioConfig, headEndResolver, effectiveRig, ct)
+                    .ConfigureAwait(false);
 
                 // Head-end-bound radio control gets reconnect supervision (#576): the stable
                 // facade is what every consumer below holds (tagging transport, carrier-sense
@@ -2033,6 +2034,43 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }, CancellationToken.None);
     }
 
+    /// <summary>
+    /// Open the port's radio-control attachment, retrying a bounded number of times before giving
+    /// up and letting the caller degrade the port.
+    /// </summary>
+    /// <remarks>
+    /// The failure this exists for is a radio that is briefly not there: a Tait resets itself at
+    /// the end of a codeplug programming session and spends several seconds booting, during which
+    /// a serial-bound scan finds nothing and a port-bound open answers nothing. That used to leave
+    /// the port serving traffic with no radio until an operator noticed and restarted it by hand,
+    /// because a degraded component arms no retry of its own (see <see cref="RadioOpenAttempts"/>).
+    /// An unsupported radio kind is not retried - it is a config fact, and no amount of waiting
+    /// changes it.
+    /// </remarks>
+    private async Task<IRadioControl> OpenRadioAsync(
+        string portId,
+        PortRadioConfig radioConfig,
+        HeadEndDeviceResolver? resolver,
+        PortRigConfig? rig,
+        CancellationToken ct)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await radioFactory.CreateAsync(radioConfig, timeProvider, resolver, rig, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not NotSupportedException
+                                           and not OperationCanceledException
+                                           && attempt < RadioOpenAttempts)
+            {
+                LogRadioOpenRetry(portId, attempt, RadioOpenAttempts, ex.Message);
+                await Task.Delay(RadioOpenRetryDelay, timeProvider, ct).ConfigureAwait(false);
+            }
+        }
+    }
+
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
@@ -2080,6 +2118,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) without RSSI reads - capabilities: {Capabilities}; inbound frames carry no signal metadata.")]
     private partial void LogRadioAttachedNoRssi(string id, string kind, string radioPort, RadioCapabilities capabilities);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control did not open (attempt {Attempt} of {Attempts}); retrying. ({Reason})")]
+    private partial void LogRadioOpenRetry(string id, int attempt, int attempts, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: radio control ({Kind} on {RadioPort}) failed to open; the port runs WITHOUT radio metadata.")]
     private partial void LogRadioFaulted(Exception ex, string id, string kind, string radioPort);

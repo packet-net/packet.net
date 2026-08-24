@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using System.Threading.Channels;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios.Programming;
@@ -29,7 +30,7 @@ public sealed class TaitProgrammingServiceTests
         var info = await h.StartAsync(Port);
         await h.WaitForTerminalAsync(Port);
 
-        h.Gateway.Timeline.Should().Equal("down:vhf-1", "program:/dev/ttyUSB3", "up:vhf-1");
+        h.Gateway.Timeline.Should().Equal("down:vhf-1", "program:/dev/ttyUSB3", "radio-back:/dev/ttyUSB3", "up:vhf-1");
         info.PortId.Should().Be(Port);
         h.Get(Port).State.Should().Be("done");
         h.Get(Port).RadioModel.Should().Be("TMAB12-B100_0201");
@@ -49,7 +50,7 @@ public sealed class TaitProgrammingServiceTests
         await h.StartAsync(Port);
         await h.WaitForTerminalAsync(Port);
 
-        h.Gateway.Timeline.Should().Equal("down:vhf-1", "program:/dev/ttyUSB7", "up:vhf-1");
+        h.Gateway.Timeline.Should().Equal("down:vhf-1", "program:/dev/ttyUSB7", "radio-back:/dev/ttyUSB7", "up:vhf-1");
         h.Gateway.Resolved.Should().BeEmpty("a scan is only needed when nothing has the radio open");
     }
 
@@ -66,8 +67,50 @@ public sealed class TaitProgrammingServiceTests
         await h.StartAsync(Port);
         await h.WaitForTerminalAsync(Port);
 
-        h.Gateway.Timeline.Should().Equal("down:vhf-1", "resolve:19925328", "program:/dev/ttyUSB9", "up:vhf-1");
+        h.Gateway.Timeline.Should().Equal("down:vhf-1", "resolve:19925328", "program:/dev/ttyUSB9", "radio-back:/dev/ttyUSB9", "up:vhf-1");
         h.Get(Port).DevicePath.Should().Be("/dev/ttyUSB9");
+    }
+
+    [Fact]
+    public async Task The_port_is_held_down_until_the_radio_has_finished_restarting()
+    {
+        // The bug this is here for: every programming session ends by resetting the radio, so for
+        // several seconds afterwards nothing answers on the control channel. Restoring the port
+        // into that window left it serving traffic with no radio control - and no retry - until an
+        // operator noticed and restarted it by hand.
+        var clock = new FakeTimeProvider();
+        await using var h = new Harness(clock: clock);
+        h.AddTaitPort(Port, devicePath: "/dev/ttyUSB3");
+        h.Gateway.RadioSilentProbes = 4;   // the radio is still booting for the first four probes
+
+        await h.StartAsync(Port);
+        await h.WaitForTerminalAsync(Port);
+
+        h.Gateway.Timeline.Should().Equal(
+            "down:vhf-1", "program:/dev/ttyUSB3", "radio-back:/dev/ttyUSB3", "up:vhf-1");
+        h.Gateway.RadioProbes.Should().Be(5, "the run keeps asking until the radio answers");
+        h.Get(Port).State.Should().Be("done");
+        h.Get(Port).Log.Should().Contain(l => l.Contains("answering again", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_radio_that_never_comes_back_still_gives_the_port_back_and_says_so()
+    {
+        // The codeplug is written either way, so a radio that stays silent must not turn a good
+        // write into a failed run - but the operator has to be told the port is coming back
+        // without it, because that is exactly the state that used to be invisible.
+        var clock = new FakeTimeProvider();
+        await using var h = new Harness(clock: clock);
+        h.AddTaitPort(Port, devicePath: "/dev/ttyUSB3");
+        h.Gateway.RadioSilentProbes = int.MaxValue;
+
+        await h.StartAsync(Port);
+        await h.WaitForTerminalAsync(Port);
+
+        h.Gateway.Timeline.Should().Equal("down:vhf-1", "program:/dev/ttyUSB3", "up:vhf-1");
+        var info = h.Get(Port);
+        info.State.Should().Be("done", "a silent radio is not a failed write");
+        info.Log.Should().Contain(l => l.Contains("without radio control", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -162,8 +205,8 @@ public sealed class TaitProgrammingServiceTests
 
         h.Get(Port).Plan!.RxFrequencyHz.Should().Be(145_500_000);
         h.Gateway.Timeline.Should().Equal(
-            "down:vhf-1", "program:/dev/ttyUSB3", "up:vhf-1",
-            "down:vhf-1", "program:/dev/ttyUSB3", "up:vhf-1");
+            "down:vhf-1", "program:/dev/ttyUSB3", "radio-back:/dev/ttyUSB3", "up:vhf-1",
+            "down:vhf-1", "program:/dev/ttyUSB3", "radio-back:/dev/ttyUSB3", "up:vhf-1");
     }
 
     [Fact]
@@ -320,7 +363,7 @@ public sealed class TaitProgrammingServiceTests
         await h.StartReadAsync(Port);
         await h.WaitForTerminalAsync(Port);
 
-        h.Gateway.Timeline.Should().Equal("down:vhf-1", "read:/dev/ttyUSB3", "up:vhf-1");
+        h.Gateway.Timeline.Should().Equal("down:vhf-1", "read:/dev/ttyUSB3", "radio-back:/dev/ttyUSB3", "up:vhf-1");
         h.Writer.LastPlan.Should().BeNull("a read must not carry a plan anywhere near the radio");
 
         var info = h.Get(Port);
@@ -391,13 +434,16 @@ public sealed class TaitProgrammingServiceTests
     /// <summary>The service over fake node-host operations and a scripted codeplug writer.</summary>
     private sealed class Harness : IAsyncDisposable, IDisposable
     {
-        internal Harness(Func<string, bool>? portBusy = null)
+        private readonly FakeTimeProvider? virtualClock;
+
+        internal Harness(Func<string, bool>? portBusy = null, FakeTimeProvider? clock = null)
         {
             // The writer's own entry lands on the gateway's timeline, so one list tells the whole
-            // story: port down -> device located -> radio programmed -> port back.
+            // story: port down -> device located -> radio programmed -> radio back -> port back.
             Writer.Recorder = Gateway.Record;
+            virtualClock = clock;
             Service = new TaitProgrammingService(
-                Gateway, Writer, Logger, backupDirectory: null, portBusy, TimeProvider.System);
+                Gateway, Writer, Logger, backupDirectory: null, portBusy, clock ?? TimeProvider.System);
         }
 
         internal FakeProgrammingGateway Gateway { get; } = new();
@@ -442,6 +488,9 @@ public sealed class TaitProgrammingServiceTests
                     return;
                 }
 
+                // A harness with a virtual clock drives the run's own waits (the radio-restart
+                // poll), so the pump advances it rather than sleeping through 45 real seconds.
+                virtualClock?.Advance(TaitProgrammingSession.RadioRestartPoll);
                 await Task.Delay(5, cts.Token);
             }
 
@@ -489,6 +538,26 @@ public sealed class TaitProgrammingServiceTests
             Resolved.Add(radio.Serial);
             Record($"resolve:{radio.Serial}");
             return Task.FromResult(ResolvesTo);
+        }
+
+        /// <summary>How many probes answer "not yet" before the radio is back. Default 0 - the
+        /// radio answers straight away, which is every test that is not about the wait.</summary>
+        internal int RadioSilentProbes { get; set; }
+
+        /// <summary>How many times the radio was probed for its return.</summary>
+        internal int RadioProbes { get; private set; }
+
+        public Task<bool> ProbeRadioAsync(
+            PortRadioConfig radio, string devicePath, CancellationToken cancellationToken)
+        {
+            RadioProbes++;
+            if (RadioProbes > RadioSilentProbes)
+            {
+                Record($"radio-back:{devicePath}");
+                return Task.FromResult(true);
+            }
+
+            return Task.FromResult(false);
         }
 
         public async Task RunWithPortDownAsync(

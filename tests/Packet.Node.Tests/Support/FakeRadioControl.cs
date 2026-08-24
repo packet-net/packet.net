@@ -110,6 +110,9 @@ public sealed class FakeRadioControlFactory : IRadioControlFactory
 {
     private readonly Queue<IRadioControl> radios = new();
     private Exception? fault;
+    // How many more creates the fault applies to: int.MaxValue for a permanent Fault(), a count
+    // for FaultTimes().
+    private int faultsRemaining;
 
     /// <summary>Every <see cref="PortRadioConfig"/> the supervisor requested, in order.</summary>
     public List<PortRadioConfig> Requests { get; } = [];
@@ -129,6 +132,17 @@ public sealed class FakeRadioControlFactory : IRadioControlFactory
     public FakeRadioControlFactory Fault(Exception? ex = null)
     {
         fault = ex ?? new IOException("fake radio control refused to open");
+        faultsRemaining = int.MaxValue;
+        return this;
+    }
+
+    /// <summary>Make the next <paramref name="times"/> creates throw and the ones after that
+    /// succeed - a radio that is briefly not there (one rebooting after a codeplug write), which
+    /// the supervisor's bounded open retry is supposed to ride out.</summary>
+    public FakeRadioControlFactory FaultTimes(int times, Exception? ex = null)
+    {
+        fault = ex ?? new IOException("fake radio control is not answering yet");
+        faultsRemaining = times;
         return this;
     }
 
@@ -141,8 +155,12 @@ public sealed class FakeRadioControlFactory : IRadioControlFactory
         CancellationToken cancellationToken = default)
     {
         Requests.Add(radio);
-        if (fault is not null)
+        if (fault is not null && faultsRemaining > 0)
         {
+            if (faultsRemaining != int.MaxValue)
+            {
+                faultsRemaining--;
+            }
             throw fault;
         }
         if (radios.TryDequeue(out var provided))

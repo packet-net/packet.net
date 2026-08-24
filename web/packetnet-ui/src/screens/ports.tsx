@@ -739,7 +739,11 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
   const orig = draft;
   const before = orig._orig ?? null;
   const saved = portDraftToConfig(model);
-  const sessions = statusById[orig._origId ?? orig.id]?.sessionCount ?? 0;
+  const live = statusById[orig._origId ?? orig.id];
+  const liveHealth = portHealth(live, []);
+  // Serving, but the radio never opened: the state every radio feature below refuses in.
+  const radioMissing = live?.state === "degraded" && (live.degraded ?? []).includes("radio");
+  const sessions = live?.sessionCount ?? 0;
   const sessionText = sessions > 0
     ? ` ${sessions} session${sessions > 1 ? "s" : ""} on this port will drop.`
     : " No sessions are connected.";
@@ -822,6 +826,17 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
       }
     >
       <div className="space-y-5">
+        {/* What the LIVE port is doing, as opposed to what the draft says it should. A port serving
+            without its radio looks healthy from in here - it carries traffic - so the reason it is
+            degraded only ever reached the journal, and the first the operator knew was a Test TX or
+            a hail refusing with "this port has no Tait CCDI radio attached". */}
+        {live?.state === "degraded" && liveHealth.reason && (
+          <div data-testid="port-editor-degraded" className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
+            <Icon name="alert" size={14} className="mt-px shrink-0" />
+            <span>{liveHealth.reason}</span>
+          </div>
+        )}
+
         {/* The node's rejection, INSIDE the drawer (it used to render as a page banner behind the
             modal overlay, dimmed and un-dismissable - #690 C040). Each error is also shown against
             its own field below where the path matches. */}
@@ -1081,7 +1096,10 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
             the same reason as programming, but offered for a head-end-bound Tait too: it runs over
             the CCDI control channel, which reaches through the head-end's pipe perfectly well. */}
         {!orig._new && before?.radio?.kind === "tait-ccdi" && (
-          <RadioTestTxSection portId={orig._origId ?? orig.id} />
+          <RadioTestTxSection
+            portId={orig._origId ?? orig.id}
+            radioMissing={radioMissing ? liveHealth.reason ?? "the port is running without its radio" : null}
+          />
         )}
 
         {/* rig-control (CAT) attachment — every transport kind (the rig never touches the packet path) */}
@@ -1946,7 +1964,7 @@ const TESTTX_VERDICT: Record<TaitTestTxVerdict, { label: string; tone: "success"
   "unknown": { label: "Not enough power to judge", tone: "muted" },
 };
 
-function RadioTestTxSection({ portId }: { portId: string }) {
+function RadioTestTxSection({ portId, radioMissing }: { portId: string; radioMissing?: string | null }) {
   const { has } = useAuth();
   const canTransmit = has("admin");   // it puts a carrier on the air
   const [confirming, setConfirming] = useState(false);
@@ -1991,8 +2009,17 @@ function RadioTestTxSection({ portId }: { portId: string }) {
         </span>
       </div>
 
+      {/* The refusal this pane used to give with no reason attached: the port is serving, so the
+          radio section above looks configured and correct, but the control channel never opened. */}
+      {radioMissing && (
+        <div className="mt-2 flex items-start gap-2 rounded-md bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+          <Icon name="alert" size={13} className="mt-px shrink-0" />
+          <span>{radioMissing} A test transmission needs the radio's CCDI channel, so it will refuse until the radio is back and the port has been restarted.</span>
+        </div>
+      )}
+
       {result && <TestTxResult result={result} />}
-      {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
+      {error && <p className="mt-2 rounded-md bg-danger/10 px-2.5 py-1.5 text-xs text-danger" data-testid="radio-test-tx-error">{error}</p>}
 
       <div className="mt-3 flex justify-end">
         <Button

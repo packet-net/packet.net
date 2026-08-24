@@ -506,6 +506,26 @@ describe("PortEditor - the Test transmit panel", () => {
     expect(within(panel).getByRole("button", { name: /Test TX/i })).toBeDisabled();
   });
 
+  it("says WHY the radio is missing when the port is serving without it", async () => {
+    // The bug: the port is up (it carries traffic), the radio section above is configured and
+    // looks right, and the only clue that the control channel never opened was a line in the
+    // service log. From this pane an operator saw a bare "this port has no Tait CCDI radio".
+    vi.spyOn(api, "ports").mockResolvedValue([{
+      id: "vhf-1", enabled: true, state: "degraded", sessionCount: 0, lastError:
+        "radio (tait-ccdi on serial:19925328): no tait-ccdi radio with CCDI serial '19925328' answered at 28800 baud.",
+      framesIn: 0, framesOut: 0, degraded: ["radio"], since: "2026-08-24T09:00:00Z", channelBusy: null,
+    }]);
+    seedConfig(TAIT_PORT);
+    await mountPorts();
+    await openEditor("vhf-1");
+
+    // Once at the top of the editor, and again against the button it stops from working.
+    expect(await screen.findByTestId("port-editor-degraded")).toHaveTextContent("19925328");
+    const panel = await screen.findByTestId("radio-test-tx");
+    expect(panel).toHaveTextContent(/answered at 28800 baud/);
+    expect(panel).toHaveTextContent(/refuse until the radio is back/);
+  });
+
   it("stays away for a port with no radio at all", async () => {
     seedConfig(BARE_PORT);
     await mountPorts();

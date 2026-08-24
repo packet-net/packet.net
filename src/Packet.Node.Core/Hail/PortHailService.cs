@@ -145,7 +145,8 @@ public sealed partial class PortHailService : BackgroundService
         if (RadioControls.LiveTait(running.Radio) is not { } tait)
         {
             throw new HailException(HailError.BadRequest,
-                "this port has no Tait CCDI radio attached - a hail needs the radio's SDM side channel");
+                "this port has no Tait CCDI radio attached - a hail needs the radio's SDM side channel." +
+                RadioControls.WhyNoRadio(host.Supervisor, portId));
         }
         if (string.IsNullOrEmpty(peerSdmId) || peerSdmId.Length != TaitSdmSideChannel.IdentityLength)
         {
