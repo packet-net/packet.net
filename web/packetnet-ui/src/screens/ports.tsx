@@ -253,7 +253,7 @@ export function previewDisruption(r: ReconcileResult, portId: string, sessionTex
     return { tone: "danger", text: `The node will reset - every session on every port drops: ${summarise(r.nodeReset)}` };
   }
   if (r.portRestart.length > 0) {
-    return { tone: "warning", text: `Port ${portId} will restart.${sessionText} (${summarise(r.portRestart)})` };
+    return { tone: "warning", text: `Port ${portId} will restart.${sessionText}` };
   }
   if (r.live.length > 0) {
     return { tone: "success", text: `Applied live to ${portId}, no sessions drop: ${summarise(r.live)}` };
@@ -746,7 +746,7 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
   const sessions = live?.sessionCount ?? 0;
   const sessionText = sessions > 0
     ? ` ${sessions} session${sessions > 1 ? "s" : ""} on this port will drop.`
-    : " No sessions are connected.";
+    : "";
   const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   let disrupt: Disruption;
   if (orig._new || !before) {
@@ -1251,7 +1251,7 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
               className={disrupt.tone === "danger" ? "bg-danger hover:bg-danger/90 text-danger-foreground" : disrupt.tone === "warning" ? "bg-warning hover:bg-warning/90 text-warning-foreground" : ""}
               onClick={apply}
             >
-              {disrupt.tone === "success" ? <><Icon name="check" size={14} /> Apply</> : <><Icon name="alert" size={14} /> Apply anyway</>}
+              <Icon name={disrupt.tone === "success" ? "check" : "alert"} size={14} /> Apply
             </Button>
           </>
         }
@@ -1263,9 +1263,11 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
           <Icon name={disrupt.tone === "success" ? "check" : "alert"} size={16} className="mt-0.5 shrink-0" />
           <span>{disrupt.text}</span>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          {previewing ? "Checking with the node…" : preview ? "Checked with the node." : "Estimated from the node's reconcile rules."}
-        </p>
+        {(previewing || !preview) && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            {previewing ? "Checking with the node…" : "Estimated from the node's reconcile rules."}
+          </p>
+        )}
       </Modal>
     </Sheet>
   );

@@ -216,12 +216,11 @@ describe("PortEditor — rig (CAT control) section", () => {
 
     // Save → the confirm modal → Apply. Attaching a rig is a single-port RESTART (the CAT backend
     // is dialled and capability-probed at bring-up: ReconcilePlanner puts port.rig in the restart
-    // class), so the confirmation is the "Apply anyway" one - the editor used to announce it as a
-    // live parameter change (#690 C038).
+    // class) - the editor used to announce it as a live parameter change (#690 C038).
     fireEvent.click(screen.getByRole("button", { name: /Save changes/i }));
     await screen.findByText("Apply changes?");
     expect(screen.getByText(/will restart/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Apply anyway/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Apply$/i }));
 
     await waitFor(() => expect(editPort).toHaveBeenCalledTimes(1));
     expect(editPort).toHaveBeenCalledWith(
