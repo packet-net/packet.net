@@ -72,6 +72,8 @@ if (Ax25Frame.TryParse(kissBytes, out var frame) && frame.IsUi)
 
 ## Key types
 - `Ax25Frame` - one AX.25 frame; codec for U/S/I/UI frames (mod-8 and extended mod-128), `TryParse` / `ToBytes` / `ToBytesWithFcs`, plus static factories (`Ui`, `Sabm`, `Sabme`, `Disc`, `Ua`, `Dm`, `Rr`, `Rej`, `Srej`, `I`, `Xid`, `Test`, …).
+- `Ax25FrameType` - the wire type read off the control octet (`Ax25Frame.FrameType`, `Ax25Frame.FrameTypeOf`), valid under either modulo; `Ax25Pid` names the §3.4 protocol identifiers.
+- `Ax25LinkObserver` (`Packet.Ax25.Monitor`) - a third party's reading of the links in heard traffic: feed it every frame on a port and it groups them by callsign pair, narrates each one in plain words ("calls M0LTE-9 again (attempt 3)", "asks GB7RDG-2 to resend from #3") with flags for resends, polls, rejects and digipeated copies, and snapshots every link's state and counters. For monitors and dashboards, not for running a link.
 - `Ax25Listener` - owns one `IAx25Transport`; accepts inbound SABM, originates `ConnectAsync`, caches a session per peer (LRU), and exposes `SessionAccepted` / `FrameTraced` events. The node-style entry point.
 - `Ax25ListenerOptions` - listener config: `MyCall`, timer overrides (`T1V`/`T2`/`T3`/`N2`/`K`), `MaxCachedPeers`, `ParseOptions`, `Quirks`, extended-mode preference.
 - `Ax25Session` - one connected-mode link's state machine; exposes `CurrentState`, `Context`, and the `DataLinkSignalEmitted` upward-signal stream.

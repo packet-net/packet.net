@@ -88,6 +88,58 @@ public sealed partial class Ax25Frame
     public bool IsUi => (Control & 0xEF) == ControlUi;
 
     /// <summary>
+    /// The wire type of this frame - I, one of the four supervisory types, or one of the
+    /// unnumbered types - read off the first control octet, so valid under either modulo.
+    /// </summary>
+    public Ax25FrameType FrameType => FrameTypeOf(Control);
+
+    /// <summary>
+    /// The wire type encoded by a first control octet, for callers holding the octet rather
+    /// than a parsed frame (a traffic log that stored it, a monitor labelling a raw capture).
+    /// </summary>
+    /// <remarks>
+    /// The one classification of the control octet in this package: the session-side
+    /// <see cref="Session.Ax25FrameClassifier"/> and the debug describer both derive from it.
+    /// Reads only the discriminator, subtype and modifier bits, so the P/F bit and, in a
+    /// supervisory or I frame, the sequence bits do not affect the answer.
+    /// </remarks>
+    public static Ax25FrameType FrameTypeOf(byte control)
+    {
+        // I frame: bit 0 clear.
+        if ((control & 0x01) == 0)
+        {
+            return Ax25FrameType.I;
+        }
+
+        // S frame: bits 1-0 = 01; the SS bits at 3-2 pick the subtype.
+        if ((control & 0x03) == 0x01)
+        {
+            return (control & 0x0C) switch
+            {
+                0x00 => Ax25FrameType.Rr,
+                0x04 => Ax25FrameType.Rnr,
+                0x08 => Ax25FrameType.Rej,
+                _ => Ax25FrameType.Srej,
+            };
+        }
+
+        // U frame: bits 1-0 = 11; MMM at 7-5 and MM at 3-2 name the type, P/F at 4 masked out.
+        return (control & 0xEF) switch
+        {
+            0x2F => Ax25FrameType.Sabm,
+            0x6F => Ax25FrameType.Sabme,
+            0x43 => Ax25FrameType.Disc,
+            0x63 => Ax25FrameType.Ua,
+            0x0F => Ax25FrameType.Dm,
+            0x87 => Ax25FrameType.Frmr,
+            0xAF => Ax25FrameType.Xid,
+            0xE3 => Ax25FrameType.Test,
+            0x03 => Ax25FrameType.Ui,
+            _ => Ax25FrameType.Unknown,
+        };
+    }
+
+    /// <summary>
     /// True if the P/F bit is set. In a modulo-8 frame (and any U frame, which
     /// is 1 octet in both modes) the P/F bit is bit 4 of the control octet; in
     /// an extended (modulo-128) I or S frame it migrates to bit 0 of the second

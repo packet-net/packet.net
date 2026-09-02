@@ -41,19 +41,15 @@ public static class Ax25FrameClassifier
     public static Ax25Event Classify(Ax25Frame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        byte ctrl = frame.Control;
+        Ax25FrameType type = frame.FrameType;
 
-        // I-frame: bit 0 = 0. Lowest bit is the discriminator between
-        // I and S/U.
-        if ((ctrl & 0x01) == 0)
+        if (type == Ax25FrameType.I)
         {
             return new IFrameReceived(frame);
         }
 
-        // S-frame: bits 1-0 = 01. SS bits at positions 3-2 pick the
-        // subtype. P/F bit at 4 is preserved on the frame, doesn't
-        // affect classification. N(R) bits 7-5 likewise.
-        if ((ctrl & 0x03) == 0x01)
+        // P/F bit and N(R) are preserved on the frame; neither affects classification.
+        if (type.IsSupervisory())
         {
             // S frames carry no information field (§3.5). One present - accepted
             // only under a lenient parse; Ax25ParseOptions.Strict rejects it at
@@ -65,22 +61,17 @@ public static class Ax25FrameClassifier
                 return new InfoNotPermittedInFrame();
             }
 
-            return (ctrl & 0x0C) switch
+            return type switch
             {
-                0x00 => new RrReceived(frame),      // 0001
-                0x04 => new RnrReceived(frame),     // 0101
-                0x08 => new RejReceived(frame),     // 1001
-                0x0C => new SrejReceived(frame),    // 1101
-                _ => new ControlFieldError(),    // unreachable given mask 0x03==0x01
+                Ax25FrameType.Rr => new RrReceived(frame),
+                Ax25FrameType.Rnr => new RnrReceived(frame),
+                Ax25FrameType.Rej => new RejReceived(frame),
+                _ => new SrejReceived(frame),
             };
         }
 
-        // U-frame: bits 1-0 = 11. MMM at bits 7-5 and MM at bits 3-2
-        // identify the subtype (P/F bit at 4 is ignored here).
-        // Mask out P/F: ctrl & ~0x10 = base control octet.
-        byte uBase = (byte)(ctrl & 0xEF);
         bool hasInfo = !frame.Info.IsEmpty;
-        return uBase switch
+        return type switch
         {
             // SABM/SABME/DISC/UA/DM carry no information field (§3.5; e.g. "an
             // information field is not permitted in a DISC command frame"). One
@@ -88,16 +79,16 @@ public static class Ax25FrameClassifier
             // "information not permitted in frame" error (DL-ERROR M), so the
             // figc4.x error-input transition fires instead of the frame being
             // silently processed as a plain SABM/UA/DM/etc.
-            0x2F => hasInfo ? new InfoNotPermittedInFrame() : new SabmReceived(frame),   // SABM
-            0x6F => hasInfo ? new InfoNotPermittedInFrame() : new SabmeReceived(frame),  // SABME
-            0x43 => hasInfo ? new InfoNotPermittedInFrame() : new DiscReceived(frame),   // DISC
-            0x63 => hasInfo ? new InfoNotPermittedInFrame() : new UaReceived(frame),     // UA
-            0x0F => hasInfo ? new InfoNotPermittedInFrame() : new DmReceived(frame),     // DM
+            Ax25FrameType.Sabm => hasInfo ? new InfoNotPermittedInFrame() : new SabmReceived(frame),
+            Ax25FrameType.Sabme => hasInfo ? new InfoNotPermittedInFrame() : new SabmeReceived(frame),
+            Ax25FrameType.Disc => hasInfo ? new InfoNotPermittedInFrame() : new DiscReceived(frame),
+            Ax25FrameType.Ua => hasInfo ? new InfoNotPermittedInFrame() : new UaReceived(frame),
+            Ax25FrameType.Dm => hasInfo ? new InfoNotPermittedInFrame() : new DmReceived(frame),
             // FRMR/XID/TEST/UI legitimately carry an information field.
-            0x87 => new FrmrReceived(frame),    // FRMR
-            0xAF => new XidReceived(frame),     // XID
-            0xE3 => new TestReceived(frame),    // TEST
-            0x03 => ClassifyUi(frame),          // UI - special handling
+            Ax25FrameType.Frmr => new FrmrReceived(frame),
+            Ax25FrameType.Xid => new XidReceived(frame),
+            Ax25FrameType.Test => new TestReceived(frame),
+            Ax25FrameType.Ui => ClassifyUi(frame),
             _ => new ControlFieldError(),    // unknown U-frame control byte
         };
     }
