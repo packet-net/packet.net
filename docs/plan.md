@@ -6,6 +6,7 @@
 
 **As of:** 2026-09-02
 **Current phase:** Phases 0-5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete - mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 - `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) - see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces); Phase 7's channel-aware in-app self-update is shipped for the two channels that remain - the apt repo is maintainer-owned and out of scope, and the self-contained installer + distribution feed were withdrawn 2026-08-05, leaving a `.deb` and a `.tar.gz` as the whole of what pdn distributes ([`docs/node-self-update-design.md`](node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-09-03 - **RELEASE: lib-v0.33.0** - the numbered-frame rule ships on the library train alone; `publish-libs` pushed all 17 packages (34 pushed lines checked in the log), pdn-soundmodem moves its `Packet.Ax25`/`Packet.Core` pins from 0.32.0 to 0.33.0 under its transcript export. No node tag, no TS leg; axcall and packet-term-tui left on 0.27.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-03 - **Every numbered frame says the link is up, not only data** - RR, RNR, REJ and SREJ on a link never heard set up now infer it (joined late) as I frames already did; traffic crossing a hang-up no longer reopens the link; an acknowledgement while still calling means the answer was missed](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-03 - **RELEASE: lib-v0.32.0** - `Expire` ships on the library train alone; `publish-libs` pushed all 17 packages (34 pushed lines checked in the log), pdn-soundmodem moves its `Packet.Ax25`/`Packet.Core` pins from 0.31.0 to 0.32.0 and calls `Expire` every ten seconds. No node tag, no TS leg; axcall and packet-term-tui left on 0.27.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-03 - **The link observer learns that nothing came: `Expire` gives up on unanswered calls** - a call or hang-up nothing has answered for `CallTimeout` (3 minutes) goes to Disconnected with a `Timeout` event in the link's feed, timed at the moment the wait ran out; `Ax25LinkEvent.FrameType` is nullable for that one non-frame event. Frames still carry time; a live monitor calls `Expire` on a timer](#17-amendment-log)
@@ -1381,6 +1382,18 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-09-03 - RELEASE: lib-v0.33.0
+
+The entry below shipped to the world off green `main` (`65384a7d`, PR [#796](https://github.com/packet-net/packet.net/pull/796)). Library train only: `Packet.Ax25`'s link observer changed behaviour and nothing on its surface; nothing in `Packet.Node*` moved, so no `node-v*` tag, no `.deb`, no Docker image.
+
+**The gate.** `ci`, `interop`, `plan-check`, `fuzz` and `live-smoke` all green on the merge commit before the tag was pushed.
+
+**`lib-v0.33.0` -> NuGet.** `publish-libs` green across the 17-package matrix; the run log read rather than the conclusion trusted: 34 `Your package was pushed.` lines, `Packet.Ax25.0.33.0` and `Packet.Core.0.33.0` among them (nupkg + snupkg each). nuget.org's flat-container index polled for both before anything downstream restored against it.
+
+**Downstream: pdn-soundmodem.** The pin move from 0.32.0 to 0.33.0 rides in the PR that adds a transcript button to every card of its links pane; that repo's full suite was run against the published package from nuget.org, not the checkout, before the merge. No consumer code changes: the observer's reading of a link is what moved.
+
+**No other fan-out.** `axcall` and `packet-term-tui` remain on `0.27.0`, six library releases behind; the catch-up pass is still owed. No TS leg, no `headend-v*`.
 
 ### 2026-09-03 - Every numbered frame says the link is up, not only data
 
