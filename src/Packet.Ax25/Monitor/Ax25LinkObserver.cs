@@ -26,8 +26,10 @@ namespace Packet.Ax25.Monitor;
 /// <para>
 /// Time comes in with each frame rather than from a clock, so a log can be replayed through
 /// the observer to reconstruct the links it held, and the result is the same as if it had been
-/// listening at the time. Thread-safe: frames may arrive from a receive thread and a transmit
-/// thread at once.
+/// listening at the time. The one thing frames cannot tell it is that nothing came: a call that
+/// was never answered stays a call until <see cref="Expire"/> is given the time and gives up on
+/// it, so a live monitor calls that on a timer. Thread-safe: frames may arrive from a receive
+/// thread and a transmit thread at once.
 /// </para>
 /// </remarks>
 public sealed class Ax25LinkObserver
@@ -145,6 +147,91 @@ public sealed class Ax25LinkObserver
 
             return evt;
         }
+    }
+
+    /// <summary>
+    /// Ages the links to <paramref name="now"/>. A call or a hang-up that nothing has answered
+    /// within <see cref="Ax25LinkObserverOptions.CallTimeout"/> is given up on: the link goes to
+    /// <see cref="Ax25LinkState.Disconnected"/> and an event says so, timed at the moment the
+    /// wait ran out rather than at <paramref name="now"/>, so a replay lands it where it belongs.
+    /// The events are returned, one per link that changed and oldest first, and are in each
+    /// link's <see cref="Ax25LinkSnapshot.Recent"/> like any frame. Links quiet for longer than
+    /// <see cref="Ax25LinkObserverOptions.Lifetime"/> are forgotten, as a frame arriving would
+    /// have had them. Frames age links on their own as they arrive; call this on a timer to age
+    /// the ones nothing arrives on.
+    /// </summary>
+    public IReadOnlyList<Ax25LinkEvent> Expire(DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            Forget(now);
+
+            List<Ax25LinkEvent>? expired = null;
+            foreach (var link in _links.Values.OrderBy(l => l.LastSeen))
+            {
+                if (link.State is not (Ax25LinkState.Calling or Ax25LinkState.Disconnecting)
+                    || link.Caller is not Side caller
+                    || now - link.LastSeen < _options.CallTimeout)
+                {
+                    continue;
+                }
+
+                var hangingUp = link.State == Ax25LinkState.Disconnecting;
+                var waited = Waited(_options.CallTimeout);
+                var narration = hangingUp
+                    ? $"got no answer to the hang-up in {waited}; link down"
+                    : $"got no answer in {waited}; the call has failed";
+                var flags = Ax25LinkFlags.Timeout | (hangingUp ? Ax25LinkFlags.LinkDown : Ax25LinkFlags.None);
+                var other = caller == link.A ? link.B : link.A;
+
+                link.State = Ax25LinkState.Disconnected;
+                link.ClearCalls();
+
+                var evt = new Ax25LinkEvent(
+                    link.Id,
+                    link.Port,
+                    link.LastSeen + _options.CallTimeout,
+                    Transmitted: false,
+                    caller.Callsign,
+                    other.Callsign,
+                    [],
+                    FrameType: null,
+                    IsCommand: false,
+                    PollFinal: false,
+                    Ns: null,
+                    Nr: null,
+                    Pid: null,
+                    InfoLength: 0,
+                    Text: null,
+                    narration,
+                    flags,
+                    Count: null,
+                    link.State);
+
+                link.Recent.Enqueue(evt);
+                while (link.Recent.Count > _options.RecentPerLink)
+                {
+                    link.Recent.Dequeue();
+                }
+
+                (expired ??= []).Add(evt);
+            }
+
+            return expired ?? [];
+        }
+    }
+
+    /// <summary>"3 minutes", "1 minute", "90 seconds": the wait, as a person would say it.</summary>
+    private static string Waited(TimeSpan wait)
+    {
+        if (wait.TotalMinutes >= 1 && wait.Ticks % TimeSpan.TicksPerMinute == 0)
+        {
+            var minutes = (int)wait.TotalMinutes;
+            return minutes == 1 ? "1 minute" : $"{minutes} minutes";
+        }
+
+        var seconds = (int)Math.Round(wait.TotalSeconds);
+        return seconds == 1 ? "1 second" : $"{seconds} seconds";
     }
 
     /// <summary>Every link the observer knows, most recently active first.</summary>

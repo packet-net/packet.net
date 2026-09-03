@@ -56,4 +56,10 @@ public enum Ax25LinkFlags
     /// <summary>A frame that makes no sense where the link stands: numbered traffic on a link
     /// that is down, an acknowledgement nothing asked for.</summary>
     Unexpected = 1 << 12,
+
+    /// <summary>A call or a hang-up that nothing answered within the observer's
+    /// <see cref="Ax25LinkObserverOptions.CallTimeout"/>, given up on. Not a frame: this is the
+    /// observer's own conclusion, raised by <see cref="Ax25LinkObserver.Expire"/>, and the
+    /// event's <see cref="Ax25LinkEvent.FrameType"/> is null.</summary>
+    Timeout = 1 << 13,
 }

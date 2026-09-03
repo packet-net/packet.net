@@ -20,7 +20,8 @@ public enum Ax25LinkState
     /// <summary>A DISC has been heard and nothing has answered it yet.</summary>
     Disconnecting,
 
-    /// <summary>The link is down: a UA or DM answered a DISC, a DM refused a call, or a DM
-    /// arrived on a link that was up.</summary>
+    /// <summary>The link is down: a UA or DM answered a DISC, a DM refused a call, a DM arrived
+    /// on a link that was up, or a call or a hang-up went unanswered for longer than the
+    /// observer waits (<see cref="Ax25LinkObserver.Expire"/>).</summary>
     Disconnected,
 }

@@ -4,20 +4,22 @@ namespace Packet.Ax25.Monitor;
 
 /// <summary>
 /// One frame, read in the context of its link: who sent it, what it was, what it meant, and what
-/// the link looked like once it had gone by.
+/// the link looked like once it had gone by. Or, once in a while, no frame at all: the observer
+/// giving up on a call that nothing answered (<see cref="Ax25LinkFlags.Timeout"/>) is an event on
+/// the link with no frame behind it, and reads with <see cref="FrameType"/> null.
 /// </summary>
 /// <param name="LinkId">The link it belongs to; see <see cref="Ax25LinkSnapshot.Id"/>.</param>
 /// <param name="Port">The port the caller observed it on.</param>
-/// <param name="At">When the caller observed it.</param>
+/// <param name="At">When the caller observed it; for a timeout, when the wait ran out.</param>
 /// <param name="Transmitted">True when the caller sent it rather than heard it.</param>
-/// <param name="From">The sending station.</param>
+/// <param name="From">The sending station; for a timeout, the one that was waiting.</param>
 /// <param name="To">The station it was addressed to.</param>
 /// <param name="Via">
 /// The digipeater path in order, each entry the callsign with <c>*</c> appended once that
 /// digipeater has repeated the frame (the H bit), which is how monitors have always written
 /// it. Empty for a direct frame.
 /// </param>
-/// <param name="FrameType">Its wire type.</param>
+/// <param name="FrameType">Its wire type; null for a timeout, which is not a frame.</param>
 /// <param name="IsCommand">Command (true) or response (false), per the address C bits.</param>
 /// <param name="PollFinal">The P/F bit.</param>
 /// <param name="Ns">N(S) on an I frame; null on anything else.</param>
@@ -46,7 +48,7 @@ public sealed record Ax25LinkEvent(
     Callsign From,
     Callsign To,
     IReadOnlyList<string> Via,
-    Ax25FrameType FrameType,
+    Ax25FrameType? FrameType,
     bool IsCommand,
     bool PollFinal,
     int? Ns,
