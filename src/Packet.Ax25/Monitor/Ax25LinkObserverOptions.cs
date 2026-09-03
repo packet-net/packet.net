@@ -15,4 +15,15 @@ public sealed record Ax25LinkObserverOptions
     /// of logged frames ages links by the log's time and not by the replay's. Default 6 hours.
     /// </summary>
     public TimeSpan Lifetime { get; init; } = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// How long a call (SABM/SABME) or a hang-up (DISC) may go unanswered before
+    /// <see cref="Ax25LinkObserver.Expire"/> gives up on it and takes the link to be down. A
+    /// station retries a call N2 times at T1 (ten times at ten seconds is the common default,
+    /// and with linear backoff the last gap is under two minutes), and every retry heard
+    /// restarts this clock, so silence for this long after the last one means the caller has
+    /// stopped, or the answer went by unheard. Measured against the timestamps the caller
+    /// supplies, like <see cref="Lifetime"/>. Default 3 minutes.
+    /// </summary>
+    public TimeSpan CallTimeout { get; init; } = TimeSpan.FromMinutes(3);
 }

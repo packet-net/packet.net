@@ -462,6 +462,107 @@ public class Ax25LinkObserverTests
     }
 
     [Fact]
+    public void An_Unanswered_Call_Is_Given_Up_On_When_The_Wait_Runs_Out()
+    {
+        See(Ax25Frame.Sabm(Node, User));
+
+        _observer.Expire(T0.AddMinutes(2)).Should().BeEmpty();
+        Link(Node, User).State.Should().Be(Ax25LinkState.Calling);
+
+        var gaveUp = _observer.Expire(T0.AddMinutes(10)).Should().ContainSingle().Subject;
+        gaveUp.LinkId.Should().Be("1|GB7RDG-2<>M0LTE-9");
+        gaveUp.From.Should().Be(User);
+        gaveUp.To.Should().Be(Node);
+        gaveUp.FrameType.Should().BeNull();
+        gaveUp.Flags.Should().Be(Ax25LinkFlags.Timeout);
+        gaveUp.State.Should().Be(Ax25LinkState.Disconnected);
+        gaveUp.Narration.Should().Be("got no answer in 3 minutes; the call has failed");
+        // Timed at the moment the wait ran out, not at whenever the clock was next looked at.
+        gaveUp.At.Should().Be(T0.AddMinutes(3));
+
+        var link = Link(Node, User);
+        link.State.Should().Be(Ax25LinkState.Disconnected);
+        link.Concern.Should().BeNull();
+        link.AtoB.CallsUnanswered.Should().Be(0);
+        link.Recent.Should().HaveCount(2).And.Subject.Last().Should().BeSameAs(gaveUp);
+
+        // Once is enough.
+        _observer.Expire(T0.AddMinutes(20)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Every_Retry_Heard_Restarts_The_Wait()
+    {
+        See(Ax25Frame.Sabm(Node, User));
+        See(Ax25Frame.Sabm(Node, User), 100);
+
+        _observer.Expire(T0.AddSeconds(200)).Should().BeEmpty();
+        _observer.Expire(T0.AddSeconds(280)).Should().ContainSingle()
+            .Which.At.Should().Be(T0.AddSeconds(280));
+    }
+
+    [Fact]
+    public void An_Unanswered_Hang_Up_Takes_The_Link_Down()
+    {
+        Connect();
+        See(Ax25Frame.Disc(Node, User), 60);
+
+        var gaveUp = _observer.Expire(T0.AddMinutes(4)).Should().ContainSingle().Subject;
+        gaveUp.From.Should().Be(User);
+        gaveUp.Flags.Should().Be(Ax25LinkFlags.Timeout | Ax25LinkFlags.LinkDown);
+        gaveUp.Narration.Should().Be("got no answer to the hang-up in 3 minutes; link down");
+        Link(Node, User).State.Should().Be(Ax25LinkState.Disconnected);
+    }
+
+    [Fact]
+    public void A_Call_After_One_Given_Up_On_Is_A_New_Call()
+    {
+        See(Ax25Frame.Sabm(Node, User));
+        _observer.Expire(T0.AddMinutes(5));
+
+        var again = See(Ax25Frame.Sabm(Node, User), 400);
+        again.Narration.Should().Be("calls GB7RDG-2");
+        again.Flags.Should().Be(Ax25LinkFlags.None);
+        again.State.Should().Be(Ax25LinkState.Calling);
+        Link(Node, User).AtoB.CallsUnanswered.Should().Be(1);
+    }
+
+    [Fact]
+    public void Links_That_Are_Up_Or_Down_Are_Left_Alone_By_Expire()
+    {
+        Connect();
+        See(Ax25Frame.Sabm(new Callsign("G7XYZ"), User), 5);
+        See(Ax25Frame.Dm(User, new Callsign("G7XYZ"), finalBit: true), 6);
+        See(Ax25Frame.Ui(new Callsign("ID"), new Callsign("2E0ABC"), "beacon"u8), 7);
+
+        _observer.Expire(T0.AddHours(1)).Should().BeEmpty();
+        Link(Node, User).State.Should().Be(Ax25LinkState.Connected);
+    }
+
+    [Fact]
+    public void Expire_Forgets_Links_Past_Their_Lifetime_Too()
+    {
+        var observer = new Ax25LinkObserver(new Ax25LinkObserverOptions { Lifetime = TimeSpan.FromMinutes(10) });
+        observer.Observe("1", Ax25Frame.Sabm(Node, User).ToBytes(), T0);
+
+        observer.Expire(T0.AddMinutes(11)).Should().BeEmpty();
+        observer.Snapshot().Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(60, "1 minute")]
+    [InlineData(90, "90 seconds")]
+    [InlineData(600, "10 minutes")]
+    public void The_Wait_Is_Said_As_A_Person_Would(int seconds, string said)
+    {
+        var observer = new Ax25LinkObserver(new Ax25LinkObserverOptions { CallTimeout = TimeSpan.FromSeconds(seconds) });
+        observer.Observe("1", Ax25Frame.Sabm(Node, User).ToBytes(), T0);
+
+        observer.Expire(T0.AddSeconds(seconds)).Should().ContainSingle()
+            .Which.Narration.Should().Be($"got no answer in {said}; the call has failed");
+    }
+
+    [Fact]
     public void Observe_Is_Safe_From_Two_Threads()
     {
         var observer = new Ax25LinkObserver();
