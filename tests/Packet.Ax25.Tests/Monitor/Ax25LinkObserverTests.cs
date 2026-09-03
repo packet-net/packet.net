@@ -350,6 +350,58 @@ public class Ax25LinkObserverTests
     }
 
     [Fact]
+    public void Acknowledgements_Alone_Mean_The_Link_Was_Already_Up()
+    {
+        // The station joined late and has heard no data yet, only the receiver's side of the
+        // exchange: an acknowledgement, then a request to go back. Both are numbered traffic,
+        // and numbered traffic means a link.
+        var ack = See(Ax25Frame.Rr(Node, User, nr: 3, isCommand: false));
+        ack.State.Should().Be(Ax25LinkState.Connected);
+        ack.Flags.Should().Be(Ax25LinkFlags.None);
+        Link(Node, User).Inferred.Should().BeTrue();
+
+        var rej = See(Ax25Frame.Rej(Node, User, nr: 2, isCommand: false), 1);
+        rej.State.Should().Be(Ax25LinkState.Connected);
+        rej.Flags.Should().Be(Ax25LinkFlags.Reject);
+    }
+
+    [Fact]
+    public void Traffic_Crossing_A_Hang_Up_Does_Not_Bring_The_Link_Back()
+    {
+        // The other side had not heard the DISC when it sent these; the UA that follows
+        // finishes the hang-up. Neither frame is a disagreement and neither reopens the link.
+        Connect();
+        See(Ax25Frame.Disc(Node, User), 2);
+        var ack = See(Ax25Frame.Rr(User, Node, nr: 0, isCommand: false), 3);
+        ack.State.Should().Be(Ax25LinkState.Disconnecting);
+        ack.Flags.Should().Be(Ax25LinkFlags.None);
+        var data = See(Ax25Frame.I(User, Node, nr: 0, ns: 0, "late"u8), 4);
+        data.State.Should().Be(Ax25LinkState.Disconnecting);
+        data.Flags.Should().Be(Ax25LinkFlags.None);
+
+        var ua = See(Ax25Frame.Ua(User, Node), 5);
+        ua.State.Should().Be(Ax25LinkState.Disconnected);
+        ua.Flags.Should().Be(Ax25LinkFlags.LinkDown);
+    }
+
+    [Fact]
+    public void An_Acknowledgement_While_Still_Calling_Means_The_Answer_Was_Missed()
+    {
+        See(Ax25Frame.Sabm(Node, User));
+        Link(Node, User).Concern.Should().BeNull();
+        See(Ax25Frame.Sabm(Node, User), 5);
+        Link(Node, User).Concern.Should().Be("M0LTE-9 has called 2 times with no answer");
+
+        // The UA went by unheard; the node is already acknowledging data.
+        var ack = See(Ax25Frame.Rr(User, Node, nr: 1, isCommand: false), 8);
+        ack.State.Should().Be(Ax25LinkState.Connected);
+        ack.Flags.Should().Be(Ax25LinkFlags.Unexpected);
+        var link = Link(Node, User);
+        link.Inferred.Should().BeTrue();
+        link.Concern.Should().BeNull();
+    }
+
+    [Fact]
     public void Numbered_Traffic_On_A_Link_That_Went_Down_Is_Unexpected()
     {
         Connect();

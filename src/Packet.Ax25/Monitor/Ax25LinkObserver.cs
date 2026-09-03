@@ -280,20 +280,29 @@ public sealed class Ax25LinkObserver
         switch (frame.FrameType)
         {
             case Ax25FrameType.I:
-                return InterpretI(link, sender, receiver, frame);
+            {
+                var numbered = NumberedTraffic(link);
+                var (narration, flags, count) = InterpretI(link, sender, receiver, frame);
+                return (narration, flags | numbered, count);
+            }
 
             case Ax25FrameType.Rr:
             case Ax25FrameType.Rnr:
-                return InterpretRrRnr(link, sender, receiver, other, frame, poll, final);
+            {
+                var numbered = NumberedTraffic(link);
+                var (narration, flags, count) = InterpretRrRnr(link, sender, receiver, other, frame, poll, final);
+                return (narration, flags | numbered, count);
+            }
 
             case Ax25FrameType.Rej:
             case Ax25FrameType.Srej:
             {
+                var numbered = NumberedTraffic(link);
                 sender.Rejects++;
                 sender.LastNr = frame.Nr;
                 var what = frame.FrameType == Ax25FrameType.Rej ? $"resend from #{frame.Nr}" : $"resend #{frame.Nr}";
                 var flags = Ax25LinkFlags.Reject | (poll ? Ax25LinkFlags.Poll : final ? Ax25LinkFlags.Final : 0);
-                return ($"asks {other} to {what}", flags, null);
+                return ($"asks {other} to {what}", flags | numbered, null);
             }
 
             case Ax25FrameType.Sabm:
@@ -382,24 +391,41 @@ public sealed class Ax25LinkObserver
         }
     }
 
+    /// <summary>
+    /// What a numbered frame (I, RR, RNR, REJ, SREJ) says about the link it is heard on, before
+    /// the frame itself is read. Both ends sending numbered traffic means both think the link is
+    /// up. On a link never heard set up, we joined late and it is taken to be up from here. On a
+    /// link that is being taken down, it is the other side not yet having heard the hang-up, and
+    /// nothing changes: the UA or DM that follows will finish the job. On a link heard to come
+    /// down, or still being called, one end disagrees: the link is taken to be up, and the frame
+    /// is flagged so the disagreement is visible.
+    /// </summary>
+    private static Ax25LinkFlags NumberedTraffic(Link link)
+    {
+        switch (link.State)
+        {
+            case Ax25LinkState.Connected:
+            case Ax25LinkState.Disconnecting:
+                return Ax25LinkFlags.None;
+            case Ax25LinkState.Unconnected:
+                link.State = Ax25LinkState.Connected;
+                link.Inferred = true;
+                return Ax25LinkFlags.None;
+            default:
+                // The call, if one was open, was answered without us hearing it.
+                link.State = Ax25LinkState.Connected;
+                link.Inferred = true;
+                link.ClearCalls();
+                return Ax25LinkFlags.Unexpected;
+        }
+    }
+
     private static (string, Ax25LinkFlags, int?) InterpretI(Link link, Side sender, Side receiver, Ax25Frame frame)
     {
         var flags = Ax25LinkFlags.None;
         var m = link.Modulo;
         int ns = frame.Ns;
         string verb;
-
-        if (link.State != Ax25LinkState.Connected)
-        {
-            // Numbered traffic means both ends think the link is up. If we never heard the
-            // call we joined late; if we heard it come down, one end disagrees.
-            if (link.State != Ax25LinkState.Unconnected)
-            {
-                flags |= Ax25LinkFlags.Unexpected;
-            }
-            link.State = Ax25LinkState.Connected;
-            link.Inferred = true;
-        }
 
         sender.HasSentData = true;
         if (sender.NextNs is not int expected)
