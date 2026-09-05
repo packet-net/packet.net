@@ -4,7 +4,7 @@ namespace Packet.Node.Core.Telemetry;
 
 /// <summary>
 /// A node-layer read of the per-frame radio metadata (<see cref="RadioMetadata"/>) the
-/// <c>M0LTE.Radio.RssiTaggingTransport</c> attaches to each inbound frame. The node consumes it
+/// <c>Packet.Ax25.Radio.RssiTaggingTransport</c> attaches to each inbound frame. The node consumes it
 /// to stamp RSSI/SNR onto the monitor / heard / traffic surfaces - a <b>node-telemetry</b> concern,
 /// deliberately kept OFF the AX.25-protocol contract (<c>Ax25FrameEventArgs</c> stays
 /// <c>Frame</c>/<c>Direction</c>/<c>Timestamp</c>, and the parity-tracked <c>Ax25Listener</c>
