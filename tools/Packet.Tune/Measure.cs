@@ -1,6 +1,6 @@
 using System.Globalization;
 using Packet.Kiss.NinoTnc;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 
 namespace Packet.Tune;
 

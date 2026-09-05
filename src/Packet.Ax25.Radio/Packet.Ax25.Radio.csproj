@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Ax25.Transport.Abstractions\Packet.Ax25.Transport.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The radio-control abstraction these adapt from. Sibling repo (M0LTE/M0LTE.Radio),
+         released on its own cadence: bump the pin in Directory.Packages.props. -->
+    <PackageReference Include="M0LTE.Radio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Ax25.Radio.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PackageId>Packet.Ax25.Radio</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Title>Packet.Ax25.Radio - AX.25 adapters over a radio control channel</Title>
+    <Description>Brings a radio's control channel (M0LTE.Radio's IRadioControl: RSSI, hardware carrier-sense/DCD, PTT) into the AX.25 stack: RssiTaggingTransport decorates any IAx25Transport so inbound frames carry per-frame RSSI/SNR/noise-floor/airtime metadata, and RadioCarrierSense bridges hardware DCD onto the ICarrierSense seam the listener's CSMA gate consults before every keyup. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>ax25;amateur-radio;packet-radio;radio-control;rssi;dcd;csma</PackageTags>
+  </PropertyGroup>
+
+</Project>

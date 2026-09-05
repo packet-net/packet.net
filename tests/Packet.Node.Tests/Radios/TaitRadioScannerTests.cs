@@ -1,5 +1,5 @@
 using Packet.Node.Core.Radios;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 
 namespace Packet.Node.Tests.Radios;
 

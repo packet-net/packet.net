@@ -10,6 +10,29 @@ After a **substantive** merge to `main` - a library behaviour change, a node-hos
 
 The libraries and the node host are **independent version trains** - they started out in lockstep (`lib-v0.8.0` + `node-v0.8.0`) but diverged long ago (2026-07-14 snapshot: node at `0.31.0`, libs at `0.23.0`), because the node releases on every substantive node change while the libs only bump when library surface moves. **Always find the next number from the tags, never assume**: `git ls-remote --tags origin 'node-v*' | grep -v '\^{}' | sed 's|.*refs/tags/||' | sort -V | tail -1` (same with `lib-v*`) - note the `sort -V`; lexical sorting lies (`node-v0.9.x` sorts after `node-v0.30.0`). This bit for real on 2026-07-14: a `node-v0.23.0` tag "already exists" surprise mid-release, because the number was inferred from the lib train instead of listed. Pre-1.0, a normal release is a **minor** bump on its own train whether the changes are features or fixes; reserve patch bumps (`0.8.0 → 0.8.1`) for a hotfix on top of a release. The version lives **only in the tag** - the publish workflows pass `-p:Version=$VERSION` / read `${GITHUB_REF#refs/tags/...}`; there is no `<Version>` to edit in any `.csproj` or `Directory.Build.props`.
 
+## Step 0a - do the sibling radio/rig repos need releasing first?
+
+Radio control and CAT rig control left this repo on 2026-09-05 and now ship from two repos under Tom's own account, each on its own `v*` cadence:
+
+| Repo | Packages | Depends on |
+| --- | --- | --- |
+| [`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig) | `M0LTE.Rig`, `M0LTE.Rig.Hamlib`, `M0LTE.Rig.Flrig` | nothing |
+| [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio) | `M0LTE.Radio`, `M0LTE.Radio.Tait` | `M0LTE.Rig` |
+
+**If neither moved this cycle, skip this step entirely** and go to step 0. Their pins in [`Directory.Packages.props`](../Directory.Packages.props) stay where they are, and `lib-v*` is independent of them.
+
+If one did move, the order is forced and cannot be shortcut, because each link is a real NuGet restore:
+
+1. `M0LTE/M0LTE.Rig`: merge, tag `v<semver>`, let its `publish.yml` push. Wait for nuget.org indexing.
+2. `M0LTE/M0LTE.Radio`: bump its `M0LTE.Rig` pin if step 1 ran, merge, tag `v<semver>`, wait for indexing.
+3. Here: bump the `M0LTE.*` pins in `Directory.Packages.props`, merge on green, and only then carry on to step 0.
+
+Both repos publish via **NuGet trusted publishing** (OIDC, no stored API key), so there is no secret to check. Two things about their `publish.yml` that bite if you touch them: the file has to keep that exact name, because nuget.org's policy matches on the workflow filename, and the minted key lives one hour, so the push stays ahead of anything slow.
+
+Why this ordering is load-bearing: `Packet.Tune.Core` is a **published** package here and it takes `M0LTE.Radio.Tait` types (`TaitCcdiRadio`) through its **public** API, so a `lib-v*` cut against unpublished sibling versions ships a package nobody can restore.
+
+---
+
 ## Step 0 - verify `main` is green *before* tagging
 
 Tag only a commit whose **`ci` and `interop`** workflows both went green **on the merge commit on `main`** (since 2026-07-14 the push-to-main run is the *only* CI a change gets - PR triggers were dropped; PRs merge on green local test runs):
@@ -45,14 +68,11 @@ The `lib-v*` tag triggers [`.github/workflows/publish-libs.yml`](../.github/work
 - `Packet.Agw`
 - `Packet.NetRom`
 - `Packet.Rhp2`
-- `Packet.Radio`
-- `Packet.Radio.Tait`
-- `Packet.Rig`
-- `Packet.Rig.Hamlib`
-- `Packet.Rig.Flrig`
+- `Packet.Ax25.Radio`
+- `Packet.Ax25.Radio.Tait`
 - `Packet.Tune.Core`
 
-**The `projects:` matrix in the workflow is the authoritative list** - the list above is a 2026-07-13 snapshot of the 17-package matrix (this doc had previously drifted from the matrix). `Packet.Node*` and `Packet.Rhp2.Server` are **not** on the NuGet publish set - add to the `projects:` matrix in the workflow if that changes. The version is the tag minus the `lib-v` prefix. Publishing needs the `NUGET_API_KEY` secret (set on the self-hosted runner org/repo); a missing key downgrades to a warning and *skips* the push, so check the run actually pushed.
+**The `projects:` matrix in the workflow is the authoritative list** - the list above is a 2026-09-05 snapshot of the 14-package matrix (this doc had previously drifted from the matrix). `Packet.Node*` and `Packet.Rhp2.Server` are **not** on the NuGet publish set - add to the `projects:` matrix in the workflow if that changes. The version is the tag minus the `lib-v` prefix. Publishing needs the `NUGET_API_KEY` secret (set on the self-hosted runner org/repo); a missing key downgrades to a warning and *skips* the push, so check the run actually pushed.
 
 Then **wait for nuget.org flat-container indexing (~5-10 min)** before any downstream bump - a consumer `dotnet restore` against an unindexed version 404s.
 
@@ -109,7 +129,7 @@ gh release view headend-v<semver> --repo packet-net/packet.net
 
 They left this repo on 2026-08-20 for [`M0LTE/tait-codeplug`](https://github.com/M0LTE/tait-codeplug), which releases both on its own cadence: a `v*` tag there gates on the tests, publishes the [`M0LTE.Tait.Codeplug`](https://www.nuget.org/packages/M0LTE.Tait.Codeplug) NuGet package via trusted publishing, and attaches the six cross-platform, self-contained CLI binaries + `SHA256SUMS` to a GitHub Release. None of it is part of this repo's cascade any more, and the `tait-cli-v*` tags and their releases here were deleted with the move.
 
-`Packet.Radio.Tait` - the runtime CCDI / transparent-mode radio driver, a different thing from the codeplug programmer - stays here and ships with `lib-v*` as before.
+The CCDI radio driver followed it out on 2026-09-05; see step 0a below.
 
 ### Optional - move the lab to the release `.deb`
 

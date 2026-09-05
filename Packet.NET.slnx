@@ -3,6 +3,8 @@
     <Project Path="src/Packet.Agw/Packet.Agw.csproj" />
     <Project Path="src/Packet.Ax25/Packet.Ax25.csproj" />
     <Project Path="src/Packet.Ax25.Transport.Abstractions/Packet.Ax25.Transport.Abstractions.csproj" />
+    <Project Path="src/Packet.Ax25.Radio/Packet.Ax25.Radio.csproj" />
+    <Project Path="src/Packet.Ax25.Radio.Tait/Packet.Ax25.Radio.Tait.csproj" />
     <Project Path="src/Packet.Aprs/Packet.Aprs.csproj" />
     <Project Path="src/Packet.Axudp/Packet.Axudp.csproj" />
     <Project Path="src/Packet.Core/Packet.Core.csproj" />
@@ -13,19 +15,16 @@
     <Project Path="src/Packet.NetRom/Packet.NetRom.csproj" />
     <Project Path="src/Packet.Node.Core/Packet.Node.Core.csproj" />
     <Project Path="src/Packet.Node/Packet.Node.csproj" />
-    <Project Path="src/Packet.Radio.Tait/Packet.Radio.Tait.csproj" />
-    <Project Path="src/Packet.Radio/Packet.Radio.csproj" />
     <Project Path="src/Packet.Rhp2.Server/Packet.Rhp2.Server.csproj" />
     <Project Path="src/Packet.Rhp2/Packet.Rhp2.csproj" />
-    <Project Path="src/Packet.Rig.Flrig/Packet.Rig.Flrig.csproj" />
-    <Project Path="src/Packet.Rig.Hamlib/Packet.Rig.Hamlib.csproj" />
-    <Project Path="src/Packet.Rig/Packet.Rig.csproj" />
     <Project Path="src/Packet.Tune.Core/Packet.Tune.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Packet.Agw.Tests/Packet.Agw.Tests.csproj" />
     <Project Path="tests/Packet.Ax25.Properties/Packet.Ax25.Properties.csproj" />
     <Project Path="tests/Packet.Ax25.Tests/Packet.Ax25.Tests.csproj" />
+    <Project Path="tests/Packet.Ax25.Radio.Tests/Packet.Ax25.Radio.Tests.csproj" />
+    <Project Path="tests/Packet.Ax25.Radio.Tait.Tests/Packet.Ax25.Radio.Tait.Tests.csproj" />
     <Project Path="tests/Packet.Aprs.Tests/Packet.Aprs.Tests.csproj" />
     <Project Path="tests/Packet.Axudp.Tests/Packet.Axudp.Tests.csproj" />
     <Project Path="tests/Packet.Core.Tests/Packet.Core.Tests.csproj" />
@@ -36,12 +35,7 @@
     <Project Path="tests/Packet.Mcp.Tests/Packet.Mcp.Tests.csproj" />
     <Project Path="tests/Packet.NetRom.Tests/Packet.NetRom.Tests.csproj" />
     <Project Path="tests/Packet.Node.Tests/Packet.Node.Tests.csproj" />
-    <Project Path="tests/Packet.Radio.Tait.Tests/Packet.Radio.Tait.Tests.csproj" />
-    <Project Path="tests/Packet.Radio.Tests/Packet.Radio.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />
-    <Project Path="tests/Packet.Rig.Flrig.Tests/Packet.Rig.Flrig.Tests.csproj" />
-    <Project Path="tests/Packet.Rig.Hamlib.Tests/Packet.Rig.Hamlib.Tests.csproj" />
-    <Project Path="tests/Packet.Rig.Tests/Packet.Rig.Tests.csproj" />
     <Project Path="tests/Packet.Tune.Core.Tests/Packet.Tune.Core.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

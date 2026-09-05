@@ -18,7 +18,7 @@ namespace Packet.Tune.Core;
 /// past the callsign optional. Only <c>cs</c> is mandatory. Unknown keys are ignored on
 /// parse (forward compatibility). A minimal status (callsign + mode) fits a plain 32-character
 /// SDM; a full status with the supported-mode and capability lists exceeds it and must ride an
-/// <b>extended SDM</b> (128 characters - <see cref="Packet.Radio.Tait.TaitSdmSideChannelOptions.EnableExtendedSdm"/>).
+/// <b>extended SDM</b> (128 characters - <see cref="M0LTE.Radio.Tait.TaitSdmSideChannelOptions.EnableExtendedSdm"/>).
 /// </para>
 /// <para>
 /// <see cref="ModeName"/> is <em>derived</em> from <see cref="Mode"/> through

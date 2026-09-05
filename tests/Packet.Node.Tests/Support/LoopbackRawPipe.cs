@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using Packet.Kiss;
 using Packet.Kiss.NinoTnc;
-using Packet.Radio.Tait.Ccdi;
+using M0LTE.Radio.Tait.Ccdi;
 
 namespace Packet.Node.Tests.Support;
 

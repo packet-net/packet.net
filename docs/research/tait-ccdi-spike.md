@@ -3,7 +3,10 @@
 *2026-07-02. The first hardware session of Phase 10 (§5.10): the §5.Y probe playbook run against
 the real 2× NinoTNC + 2× Tait rig, ending with `Packet.Radio` + `Packet.Radio.Tait` shipped as
 libraries and the headline capability - radio-attributed signal metadata on every received
-AX.25 frame - working end-to-end.*
+AX.25 frame - working end-to-end. Those two libraries later left this repo for the sibling
+repo [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio), where they are `M0LTE.Radio`
+and `M0LTE.Radio.Tait`; the AX.25-specific `RssiTaggingTransport` stayed behind, in
+`Packet.Ax25.Radio`. Source and test paths below are as they were at the time.*
 
 ## The rig
 

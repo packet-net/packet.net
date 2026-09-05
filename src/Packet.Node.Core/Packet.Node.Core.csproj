@@ -16,14 +16,6 @@
     <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
     <ProjectReference Include="..\Packet.Kiss.Serial\Packet.Kiss.Serial.csproj" />
     <ProjectReference Include="..\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
-    <ProjectReference Include="..\Packet.Radio\Packet.Radio.csproj" />
-    <ProjectReference Include="..\Packet.Radio.Tait\Packet.Radio.Tait.csproj" />
-    <!-- Rig control (CAT): the station-control seam behind a port's `rig:` block —
-         Packet.Rig is the dependency-free abstraction, Hamlib/Flrig are the backends the
-         RigControlFactory dispatches to. -->
-    <ProjectReference Include="..\Packet.Rig\Packet.Rig.csproj" />
-    <ProjectReference Include="..\Packet.Rig.Hamlib\Packet.Rig.Hamlib.csproj" />
-    <ProjectReference Include="..\Packet.Rig.Flrig\Packet.Rig.Flrig.csproj" />
     <!-- The capability doctor (GET /api/v1/ports/{id}/doctor) reuses the Packet.Tune.Core
          probe core against the live RunningPort handles. Tom approved pulling Tune.Core into
          the node for this; only the doctor probes are used here (not the tuning link machinery). -->
@@ -79,6 +71,22 @@
     <!-- The link bench (tools/Packet.LinkBench, docs/link-bench-plan.md) reuses
          PacingKissModem to pace its bench modems in ACKMODE. -->
     <InternalsVisibleTo Include="Packet.LinkBench" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Ax25.Radio\Packet.Ax25.Radio.csproj" />
+    <ProjectReference Include="..\Packet.Ax25.Radio.Tait\Packet.Ax25.Radio.Tait.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="M0LTE.Radio" />
+    <PackageReference Include="M0LTE.Radio.Tait" />
+    <!-- Rig control (CAT): the station-control seam behind a port's `rig:` block. M0LTE.Rig
+         is the dependency-free abstraction, Hamlib/Flrig are the backends RigControlFactory
+         dispatches to. Sibling repo M0LTE/M0LTE.Rig; pins in Directory.Packages.props. -->
+    <PackageReference Include="M0LTE.Rig" />
+    <PackageReference Include="M0LTE.Rig.Hamlib" />
+    <PackageReference Include="M0LTE.Rig.Flrig" />
   </ItemGroup>
 
 </Project>

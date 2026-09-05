@@ -77,7 +77,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// <summary>
     /// The over-air bit rate of <see cref="CurrentMode"/> per <see cref="NinoTncCatalog"/>, or
     /// <c>null</c> when no mode has been set (or the mode has no fixed rate, e.g. 15 "Set from
-    /// KISS"). Feed this to <c>RssiTaggingOptions.BitRateHzProvider</c> (Packet.Radio) for
+    /// KISS"). Feed this to <c>RssiTaggingOptions.BitRateHzProvider</c> (M0LTE.Radio) for
     /// per-frame airtime / pre-data-carrier estimation.
     /// </summary>
     public int? CurrentBitRateHz =>

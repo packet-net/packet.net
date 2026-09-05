@@ -1,8 +1,8 @@
 using System.Text;
 using Packet.Kiss;
 using Packet.Kiss.Serial;
-using Packet.Radio.Tait;
-using Packet.Radio.Tait.Ccdi;
+using M0LTE.Radio.Tait;
+using M0LTE.Radio.Tait.Ccdi;
 
 namespace Packet.Tait.Spike;
 

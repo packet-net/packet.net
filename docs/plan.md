@@ -347,11 +347,8 @@ These were settled during the initial planning round and have not been revisited
   Packet.Axudp/                       AXUDP transport (unicast + multipoint)
   Packet.Aprs/                        APRS encode/decode (incl. Mic-E), APRS-IS client
   Packet.NetRom/                      NET/ROM L3 + L4 wire, routing table, INP3
-  Packet.Radio/                       radio-control abstractions (PTT, carrier sense, RSSI)
-  Packet.Radio.Tait/                  Tait CCDI driver: control channel + transparent-mode transport
-  Packet.Rig/                         CAT rig-control abstractions
-  Packet.Rig.Hamlib/                  rigctld network protocol
-  Packet.Rig.Flrig/                   flrig XML-RPC
+  Packet.Ax25.Radio/                  AX.25 adapters over M0LTE.Radio: RSSI frame tagging, DCD into CSMA
+  Packet.Ax25.Radio.Tait/             AX.25 over a Tait's Transparent-mode FFSK pipe (no TNC)
   Packet.Tune.Core/                   TXDELAY minimisation, deviation tuning, port doctor probes
   Packet.Rhp2/                        RHPv2 framing + messages (shared)
   Packet.Rhp2.Server/                 RHPv2 TCP listener, handle table, auth gate
@@ -1382,6 +1379,24 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-09-05 - Radio and rig control split out to `M0LTE/M0LTE.Radio` and `M0LTE/M0LTE.Rig`
+
+Five libraries left this repo. `src/Packet.Radio` and `src/Packet.Radio.Tait` are now [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio); `src/Packet.Rig`, `src/Packet.Rig.Hamlib` and `src/Packet.Rig.Flrig` are now [`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig). Both public, AGPL-3.0-or-later, history carried across with `git filter-repo`, packages and namespaces renamed to match. Each repo releases off its own `v*` tag through NuGet trusted publishing (OIDC, no stored API key), on its own cadence.
+
+Why: neither is packet radio. `Packet.Rig` is CAT control (frequency, mode, PTT, SWR) and its own csproj had said "usable standalone" since it was written; `Packet.Radio` is what a control channel to a radio offers, expressed protocol-neutrally. The `Packet.*` prefix advertised a coupling to AX.25 that about 83% of the code did not have, and it was keeping the libraries off the radar of the loggers and digimode apps they were designed for. The old package IDs published 12-16 versions each to roughly crawler-floor download counts, so nothing was lost by renaming.
+
+**The AX.25-specific 17% stayed here**, in two new packages that ship on the `lib-v*` train as before:
+- `Packet.Ax25.Radio` - `RssiTaggingTransport` (decorates `IAx25Transport`, stamps per-frame RSSI/SNR/airtime) and `RadioCarrierSense` (bridges hardware DCD onto `ICarrierSense`). Over `M0LTE.Radio`.
+- `Packet.Ax25.Radio.Tait` - `TaitTransparentTransport`, AX.25 over the radio's own FFSK modem. Over `M0LTE.Radio.Tait` + `Packet.Kiss`.
+
+Splitting on that line is what makes the new repos worth having: they depend on **nothing** from packet.net, so the dependency runs one way and there is no release cycle to unpick. What it cost was making three seams public in `M0LTE.Radio.Tait`, each of which the Transparent transport had been reaching through when they shared an assembly: `ISerialIo` + `TcpSerialIo`, `TaitCcdiRadio.SetSerialBaudRate`, and `TaitCcdiRadio.EscapeTransparentBlindAsync`. All three are defensible as API rather than leakage, and the fourth change is the same story with a better name: the internal `OpenForTest(ISerialIo, ...)` became a public `Open(ISerialIo, ...)` overload, which is what kept `Packet.Tune.Core.Tests`'s Transparent-readiness doctor tests working across the boundary and now gives anyone a hardware-free way to test against the driver. That `InternalsVisibleTo Packet.Tune.Core.Tests` grant, the one cross-project internals grant in the repo, is gone.
+
+Staying here: `tools/Packet.Tait.Spike` and `tools/Packet.Tune`, both of which are packet-side tools that happen to drive a Tait, and every `docs/research/*` write-up, which the new repos cite by absolute URL as the protocol record (the `M0LTE.Rig.Hamlib` tests point at `rig-control-spike.md` here for their wire transcripts).
+
+Consequence for releasing: `Packet.Tune.Core` is a published package and takes `TaitCcdiRadio` through its **public** API, so a `lib-v*` cut against unpublished sibling versions would ship something nobody can restore. [`releasing.md`](releasing.md) gains **step 0a** with the forced order (`M0LTE.Rig` -> `M0LTE.Radio` -> here), to be skipped entirely in the normal case where neither sibling moved.
+
+Also removed here: ten `Packet.NET.slnx` entries (four added back), five `ci.yml` matrix legs (two added back), five `publish-libs.yml` publish legs (two added back). The one external consumer, [`M0LTE/tait-cli`](https://github.com/M0LTE/tait-cli), pins `Packet.Radio.Tait` and needs a re-point.
 
 ### 2026-09-03 - RELEASE: lib-v0.33.0
 

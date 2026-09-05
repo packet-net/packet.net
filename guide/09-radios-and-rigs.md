@@ -13,6 +13,16 @@ Neither is part of the AX.25 cake - you can build everything in chapters 1-8
 without them. They sit *beside* the cake and plug into it at two points you
 already know: the transport (a decorator) and `Ax25ListenerOptions`.
 
+That separation is a packaging fact as well as a design one. The two seams and
+their drivers live in sibling repos of their own,
+[`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio) (packages
+`M0LTE.Radio`, `M0LTE.Radio.Tait`) and
+[`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig) (packages `M0LTE.Rig`,
+`M0LTE.Rig.Hamlib`, `M0LTE.Rig.Flrig`), because controlling a radio is not
+packet radio and neither repo needs anything from the AX.25 stack. What stays
+here is the glue that *is* AX.25-specific: the `Packet.Ax25.Radio` and
+`Packet.Ax25.Radio.Tait` packages you meet below.
+
 ## Two seams, on purpose
 
 The split mirrors what an operator experiences. **Station control** is what you
@@ -21,12 +31,12 @@ transmitting. The **packet medium** is what the modem and the CSMA machinery
 *consume*: is the channel busy right now, how strong was that frame, key up.
 One physical radio can serve both; the roles stay distinct.
 
-| | `IRadioControl` (`Packet.Radio`) | `IRigControl` (`Packet.Rig`) |
+| | `IRadioControl` (`M0LTE.Radio`) | `IRigControl` (`M0LTE.Rig`) |
 |---|---|---|
 | The seam | the **packet medium** - what CSMA and frame tagging need | **station control** (CAT) - what an operator tunes |
 | Members | `ReadRssiDbmAsync`, `ChannelBusy` + `CarrierSenseChanged`, `SetTransmitterAsync` | frequency get/set, mode get/set, PTT get/set, SWR + RF-power meters, `ReadDcdAsync`, `ReadSignalStrengthDbmAsync` |
 | Capability flags | `RadioCapabilities` | `RigCapabilities` |
-| Consumed by | `RssiTaggingTransport`, `RadioCarrierSense` → the listener's CSMA gate | station tooling: dashboards, QSY/mode buttons, TX-health monitors |
+| Consumed by | `RssiTaggingTransport`, `RadioCarrierSense` (both `Packet.Ax25.Radio`) → the listener's CSMA gate | station tooling: dashboards, QSY/mode buttons, TX-health monitors |
 | Implementations | `TaitCcdiRadio` (native, push DCD), `RigRadioControl` (any `IRigControl`, polled) | `RigctldRig` (hamlib), `FlrigRig`, `TaitRigControl` |
 
 QSY deliberately lives on the **rig seam only**: `RadioCapabilities` reserves
@@ -44,14 +54,15 @@ honestly - no backend fakes a meter it doesn't have.
 
 ## Station control: `IRigControl`
 
-`Packet.Rig` is a small, dependency-free contracts package (it doesn't pull in
-the AX.25 stack at all). The workhorse backend is `Packet.Rig.Hamlib`'s
-`RigctldRig` - hamlib's NET rigctl TCP protocol over pure managed sockets, no
-native libhamlib, so one client reaches every rig hamlib supports:
+`M0LTE.Rig` is a small, dependency-free contracts package (it doesn't pull in
+the AX.25 stack at all, which is why it ships from its own repo). The workhorse
+backend is `M0LTE.Rig.Hamlib`'s `RigctldRig` - hamlib's NET rigctl TCP protocol
+over pure managed sockets, no native libhamlib, so one client reaches every rig
+hamlib supports:
 
 ```csharp
-using Packet.Rig;
-using Packet.Rig.Hamlib;
+using M0LTE.Rig;
+using M0LTE.Rig.Hamlib;
 
 await using var rig = await RigctldRig.ConnectAsync(new RigctldRigOptions
 {
@@ -76,7 +87,7 @@ if (rig.Capabilities.HasFlag(RigCapabilities.SwrMeter))
 `RigMode` is a value wrapper over a token, not a closed enum - mode vocabularies
 genuinely diverge across backends, so you compare against the well-known statics
 (`RigMode.PktUsb`, `RigMode.Fm`, …) and fall back to `RigMode.From("DATA-U")`
-for backend-native names. `Packet.Rig.Flrig`'s `FlrigRig` is the same contract
+for backend-native names. `M0LTE.Rig.Flrig`'s `FlrigRig` is the same contract
 over flrig's XML-RPC server (`await FlrigRig.ConnectAsync()`); errors are typed
 (`RigConnectionException`, `RigTimeoutException`, `RigCommandException`,
 `RigProtocolException`) so retry policy can be honest about what failed.
@@ -99,13 +110,13 @@ Three members, chosen for what the AX.25 stack actually consumes:
   0.5-1 s before the modem finishes demodulating the frame that's on the air.
 - **`SetTransmitterAsync`** - PTT, independent of the modem's PTT line.
 
-The native implementation is `Packet.Radio.Tait`'s `TaitCcdiRadio` (Tait
+The native implementation is `M0LTE.Radio.Tait`'s `TaitCcdiRadio` (Tait
 TM8100/TM8200 over CCDI), which *pushes* carrier-sense edges as unsolicited
 PROGRESS messages:
 
 ```csharp
-using Packet.Radio;
-using Packet.Radio.Tait;
+using M0LTE.Radio;
+using M0LTE.Radio.Tait;
 
 await using var radio = TaitCcdiRadio.Open("/dev/ttyUSB0");   // CCDI, 28800 8N1 default
 await radio.SetProgressMessagesAsync(true);                   // turn on push DCD events
@@ -114,7 +125,8 @@ radio.CarrierSenseChanged += (_, e) =>
     Console.WriteLine($"DCD {(e.Busy ? "up" : "down")} at {e.At:O}");
 ```
 
-Two adapters carry this into the stack you built in earlier chapters:
+Two adapters, both in `Packet.Ax25.Radio`, carry this into the stack you built
+in earlier chapters:
 
 **`RssiTaggingTransport`** is an `IAx25Transport` decorator - it wraps any
 transport from [chapter 2](02-transports.md), runs a background RSSI sampler,
@@ -157,7 +169,7 @@ sampler/gate.
 
 ## Bridging the seams: `RigRadioControl` and its mirror
 
-What if your station's radio is a CAT rig, not a Tait? `Packet.Radio`'s
+What if your station's radio is a CAT rig, not a Tait? `M0LTE.Radio`'s
 `RigRadioControl` re-presents any `IRigControl` through the radio seam, so a CAT
 transceiver feeds the same CSMA gate and per-frame-RSSI machinery a push-capable
 radio does. Capabilities map at construction - `DcdRead → CarrierSense`,
@@ -165,7 +177,8 @@ radio does. Capabilities map at construction - `DcdRead → CarrierSense`,
 advertising none of the three is rejected outright:
 
 ```csharp
-using Packet.Radio;
+using M0LTE.Radio;
+using Packet.Ax25.Radio;
 
 await using var radio = new RigRadioControl(rig);   // the RigctldRig from above
 
@@ -186,7 +199,7 @@ One honesty note: rig backends are **poll-only**, so `RigRadioControl`
 source like CCDI's PROGRESS events. A failed read marks `ChannelBusy` `null`
 (unknown ⇒ the gate fails open) and backs off until the backend self-heals.
 
-The bridge has an inverse twin: `Packet.Radio.Tait`'s `TaitRigControl`
+The bridge has an inverse twin: `M0LTE.Radio.Tait`'s `TaitRigControl`
 re-presents a Tait CCDI radio through the *rig* seam
 (`await TaitRigControl.CreateAsync(radio)`), advertising only the slice CCDI can
 honestly serve - PTT get/set and a relative RF-power meter. No frequency (not
@@ -197,13 +210,14 @@ same physical radio can stand behind either interface, advertising exactly what
 it can do and nothing more.
 
 !!! note "The radio can even be the transport"
-    `Packet.Radio.Tait` also ships `TaitTransparentTransport` — an
+    `Packet.Ax25.Radio.Tait` ships `TaitTransparentTransport`, an
     `IAx25Transport` whose modem **is** the radio: AX.25 rides the Tait's own
     built-in FFSK modem as a byte pipe, no external TNC at all. It's one more
     proof of chapter 2's claim that KISS is an implementation behind the seam,
     not a property of it. The trade-off is inherent: while the serial port is a
-    byte pipe the control channel is gone, so no RSSI, no DCD — only airtime
-    timing. See the [`Packet.Radio.Tait` README](../src/Packet.Radio.Tait/README.md).
+    byte pipe the control channel is gone, so no RSSI, no DCD, only airtime
+    timing. The CCDI driver underneath it is documented in the
+    [`M0LTE.Radio.Tait` README](https://github.com/M0LTE/M0LTE.Radio/blob/main/src/M0LTE.Radio.Tait/README.md).
 
 ## Where not to look
 

@@ -1,7 +1,7 @@
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
-using Packet.Radio;
-using Packet.Radio.Tait;
+using M0LTE.Radio;
+using M0LTE.Radio.Tait;
 
 namespace Packet.Node.Core.Radios;
 

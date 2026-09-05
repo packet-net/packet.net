@@ -13,7 +13,7 @@ dotnet add package Packet.Tune.Core
 
 - **Telegram protocol** (`TuningTelegram`) - a compact `V1|seq|verb|args` line (verbs HI/RQ/MS/AD/BY/MODE) with a documented **compact wire form** that fits the 32-character Tait SDM budget; the receiver dedupes on the sequence number so a transport retry never surfaces twice, and each session starts its counter from a random base so a re-run against a still-running peer isn't mistaken for the prior session's telegrams.
 - **The transport seam** (`ITuningLink`) in two flavours:
-  - `SdmTuningLink` - telegrams ride the radio's own side channel (`Packet.Radio.IRadioSideChannel`; canonically Tait CCDI SDMs over the radios' internal FFSK modem at factory deviation), fully independent of the NinoTNC mode/pot under tune - bootstrap-safe, no internet needed. **Receipt-tolerant:** the Tait SDM over-air delivery receipt is unreliable for close bidirectional traffic (a radio's auto-ack transmission poisons its next send's receipt - [the auto-ack refractory](https://github.com/packet-net/packet.net/blob/main/docs/research/tm8110-sdm-autoack-refractory.md)), so a send completes on radio-accept and reliability is the protocol's own reply (propose→confirm / step→report), not the receipt;
+  - `SdmTuningLink` - telegrams ride the radio's own side channel (`M0LTE.Radio.IRadioSideChannel`; canonically Tait CCDI SDMs over the radios' internal FFSK modem at factory deviation), fully independent of the NinoTNC mode/pot under tune - bootstrap-safe, no internet needed. **Receipt-tolerant:** the Tait SDM over-air delivery receipt is unreliable for close bidirectional traffic (a radio's auto-ack transmission poisons its next send's receipt - [the auto-ack refractory](https://github.com/packet-net/packet.net/blob/main/docs/research/tm8110-sdm-autoack-refractory.md)), so a send completes on radio-accept and reliability is the protocol's own reply (propose→confirm / step→report), not the receipt;
   - `WebSocketTuningLink` - the internet flavour: both ends join a relay with a spoken single-use PIN.
 - **PIN rendezvous** (`RendezvousRelay`) - a minimal, embeddable RFC-6455 relay: two clients pair on a 6-digit single-use PIN (`GeneratePin`), frames are forwarded verbatim, and the session dies with either socket. Runs embedded (tests park it on port 0) or as `packet-tune rendezvous --listen`.
 - **The deviation-tuning assistant** (`TuningSession` + `DeviationAdvisor`) - the meter end requests short bursts and measures decode rate + IL2P FEC-corrected bytes + lost-ADC clipping, then **edge-brackets** the correct pot position from the failure cliffs: nothing decoding → `UP`, ADC clipping → `DN`, solid decode with idle FEC → `OK`, a fully-dead burst (no direction in it) → `SW` (sweep). On NinoTNC **firmware 3.41 only** - the GETRSSI RX-audio meter, removed in 3.44 - a fast path adds a continuous level read as enrichment (`DescribeLevel` shows where inside the plateau the pot sits and which way it's moving), but the decode/clip cliffs stay the authoritative verdict.
@@ -25,7 +25,7 @@ dotnet add package Packet.Tune.Core
 ```csharp
 using Packet.Core;
 using Packet.Kiss.NinoTnc;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 using Packet.Tune.Core;
 
 await using var tnc = NinoTncSerialPort.Open("/dev/ttyACM0");
@@ -47,8 +47,8 @@ Console.WriteLine(attempt.Outcome);   // Switched, ProbeDead, Rejected, LinkFail
 
 ## See also
 - [Source & issues](https://github.com/packet-net/packet.net)
-- [`Packet.Radio`](https://www.nuget.org/packages/Packet.Radio) - the `IRadioSideChannel` seam the SDM link rides
-- [`Packet.Radio.Tait`](https://www.nuget.org/packages/Packet.Radio.Tait) - the Tait CCDI SDM side channel
+- [`M0LTE.Radio`](https://www.nuget.org/packages/M0LTE.Radio) - the `IRadioSideChannel` seam the SDM link rides
+- [`M0LTE.Radio.Tait`](https://www.nuget.org/packages/M0LTE.Radio.Tait) - the Tait CCDI SDM side channel
 - [`Packet.Kiss.NinoTnc`](https://www.nuget.org/packages/Packet.Kiss.NinoTnc) - the NinoTNC driver the meter / mode-coordination station drives
 
 Status: **experimental** - spike-born (plan §5.10 Phase 10), hardware-validated on a 2× NinoTNC + 2× Tait TM8110 bench rig, and still moving as the mode-agility workstream matures.

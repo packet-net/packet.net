@@ -2,8 +2,8 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Threading.Channels;
 using Packet.Ax25.Transport;
-using Packet.Radio.Tait;
-using Packet.Radio.Tait.Ccdi;
+using M0LTE.Radio.Tait;
+using M0LTE.Radio.Tait.Ccdi;
 
 namespace Packet.Tune.Core.Tests;
 
@@ -28,7 +28,7 @@ public sealed class TransparentReadinessDoctorTests
     };
 
     private static TaitCcdiRadio ScriptedRadio(ScriptedSerialIo io) =>
-        TaitCcdiRadio.OpenForTest(io, new TaitCcdiRadioOptions { KeepAliveInterval = null });
+        TaitCcdiRadio.Open(io, new TaitCcdiRadioOptions { KeepAliveInterval = null });
 
     [Fact]
     public async Task Enabled_probe_FAILS_with_the_data_form_remedy_when_entry_is_rejected_0_06()

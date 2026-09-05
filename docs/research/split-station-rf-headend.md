@@ -96,7 +96,8 @@ payload - and the head-end's responder (`grandcat/zeroconf`) skips probing altog
 ## The pivot: one seam carries everything
 
 `TaitCcdiRadio` does **not** depend on `System.IO.Ports`. It drives an internal 3-method byte pipe
-`ISerialIo` (`src/Packet.Radio.Tait/ISerialIo.cs`), and there is already an injection point
+`ISerialIo` (now `src/M0LTE.Radio.Tait/ISerialIo.cs` in the sibling repo
+[`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio)), and there is already an injection point
 (`TaitCcdiRadio.OpenForTest(ISerialIo)`). Everything above the driver - `RssiTaggingTransport`,
 `RadioCarrierSense`, tuning, SDM, hail - consumes `IRadioControl` or the concrete `TaitCcdiRadio`.
 

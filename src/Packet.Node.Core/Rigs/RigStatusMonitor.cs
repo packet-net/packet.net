@@ -1,6 +1,6 @@
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
-using Packet.Rig;
+using M0LTE.Rig;
 
 namespace Packet.Node.Core.Rigs;
 

@@ -2,7 +2,7 @@ using System.Globalization;
 using Packet.Ax25;
 using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 
 namespace Packet.Tune.Core;
 
@@ -194,7 +194,7 @@ public static class TransparentReadinessDoctor
     /// <summary>
     /// Run probe 3 (<c>baud-clean</c>): send a known frame from <paramref name="local"/> and
     /// confirm it arrives byte-for-byte at <paramref name="peer"/>. Both transports must already
-    /// be in Transparent mode (e.g. two <see cref="TaitTransparentTransport"/>s). A byte-clean
+    /// be in Transparent mode (e.g. two <see cref="Packet.Ax25.Radio.Tait.TaitTransparentTransport"/>s). A byte-clean
     /// round-trip PASSes; an altered frame FAILs with the baud-mismatch remedy; nothing received
     /// within the timeout is <see cref="DoctorOutcome.Unknown"/> (the peer may be out of range or
     /// not in Transparent mode).

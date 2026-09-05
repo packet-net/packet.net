@@ -9,7 +9,11 @@ supportable. Integration piece only (no UI yet). Reusable NuGet package. Think a
 
 - **Shipped three NuGet-able libraries:** `Packet.Rig` (dependency-free `IRigControl`
   abstraction), `Packet.Rig.Hamlib` (pure-managed client for hamlib's `rigctld` TCP protocol),
-  `Packet.Rig.Flrig` (flrig XML-RPC client). OmniRig is research-only (below).
+  `Packet.Rig.Flrig` (flrig XML-RPC client). OmniRig is research-only (below). *(All three
+  later left this repo for the sibling repo
+  [`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig), where they are `M0LTE.Rig`,
+  `M0LTE.Rig.Hamlib` and `M0LTE.Rig.Flrig`. The source and test paths recorded below are as
+  they were here at the time.)*
 - **hamlib integration = speak the `rigctld` network protocol, never P/Invoke.** Every .NET
   hamlib binding is dead (the P/Invoke lineage stopped 2017-2021, pre-hamlib-4 ABI); hamlib 5
   (in development) breaks the C ABI again, while the NET-rigctl TCP protocol has been stable

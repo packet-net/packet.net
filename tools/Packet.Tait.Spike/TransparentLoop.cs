@@ -4,7 +4,8 @@ using System.Threading.Channels;
 using Packet.Ax25;
 using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
+using Packet.Ax25.Radio.Tait;
 
 namespace Packet.Tait.Spike;
 

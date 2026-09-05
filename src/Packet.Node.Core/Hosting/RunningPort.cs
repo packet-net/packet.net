@@ -3,7 +3,7 @@ using Packet.Ax25.Transport;
 using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios;
-using Packet.Radio;
+using M0LTE.Radio;
 
 namespace Packet.Node.Core.Hosting;
 
@@ -92,7 +92,7 @@ public sealed class RunningPort : IAsyncDisposable
     /// null when this port has no rig attached (config absent, or the daemon was unreachable and
     /// the port degraded to running without it). Disposed after <see cref="RigStatus"/> - the
     /// poller reads it until stopped.</summary>
-    public Packet.Rig.IRigControl? Rig { get; init; }
+    public M0LTE.Rig.IRigControl? Rig { get; init; }
 
     /// <summary>The per-port rig status poller (frequency/mode/PTT + TX meters) driving
     /// <c>GET /api/v1/rigs</c>, <c>/ports/{id}/rig</c> and the <c>event: rig</c> SSE feed, or null
