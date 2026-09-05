@@ -274,7 +274,7 @@ public sealed record AxudpPeerConfig
 /// <summary>
 /// A Tait TM8100/TM8200 radio in Transparent mode as the port's modem - <b>no external TNC</b>.
 /// AX.25 frames ride the radio's internal FFSK modem (an 8-bit-clean byte pipe) with KISS SLIP
-/// framing, driven by <c>M0LTE.Radio.Tait.TaitTransparentTransport</c>. The radio is bound by
+/// framing, driven by <c>Packet.Ax25.Radio.Tait.TaitTransparentTransport</c>. The radio is bound by
 /// device path (<see cref="Device"/>) OR - preferred - by CCDI serial (<see cref="Serial"/>),
 /// resolved at bring-up so a re-enumerated <c>/dev/ttyUSB*</c> still finds the right radio; OR by
 /// a split-station head-end device (<see cref="HeadEndId"/>+<see cref="DeviceId"/>, #585), in

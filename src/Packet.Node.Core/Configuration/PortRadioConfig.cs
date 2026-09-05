@@ -3,7 +3,7 @@ namespace Packet.Node.Core.Configuration;
 /// <summary>
 /// Optional per-port <b>radio-control attachment</b> (<c>radio:</c>): the control channel
 /// to the radio behind this port's modem. When present and the radio can report signal
-/// strength, the port's transport is wrapped in <c>M0LTE.Radio.RssiTaggingTransport</c> at
+/// strength, the port's transport is wrapped in <c>Packet.Ax25.Radio.RssiTaggingTransport</c> at
 /// bring-up so every inbound frame carries per-frame RSSI/SNR metadata
 /// (<c>Ax25InboundFrame.Radio</c>) sampled from the radio's control channel -
 /// the signal data standard KISS cannot provide - and hardware carrier-sense (DCD),
