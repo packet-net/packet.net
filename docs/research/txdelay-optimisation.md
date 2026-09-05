@@ -21,8 +21,9 @@ There are two layers, deliberately separate because they have very different cos
 
 ## Layer 1 - passive excess-TXDELAY observation (zero RF)
 
-The radio-tagging transport (`Packet.Radio.RssiTaggingTransport`) already measures, for
-every received burst-opening frame, the **pre-data carrier time**
+The radio-tagging transport (`Packet.Radio.RssiTaggingTransport`, now
+`Packet.Ax25.Radio.RssiTaggingTransport`) already measures, for every received
+burst-opening frame, the **pre-data carrier time**
 (`RadioMetadata.PreDataCarrier`): the interval between the radio's hardware carrier-sense
 (DCD) rising and the frame's data starting, computed as
 `(ReceivedAt − EstimatedAirtime) − CarrierRiseAt`. That *is* the transmitting station's

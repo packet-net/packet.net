@@ -4,7 +4,7 @@ using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Rigs;
 using Packet.Node.Tests.Support;
-using Packet.Rig.Hamlib;
+using M0LTE.Rig.Hamlib;
 
 namespace Packet.Node.Tests.Rigs;
 

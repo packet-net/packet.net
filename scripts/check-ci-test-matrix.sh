@@ -4,11 +4,11 @@
 #   scripts/check-ci-test-matrix.sh
 #
 # ci.yml runs one matrix leg per test project, by name. Nothing tied that list to the
-# directory it mirrors, so `tests/Packet.Rig.Tests`, `tests/Packet.Rig.Flrig.Tests` and
-# `tests/Packet.Rig.Hamlib.Tests` sat there for a month never being run by any workflow -
-# 103 tests with no CI signal (packet.net#699 / C017), the second time the same omission
-# happened. This is the tie: every tests/*/*.csproj must have a leg, and every leg must have
-# a project. Run it locally before touching the matrix; ci.yml runs it on every push.
+# directory it mirrors, so three whole test projects sat there for a month never being run
+# by any workflow - 103 tests with no CI signal (packet.net#699 / C017), the second time the
+# same omission happened. This is the tie: every tests/*/*.csproj must have a leg, and every
+# leg must have a project. Run it locally before touching the matrix; ci.yml runs it on
+# every push.
 #
 # The per-project matrix is deliberate (parallelism across the self-hosted runners), so the
 # fix for drift is to add the leg, not to collapse the matrix into one solution-wide run.

@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 
 namespace Packet.Tait.Spike;
 

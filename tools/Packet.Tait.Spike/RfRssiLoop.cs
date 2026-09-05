@@ -3,8 +3,9 @@ using System.Text;
 using Packet.Ax25;
 using Packet.Core;
 using Packet.Kiss.NinoTnc;
-using Packet.Radio;
-using Packet.Radio.Tait;
+using M0LTE.Radio;
+using M0LTE.Radio.Tait;
+using Packet.Ax25.Radio;
 
 namespace Packet.Tait.Spike;
 

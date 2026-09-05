@@ -149,7 +149,7 @@ public sealed class RigMutationApiTests : IDisposable
         rig.GetType(); // keep the shared fixture rig for other tests; use a fresh restricted one here
         var restricted = new FakeRigControl
         {
-            Capabilities = Packet.Rig.RigCapabilities.PttGet | Packet.Rig.RigCapabilities.RfPowerMeter,
+            Capabilities = M0LTE.Rig.RigCapabilities.PttGet | M0LTE.Rig.RigCapabilities.RfPowerMeter,
         };
         await using var factory = new NodeAppFactory(restricted);
         using var client = factory.CreateClient();

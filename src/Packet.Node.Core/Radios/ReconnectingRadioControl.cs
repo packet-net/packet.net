@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.Hosting;
-using Packet.Radio;
-using Packet.Radio.Tait;
+using M0LTE.Radio;
+using M0LTE.Radio.Tait;
 
 namespace Packet.Node.Core.Radios;
 

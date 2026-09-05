@@ -32,10 +32,10 @@ jobs:
       fail-fast: false
       # 4 org-level runners (packet-net runner-1..4) on the same physical host.
       # Cap at 4 so this workflow never monopolises all runners, and because
-      # the per-runner flock below coordinates across runner processes via /tmp —
+      # the per-runner flock below coordinates across runner processes via /tmp,
       # the exclusive heavy workflows (interop / fuzz / deb-smoke) hold an
       # EXCLUSIVE flock that starves the real-time AX.25 pumps in
-      # Packet.Node.Tests if they overlap. 20 matrix legs × max-parallel 4
+      # Packet.Node.Tests if they overlap. 16 matrix legs x max-parallel 4
       # naturally saturates all four runners, so throughput is unchanged.
       max-parallel: 4
       # KEEP IN SYNC WITH tests/: the `test-matrix-guard` job below fails the build
@@ -47,6 +47,8 @@ jobs:
           - Packet.Aprs.Tests
           - Packet.Ax25.Properties
           - Packet.Ax25.Tests
+          - Packet.Ax25.Radio.Tests
+          - Packet.Ax25.Radio.Tait.Tests
           - Packet.Axudp.Tests
           - Packet.Core.Tests
           - Packet.Kiss.NinoTnc.Tests
@@ -55,12 +57,7 @@ jobs:
           - Packet.Mcp.Tests
           - Packet.NetRom.Tests
           - Packet.Node.Tests
-          - Packet.Radio.Tait.Tests
-          - Packet.Radio.Tests
           - Packet.Rhp2.Tests
-          - Packet.Rig.Flrig.Tests
-          - Packet.Rig.Hamlib.Tests
-          - Packet.Rig.Tests
           - Packet.Tune.Core.Tests
     steps:
       - uses: actions/checkout@v6
@@ -135,7 +132,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: ci.yml test matrix covers every test project
-        # C017: three Packet.Rig* test projects (103 tests) were never run by any workflow
+        # C017: three whole test projects (103 tests) were never run by any workflow
         # because the matrix is hand-listed and nobody updated it.
         run: scripts/check-ci-test-matrix.sh
 

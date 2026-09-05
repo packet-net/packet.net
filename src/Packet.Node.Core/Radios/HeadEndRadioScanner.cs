@@ -4,7 +4,7 @@ using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.HeadEnd;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 
 namespace Packet.Node.Core.Radios;
 

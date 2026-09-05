@@ -26,10 +26,12 @@ misconfiguration of the data plane is exactly what a switch-then-verify manoeuvr
 
 Three layers, deliberately separated:
 
-1. **`Packet.Radio.IRadioSideChannel`** - the abstraction: send/receive small datagrams
-   through the radio itself, with async over-air delivery confirmation
-   (`DeliveryReceipt`) and a `MaxPayloadLength` budget. Drivers advertise the machinery via
-   `RadioCapabilities.SideChannel`; the XML docs pin the **capability-gating intent** -
+1. **`Packet.Radio.IRadioSideChannel`** (now `M0LTE.Radio.IRadioSideChannel`, in the
+   sibling repo [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio)) - the
+   abstraction: send/receive small datagrams through the radio itself, with async over-air
+   delivery confirmation (`DeliveryReceipt`) and a `MaxPayloadLength` budget. Drivers
+   advertise the machinery via `RadioCapabilities.SideChannel`; the XML docs pin the
+   **capability-gating intent** -
    offering the API ≠ the feature being enabled in the radio's programming, so consumers
    gate on a live probe. `Packet.Radio` has no Tait dependency; the canonical
    implementation is **`Packet.Radio.Tait.TaitSdmSideChannel`** (SDM + PROGRESS 1D receipts,

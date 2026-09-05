@@ -5,7 +5,8 @@ using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.Telemetry;
 using Packet.Node.Tests.Support;
-using Packet.Radio;
+using M0LTE.Radio;
+using Packet.Ax25.Radio;
 
 namespace Packet.Node.Tests.Integration;
 

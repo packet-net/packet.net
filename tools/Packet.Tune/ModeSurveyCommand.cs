@@ -3,8 +3,8 @@ using System.Globalization;
 using Packet.Core;
 using Packet.Kiss;
 using Packet.Kiss.NinoTnc;
-using Packet.Radio.Tait;
-using Packet.Radio.Tait.Ccdi;
+using M0LTE.Radio.Tait;
+using M0LTE.Radio.Tait.Ccdi;
 using Packet.Tune.Core;
 
 namespace Packet.Tune;

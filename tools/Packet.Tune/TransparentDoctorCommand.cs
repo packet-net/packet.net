@@ -1,7 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 using Packet.Tune.Core;
+using Packet.Ax25.Radio.Tait;
 
 namespace Packet.Tune;
 

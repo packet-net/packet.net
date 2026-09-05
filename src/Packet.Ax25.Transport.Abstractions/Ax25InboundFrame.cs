@@ -31,7 +31,7 @@ public readonly record struct Ax25InboundFrame(
 
 /// <summary>
 /// Optional per-frame radio signal metadata. Every field is optional and populated only when a
-/// real source (a radio control channel such as Tait CCDI, via <c>Packet.Radio</c>'s
+/// real source (a radio control channel such as Tait CCDI, via <c>M0LTE.Radio</c>'s
 /// <c>RssiTaggingTransport</c>) actually measured it. Grows additively (new optional fields) as
 /// radio-control channels surface more, without forcing a change to
 /// <see cref="Ax25InboundFrame"/>.

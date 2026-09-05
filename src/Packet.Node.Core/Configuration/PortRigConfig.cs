@@ -3,7 +3,7 @@ namespace Packet.Node.Core.Configuration;
 /// <summary>
 /// Optional per-port <b>rig-control attachment</b> (<c>rig:</c>): the CAT/station-control channel
 /// to the transceiver behind this port - frequency, mode, PTT state and TX-side meters via
-/// <c>Packet.Rig.IRigControl</c> (hamlib's <c>rigctld</c> network protocol or flrig's XML-RPC
+/// <c>M0LTE.Rig.IRigControl</c> (hamlib's <c>rigctld</c> network protocol or flrig's XML-RPC
 /// server). Read-only surface today: the node polls and projects rig state
 /// (<c>GET /api/v1/rigs</c>, <c>GET /api/v1/ports/{id}/rig</c>, the <c>/api/v1/rigs/events</c>
 /// SSE stream); it never tunes, changes mode, or keys. Null / absent = no rig attached,
@@ -111,10 +111,10 @@ public sealed record PortRigConfig
 public static class RigKinds
 {
     /// <summary>hamlib's NET-rigctl network protocol — a <c>rigctld</c> daemon (or one of the
-    /// many emulators of it) fronting any of hamlib's 200+ rigs (<c>Packet.Rig.Hamlib</c>).</summary>
+    /// many emulators of it) fronting any of hamlib's 200+ rigs (<c>M0LTE.Rig.Hamlib</c>).</summary>
     public const string Hamlib = "hamlib";
 
-    /// <summary>flrig's XML-RPC server (<c>Packet.Rig.Flrig</c>).</summary>
+    /// <summary>flrig's XML-RPC server (<c>M0LTE.Rig.Flrig</c>).</summary>
     public const string Flrig = "flrig";
 
     /// <summary>The recognised kind names (for the validator's error message + docs).</summary>

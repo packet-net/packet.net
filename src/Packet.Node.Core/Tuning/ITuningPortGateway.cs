@@ -1,5 +1,5 @@
 using Packet.Kiss.NinoTnc;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 using Packet.Tune.Core;
 
 namespace Packet.Node.Core.Tuning;

@@ -15,10 +15,11 @@ using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Radios;
 using Packet.Node.Core.Rigs;
-using Packet.Rig;
+using M0LTE.Rig;
 using Packet.Node.Core.Telemetry;
 using Packet.Node.Core.Transports;
-using Packet.Radio;
+using M0LTE.Radio;
+using Packet.Ax25.Radio;
 
 namespace Packet.Node.Core.Hosting;
 

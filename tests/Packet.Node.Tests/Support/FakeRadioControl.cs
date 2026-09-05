@@ -1,7 +1,7 @@
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.Radios;
-using Packet.Radio;
+using M0LTE.Radio;
 
 namespace Packet.Node.Tests.Support;
 

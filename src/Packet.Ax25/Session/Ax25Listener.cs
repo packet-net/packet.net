@@ -2192,7 +2192,7 @@ public sealed class Ax25ListenerOptions
     /// while it reports the channel busy the transmission is held, and it keys up once the
     /// channel clears (or a bounded wait expires - fail-open; see <see cref="CarrierSenseGate"/>).
     /// This is the general medium-access seam - any source that can observe channel occupancy
-    /// (a radio-control channel's hardware DCD via <c>Packet.Radio.RadioCarrierSense</c>, or a
+    /// (a radio-control channel's hardware DCD via <c>M0LTE.Radio.RadioCarrierSense</c>, or a
     /// future KISS DCD extension) supplies one so the AX.25 stack itself defers a keyup while
     /// another station is transmitting.
     /// </summary>

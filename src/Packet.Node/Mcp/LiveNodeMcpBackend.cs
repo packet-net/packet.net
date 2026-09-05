@@ -6,7 +6,7 @@ using Packet.Node.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.Rigs;
-using Packet.Rig;
+using M0LTE.Rig;
 
 namespace Packet.Node.Mcp;
 

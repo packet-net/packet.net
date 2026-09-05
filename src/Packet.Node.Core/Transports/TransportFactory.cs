@@ -8,7 +8,8 @@ using Packet.Kiss.Serial;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.Radios;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
+using Packet.Ax25.Radio.Tait;
 
 namespace Packet.Node.Core.Transports;
 

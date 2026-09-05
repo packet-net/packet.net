@@ -54,7 +54,7 @@ public enum ModeCoordAction
 /// </summary>
 /// <remarks>
 /// The protocol these messages carry rides a radio side channel
-/// (<c>Packet.Radio.IRadioSideChannel</c>) that is mode- and channel-agnostic -
+/// (<c>M0LTE.Radio.IRadioSideChannel</c>) that is mode- and channel-agnostic -
 /// which is what breaks the chicken-and-egg of renegotiating the very link the
 /// negotiation would otherwise have to travel over. See <see cref="ModeCoordinator"/> /
 /// <see cref="ModeResponder"/> for the choreography.

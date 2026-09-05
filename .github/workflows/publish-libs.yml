@@ -12,16 +12,13 @@ name: publish-libs
 #   Packet.Kiss.NinoTnc
 #   Packet.Ax25
 #   Packet.Ax25.Transport.Abstractions
+#   Packet.Ax25.Radio
+#   Packet.Ax25.Radio.Tait
 #   Packet.Axudp
 #   Packet.Aprs
 #   Packet.Agw
 #   Packet.NetRom
 #   Packet.Rhp2
-#   Packet.Radio
-#   Packet.Radio.Tait
-#   Packet.Rig
-#   Packet.Rig.Hamlib
-#   Packet.Rig.Flrig
 #   Packet.Tune.Core
 #
 # Add more by appending to the `projects:` matrix below and giving
@@ -86,16 +83,13 @@ jobs:
           - Packet.Kiss.NinoTnc
           - Packet.Ax25
           - Packet.Ax25.Transport.Abstractions
+          - Packet.Ax25.Radio
+          - Packet.Ax25.Radio.Tait
           - Packet.Axudp
           - Packet.Aprs
           - Packet.Agw
           - Packet.NetRom
           - Packet.Rhp2
-          - Packet.Radio
-          - Packet.Radio.Tait
-          - Packet.Rig
-          - Packet.Rig.Hamlib
-          - Packet.Rig.Flrig
           - Packet.Tune.Core
     env:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}

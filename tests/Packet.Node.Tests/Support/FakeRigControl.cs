@@ -1,6 +1,6 @@
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Rigs;
-using Packet.Rig;
+using M0LTE.Rig;
 
 namespace Packet.Node.Tests.Support;
 

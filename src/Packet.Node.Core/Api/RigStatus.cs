@@ -1,4 +1,4 @@
-using Packet.Rig;
+using M0LTE.Rig;
 
 namespace Packet.Node.Core.Api;
 
@@ -24,7 +24,7 @@ namespace Packet.Node.Core.Api;
 /// <param name="Manufacturer">Rig manufacturer as the backend reports it, when known.</param>
 /// <param name="Model">Rig model as the backend reports it, when known.</param>
 /// <param name="Capabilities">The capability slice this rig actually advertises, as camel-cased
-/// <c>Packet.Rig.RigCapabilities</c> flag names (<c>frequencyGet</c>, <c>swrMeter</c>, …) - the
+/// <c>M0LTE.Rig.RigCapabilities</c> flag names (<c>frequencyGet</c>, <c>swrMeter</c>, …) - the
 /// contract for what the UI should render. Empty when not attached.</param>
 /// <param name="ConnectionState">The control-link health: <c>healthy</c> (the last poll tick
 /// answered), <c>faulted</c> (the daemon stopped answering - the backend re-dials on each poll, so

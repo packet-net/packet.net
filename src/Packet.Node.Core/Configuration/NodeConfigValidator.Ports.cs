@@ -1,6 +1,6 @@
 using FluentValidation;
 using Packet.Core;
-using Packet.Radio.Tait;
+using M0LTE.Radio.Tait;
 using Packet.SoundModem.FlexRadio;
 using Packet.SoundModem.Modems;
 

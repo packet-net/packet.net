@@ -2,8 +2,8 @@ using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios;
 using Packet.Node.Tests.Support;
-using Packet.Radio;
-using Packet.Rig;
+using M0LTE.Radio;
+using M0LTE.Rig;
 
 namespace Packet.Node.Tests.Radios;
 

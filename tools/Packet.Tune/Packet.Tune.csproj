@@ -8,12 +8,19 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Packet.Tune.Core\Packet.Tune.Core.csproj" />
-    <ProjectReference Include="..\..\src\Packet.Radio\Packet.Radio.csproj" />
-    <ProjectReference Include="..\..\src\Packet.Radio.Tait\Packet.Radio.Tait.csproj" />
     <ProjectReference Include="..\..\src\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
     <ProjectReference Include="..\..\src\Packet.Kiss\Packet.Kiss.csproj" />
     <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
     <ProjectReference Include="..\..\src\Packet.Core\Packet.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Packet.Ax25.Radio.Tait\Packet.Ax25.Radio.Tait.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="M0LTE.Radio" />
+    <PackageReference Include="M0LTE.Radio.Tait" />
   </ItemGroup>
 
 </Project>

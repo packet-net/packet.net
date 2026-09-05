@@ -16,7 +16,7 @@
 if (args.Length >= 1 && args[0] == "discover")
 {
     Console.WriteLine("scanning for Tait radios (env PACKETNET_TAIT_PORTS overrides)...");
-    await foreach (var found in Packet.Radio.Tait.TaitRadioPortDiscovery.DiscoverAsync())
+    await foreach (var found in M0LTE.Radio.Tait.TaitRadioPortDiscovery.DiscoverAsync())
     {
         Console.WriteLine(
             $"  {found.Port} @ {found.BaudRate}: {found.Identity.ProductName} " +

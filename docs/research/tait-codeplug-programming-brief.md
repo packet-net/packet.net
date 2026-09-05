@@ -71,7 +71,9 @@ identify by CCDI serial): 2× **Tait TM8110**, model **TMAB12-B100**, **CCDI 03.
 1 = wide**. The radios report a **database version** via CCDI `RADIO_VERSIONS` record **02** - read
 it first; the patcher's offset map is valid only for that version.
 
-**Reusable code.** `src/Packet.Radio.Tait/` already has the serial plumbing you may want: an
+**Reusable code.** `src/M0LTE.Radio.Tait/` in the sibling repo
+[`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio) (it was `src/Packet.Radio.Tait/`
+here when this was written) already has the serial plumbing you may want: an
 `ISerialIo` seam, CCDI framing/checksum (`Ccdi/`), `TaitCcdiRadio` (to read the DB version + identity
 over CCDI before/after programming), and `TaitRadioPortDiscovery` (identify a radio by CCDI serial).
 The CCDI channel is the natural way to (a) read the DB version to select the offset map and (b)

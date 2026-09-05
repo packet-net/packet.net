@@ -1,7 +1,7 @@
 using Packet.Node.Core.Configuration;
-using Packet.Rig;
-using Packet.Rig.Flrig;
-using Packet.Rig.Hamlib;
+using M0LTE.Rig;
+using M0LTE.Rig.Flrig;
+using M0LTE.Rig.Hamlib;
 
 namespace Packet.Node.Core.Rigs;
 

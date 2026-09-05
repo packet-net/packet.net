@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Packet.Radio;
-using Packet.Radio.Tait;
+using M0LTE.Radio;
+using M0LTE.Radio.Tait;
 
 namespace Packet.Tune.Core;
 
