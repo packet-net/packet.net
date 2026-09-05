@@ -32,10 +32,10 @@ jobs:
       fail-fast: false
       # 4 org-level runners (packet-net runner-1..4) on the same physical host.
       # Cap at 4 so this workflow never monopolises all runners, and because
-      # the per-runner flock below coordinates across runner processes via /tmp —
+      # the per-runner flock below coordinates across runner processes via /tmp,
       # the exclusive heavy workflows (interop / fuzz / deb-smoke) hold an
       # EXCLUSIVE flock that starves the real-time AX.25 pumps in
-      # Packet.Node.Tests if they overlap. 20 matrix legs × max-parallel 4
+      # Packet.Node.Tests if they overlap. 16 matrix legs x max-parallel 4
       # naturally saturates all four runners, so throughput is unchanged.
       max-parallel: 4
       # KEEP IN SYNC WITH tests/: the `test-matrix-guard` job below fails the build
