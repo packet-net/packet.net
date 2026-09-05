@@ -1380,6 +1380,18 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-05 - RELEASE: lib-v0.34.0 + node-v0.51.0
+
+The radio/rig split shipped to the world off green `main` (`47abcc03`, PRs [#799](https://github.com/packet-net/packet.net/pull/799) and [#800](https://github.com/packet-net/packet.net/pull/800)).
+
+Libraries: 14 packages at 0.34.0, two of them new (`Packet.Ax25.Radio`, `Packet.Ax25.Radio.Tait`) and five gone (`Packet.Radio`, `Packet.Radio.Tait`, `Packet.Rig`, `Packet.Rig.Hamlib`, `Packet.Rig.Flrig`), whose IDs stay on nuget.org at 0.33.0 and will not be updated again. The sibling repos released first, per the new [`releasing.md`](releasing.md) step 0a: [`M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig) v0.1.0, then [`M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio) v0.1.0, each via NuGet trusted publishing.
+
+Node: `node-v0.51.0`. No behaviour change; the tag exists so the `.deb` is built and proven against the new dependency graph, where the radio and rig libraries arrive by NuGet restore rather than project reference.
+
+Downstream: none needed. `axcall` and `packet-term-tui` pin only `Packet.Core` / `Packet.Ax25` / `Packet.Ax25.Transport.Abstractions` / `Packet.Kiss` / `Packet.Kiss.Serial`, all at 0.27.0, and none of those moved.
+
+One red on the way, investigated rather than re-run: `Packet.Node.Tests`' AXUDP redial test failed on the post-merge `main` run with a 27 ms connect teardown. The merge had fired five workflows at once, `interop` and `fuzz` among them, which is exactly the contention `ci.yml`'s own `max-parallel` comment warns starves the real-time AX.25 pumps. The identical tree had passed 19/19 on the branch dispatch running alone, the diff touched nothing in `Packet.Axudp` or `Packet.Node.Core/Console`, and the re-run was clean. Worth an issue: `ci` contends with the exclusive heavy workflows on every merge to `main`, so this will recur.
+
 ### 2026-09-05 - Radio and rig control split out to `M0LTE/M0LTE.Radio` and `M0LTE/M0LTE.Rig`
 
 Five libraries left this repo. `src/Packet.Radio` and `src/Packet.Radio.Tait` are now [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio); `src/Packet.Rig`, `src/Packet.Rig.Hamlib` and `src/Packet.Rig.Flrig` are now [`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig). Both public, AGPL-3.0-or-later, history carried across with `git filter-repo`, packages and namespaces renamed to match. Each repo releases off its own `v*` tag through NuGet trusted publishing (OIDC, no stored API key), on its own cadence.
