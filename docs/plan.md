@@ -1381,7 +1381,7 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
-### 2026-09-06 - chore(radio): consume M0LTE.Rig 0.2.1 + M0LTE.Tait.Ccdi 0.2.0; M0LTE.Radio retired (#TBD)
+### 2026-09-06 - chore(radio): consume M0LTE.Rig 0.2.1 + M0LTE.Tait.Ccdi 0.2.0; M0LTE.Radio retired (#802)
 
 One day after the radio/rig split (`lib-v0.34.0`, below), the two sibling repos reshaped themselves: "Rig" and "Radio" are synonyms in ham usage, so the names did not carry the distinction between the station-control seam and the channel-sensing seam, and from 30,000 ft nobody could tell which package to reach for. `M0LTE/M0LTE.Rig` now ships `IRadioControl`, `IRadioSideChannel`, `RigRadioControl`, `RigRadioControlOptions`, `RadioCapabilities` and `CarrierSenseChange` alongside its existing `IRigControl` CAT abstraction and the Hamlib/Flrig backends, all in the `M0LTE.Rig` package/namespace at 0.2.1, same type names and behaviour as the retired `M0LTE.Radio`. `M0LTE/M0LTE.Radio` is retired and unlisted on nuget.org; its repo was renamed to [`M0LTE/M0LTE.Tait.Ccdi`](https://github.com/M0LTE/M0LTE.Tait.Ccdi), and the Tait TM8100/TM8200 CCDI driver it held (`TaitCcdiRadio`, `TaitRigControl`, `TaitSdmSideChannel`, `ISerialIo`, `TcpSerialIo`, `TaitRadioPortDiscovery`, `TaitBand`, and the CCDI codec types, now directly in `M0LTE.Tait.Ccdi` rather than a `.Ccdi` sub-namespace) ships from there at 0.2.0, sitting next to `M0LTE.Tait.Codeplug` as the second Tait-specific sibling package.
 
