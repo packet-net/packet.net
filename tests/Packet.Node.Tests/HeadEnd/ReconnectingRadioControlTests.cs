@@ -3,8 +3,8 @@ using Packet.Node.Core.Configuration;
 using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.Radios;
 using Packet.Node.Tests.Support;
-using M0LTE.Radio;
-using M0LTE.Radio.Tait;
+using M0LTE.Rig;
+using M0LTE.Tait.Ccdi;
 using Packet.Ax25.Radio;
 
 namespace Packet.Node.Tests.HeadEnd;

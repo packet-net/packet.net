@@ -2,8 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Threading.Channels;
 using Packet.Ax25.Transport;
-using M0LTE.Radio.Tait;
-using M0LTE.Radio.Tait.Ccdi;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Tune.Core.Tests;
 

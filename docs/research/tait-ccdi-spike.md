@@ -4,9 +4,12 @@
 the real 2× NinoTNC + 2× Tait rig, ending with `Packet.Radio` + `Packet.Radio.Tait` shipped as
 libraries and the headline capability - radio-attributed signal metadata on every received
 AX.25 frame - working end-to-end. Those two libraries later left this repo for the sibling
-repo [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio), where they are `M0LTE.Radio`
-and `M0LTE.Radio.Tait`; the AX.25-specific `RssiTaggingTransport` stayed behind, in
-`Packet.Ax25.Radio`. Source and test paths below are as they were at the time.*
+repo `M0LTE/M0LTE.Radio`, where they were `M0LTE.Radio` and `M0LTE.Radio.Tait`; that repo was
+renamed [`M0LTE/M0LTE.Tait.Ccdi`](https://github.com/M0LTE/M0LTE.Tait.Ccdi) on 2026-09-06 and
+now carries only the Tait driver (`M0LTE.Tait.Ccdi`), with the abstraction folded into
+[`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig)'s `M0LTE.Rig` package. The AX.25-specific
+`RssiTaggingTransport` stayed behind, in `Packet.Ax25.Radio`. Source and test paths below are as
+they were at the time.*
 
 ## The rig
 

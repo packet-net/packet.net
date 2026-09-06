@@ -1,6 +1,6 @@
 using System.Globalization;
 using M0LTE.Tait.Codeplug;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Node.Core.Radios.Programming;
 

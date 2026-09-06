@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Packet.Core;
 using Packet.Kiss.NinoTnc;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 using Packet.Tune.Core;
 using Xunit;
 

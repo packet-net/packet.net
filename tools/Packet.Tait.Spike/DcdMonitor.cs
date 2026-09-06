@@ -1,4 +1,4 @@
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Tait.Spike;
 

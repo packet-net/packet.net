@@ -1,6 +1,6 @@
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Node.Tests.Radios;
 

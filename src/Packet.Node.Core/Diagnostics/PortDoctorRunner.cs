@@ -2,8 +2,8 @@ using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios;
-using M0LTE.Radio;
-using M0LTE.Radio.Tait;
+using M0LTE.Rig;
+using M0LTE.Tait.Ccdi;
 using Packet.Tune.Core;
 
 namespace Packet.Node.Core.Diagnostics;

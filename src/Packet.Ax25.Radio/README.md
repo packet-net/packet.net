@@ -2,7 +2,7 @@
 
 > What a radio's control channel is worth to an AX.25 link: per-frame signal metadata, and real RF carrier-sense feeding the CSMA gate.
 
-[`M0LTE.Radio`](https://www.nuget.org/packages/M0LTE.Radio) models the control channel to a radio (RSSI, hardware DCD, PTT) without knowing anything about packet. This package is the adapter layer that brings it into the AX.25 stack.
+[`M0LTE.Rig`](https://www.nuget.org/packages/M0LTE.Rig) models the control channel to a radio (RSSI, hardware DCD, PTT) without knowing anything about packet. This package is the adapter layer that brings it into the AX.25 stack.
 
 ## Install
 ```sh
@@ -19,7 +19,7 @@ Hardware DCD typically calls the channel busy 0.5-1 s before the modem finishes 
 ## Usage
 
 ```csharp
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 using Packet.Ax25.Radio;
 
 await using var radio = TaitCcdiRadio.Open("/dev/ttyUSB0");
@@ -44,7 +44,7 @@ With carrier-sense, frames are attributed to the transmission window containing 
 Both types leave ownership of the inner transport and the radio with the caller; disposing the decorator only stops its sampler.
 
 ## See also
-- [`M0LTE.Radio`](https://www.nuget.org/packages/M0LTE.Radio) - the radio-control contract this adapts
+- [`M0LTE.Rig`](https://www.nuget.org/packages/M0LTE.Rig) - the radio-control contract this adapts
 - [`Packet.Ax25.Radio.Tait`](https://www.nuget.org/packages/Packet.Ax25.Radio.Tait) - AX.25 over a Tait's own FFSK modem, no TNC at all
 - [Source & issues](https://github.com/packet-net/packet.net)
 

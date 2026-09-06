@@ -19,8 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="M0LTE.Radio" />
-    <PackageReference Include="M0LTE.Radio.Tait" />
+    <PackageReference Include="M0LTE.Rig" />
+    <PackageReference Include="M0LTE.Tait.Ccdi" />
   </ItemGroup>
 
 </Project>

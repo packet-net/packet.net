@@ -1,6 +1,6 @@
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.HeadEnd;
-using M0LTE.Radio;
+using M0LTE.Rig;
 
 namespace Packet.Node.Core.Radios;
 

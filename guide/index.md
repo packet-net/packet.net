@@ -61,9 +61,9 @@ Two interfaces are the load-bearing seams you will design against:
   node-shaped goes through it.
 
 One more pair of seams sits *beside* the cake rather than in it: `IRadioControl`
-(`M0LTE.Radio`) and `IRigControl` (`M0LTE.Rig`) - the **radio behind the
+(`M0LTE.Rig`) and `IRigControl` (`M0LTE.Rig`) - the **radio behind the
 modem**, for stations whose radio has a serial control channel (RSSI, hardware
-carrier-sense, CAT). They ship from sibling repos of their own; they're
+carrier-sense, CAT). They ship from a sibling repo of its own; they're
 optional and covered last, in [chapter 9](09-radios-and-rigs.md).
 
 ## How this guide builds up
@@ -106,10 +106,10 @@ dotnet add package Packet.Kiss.NinoTnc     # NinoTNC USB
 dotnet add package Packet.Agw              # AGWPE / SV2AGW client
 
 # Radio/rig control, if your radio has a control channel (chapter 9):
-dotnet add package M0LTE.Radio             # the packet-medium (radio) seam
+dotnet add package M0LTE.Rig               # the packet-medium (radio) and station-control (CAT) seams
 dotnet add package Packet.Ax25.Radio       # its AX.25 adapters: RSSI tagging, DCD
-dotnet add package M0LTE.Rig               # the station-control (CAT) seam
 dotnet add package M0LTE.Rig.Hamlib        # rigctld backend
+dotnet add package M0LTE.Tait.Ccdi         # Tait CCDI driver, if your radio is a Tait
 ```
 
 !!! note "Published packages"
@@ -117,10 +117,11 @@ dotnet add package M0LTE.Rig.Hamlib        # rigctld backend
     `Packet.Ax25.Transport.Abstractions`, `Packet.Kiss*`, `Packet.Agw`,
     `Packet.Axudp`, `Packet.NetRom`, `Packet.Ax25.Radio*` - is published to
     NuGet; see the [package inventory](../docs/packages.md) for the full
-    publication matrix. The radio and rig seams themselves come from two
-    sibling repos, [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio)
-    and [`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig), and publish as
-    `M0LTE.Radio*` / `M0LTE.Rig*`.
+    publication matrix. The radio and rig seams themselves come from
+    [`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig) (both interfaces,
+    plus the Hamlib/Flrig CAT backends), and the Tait CCDI driver from its own
+    sibling repo, [`M0LTE/M0LTE.Tait.Ccdi`](https://github.com/M0LTE/M0LTE.Tait.Ccdi);
+    they publish as `M0LTE.Rig*` / `M0LTE.Tait.Ccdi`.
 
 !!! info "A note on strictness"
     The engine **produces and accepts exactly what AX.25 v2.2 describes by

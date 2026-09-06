@@ -15,7 +15,7 @@
     <PackageId>Packet.Tune.Core</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Title>Packet.Tune.Core — remote deviation-tuning assistant primitives</Title>
-    <Description>Coordination primitives for tuning a NinoTNC + radio pair with the two ends apart: the tuning-telegram protocol (ITuningLink), an SDM flavour riding the radio's own side channel (M0LTE.Radio.IRadioSideChannel; Tait CCDI short data messages: radio-native FFSK, independent of the TNC mode/pot under tune), a WebSocket flavour with a PIN-rendezvous relay, the shared meter/tuned assistant loop, a mode-coordination protocol (propose/confirm/commit a TNC mode + radio channel switch, probe-verify, revert-to-home on failure), and a capability doctor for the whole TNC-to-radio stack. Source: github.com/packet-net/packet.net.</Description>
+    <Description>Coordination primitives for tuning a NinoTNC + radio pair with the two ends apart: the tuning-telegram protocol (ITuningLink), an SDM flavour riding the radio's own side channel (M0LTE.Rig.IRadioSideChannel; Tait CCDI short data messages: radio-native FFSK, independent of the TNC mode/pot under tune), a WebSocket flavour with a PIN-rendezvous relay, the shared meter/tuned assistant loop, a mode-coordination protocol (propose/confirm/commit a TNC mode + radio channel switch, probe-verify, revert-to-home on failure), and a capability doctor for the whole TNC-to-radio stack. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;kiss;tnc;ninotnc;tait;deviation;tuning</PackageTags>
   </PropertyGroup>
 
@@ -25,8 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="M0LTE.Radio" />
-    <PackageReference Include="M0LTE.Radio.Tait" />
+    <PackageReference Include="M0LTE.Rig" />
+    <PackageReference Include="M0LTE.Tait.Ccdi" />
   </ItemGroup>
 
 </Project>

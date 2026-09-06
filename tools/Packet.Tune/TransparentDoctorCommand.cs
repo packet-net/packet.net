@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 using Packet.Tune.Core;
 using Packet.Ax25.Radio.Tait;
 

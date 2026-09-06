@@ -1,7 +1,6 @@
 using Packet.Ax25.Transport;
 using Packet.Kiss;
-using M0LTE.Radio.Tait;
-using M0LTE.Radio.Tait.Ccdi;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Ax25.Radio.Tait.Tests;
 

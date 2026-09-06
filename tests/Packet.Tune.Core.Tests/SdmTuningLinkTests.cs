@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Time.Testing;
-using M0LTE.Radio;
+using M0LTE.Rig;
 
 namespace Packet.Tune.Core.Tests;
 
