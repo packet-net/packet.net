@@ -2,7 +2,7 @@ using System.Globalization;
 using Packet.Core;
 using Packet.Kiss;
 using Packet.Kiss.NinoTnc;
-using M0LTE.Radio;
+using M0LTE.Rig;
 
 namespace Packet.Tune.Core;
 

@@ -1,5 +1,5 @@
 using Packet.Node.Core.Configuration;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Node.Core.Radios;
 

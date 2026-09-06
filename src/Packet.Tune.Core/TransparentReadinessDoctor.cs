@@ -2,7 +2,7 @@ using System.Globalization;
 using Packet.Ax25;
 using Packet.Ax25.Transport;
 using Packet.Core;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Tune.Core;
 

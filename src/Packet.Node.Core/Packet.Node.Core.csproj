@@ -79,14 +79,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="M0LTE.Radio" />
-    <PackageReference Include="M0LTE.Radio.Tait" />
-    <!-- Rig control (CAT): the station-control seam behind a port's `rig:` block. M0LTE.Rig
-         is the dependency-free abstraction, Hamlib/Flrig are the backends RigControlFactory
+    <!-- Rig control (CAT) and the radio-control abstraction (RSSI, hardware carrier-sense/DCD,
+         PTT): both live in M0LTE.Rig now. Hamlib/Flrig are the CAT backends RigControlFactory
          dispatches to. Sibling repo M0LTE/M0LTE.Rig; pins in Directory.Packages.props. -->
     <PackageReference Include="M0LTE.Rig" />
     <PackageReference Include="M0LTE.Rig.Hamlib" />
     <PackageReference Include="M0LTE.Rig.Flrig" />
+    <!-- The Tait CCDI driver. Sibling repo M0LTE/M0LTE.Tait.Ccdi. -->
+    <PackageReference Include="M0LTE.Tait.Ccdi" />
   </ItemGroup>
 
 </Project>

@@ -33,7 +33,7 @@ One device and no audio wiring, but **no signal telemetry**. While the CCDI chan
 **Before running this unattended**, check the radio is not programmed with "Ignore Escape Sequence" **on**. If it is, the `+++` exit cannot succeed and recovery is a power cycle.
 
 ## See also
-- [`M0LTE.Radio.Tait`](https://www.nuget.org/packages/M0LTE.Radio.Tait) - the CCDI driver underneath, which also gives you RSSI, DCD, telemetry and SDM
+- [`M0LTE.Tait.Ccdi`](https://www.nuget.org/packages/M0LTE.Tait.Ccdi) - the CCDI driver underneath, which also gives you RSSI, DCD, telemetry and SDM
 - [`Packet.Ax25.Radio`](https://www.nuget.org/packages/Packet.Ax25.Radio) - the separate-modem arrangement, with full signal metadata
 - [Source & issues](https://github.com/packet-net/packet.net)
 

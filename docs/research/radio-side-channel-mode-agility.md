@@ -26,8 +26,8 @@ misconfiguration of the data plane is exactly what a switch-then-verify manoeuvr
 
 Three layers, deliberately separated:
 
-1. **`Packet.Radio.IRadioSideChannel`** (now `M0LTE.Radio.IRadioSideChannel`, in the
-   sibling repo [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio)) - the
+1. **`Packet.Radio.IRadioSideChannel`** (now `M0LTE.Rig.IRadioSideChannel`, in the
+   sibling repo [`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig)) - the
    abstraction: send/receive small datagrams through the radio itself, with async over-air
    delivery confirmation (`DeliveryReceipt`) and a `MaxPayloadLength` budget. Drivers
    advertise the machinery via `RadioCapabilities.SideChannel`; the XML docs pin the

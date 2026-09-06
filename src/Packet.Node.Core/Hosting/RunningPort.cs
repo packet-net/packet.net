@@ -3,7 +3,7 @@ using Packet.Ax25.Transport;
 using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios;
-using M0LTE.Radio;
+using M0LTE.Rig;
 
 namespace Packet.Node.Core.Hosting;
 

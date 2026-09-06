@@ -1,7 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Packet.Node.Core.Hosting;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Node.Core.Radios;
 

@@ -119,11 +119,11 @@ public sealed record PortRadioConfig
 /// </summary>
 public static class RadioKinds
 {
-    /// <summary>Tait TM8100/TM8200 CCDI serial control (<c>M0LTE.Radio.Tait</c>).</summary>
+    /// <summary>Tait TM8100/TM8200 CCDI serial control (<c>M0LTE.Tait.Ccdi</c>).</summary>
     public const string TaitCcdi = "tait-ccdi";
 
     /// <summary>The port's <c>rig:</c> CAT daemon re-presented as the radio
-    /// (<c>M0LTE.Radio.RigRadioControl</c> over a dedicated second connection to the
+    /// (<c>M0LTE.Rig.RigRadioControl</c> over a dedicated second connection to the
     /// same rigctld/flrig the status poller uses).</summary>
     public const string Rig = "rig";
 

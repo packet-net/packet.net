@@ -7,7 +7,6 @@ using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.Telemetry;
 using Packet.Node.Tests.Support;
-using M0LTE.Radio;
 using M0LTE.Rig;
 
 namespace Packet.Node.Tests.Integration;

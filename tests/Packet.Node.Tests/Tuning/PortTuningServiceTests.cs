@@ -5,8 +5,7 @@ using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Tuning;
 using Packet.Node.Tests.Support;
-using M0LTE.Radio.Tait;
-using M0LTE.Radio.Tait.Ccdi;
+using M0LTE.Tait.Ccdi;
 using Packet.Tune.Core;
 
 namespace Packet.Node.Tests.Tuning;

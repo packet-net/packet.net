@@ -11,8 +11,8 @@
 
   <ItemGroup>
     <!-- The CCDI driver that puts the radio into Transparent mode and takes it out again.
-         Sibling repo (M0LTE/M0LTE.Radio). -->
-    <PackageReference Include="M0LTE.Radio.Tait" />
+         Sibling repo (M0LTE/M0LTE.Tait.Ccdi). -->
+    <PackageReference Include="M0LTE.Tait.Ccdi" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,7 +23,7 @@
     <PackageId>Packet.Ax25.Radio.Tait</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Title>Packet.Ax25.Radio.Tait - AX.25 over a Tait radio's Transparent-mode FFSK modem</Title>
-    <Description>An IAx25Transport whose modem IS the radio: no external TNC. Puts a Tait TM8100/TM8200 into Transparent mode (its internal FFSK modem as an 8-bit-clean byte pipe), frames AX.25 with KISS SLIP over that pipe, and de-frames inbound bytes back into whole frames. Because it owns the transmission it times it directly, so it implements ITxCompletionTransport and stamps per-frame on-air start/end and airtime. Builds on M0LTE.Radio.Tait. Source: github.com/packet-net/packet.net.</Description>
+    <Description>An IAx25Transport whose modem IS the radio: no external TNC. Puts a Tait TM8100/TM8200 into Transparent mode (its internal FFSK modem as an 8-bit-clean byte pipe), frames AX.25 with KISS SLIP over that pipe, and de-frames inbound bytes back into whole frames. Because it owns the transmission it times it directly, so it implements ITxCompletionTransport and stamps per-frame on-air start/end and airtime. Builds on M0LTE.Tait.Ccdi. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;tait;tm8100;ffsk;transparent-mode;tnc-less</PackageTags>
   </PropertyGroup>
 

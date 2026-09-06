@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 
 namespace Packet.Ax25.Radio.Tait.Tests;
 

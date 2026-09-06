@@ -1,7 +1,7 @@
 using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Diagnostics;
 using Packet.Node.Tests.Support;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 using Packet.Tune.Core;
 
 namespace Packet.Node.Tests.Diagnostics;

@@ -8,7 +8,7 @@ using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.Radios;
 using Packet.Node.Core.Transports;
 using Packet.Node.Tests.Support;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 using Packet.Ax25.Radio.Tait;
 
 namespace Packet.Node.Tests.HeadEnd;

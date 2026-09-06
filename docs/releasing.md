@@ -17,19 +17,19 @@ Radio control and CAT rig control left this repo on 2026-09-05 and now ship from
 | Repo | Packages | Depends on |
 | --- | --- | --- |
 | [`M0LTE/M0LTE.Rig`](https://github.com/M0LTE/M0LTE.Rig) | `M0LTE.Rig`, `M0LTE.Rig.Hamlib`, `M0LTE.Rig.Flrig` | nothing |
-| [`M0LTE/M0LTE.Radio`](https://github.com/M0LTE/M0LTE.Radio) | `M0LTE.Radio`, `M0LTE.Radio.Tait` | `M0LTE.Rig` |
+| [`M0LTE/M0LTE.Tait.Ccdi`](https://github.com/M0LTE/M0LTE.Tait.Ccdi) | `M0LTE.Tait.Ccdi` | `M0LTE.Rig` |
 
 **If neither moved this cycle, skip this step entirely** and go to step 0. Their pins in [`Directory.Packages.props`](../Directory.Packages.props) stay where they are, and `lib-v*` is independent of them.
 
 If one did move, the order is forced and cannot be shortcut, because each link is a real NuGet restore:
 
 1. `M0LTE/M0LTE.Rig`: merge, tag `v<semver>`, let its `publish.yml` push. Wait for nuget.org indexing.
-2. `M0LTE/M0LTE.Radio`: bump its `M0LTE.Rig` pin if step 1 ran, merge, tag `v<semver>`, wait for indexing.
+2. `M0LTE/M0LTE.Tait.Ccdi`: bump its `M0LTE.Rig` pin if step 1 ran, merge, tag `v<semver>`, wait for indexing.
 3. Here: bump the `M0LTE.*` pins in `Directory.Packages.props`, merge on green, and only then carry on to step 0.
 
 Both repos publish via **NuGet trusted publishing** (OIDC, no stored API key), so there is no secret to check. Two things about their `publish.yml` that bite if you touch them: the file has to keep that exact name, because nuget.org's policy matches on the workflow filename, and the minted key lives one hour, so the push stays ahead of anything slow.
 
-Why this ordering is load-bearing: `Packet.Tune.Core` is a **published** package here and it takes `M0LTE.Radio.Tait` types (`TaitCcdiRadio`) through its **public** API, so a `lib-v*` cut against unpublished sibling versions ships a package nobody can restore.
+Why this ordering is load-bearing: `Packet.Tune.Core` is a **published** package here and it takes `M0LTE.Tait.Ccdi` types (`TaitCcdiRadio`) through its **public** API, so a `lib-v*` cut against unpublished sibling versions ships a package nobody can restore.
 
 ---
 

@@ -1,6 +1,6 @@
 using System.Net.Sockets;
 using System.Threading.Channels;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 using Packet.Ax25.Transport;
 using Packet.Kiss;
 

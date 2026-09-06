@@ -73,15 +73,18 @@
          2026-08-20). Backs the port editor's "Program radio" panel: a live read-modify-write
          of the radio's channel table plus the pdn-basic / pdn-extra upgrade profiles. -->
     <PackageVersion Include="M0LTE.Tait.Codeplug" Version="0.8.0" />
-    <!-- Radio + rig control, from the sibling repos M0LTE/M0LTE.Radio and M0LTE/M0LTE.Rig.
-         They left this repo on 2026-09-05: CAT and radio control are not packet radio, and the
-         names said otherwise. Released on their own cadence, so these pins move independently
+    <!-- Radio + rig control, from the sibling repos M0LTE/M0LTE.Rig for both control seams plus
+         the hamlib/flrig backends, and M0LTE/M0LTE.Tait.Ccdi for the Tait driver. They left this
+         repo on 2026-09-05: CAT and radio control are not packet radio, and the names said
+         otherwise. Reshaped on 2026-09-06: M0LTE.Radio and M0LTE.Radio.Tait did not carry the
+         distinction between the station-control seam and the channel-sensing seam, so the
+         abstractions folded into M0LTE.Rig and the Tait driver became M0LTE.Tait.Ccdi, next to
+         M0LTE.Tait.Codeplug above. Released on their own cadence, so these pins move independently
          of lib-v*. The AX.25-specific parts stayed here as Packet.Ax25.Radio(.Tait). -->
-    <PackageVersion Include="M0LTE.Radio" Version="0.1.0" />
-    <PackageVersion Include="M0LTE.Radio.Tait" Version="0.1.0" />
-    <PackageVersion Include="M0LTE.Rig" Version="0.1.0" />
-    <PackageVersion Include="M0LTE.Rig.Hamlib" Version="0.1.0" />
-    <PackageVersion Include="M0LTE.Rig.Flrig" Version="0.1.0" />
+    <PackageVersion Include="M0LTE.Tait.Ccdi" Version="0.2.0" />
+    <PackageVersion Include="M0LTE.Rig" Version="0.2.1" />
+    <PackageVersion Include="M0LTE.Rig.Hamlib" Version="0.2.1" />
+    <PackageVersion Include="M0LTE.Rig.Flrig" Version="0.2.1" />
 
     <!-- Serial / IO -->
     <PackageVersion Include="System.IO.Ports" Version="10.0.11" />

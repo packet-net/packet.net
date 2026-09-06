@@ -18,7 +18,6 @@ using Packet.Node.Core.Rigs;
 using M0LTE.Rig;
 using Packet.Node.Core.Telemetry;
 using Packet.Node.Core.Transports;
-using M0LTE.Radio;
 using Packet.Ax25.Radio;
 
 namespace Packet.Node.Core.Hosting;

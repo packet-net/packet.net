@@ -3,7 +3,7 @@ using Packet.Core;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
-using M0LTE.Radio.Tait;
+using M0LTE.Tait.Ccdi;
 using Packet.Tune.Core;
 
 namespace Packet.Node.Core.Tuning;

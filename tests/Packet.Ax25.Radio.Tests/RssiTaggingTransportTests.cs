@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Time.Testing;
-using M0LTE.Radio;
+using M0LTE.Rig;
 using Packet.Ax25.Transport;
 
 namespace Packet.Ax25.Radio.Tests;
