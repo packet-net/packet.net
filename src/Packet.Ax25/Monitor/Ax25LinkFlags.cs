@@ -36,7 +36,9 @@ public enum Ax25LinkFlags
     /// <summary>A jump in N(S): I frames went by that this observer did not hear.</summary>
     Missed = 1 << 6,
 
-    /// <summary>A DM answering a call: the called station will not connect.</summary>
+    /// <summary>A DM answering a call: the called station will not connect. Also an FRMR
+    /// answering a SABME: the called station has no extended mode, and the caller usually
+    /// tries again with a plain SABM.</summary>
     Refused = 1 << 7,
 
     /// <summary>An FRMR, or a control octet no frame type owns: something on the link is
