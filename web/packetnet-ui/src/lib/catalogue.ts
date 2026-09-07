@@ -199,7 +199,7 @@ export const PARAM_HELP: Record<string, ParamHelp> = {
   persistence: { label: "Persistence", unit: "%", help: "When the channel is free, the chance pdn transmits in each slot. Lower is more polite on a busy shared channel; 100% is fine on a dedicated link. (Stored as a 0–255 byte.)" },
 };
 // (AX25_DEFAULTS / KISS_DEFAULTS removed with #690 C005. They were UI invention - they did not
-// match the ENGINE's null-block defaults (T1 6000 / T2 3000 / T3 30000 / N2 10 / txTail 0 /
+// match the ENGINE's null-block defaults (T1 6000 / T2 3000 / T3 300000 / N2 10 / txTail 0 /
 // modem-own CSMA) - and the port editor spread them over a port whose ax25:/kiss: were null, so
 // ANY save silently persisted and applied a different set of timings than the port had been
 // running. The editor now keeps null blocks null and shows the engine defaults as placeholders:

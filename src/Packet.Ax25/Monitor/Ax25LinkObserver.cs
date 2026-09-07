@@ -309,9 +309,20 @@ public sealed class Ax25LinkObserver
             case Ax25FrameType.Sabme:
             {
                 var extended = frame.FrameType == Ax25FrameType.Sabme;
+                var modulo = extended ? 128 : 8;
                 if (link.State == Ax25LinkState.Calling && link.Caller == sender)
                 {
                     sender.CallsUnanswered++;
+                    if (link.Modulo != modulo)
+                    {
+                        // The same call again, but in the other mode: a caller whose SABME
+                        // drew an FRMR (or nothing) falls back to a plain SABM, or the
+                        // reverse. Everything numbered from here on is in the new modulo,
+                        // or the I frames that follow the UA read with the wrong number of
+                        // control octets.
+                        link.Modulo = modulo;
+                        return ($"calls {other} again in modulo {modulo} (attempt {sender.CallsUnanswered})", Ax25LinkFlags.Repeat, sender.CallsUnanswered);
+                    }
                     return ($"calls {other} again (attempt {sender.CallsUnanswered})", Ax25LinkFlags.Repeat, sender.CallsUnanswered);
                 }
 
@@ -378,6 +389,13 @@ public sealed class Ax25LinkObserver
                 return (NarrateUi(frame), Ax25LinkFlags.None, null);
 
             case Ax25FrameType.Frmr:
+                if (link.State == Ax25LinkState.Calling && link.Caller != sender && link.Modulo == 128)
+                {
+                    // Answering a SABME. A v2.0 station has no extended mode and says so
+                    // with an FRMR (or a DM); the caller then tries again with SABM. Not a
+                    // protocol error, and the link stays Calling so that retry reads as one.
+                    return ("has no extended mode; refuses the modulo-128 call", Ax25LinkFlags.Refused, null);
+                }
                 return ("rejects a frame as malformed (protocol error)", Ax25LinkFlags.ProtocolError, null);
 
             case Ax25FrameType.Xid:

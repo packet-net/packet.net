@@ -337,6 +337,97 @@ public class Ax25LinkObserverTests
     }
 
     [Fact]
+    public void A_Fallback_From_Sabme_To_Sabm_Rekeys_The_Link_To_Modulo_8()
+    {
+        // Heard on air against GB7RDG (LinBPQ, modulo 8 only) on 2026-09-07: the caller asks
+        // for extended mode, the node answers FRMR, the caller tries again with a plain SABM
+        // and a healthy modulo-8 session follows. Read with two control octets from the SABME
+        // on, the banner came out as "I C S8 R120 pid=57" with GAP and RESEND tags.
+        var caller = new Callsign("M0LTE", 0);
+        var node = new Callsign("GB7RDG", 0);
+        ReadOnlySpan<byte> welcome = "Welcome to GB7RDG, the Reading and District packet node.\r"u8;
+
+        var sabme = See(Ax25Frame.Sabme(node, caller), 0);
+        sabme.Narration.Should().Be("calls GB7RDG (extended mode, modulo 128)");
+        Link(node, caller).Modulo.Should().Be(128);
+
+        var frmr = See(Ax25Frame.Frmr(caller, node, new byte[] { 0x7F, 0x00, 0x01 }, finalBit: true), 1);
+        frmr.Narration.Should().Be("has no extended mode; refuses the modulo-128 call");
+        frmr.Flags.Should().Be(Ax25LinkFlags.Refused);
+        frmr.State.Should().Be(Ax25LinkState.Calling);
+
+        var sabm = See(Ax25Frame.Sabm(node, caller), 2);
+        sabm.Narration.Should().Be("calls GB7RDG again in modulo 8 (attempt 2)");
+        sabm.Flags.Should().Be(Ax25LinkFlags.Repeat);
+        sabm.Count.Should().Be(2);
+        Link(node, caller).Modulo.Should().Be(8);
+
+        var ua = See(Ax25Frame.Ua(caller, node), 3);
+        ua.Narration.Should().Be("accepts the call; link up");
+        ua.Flags.Should().Be(Ax25LinkFlags.LinkUp);
+        ua.State.Should().Be(Ax25LinkState.Connected);
+        Link(node, caller).Modulo.Should().Be(8);
+
+        var banner = See(Ax25Frame.I(caller, node, nr: 0, ns: 0, welcome, pollBit: true), 4);
+        banner.Ns.Should().Be(0);
+        banner.Nr.Should().Be(0);
+        banner.Pid.Should().Be(Ax25Frame.PidNoLayer3);
+        banner.InfoLength.Should().Be(welcome.Length);
+        banner.Text.Should().StartWith("Welcome");
+        banner.Narration.Should().Be("sends #0");
+
+        var ack = See(Ax25Frame.Rr(node, caller, nr: 1, isCommand: false, pollFinal: true), 5);
+        ack.Nr.Should().Be(1);
+        ack.Narration.Should().Be("answers the poll: all received through #0");
+        ack.Flags.Should().Be(Ax25LinkFlags.Final);
+
+        var command = See(Ax25Frame.I(node, caller, nr: 1, ns: 0, "?\r"u8), 6);
+        command.Ns.Should().Be(0);
+        command.Nr.Should().Be(1);
+        command.Text.Should().Be("?");
+        command.InfoLength.Should().Be(2);
+        command.Narration.Should().Be("sends #0");
+
+        const Ax25LinkFlags wrong = Ax25LinkFlags.Missed | Ax25LinkFlags.Resend | Ax25LinkFlags.ProtocolError;
+        foreach (var evt in new[] { ua, banner, ack, command })
+        {
+            (evt.Flags & wrong).Should().Be(Ax25LinkFlags.None, $"{evt.FrameType} at +{(evt.At - T0).TotalSeconds}s");
+        }
+    }
+
+    [Fact]
+    public void An_Frmr_Answering_A_Sabme_Is_No_Extended_Mode_Not_A_Protocol_Error()
+    {
+        See(Ax25Frame.Sabme(Node, User));
+        var frmr = See(Ax25Frame.Frmr(User, Node, new byte[] { 0x7F, 0x00, 0x01 }, finalBit: true), 1);
+        frmr.Narration.Should().Be("has no extended mode; refuses the modulo-128 call");
+        frmr.Flags.Should().Be(Ax25LinkFlags.Refused);
+        frmr.State.Should().Be(Ax25LinkState.Calling);
+        Link(Node, User).AtoB.CallsUnanswered.Should().Be(1);
+
+        // Asking for extended mode a second time is the same call again, in the same modulo.
+        var again = See(Ax25Frame.Sabme(Node, User), 2);
+        again.Narration.Should().Be("calls GB7RDG-2 again (attempt 2)");
+        Link(Node, User).Modulo.Should().Be(128);
+    }
+
+    [Fact]
+    public void A_Call_Raised_From_Sabm_To_Sabme_Rekeys_The_Link_To_Modulo_128()
+    {
+        See(Ax25Frame.Sabm(Node, User), 0);
+        var again = See(Ax25Frame.Sabme(Node, User), 5);
+        again.Narration.Should().Be("calls GB7RDG-2 again in modulo 128 (attempt 2)");
+        again.Flags.Should().Be(Ax25LinkFlags.Repeat);
+        Link(Node, User).Modulo.Should().Be(128);
+
+        See(Ax25Frame.Ua(User, Node), 6);
+        var data = See(Ax25Frame.I(Node, User, nr: 0, ns: 0, "wide"u8, extended: true), 7);
+        data.Ns.Should().Be(0);
+        data.Text.Should().Be("wide");
+        data.Flags.Should().Be(Ax25LinkFlags.None);
+    }
+
+    [Fact]
     public void Numbered_Traffic_With_No_Call_Heard_Means_The_Link_Was_Already_Up()
     {
         var data = See(Ax25Frame.I(Node, User, nr: 3, ns: 5, "mid"u8));

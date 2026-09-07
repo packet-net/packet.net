@@ -47,11 +47,11 @@ const READ_ONLY_KINDS = new Set<TransportKind>(["nino-tnc-tcp", "tait-transparen
 
 // What the ENGINE does with an unset (null) block - shown as placeholders so an operator can see
 // what a blank field means without the editor having to write a value to say it. AX.25:
-// Ax25SessionParameters' own null semantics (T1V 6 s, T2 3 s, T3 30 s, N2 10, k 4, N1 256), fed by
+// Ax25SessionParameters' own null semantics (T1V 6 s, T2 3 s, T3 300 s, N2 10, k 4, N1 256), fed by
 // PortSupervisor.MapAx25Params. KISS: TXDELAY/PERSIST/SLOTTIME are opt-in - unset leaves the modem
 // on its own firmware default - while TXTAIL has an implicit 0 sent on every apply (#465), see
 // PortSupervisor.ApplyKissParamsToModemAsync.
-export const ENGINE_AX25_DEFAULTS: Record<string, number> = { t1Ms: 6000, t2Ms: 3000, t3Ms: 30000, n2: 10, windowSize: 4, n1: 256 };
+export const ENGINE_AX25_DEFAULTS: Record<string, number> = { t1Ms: 6000, t2Ms: 3000, t3Ms: 300000, n2: 10, windowSize: 4, n1: 256 };
 export const ENGINE_KISS_DEFAULTS: Record<string, string> = { txDelay: "modem default", slotTime: "modem default", persistence: "modem default", txTail: "0" };
 
 // ---- the editor draft: a PortConfig plus the operator-facing setup choices ----

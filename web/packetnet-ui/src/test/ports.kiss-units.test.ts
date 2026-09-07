@@ -19,7 +19,7 @@ describe("KISS timing params are stored in wire units, not milliseconds", () => 
     // What the node does with a null block (PortSupervisor.MapAx25Params + the implicit TXTAIL 0
     // of ApplyKissParamsToModemAsync; Ax25SessionParameters' own null semantics). The editor shows
     // these rather than WRITING a set of UI-invented values over a port that had none (#690 C005).
-    expect(ENGINE_AX25_DEFAULTS).toEqual({ t1Ms: 6000, t2Ms: 3000, t3Ms: 30000, n2: 10, windowSize: 4, n1: 256 });
+    expect(ENGINE_AX25_DEFAULTS).toEqual({ t1Ms: 6000, t2Ms: 3000, t3Ms: 300000, n2: 10, windowSize: 4, n1: 256 });
     // TXDELAY / PERSIST / SLOTTIME are opt-in - unset leaves the modem on its own default - while
     // TXTAIL has an implicit 0 sent on every apply.
     expect(ENGINE_KISS_DEFAULTS.txTail).toBe("0");

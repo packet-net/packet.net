@@ -2268,7 +2268,7 @@ public sealed record Ax25SessionParameters
     /// default (3 s); <see cref="TimeSpan.Zero"/> ⇒ ack-per-frame (no delay).</summary>
     public TimeSpan? T2 { get; init; }
 
-    /// <summary>T3 (inactive-link timer) override. <c>null</c> ⇒ dispatcher default (30 s).</summary>
+    /// <summary>T3 (inactive-link timer) override. <c>null</c> ⇒ dispatcher default (300 s).</summary>
     public TimeSpan? T3 { get; init; }
 
     /// <summary>N2 (max retries) override. <c>null</c> ⇒ spec default (10).</summary>
