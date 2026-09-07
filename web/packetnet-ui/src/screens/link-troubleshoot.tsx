@@ -100,7 +100,7 @@ export function LinkTroubleshoot() {
   }, []);
 
   // Configured T1/T3 (ms) for a port, or null when the port leaves them unset - in which case the
-  // node runs the engine's own defaults (T1 6000 ms, T3 30000 ms; see ENGINE_AX25_DEFAULTS in
+  // node runs the engine's own defaults (T1 6000 ms, T3 300000 ms; see ENGINE_AX25_DEFAULTS in
   // screens/ports.tsx) and the cells render a dash. Reporting null rather than substituting a
   // number is the honest reading: a number here would claim the port had been tuned when it has
   // not. (This comment used to describe a 3000/180000 substitution the code never did - #690 C005.)

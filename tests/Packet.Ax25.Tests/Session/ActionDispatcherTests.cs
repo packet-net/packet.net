@@ -150,7 +150,7 @@ public class ActionDispatcherTests
         // T1 default 3000 ms (XID PI=9 default), T3 default chosen per §6.7.1.3.
         d.T1Duration.Should().Be(TimeSpan.FromMilliseconds(3000));
         d.T2Duration.Should().Be(TimeSpan.FromMilliseconds(1500));
-        d.T3Duration.Should().Be(TimeSpan.FromMilliseconds(30000));
+        d.T3Duration.Should().Be(TimeSpan.FromMilliseconds(300000));
     }
 
     // ─── Queue operations ──────────────────────────────────────────────

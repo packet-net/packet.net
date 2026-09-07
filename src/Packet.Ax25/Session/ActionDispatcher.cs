@@ -38,10 +38,11 @@ public interface IActionDispatcher
 /// transcription typos from being silent.
 /// </para>
 /// <para>
-/// Timer durations default to spec values (T1=3000ms, T2=1500ms,
-/// T3=30000ms). The actual values are negotiated via XID and should be
-/// updated on the dispatcher when negotiation completes - for now we
-/// expose them as <c>init</c>-only properties.
+/// Timer durations default to T1=3000ms, T2=1500ms and T3=300000ms (see
+/// the <c>Default*</c> members for where each figure comes from). The
+/// actual values are negotiated via XID and should be updated on the
+/// dispatcher when negotiation completes - for now we expose them as
+/// <c>init</c>-only properties.
 /// </para>
 /// </remarks>
 public sealed class ActionDispatcher : IActionDispatcher
@@ -72,8 +73,16 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <summary>Spec-default response-delay timer (T2) - the fallback for <see cref="T2Duration"/>.</summary>
     public static readonly TimeSpan DefaultT2 = TimeSpan.FromMilliseconds(1500);
 
-    /// <summary>Spec-default inactive-link timer (T3) - the fallback for <see cref="T3Duration"/>.</summary>
-    public static readonly TimeSpan DefaultT3 = TimeSpan.FromMilliseconds(30000);
+    /// <summary>
+    /// Default inactive-link timer (T3) - the fallback for <see cref="T3Duration"/>.
+    /// The spec gives no figure: §6.7.1.3 says T3 is "locally defined", "should be
+    /// greater than T1" and "may be very large on channels of high integrity".
+    /// 300 s matches LinBPQ's T3=300 default and the Linux kernel AX.25 default.
+    /// The earlier 30 s put an RR poll pair on air every 30 s per idle link, seen
+    /// on a live QPSK3600 link to GB7RDG on 2026-09-07, which is too chatty for a
+    /// shared channel.
+    /// </summary>
+    public static readonly TimeSpan DefaultT3 = TimeSpan.FromMilliseconds(300000);
 
     /// <summary>Spec-default SRT initial default - the fallback for <see cref="InitialSrt"/> (§6.7.1.2 ⇒ T1V 6000 ms).</summary>
     public static readonly TimeSpan DefaultInitialSrt = TimeSpan.FromMilliseconds(3000);
