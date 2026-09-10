@@ -412,6 +412,9 @@ public sealed class TwoStationHarness
     /// (<c>destination: target.Context.Local, source: target.Context.Remote</c>)
     /// so it survives any address check the receive path applies.</summary>
     public void InjectFrameBytes(Endpoint target, ReadOnlyMemory<byte> bytes)
+        => Inject(target, ParseAndClassify(bytes, target));
+
+    private static Ax25Event ParseAndClassify(ReadOnlyMemory<byte> bytes, Endpoint target)
     {
         if (!Ax25Frame.TryParse(bytes.Span, Ax25ParseOptions.Lenient, target.Context.IsExtended, out var parsed))
         {
@@ -419,7 +422,7 @@ public sealed class TwoStationHarness
                 "InjectFrameBytes: the supplied bytes did not parse as an AX.25 frame");
         }
 
-        Inject(target, Ax25FrameClassifier.Classify(parsed));
+        return Ax25FrameClassifier.Classify(parsed);
     }
 
     /// <summary>Advance the clock past one T1 interval and pump to quiescence -
@@ -652,6 +655,16 @@ public sealed class TwoStationHarness
         /// in order.</summary>
         public IReadOnlyList<byte[]> Delivered =>
             Signals.OfType<DataLinkDataIndication>().Select(s => s.Info.ToArray()).ToList();
+
+        /// <summary>Queue raw frame bytes at this endpoint's receiver (parsed +
+        /// classified exactly as <see cref="TwoStationHarness.InjectFrameBytes"/>
+        /// does) but do not pump: the event waits in <see cref="Inbound"/> for the
+        /// next <see cref="TwoStationHarness.DrainOnce"/> / <see cref="TwoStationHarness.Settle"/>.
+        /// Lets a scenario step what follows one hop at a time, or queue several
+        /// frames ahead of the events the first will raise (an LM-SEIZE confirm,
+        /// say), which a pump between them would have processed first.</summary>
+        public void EnqueueFrameBytes(ReadOnlyMemory<byte> bytes)
+            => Inbound.Enqueue(ParseAndClassify(bytes, this));
 
         /// <summary>Layer-3 PIDs this station delivered upward (DL-DATA-indication),
         /// in order - paired one-to-one with <see cref="Delivered"/>. For a

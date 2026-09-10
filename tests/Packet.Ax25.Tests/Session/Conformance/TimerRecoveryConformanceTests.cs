@@ -113,11 +113,30 @@ public class TimerRecoveryConformanceTests
         // In-sequence (N(s)=0 == A's V(r)): A accepts and delivers B's data even
         // while in TimerRecovery - recovery of A's own outstanding frame and
         // reception of the peer's data are independent directions.
-        h.InjectFrameBytes(h.A, ITo(h.A, nr: 0, ns: 0, payload: 0xBB));
+        //
+        // Stepped, not pumped: A acknowledges this frame (asserted below), and that
+        // ack must not reach the real B, which never sent it. An N(r) beyond B's
+        // V(s) is an N(r) error at B (figc4.4 t21_rr_received_no_no), which resets
+        // the link with SABM and zeroes A's V(r) (figc4.5 t13_sabm_received_no).
+        h.A.EnqueueFrameBytes(ITo(h.A, nr: 0, ns: 0, payload: 0xBB));
+        h.DrainOnce();   // A processes the I frame; the LM-SEIZE confirm it raised is now queued.
 
         h.A.Delivered.Select(p => p[0]).Should().Contain(0xBB,
             "A must deliver in-sequence data received from B even while in TimerRecovery");
         h.A.Context.VR.Should().Be(1, "V(r) advances over the received I-frame");
+        h.A.Context.AcknowledgePending.Should().BeTrue(
+            "the in-sequence arm raises a delayed ack (Set Acknowledge Pending + LM-SEIZE); the inline retransmission that put A here no longer leaves the flag set ahead of it (#812)");
+
+        int seenByB = h.B.ReceivedFromPeer.Count;
+        h.DrainOnce();   // A processes the LM-SEIZE confirm: the delayed ack flushes.
+
+        var fromA = h.B.ReceivedFromPeer.Skip(seenByB).ToList();
+        fromA.Should().ContainSingle("the confirm flushes exactly one frame");
+        fromA[0].FrameType.Should().Be(Ax25FrameType.Rr, "figc4.5 t20_lm_seize_confirm_yes answers with Enquiry Response F=0");
+        fromA[0].IsCommand.Should().BeFalse("... a response");
+        fromA[0].PollFinal.Should().BeFalse("... with F=0");
+        fromA[0].Nr.Should().Be(1, "... acknowledging B's frame");
+        h.A.Context.AcknowledgePending.Should().BeFalse("the flush clears the flag");
     }
 
     [Fact]
