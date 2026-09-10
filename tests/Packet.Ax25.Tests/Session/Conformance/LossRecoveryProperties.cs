@@ -118,11 +118,15 @@ public class LossRecoveryProperties
 
     // Regression for the ax25spec#40 SREJ livelock (packet-net/packet.net#242). A
     // multi-frame bidirectional SREJ burst like this used to spin to the pump's
-    // 256-round bound: B SREJ'd out-of-window duplicates (figc4.4 has no
+    // 256-round bound: B SREJ'd out-of-window duplicates (figc4.4 had no
     // receive-window guard), A re-sent, the re-send was again out-of-window,
-    // repeat forever. With Ax25Spec40DiscardOutOfWindowIFrames on (default), B
-    // discards out-of-window frames instead of SREJ'ing them, so this moderate
-    // selective-reject burst converges. (#242 regression. A heavier burst is still
+    // repeat forever. figc4.4 and figc4.5 now carry the guard natively (the
+    // "V(r) < N(s) < V(r) + k?" decision, ax25spec#40 fixed upstream and consumed
+    // in Packet.Ax25.Sdl 0.11.0), so B discards out-of-window frames instead of
+    // SREJ'ing them and this moderate selective-reject burst converges. This test
+    // predates the figure fix and guarded the Ax25Spec40 quirk that stood in for
+    // it; it is kept because it is the behavioural proof the retirement was
+    // faithful. (#242 regression. A heavier burst is still
     // blocked by #246 - see the skipped Srej_heavy_bidirectional_loss_burst_recovers
     // below - so keep this budget moderate.)
     [Fact]

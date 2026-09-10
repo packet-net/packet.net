@@ -9,9 +9,10 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// retransmit arriving alongside the original it was meant to replace). The
 /// invariant oracle judges: a duplicate must never be delivered upward twice (the
 /// safety invariant - reliable, gap-free, duplicate-free delivery) and the link
-/// must still converge (liveness). This stresses the figc4.4 receive path and the
-/// <c>Ax25Spec40</c> out-of-window discard guard, which is exactly what drops an
-/// in-flight duplicate once V(R) has moved past it. Failures shrink to a minimal
+/// must still converge (liveness). This stresses the figc4.4 receive path and its
+/// <c>V(r) &lt; N(s) &lt; V(r) + k</c> out-of-window discard guard, which is exactly
+/// what drops an in-flight duplicate once V(R) has moved past it (drawn in the
+/// figure since ax25spec#40; previously faked by the <c>Ax25Spec40</c> quirk). Failures shrink to a minimal
 /// counterexample and triage engine-vs-figure via the Strict-vs-Default companion.
 /// </summary>
 public class AdversarialChannelProperties

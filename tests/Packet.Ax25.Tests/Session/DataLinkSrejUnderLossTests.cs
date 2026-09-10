@@ -220,12 +220,12 @@ public class DataLinkSrejUnderLossTests
     // retransmit is one T1 apart. The unpaced Settle() collapses many T1 rounds
     // into one instant, which is what makes the #231 trace look like a
     // "retransmit storm". Under pacing the link CONVERGES in a bounded number of
-    // rounds - proving the storm is a Settle artifact, not a recovery defect. (A
-    // secondary, smaller inefficiency remains: the figc4.4/figc4.5 Connected
-    // I-frame table has no out-of-window duplicate-discard guard - direwolf adds
-    // one per X.25 §2.4.6.4(a), the SDL figures don't - so duplicate retransmits
-    // briefly draw extra SREJs. That is a spec-efficiency gap, flagged upstream;
-    // it does not stop convergence and is NOT the quirk.)
+    // rounds - proving the storm is a Settle artifact, not a recovery defect.
+    // (The secondary inefficiency this note used to describe is fixed: the
+    // figc4.4/figc4.5 I-frame table now carries the out-of-window
+    // duplicate-discard guard direwolf has always had per X.25 §2.4.6.4(a),
+    // drawn as the "V(r) < N(s) < V(r) + k?" decision. Filed as ax25spec#40,
+    // fixed upstream, consumed in Packet.Ax25.Sdl 0.11.0.)
     [Fact]
     public void Srej_under_loss_converges_under_T1_pacing_no_storm()
     {
