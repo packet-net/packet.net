@@ -264,7 +264,7 @@ public sealed class TwoStationHarness
 
         var session = new Ax25Session(ctx, scheduler, dispatcher, guards, TransitionMap(), "Disconnected");
         sessionRef = session;
-        return new Endpoint(local.ToString(), session, ctx, signals, inbound, rxLog, mdl, mdlSignals, segmentation);
+        return new Endpoint(local.ToString(), session, ctx, signals, inbound, rxLog, mdl, mdlSignals, segmentation, scheduler);
     }
 
     // ─── Scenario actions ───────────────────────────────────────────────
@@ -617,6 +617,11 @@ public sealed class TwoStationHarness
         /// into the dispatcher's upward-signal fan-out on the receive side.</summary>
         public SegmentationLayer Segmentation { get; }
 
+        /// <summary>This station's timer scheduler - lets a scenario read whether
+        /// T1 / T3 are armed (<see cref="ITimerScheduler.IsRunning"/>) without
+        /// inferring it from what the station goes on to emit.</summary>
+        public ITimerScheduler Scheduler { get; }
+
         /// <summary>Deferred MDL-work queue (see <c>PeerWiring.MdlWork</c>).</summary>
         public Queue<Action> MdlWork { get; } = new();
 
@@ -631,11 +636,11 @@ public sealed class TwoStationHarness
             ConcurrentQueue<DataLinkSignal> signals, Queue<Ax25Event> inbound,
             List<Ax25Frame> receivedFromPeer,
             Ax25ManagementDataLink mdl, ConcurrentQueue<MdlSignal> mdlSignals,
-            SegmentationLayer segmentation)
+            SegmentationLayer segmentation, ITimerScheduler scheduler)
         {
             Name = name; Session = session; Context = context;
             Signals = signals; Inbound = inbound; ReceivedFromPeer = receivedFromPeer;
-            Mdl = mdl; MdlSignals = mdlSignals; Segmentation = segmentation;
+            Mdl = mdl; MdlSignals = mdlSignals; Segmentation = segmentation; Scheduler = scheduler;
         }
 
         public string State => Session.CurrentState;
