@@ -495,7 +495,26 @@ public sealed class ActionDispatcher : IActionDispatcher
             Ax25ActionVerb.ClearOwnReceiverBusy => Do(() => ctx.OwnReceiverBusy = false),
             Ax25ActionVerb.SetPeerReceiverBusy => Do(() => ctx.PeerReceiverBusy = true),
             Ax25ActionVerb.ClearPeerReceiverBusy => Do(() => ctx.PeerReceiverBusy = false),
-            Ax25ActionVerb.SetAcknowledgePending => Do(() => ctx.AcknowledgePending = true),
+            // Set Acknowledge Pending after an inline retransmission in the same
+            // chain is a no-op. figc4.5's partial-ack arms (t18_rr_received_yes_yes_no,
+            // t19_rnr_received_yes_yes_no: "... Invoke Retransmission, Stop T3,
+            // Start T1, Set Acknowledge Pending") re-queue the frames and set the
+            // flag; in the figure those frames then pop off the queue after the arm
+            // and each pop (figc4.4 t03 "I frame pops off queue") runs Clear
+            // Acknowledge Pending, so the flag never outlives the arm. The runtime
+            // replays them inline during Invoke Retransmission (EmitOldIFrame, the
+            // pinned semantic), so the pop's clear has already run by the time this
+            // verb executes; applying the set now would leave the flag set with no
+            // LM-SEIZE behind it, and the peer's next I frame would sit unacked
+            // until the peer's own T1 poll (packet-net/packet.net#812). Same in
+            // both quirk modes: this is the figure's end state, not a disagreement.
+            Ax25ActionVerb.SetAcknowledgePending => Do(() =>
+            {
+                if (!tx.RetransmittedInline)
+                {
+                    ctx.AcknowledgePending = true;
+                }
+            }),
             // Clear Acknowledge Pending also cancels the §6.7.1.2 acknowledge-delay
             // timer the construction sites arm on LM-SEIZE Request (the deferred
             // grant that coalesces per-frame RRs into one cumulative ack - #385).
@@ -511,11 +530,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // is ever armed by an SDL verb (no Start T2 exists in the figures), so
             // the cancel can never race a figure-armed timer; rigs that grant the
             // seize immediately never arm it and the cancel is a no-op.
-            Ax25ActionVerb.ClearAcknowledgePending => Do(() =>
-            {
-                ctx.AcknowledgePending = false;
-                scheduler.Cancel(Ax25TimerNames.T2);
-            }),
+            Ax25ActionVerb.ClearAcknowledgePending => Do(() => ClearAcknowledgePending(tx)),
             Ax25ActionVerb.SetLayer3Initiated => Do(() => ctx.Layer3Initiated = true),
             Ax25ActionVerb.ClearLayer3Initiated => Do(() => ctx.Layer3Initiated = false),
 
@@ -1190,6 +1205,37 @@ public sealed class ActionDispatcher : IActionDispatcher
             Info: entry.Data,
             Pid: entry.Pid,
             Path: ReversedTriggerPath(tx)));
+
+        // The frame just went out carrying N(r) = V(r), so any acknowledgement that
+        // was pending has been sent. In the figure a retransmitted frame is
+        // re-queued and pops through figc4.4 t03 "I frame pops off queue", whose
+        // chain ends with Clear Acknowledge Pending; the inline replay never runs
+        // that arm, so until packet-net/packet.net#812 the flag stayed set and the
+        // peer's next I frame went unacknowledged until the peer's own T1 poll.
+        // Mirror the pop's acknowledgement bookkeeping here (the flag and the
+        // delayed-ack timer, exactly what the verb does); T1/T3 stay with the
+        // calling arm, which carries them explicitly. This is the pinned
+        // inline-replay semantic (packet-net/ax25sdl docs/explorer.md, "Pinned
+        // delegated semantics" item 1: the re-emitted frame carries an
+        // acknowledgement and Acknowledge Pending clears), in both quirk modes.
+        // The marker makes a Set Acknowledge Pending later in the same chain a
+        // no-op: in the figure the pops run after the arm, so the flag never
+        // outlives it (see the SetAcknowledgePending arm).
+        ClearAcknowledgePending(tx);
+        tx.RetransmittedInline = true;
+    }
+
+    /// <summary>
+    /// The <c>Clear Acknowledge Pending</c> verb's effect: drop the flag and cancel
+    /// the §6.7.1.2 acknowledge-delay timer (see the verb arm's comment in
+    /// <see cref="Execute(Ax25ActionVerb, TransitionContext)"/>). Shared with
+    /// <see cref="EmitOldIFrame"/>, which runs it on behalf of the I-frame pop
+    /// the inline retransmission stands in for.
+    /// </summary>
+    private static void ClearAcknowledgePending(TransitionContext tx)
+    {
+        tx.Session.AcknowledgePending = false;
+        tx.Scheduler.Cancel(Ax25TimerNames.T2);
     }
 
     /// <summary>

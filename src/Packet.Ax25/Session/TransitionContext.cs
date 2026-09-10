@@ -63,6 +63,18 @@ public sealed class TransitionContext
     /// </summary>
     public (ReadOnlyMemory<byte> Info, byte Pid)? RetrievedStoredFrame { get; set; }
 
+    /// <summary>
+    /// True once this transition has replayed a previously-sent I frame inline
+    /// (<c>Push Old I Frame onto Queue</c> in figc4.7's Invoke_Retransmission loop,
+    /// or figc4.4/4.5's <c>Push Old I Frame N(r) on Queue</c>). In the figure those
+    /// frames are re-queued and pop off after the arm, each pop clearing
+    /// Acknowledge Pending; the runtime emits them at once with their original
+    /// N(s) and runs the pop's acknowledgement bookkeeping there, so a
+    /// <c>Set Acknowledge Pending</c> later in the same chain must not re-set the
+    /// flag those pops would have cleared (packet-net/packet.net#812).
+    /// </summary>
+    public bool RetransmittedInline { get; internal set; }
+
     /// <summary>Construct a transition context, extracting any frame attached to the trigger.</summary>
     public TransitionContext(Ax25SessionContext session, ITimerScheduler scheduler, Ax25Event trigger)
     {

@@ -181,6 +181,13 @@ public class TransitionCoverageTests
         // the two P=1 arms needed explicit out-of-window duplicate scenarios,
         // added in blocks 34 and 35. 242 + those same 12 = 254, i.e. still full
         // coverage of the reachable set.
+        //
+        // Still 242 after #812 (Acknowledge Pending no longer outlives an inline
+        // retransmission): figc4.5's ack-already-pending arm
+        // t22_i_received_yes_yes_yes_no_yes_no_yes had been reached only because
+        // the retransmission that put A in TimerRecovery left the flag set; it now
+        // needs the honest scenario (block 39: two peer I frames queued ahead of
+        // the LM-SEIZE confirm the first one raises).
         hit.Should().BeGreaterThanOrEqualTo(242,
             "the scenario battery should behaviourally exercise every reachable one of the 254 transitions " +
             "(the 12 remaining are documented-unreachable in block 41); " +
@@ -1384,6 +1391,20 @@ public class TransitionCoverageTests
                 h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 0, info: new byte[] { 0x56 }, pollBit: false).ToBytes());
             }
 
+            Collect(h);
+        }
+        // In-sequence I, NOT own-busy, P=0, ACK-pending=Yes: two in-sequence I
+        // frames queued ahead of the LM-SEIZE confirm the first one raises (the
+        // peer sends a burst). The second finds Acknowledge Pending already set and
+        // raises nothing more → t22_i_received_yes_yes_yes_no_yes_no_yes. Queued,
+        // not injected one at a time: a pump between them would flush the confirm
+        // first. (Until #812 the inline retransmission that put A here left the
+        // flag set, so a single in-sequence I frame took this arm by accident.)
+        {
+            var h = InTimerRecovery(1);
+            h.A.EnqueueFrameBytes(Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 0, info: new byte[] { 0x57 }, pollBit: false).ToBytes());
+            h.A.EnqueueFrameBytes(Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 1, info: new byte[] { 0x58 }, pollBit: false).ToBytes());
+            h.Settle();
             Collect(h);
         }
         // Out-of-sequence I with a reject_exception already set, P=1 / P=0 (go-back-N,

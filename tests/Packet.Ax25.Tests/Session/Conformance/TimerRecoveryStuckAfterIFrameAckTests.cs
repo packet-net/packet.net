@@ -13,8 +13,9 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// F=1 supervisory response stays in figc4.5 with T1 stopped, nothing
 /// outstanding and RC untouched, and figc4.5 has no T3 arm to poll it out again.
 /// These tests reproduce the model's shortest trace on the real runtime, in both
-/// quirk modes, and pin exactly what happens. Evidence only: no runtime change,
-/// no quirk.
+/// quirk modes, and pin exactly what happens. Evidence only for H1: no runtime
+/// change, no quirk. The acknowledgement defect the same trace exposed (#812,
+/// paragraph (3) below) is fixed and pinned here as fixed.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -47,16 +48,22 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// runtime exits TimerRecovery on an I-frame ack or handles T3 there: the
 /// transition map is the generated figc4.5 table and the only TimerRecovery
 /// special-casing in <see cref="Ax25Session"/> is the I-frame-queue drain gate.
-/// (3) Not part of H1 but visible in the same trace: figc4.5's partial-ack arm
-/// <c>t18_rr_received_yes_yes_no</c> ends with <c>Set Acknowledge Pending</c> and
-/// raises no LM-SEIZE. In the figure the retransmitted frames then pop off the
-/// queue and <c>t03</c>'s <c>Clear Acknowledge Pending</c> resets the flag; the
-/// runtime replays them inline instead (<c>ActionDispatcher.EmitOldIFrame</c>,
-/// so a retransmission keeps its original N(s)) and never runs the pops arm, so
-/// the flag stays set. When B's I frame arrives, figc4.5's in-sequence arm finds
+/// (3) Not part of H1 but visible in the same trace, and fixed in #812: figc4.5's
+/// partial-ack arm <c>t18_rr_received_yes_yes_no</c> ends with
+/// <c>Set Acknowledge Pending</c> and raises no LM-SEIZE. In the figure the
+/// retransmitted frames then pop off the queue and <c>t03</c>'s
+/// <c>Clear Acknowledge Pending</c> resets the flag; the runtime replays them
+/// inline instead (<c>ActionDispatcher.EmitOldIFrame</c>, so a retransmission
+/// keeps its original N(s)) and never runs the pops arm. It used to leave the
+/// flag set, so when B's I frame arrived figc4.5's in-sequence arm found
 /// Acknowledge Pending already set (<c>t22_i_received_yes_yes_yes_no_yes_no_yes</c>)
-/// and does nothing, so B's data is not acknowledged until B's own T1 poll.
-/// Pinned below as observed; not changed here.
+/// and did nothing, and B's data went unacknowledged until B's own T1 poll. The
+/// inline replay now carries the pop's acknowledgement bookkeeping (the frame
+/// goes out with N(r) = V(r), the flag clears, and the arm's trailing Set is not
+/// applied over it, since in the figure the pops run after the arm), so B's I
+/// frame is acknowledged through the ordinary delayed-ack path (Set Acknowledge
+/// Pending, LM-SEIZE, RR F=0 on the confirm). Pinned below as fixed; the H1
+/// stranding itself is the figure's and is unchanged.
 /// </para>
 /// <para>
 /// <b>Why the ack lands on an I frame here.</b> The harness grants LM-SEIZE at
@@ -182,21 +189,32 @@ public class TimerRecoveryStuckAfterIFrameAckTests
         AssertStuck(h, expectedRc: 1);
         h.A.Signals.OfType<DataLinkErrorIndication>().Should().BeEmpty("the exchange is error-free from A's point of view");
 
-        // Alongside H1 (runtime, not the figure - see the class remarks): the
-        // partial-ack arm left Acknowledge Pending set with no LM-SEIZE behind it,
-        // so A raised no ack for B's I frame and B's window is still open.
-        h.A.Context.AcknowledgePending.Should().BeTrue("t18_rr_received_yes_yes_no's Set Acknowledge Pending survives the inline retransmission");
-        h.B.ReceivedFromPeer.Last().FrameType.Should().Be(Ax25FrameType.I, "the last thing A sent was the retransmission; no RR followed B's I frame");
+        // Alongside H1 (runtime, not the figure - see the class remarks, #812): the
+        // inline retransmission carried A's acknowledgement, so the partial-ack
+        // arm's Set Acknowledge Pending did not outlive it, and B's I frame was
+        // acknowledged at once through the ordinary delayed-ack path rather than
+        // waiting for B's own T1 poll.
+        h.A.Context.AcknowledgePending.Should().BeFalse("the inline retransmission ran the pop arm's Clear Acknowledge Pending, and B's I frame has since been acknowledged");
+        var ack = h.B.ReceivedFromPeer.Last();
+        ack.FrameType.Should().Be(Ax25FrameType.Rr, "A acknowledged B's I frame with an RR without waiting for B's poll");
+        ack.IsCommand.Should().BeFalse("... as a response");
+        ack.PollFinal.Should().BeFalse("... with F=0: the delayed ack flushed on LM-SEIZE confirm, not a poll answer");
+        ack.Nr.Should().Be(h.B.Context.VS, "... acknowledging B's frame");
         h.B.Context.VS.Should().Be(1);
-        h.B.Context.VA.Should().Be(0, "B's I frame is unacknowledged");
+        h.B.Context.VA.Should().Be(1, "B's I frame is acknowledged");
+        IsT1Running(h.B).Should().BeFalse("B has nothing outstanding, so B has no reason to poll");
 
-        // B's own T1 clears that up: B polls, A answers with an F=1 response
-        // (t18_rr_received_no_yes_yes) and B returns to Connected. A does not move.
+        // There is nothing left for B's T1 to clear up: advancing past it sends
+        // nothing in either direction, and A stays where H1 leaves it.
+        int seenByB = h.B.ReceivedFromPeer.Count;
+        int seenByA = h.A.ReceivedFromPeer.Count;
         h.AdvanceT1();
 
+        h.B.ReceivedFromPeer.Count.Should().Be(seenByB, "B's window was already closed by the RR, so no poll was needed");
+        h.A.ReceivedFromPeer.Count.Should().Be(seenByA, "and B had nothing to send");
         h.B.State.Should().Be("Connected");
-        h.B.Context.VA.Should().Be(h.B.Context.VS, "A's F=1 answer acknowledges B's frame");
-        h.A.State.Should().Be("TimerRecovery", "answering a poll is not an exit; only receiving an F=1 response is");
+        h.B.Context.VA.Should().Be(h.B.Context.VS);
+        h.A.State.Should().Be("TimerRecovery", "only receiving an F=1 response is an exit, and B has no reason to send one");
         IsT1Running(h.A).Should().BeFalse();
         h.AssertConverged();
     }
