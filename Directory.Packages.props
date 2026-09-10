@@ -119,8 +119,17 @@
          selective retransmit instead of go-back-N. That made the SREJ *command* form
          actionable for the first time — a real behaviour change, taken as the named
          `SrejCommandIgnored` quirk (default on: keep ignoring it, as direwolf and linbpq
-         do) rather than absorbed silently. #674. -->
-    <PackageVersion Include="Packet.Ax25.Sdl" Version="0.10.2" />
+         do) rather than absorbed silently. #674.
+         0.11.0 carries the figc4.4 + figc4.5 out-of-window duplicate-discard guard
+         (ax25sdl#81, packethacking/ax25spec#40): a new decision
+         "V(r) < N(s) < V(r) + k?" sits on the out-of-sequence I-frame arm ahead of
+         the reject-exception/SREJ split, so a duplicate of an already-acknowledged
+         frame is discarded rather than answered with an SREJ that names nothing.
+         This is NOT a new behaviour for us: it is what the `Ax25Spec40DiscardOutOfWindowIFrames`
+         quirk has been faking since #242, and that quirk is retired in the same
+         change. The Ax25Guard closed set gains `vr_lt_ns_lt_vr_plus_k`, which is why
+         the bump is a minor: an unbound atom is a CS8509 build failure here. -->
+    <PackageVersion Include="Packet.Ax25.Sdl" Version="0.11.0" />
 
     <!-- MCP — the official C# SDK (Anthropic + .NET). Packet.Mcp (the
          transport-agnostic tool surface) takes .Core; the node host takes

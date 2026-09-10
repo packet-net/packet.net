@@ -119,6 +119,61 @@ public class FrameAwareBindingsTests
         b[Ax25Guard.VaLeNrLeVs]().Should().Be(expectedInWindow, "va_le_nr_le_vs is the in-window check");
     }
 
+    [Theory]
+    // V(r) = 0, k = 4, mod 8. The figure draws the OPEN interval
+    // V(r) < N(s) < V(r)+k, so both ends are excluded: N(s) = V(r) is the
+    // in-sequence case (handled by the earlier ns_eq_vr decision) and
+    // N(s) = V(r)+k is the first sequence number past the granted window.
+    [InlineData(0, 4, 1, true)]   // first out-of-sequence frame inside the window
+    [InlineData(0, 4, 3, true)]   // last one inside
+    [InlineData(0, 4, 4, false)]  // exclusive upper edge, V(r)+k
+    [InlineData(0, 4, 6, false)]  // duplicate behind V(r): the ax25spec#40 case
+    [InlineData(0, 4, 0, false)]  // exclusive lower edge, V(r) itself
+    // Wrapping across the mod-8 ring boundary.
+    [InlineData(6, 4, 7, true)]   // offset 1
+    [InlineData(6, 4, 1, true)]   // offset 3
+    [InlineData(6, 4, 2, false)]  // offset 4, the exclusive edge again
+    [InlineData(6, 4, 5, false)]  // offset 7, a duplicate behind V(r)
+    public void Vr_Lt_Ns_Lt_Vr_Plus_K_Is_The_Receive_Window_Membership_Test(
+        byte vr, int k, byte incomingNs, bool expectedInWindow)
+    {
+        var (b, ctx, setTrigger) = NewBindings();
+        ctx.VR = vr;
+        ctx.K = k;
+        setTrigger(new IFrameReceived(Ax25Frame.I(Local, Remote, nr: 0, ns: incomingNs, info: "x"u8)));
+
+        b[Ax25Guard.VrLtNsLtVrPlusK]().Should().Be(
+            expectedInWindow,
+            "vr_lt_ns_lt_vr_plus_k asks whether the out-of-sequence N(s) is inside the window this receiver granted");
+    }
+
+    [Fact]
+    public void Vr_Lt_Ns_Lt_Vr_Plus_K_Reads_The_Effective_Window_Not_The_Raw_K()
+    {
+        // Under SREJ the ax25spec#13 quirk clamps the window to modulus/2, so a
+        // configured k of 7 grants only 4 at mod-8. N(s) = 5 is inside the raw k
+        // but outside what we actually granted, and must read as out-of-window.
+        var (b, ctx, setTrigger) = NewBindings();
+        ctx.VR = 0;
+        ctx.K = 7;
+        ctx.SrejEnabled = true;
+        ctx.EffectiveWindow.Should().Be(4, "the SREJ clamp is what makes this test meaningful");
+
+        setTrigger(new IFrameReceived(Ax25Frame.I(Local, Remote, nr: 0, ns: 5, info: "x"u8)));
+
+        b[Ax25Guard.VrLtNsLtVrPlusK]().Should().BeFalse(
+            "the bound is the window granted after the SREJ clamp, not the configured k");
+    }
+
+    [Fact]
+    public void Vr_Lt_Ns_Lt_Vr_Plus_K_Returns_False_When_No_Trigger_Frame()
+    {
+        var (b, _, _) = NewBindings();
+
+        b[Ax25Guard.VrLtNsLtVrPlusK]().Should().BeFalse(
+            "with no incoming frame there is no N(s) to test, and the safe answer is the discard arm");
+    }
+
     [Fact]
     public void Info_Field_Valid_Checks_Against_N1()
     {

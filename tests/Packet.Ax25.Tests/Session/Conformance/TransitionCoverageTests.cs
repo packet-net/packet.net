@@ -172,9 +172,17 @@ public class TransitionCoverageTests
         // the IFramePopsOffQueue branches the synthesiser can't emit (no pop outside
         // Connected/TimerRecovery; no pop when peer-busy / window-full / T1-stopped),
         // and the layer_3_initiated=No data arms of the initiator-only establishment
-        // states. 238 + those 12 = 250, i.e. full coverage of the reachable set.
-        hit.Should().BeGreaterThanOrEqualTo(238,
-            "the scenario battery should behaviourally exercise every reachable one of the 250 transitions " +
+        // states.
+        //
+        // Then 238 -> 242, denominator 250 -> 254 (ax25spec#40, Packet.Ax25.Sdl
+        // 0.11.0): figc4.4 and figc4.5 each gained the "V(r) < N(s) < V(r) + k?"
+        // decision on the out-of-sequence I-frame arm, splitting two new discard
+        // transitions out of each page. The battery already drove both P=0 arms;
+        // the two P=1 arms needed explicit out-of-window duplicate scenarios,
+        // added in blocks 34 and 35. 242 + those same 12 = 254, i.e. still full
+        // coverage of the reachable set.
+        hit.Should().BeGreaterThanOrEqualTo(242,
+            "the scenario battery should behaviourally exercise every reachable one of the 254 transitions " +
             "(the 12 remaining are documented-unreachable in block 41); " +
             "if this drops, a scenario regressed or a path stopped being reached");
     }
@@ -1234,6 +1242,18 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
+        // Out-of-window duplicate I with P=1 -> t26_i_received_yes_yes_yes_no_no_no_yes.
+        // V(r)=0 and k=4, so N(s)=6 fails the "V(r) < N(s) < V(r) + k?" test the
+        // figure gained in ax25spec#40: the frame is a duplicate of one already
+        // acknowledged, so it is discarded with no REJ/SREJ exception raised, and
+        // answered with RR F=1 only because P=1. The P=0 arm of the same decision
+        // is already driven elsewhere in the battery.
+        {
+            var h = New(k: 4); h.Connect();
+            h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 6, info: new byte[] { 0x55 }, pollBit: true).ToBytes());
+            Collect(h);
+        }
+
         // ──────────────────────────────────────────────────────────────────
         // 35-38. TimerRecovery (figc4.5) receive columns, both moduli. The mod-128
         // injection block (18b-18d) already drives many of these; here we fill the
@@ -1273,6 +1293,12 @@ public class TransitionCoverageTests
         // mod-128 block doesn't reach. N(R)=5 with V(a)=V(s)=0..2 is out of window.
         // bare RR response F=0, N(R) out of window → t18_rr_received_no_no_no.
         { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: false, pf: false, ext: false)); Collect(h); }
+        // Out-of-window duplicate I with P=1 while recovering ->
+        // t22_i_received_yes_yes_yes_no_no_no_yes. This is where the on-air fault
+        // actually fired: the peer's checkpoint retransmission, driven by a stale
+        // F=1 N(R), delivers an already-acknowledged N(s) while this end is in
+        // Timer Recovery. V(r)=0 and k=4, so N(s)=6 is outside the granted window.
+        { var h = InTimerRecovery(1); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 6, info: new byte[] { 0x56 }, pollBit: true).ToBytes()); Collect(h); }
         // RR command P=1, N(R) out of window, mod-8 → re-establish (t18_rr_received_no_yes_no_no).
         { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: true, pf: true, ext: false)); Collect(h); }
         // RR command P=1, N(R) out of window, mod-128 → t18_rr_received_no_yes_no_yes.

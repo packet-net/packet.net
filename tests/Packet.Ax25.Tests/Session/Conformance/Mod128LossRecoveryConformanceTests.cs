@@ -19,17 +19,19 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// <b>The finding these guard.</b> The recovery logic in
 /// <see cref="Ax25SessionBindings"/> is already mod-aware: every sequence
 /// computation is <c>% context.Modulus</c> (the send-window check, the
-/// Ax25Spec40 out-of-window discard guard, the N(S)/N(R) comparisons), and
+/// out-of-window discard guard, the N(S)/N(R) comparisons), and
 /// the frame's <see cref="Ax25Frame.Ns"/>/<see cref="Ax25Frame.Nr"/> read
 /// 7-bit values on extended frames (V1, #239). So SREJ/REJ recovery works
 /// at modulo-128 with no recovery-path code change; these tests prove it and
 /// stand as the regression guard.
 /// </para>
 /// <para>
-/// The three SREJ figc4.x quirks (Ax25Spec40 out-of-window discard,
-/// Ax25Spec41 Karn SRT sampling, Ax25Spec42 SREJ-targets-gap) are on by
-/// default in <see cref="TwoStationHarness.Build"/>, so the heavy / window-
-/// wrap selective-recovery cases below exercise them at mod-128 too.
+/// The two remaining SREJ figc4.x quirks (Ax25Spec41 Karn SRT sampling,
+/// Ax25Spec42 SREJ-targets-gap) are on by default in
+/// <see cref="TwoStationHarness.Build"/>, so the heavy / window-wrap
+/// selective-recovery cases below exercise them at mod-128 too. The
+/// out-of-window discard guard that used to be the third of them is now drawn
+/// in figc4.4/figc4.5 themselves, so it applies under StrictlyFaithful as well.
 /// </para>
 /// </remarks>
 public class Mod128LossRecoveryConformanceTests

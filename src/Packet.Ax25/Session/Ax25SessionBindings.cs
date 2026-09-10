@@ -62,6 +62,24 @@ public static class Ax25SessionBindings
             return diff > 1;
         }
 
+        // `vr_lt_ns_lt_vr_plus_k` - is the out-of-sequence I frame's N(s) inside
+        // the receive window this station granted? The figure draws the open
+        // interval V(r) < N(s) < V(r)+k (packethacking/ax25spec#40, matching
+        // X.25 2.4.6.4(b)), so an N(s) outside it is a duplicate of a frame we
+        // have already received and acknowledged and the No arm discards it.
+        // EffectiveWindow, not K: it carries the ax25spec#13 SREJ half-modulus
+        // clamp and the modulus-1 cap, and it is the window we actually granted.
+        bool NsInReceiveWindow()
+        {
+            if (IncomingNs(currentTrigger?.Invoke()) is not byte ns)
+            {
+                return false;
+            }
+
+            int offset = (ns - context.VR + context.Modulus) % context.Modulus;
+            return offset > 0 && offset < context.EffectiveWindow;
+        }
+
         // `va_le_nr_le_vs` - incoming N(R) lies in the ring-buffer window
         // [V(a), V(s)] (inclusive of both ends in mod-N arithmetic - N(R) = V(a)
         // is "all sent frames acked"; N(R) = V(s) is "no outstanding").
@@ -195,6 +213,9 @@ public static class Ax25SessionBindings
                 Ax25Guard.NsEqVr => NsEqVr,
                 // legacy binding: N_s_gt_V_r_plus_1
                 Ax25Guard.NsGtVrPlus1 => NsGtVrPlus1,
+                // new atom, no legacy binding: added by ax25spec#40 as the
+                // receive-window membership test on the out-of-sequence arm.
+                Ax25Guard.VrLtNsLtVrPlusK => NsInReceiveWindow,
                 // legacy binding: V_a_le_N_r_le_V_s
                 Ax25Guard.VaLeNrLeVs => NrInWindow,
                 // legacy binding: n_r_eq_v_a
@@ -216,49 +237,6 @@ public static class Ax25SessionBindings
         foreach (Ax25Guard atom in Enum.GetValues<Ax25Guard>())
         {
             bindings[atom] = BindAtom(atom);
-        }
-
-        // ─── ax25spec#40 receive-window discard guard ──────────────────────
-        // figc4.4's out-of-sequence I_received path has no window guard: any
-        // N(S) ≠ V(R) is SREJ'd/REJ'd, including a duplicate behind V(R) - which
-        // provokes a re-send that's again out-of-window, ad infinitum (the SREJ
-        // livelock). X.25 §2.4.6.4 discards any frame whose N(S) is outside the
-        // receive window [V(r), V(r)+k). The figure's `reject_exception` decision
-        // IS its discard-vs-reject switch in that region, so we OR the
-        // out-of-window condition into it (when the quirk is on): such a frame
-        // takes the figure's own discard path (process ack, discard data,
-        // RR(V(r)) only if P=1) ahead of the srej_enabled split, covering both
-        // REJ and SREJ modes. Scoped to IFrameReceived, so inert on every other
-        // trigger. See Ax25SessionQuirks.
-        // The wrapper is installed unconditionally and reads the quirk per dispatch,
-        // like every other quirk: Ax25SessionContext.Quirks is a settable property and
-        // the listener runs its ConfigureSession hook AFTER building the bindings, so a
-        // hook that selects StrictlyFaithful used to leave this one (and the #43 wrapper
-        // below) stuck at their construction-time value (packet-net/packet.net#696).
-        {
-            bool IFrameOutOfWindow()
-            {
-                if (!context.Quirks.Ax25Spec40DiscardOutOfWindowIFrames)
-                {
-                    return false;
-                }
-
-                if (currentTrigger?.Invoke() is not IFrameReceived)
-                {
-                    return false;
-                }
-
-                if (IncomingNs(currentTrigger.Invoke()) is not byte ns)
-                {
-                    return false;
-                }
-
-                int offset = (ns - context.VR + context.Modulus) % context.Modulus;
-                return offset >= context.EffectiveWindow;   // N(S) outside [V(r), V(r)+effective k)
-            }
-
-            var baseRejectException = bindings[Ax25Guard.RejectException];
-            bindings[Ax25Guard.RejectException] = () => baseRejectException() || IFrameOutOfWindow();
         }
 
         // ─── ax25spec#43 DL-FLOW-OFF branch inversion ───────────────────────
