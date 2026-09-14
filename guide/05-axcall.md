@@ -57,7 +57,7 @@ Console.WriteLine($"Connected to {remote}.");
 
 !!! warning "Start the pump before you dial"
     `ConnectAsync` throws `InvalidOperationException` if the listener isn't
-    running — the inbound pump has to be live to hear the UA that confirms the
+    running: the inbound pump has to be live to hear the UA that confirms the
     connect. Always `await listener.StartAsync()` first.
 
 By default the dial prefers **AX.25 v2.2** (SABME / modulo-128), degrading
@@ -105,7 +105,7 @@ session.DataLinkSignalEmitted += (_, signal) =>
     session.AttachConsumerWithReplay((_, signal) => { /* same switch */ });
     ```
 
-    Handlers run **synchronously** on the pump thread — keep them quick; hand
+    Handlers run **synchronously** on the pump thread, so keep them quick; hand
     real work to another task.
 
 ## Sending data
@@ -137,11 +137,18 @@ session.PostEvent(new DlDisconnectRequest());
 ## Tool #3 - `axcall`, end to end
 
 The real `axcall` ([`axcall/src/Axcall`](https://github.com/packet-net/axcall))
-builds its transport from command-line flags - `KissTcpClient.ConnectAsync(host,
-port)` for `--tcp`, `KissSerialModem.Open(port, baud)` for `--port` — into an
-`IAx25Transport`, then hands that to a small `SessionRelay` that wraps an
-`Ax25Listener` and pumps stdin↔session. The condensed version below inlines that
-relay so the whole client fits on one page:
+takes a port argument that can be a serial device (`/dev/ttyUSB0:57600`), a TCP
+endpoint (`10.45.0.66:8001`), or a name from its ports file, and resolves it to
+`KissSerialModem.Open(device, baud)` or `KissTcpClient.ConnectAsync(host, port)`.
+Either way it ends up with an `IAx25Transport`, which it hands to a small
+`SessionRelay` wrapping an `Ax25Listener` and pumping stdin to and from the
+session. Its command line is deliberately the one the withdrawn kernel AX.25
+`axcall` used, so `-p` is paclen and `-w` is window; `--serial` and `--tcp` name
+the transport explicitly when you do not want to use the positional form.
+
+The condensed version below is not that command line. It takes its three
+arguments positionally to keep the example short, and inlines the relay so the
+whole client fits on one page:
 
 ```csharp
 using Packet.Core;
@@ -149,7 +156,7 @@ using Packet.Ax25.Session;
 using Packet.Ax25.Transport;
 using Packet.Kiss.Serial;
 
-// usage: axcall <port> <mycall> <remote>
+// usage (simplified for the example): <serial-port> <mycall> <remote>
 await using IAx25Transport transport = KissSerialModem.Open(args[0]);
 
 var listener = new Ax25Listener(transport, new Ax25ListenerOptions
