@@ -923,7 +923,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                 // throwing event-handler or a misbehaving session
                 // can't tear the pump down. A buggy consumer must not
                 // be able to DoS the modem.
-                try { TraceFrame(parsed, FrameDirection.Received); }
+                try { TraceFrame(TraceReading(parsed, frame.Ax25, parseOptions), FrameDirection.Received); }
                 catch (Exception) { /* swallowed: see Note on event-handler exceptions */ }
 
                 try { DispatchInbound(parsed, frame.Ax25, parseOptions); }
@@ -954,6 +954,39 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // DisposeAsync. We swallow synchronously here; future work
         // could surface them on a dedicated ListenerExceptionRaised
         // event so consumers that DO care can observe.
+    }
+
+    /// <summary>
+    /// The reading of an inbound frame to hand the monitor trace. The routing parse is
+    /// modulo-8 (the pump cannot know a frame's modulo until it has routed it), so an I or
+    /// S frame on a live extended link is re-read at modulo 128 first - the same second pass
+    /// <see cref="ReparseAtSessionModulo"/> makes before dispatch.
+    /// </summary>
+    /// <remarks>
+    /// Without it the trace of a received frame on a mod-128 link is silently wrong: an I
+    /// frame's N(S) is reported modulo 8, its N(R) is whatever the top bits of N(S) say, and
+    /// the second control octet is read as the PID with the real PID counted into the
+    /// information field; a supervisory frame reports N(R) = 0 with a one-octet information
+    /// field. Transmitted frames were already traced at the session's modulo, so the two
+    /// directions disagreed about the same link (packet-net/packet.net#815).
+    /// <para>
+    /// A frame with no cached session (monitor-only traffic between two other stations) has
+    /// no modulo to read it at and is traced as parsed; an extended link between third
+    /// parties is <see cref="Monitor.Ax25LinkObserver"/>'s job, which tracks the modulo it
+    /// saw the link open with.
+    /// </para>
+    /// </remarks>
+    private Ax25Frame TraceReading(Ax25Frame parsed, ReadOnlyMemory<byte> bytes, Ax25ParseOptions parseOptions)
+    {
+        if (parsed.IsExtendedControl)
+        {
+            return parsed;      // the second-chance routing parse already read it wide
+        }
+
+        var key = new SessionKey(parsed.Destination.Callsign, parsed.Source.Callsign);
+        return sessions.TryGetValue(key, out var cached)
+            ? ReparseAtSessionModulo(parsed, bytes, cached.Session.Context, parseOptions)
+            : parsed;
     }
 
     /// <summary>
