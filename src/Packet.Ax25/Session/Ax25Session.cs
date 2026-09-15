@@ -606,7 +606,7 @@ public sealed class Ax25Session
             && string.Equals(match.From, "AwaitingV22Connection", StringComparison.Ordinal)
             && match.On == SdlEvent.FRMRReceived)
         {
-            Context.IsExtended = false;
+            ForceVersion20();
         }
 
         // figc4.6 DM-no-degrade gap (Ax25Spec48DmRejectionDegradesToV20): a DM in
@@ -621,8 +621,29 @@ public sealed class Ax25Session
             && CurrentTrigger is DmReceived
             && string.Equals(match.From, "AwaitingV22Connection", StringComparison.Ordinal))
         {
-            Context.IsExtended = false;
+            ForceVersion20();
         }
+    }
+
+    /// <summary>
+    /// Drop this link to v2.0 ahead of the transition that will re-establish it: modulo 8,
+    /// and implicit reject with it.
+    /// </summary>
+    /// <remarks>
+    /// The reject scheme travels with the version (§6.3.2 ¶1426; figc4.7's
+    /// <c>Set_Version_2_0</c> / <c>Set_Version_2_2</c> bodies each select one), and a v2.2
+    /// dial selects selective reject so the XID that follows the SABME offers it. A peer
+    /// that answers FRMR or DM never negotiates anything, so the selection has to come off
+    /// with the modulus: a v2.0 link nobody agreed SREJ on must not be left answering gaps
+    /// with SREJ. Both quirks force the version here, before the transition runs, so the
+    /// <c>Set Version 2.0</c> action inside it sees a link that is already v2.0 and its own
+    /// downgrade handling is a no-op (packet-net/packet.net#817).
+    /// </remarks>
+    private void ForceVersion20()
+    {
+        Context.IsExtended = false;
+        Context.SrejEnabled = false;
+        Context.ImplicitReject = true;
     }
 
     // Loop expansion (SDL loop_while, Packet.Ax25.Sdl 0.7.0+) lives in

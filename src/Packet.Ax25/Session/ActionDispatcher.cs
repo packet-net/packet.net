@@ -318,7 +318,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         this.sendMdl = sendMdl ?? (_ => { });
         this.sendXidCommand = sendXidCommand ?? (_ => { });
         this.applyNegotiatedParameters = applyNegotiatedParameters ?? (_ => { });
-        this.setVersion20 = setVersion20 ?? (ctx => ctx.IsExtended = false);
+        this.setVersion20 = setVersion20 ?? DowngradeToVersion20;
     }
 
     /// <inheritdoc/>
@@ -801,7 +801,29 @@ public sealed class ActionDispatcher : IActionDispatcher
             // run separately); the MDL driver overrides it to install the full
             // §1436 v2.0 default set (the figc5.2 box stands in for the whole set).
             Ax25ActionVerb.SetVersion20 => Do(() => setVersion20(ctx)),
-            Ax25ActionVerb.SetVersion22 => Do(() => ctx.IsExtended = true),
+            // Set Version 2.2 locks in mod-128 and selects selective reject, which is
+            // the §6.3.2 ¶1426 v2.2 default reject scheme and what figc4.7's
+            // Set_Version_2_2 body chooses. Both matter: the reject scheme is what the
+            // XID exchange that follows the SABME then OFFERS (the management data-link
+            // builds its offer from this context - Ax25ManagementDataLink.DefaultOfferFor
+            // reads SrejEnabled), and §6.3.2's reverts-to-the-lesser merge drops it again
+            // if the peer answers with implicit reject. Without it a v2.2 link offered
+            // REJ and could never negotiate SREJ however capable both ends were, while a
+            // mod-8 dial to the same peer got it from the pre-SABM XID probe
+            // (packet-net/packet.net#817).
+            //
+            // The rest of the figc4.7 body (k := 32, N1 := 2048, T2 := 3000, N2 := 10)
+            // is deliberately NOT applied here: those are configurable parameters
+            // (§6.7.1) seeded per port, and establishment overwriting an operator's
+            // window or paclen is the #292 / #300 clobber class. The same is true of the
+            // mod-8 leg, where the equivalent body verbs are not on the establishment
+            // path either. XID still narrows k and N1 to what the peer advertises.
+            Ax25ActionVerb.SetVersion22 => Do(() =>
+            {
+                ctx.IsExtended = true;
+                ctx.ImplicitReject = false;
+                ctx.SrejEnabled = true;
+            }),
 
             // Individual Set_Version_2_x body verbs (figc4.7), used inside the
             // subroutine bodies via the walker.
@@ -1004,6 +1026,30 @@ public sealed class ActionDispatcher : IActionDispatcher
     {
         action();
         return true;
+    }
+
+    /// <summary>
+    /// The data-link dispatcher's <c>Set Version 2.0</c>: drop to modulo 8, and undo the
+    /// v2.2 reject-scheme selection when this is a v2.2 link being downgraded (figc4.6's
+    /// FRMR / SABM fallbacks out of <c>AwaitingV22Connection</c>, and figc4.5's FRMR).
+    /// </summary>
+    /// <remarks>
+    /// Only a link that is currently extended can be carrying the <c>Set Version 2.2</c>
+    /// selective-reject selection, so the reject scheme is touched on that downgrade alone.
+    /// A modulo-8 link is left exactly as it was, which is what keeps SREJ negotiated by the
+    /// pre-SABM XID probe (<c>PreConnectXidNegotiatesSrej</c>, the LinBPQ accommodation)
+    /// alive across the SABM that follows it; the figure's full §1436 v2.0 body, which would
+    /// clear it, is what the MDL driver installs through its own override.
+    /// </remarks>
+    private static void DowngradeToVersion20(Ax25SessionContext ctx)
+    {
+        if (ctx.IsExtended)
+        {
+            ctx.SrejEnabled = false;
+            ctx.ImplicitReject = true;
+        }
+
+        ctx.IsExtended = false;
     }
 
     /// <summary>

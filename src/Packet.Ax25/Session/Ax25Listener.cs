@@ -497,6 +497,26 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // every dial starts from the caller's chosen preference.
         cached.Session.Context.IsExtended = extended;
 
+        // The version selection carries the reject scheme with it. figc4.7's
+        // Set_Version_2_2 selects selective reject, and §6.3.2 ¶1426 makes it the v2.2
+        // default; Set_Version_2_0 selects implicit reject. The answering side gets that
+        // from the SABM(E) it receives (the figc4.1 arms carry the verb), but the
+        // initiator's UA arm carries no version verb at all - the dial is where an
+        // outbound link's version is chosen, one line above - so it is chosen here too.
+        // It matters because the XID exchange that follows the SABME builds its offer
+        // from this context (Ax25ManagementDataLink.DefaultOfferFor reads SrejEnabled):
+        // a v2.2 link that establishes on implicit reject offers implicit reject, and the
+        // reverts-to-the-lesser merge can then never reach SREJ however capable both ends
+        // are (packet-net/packet.net#817). The merge still drops it if the peer answers
+        // implicit reject, and the v2.0 fallbacks undo it through Set Version 2.0.
+        //
+        // A mod-8 dial is reset to implicit reject, not left as it was: a cached session
+        // re-dialled after a previous v2.2 link would otherwise carry that link's SREJ
+        // into a v2.0 one nobody negotiated. The pre-SABM XID probe below, when it runs,
+        // sets it back on to make its offer.
+        cached.Session.Context.SrejEnabled = extended;
+        cached.Session.Context.ImplicitReject = !extended;
+
         // LinBPQ SREJ accommodation (PreConnectXidNegotiatesSrej): on a mod-8 dial,
         // run an XID command/response BEFORE the SABM to negotiate Selective Reject.
         // BPQ does mod-8 SREJ but only honours an XID that PRECEDES the SABM (its
