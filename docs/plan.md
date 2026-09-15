@@ -1384,6 +1384,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-15 - RELEASE: lib-v0.39.0 (+ axcall v0.10.0)
+
+The v2.2 selective-reject selection (entry below, PR [#818](https://github.com/packet-net/packet.net/pull/818)) shipped off `main` at `4b2c4da3`, with `ci`, `interop`, `fuzz`, `live-smoke` and `plan-check` all green on the merge commit. 14 packages at 0.39.0, `publish-libs` green, 28 `Your package was pushed.` lines read from the log. The interop suite had also been run locally against the change before the merge (60 passed, 1 skipped, LinBPQ / XRouter / rax25 / direwolf / net-sim), because this one changes what we offer every v2.2 peer.
+
+No `node-v*`: nothing in the node host moved this cycle, so the two library fixes reach it on its next release. Worth knowing when it is cut, though, since the node dials v2.2 by default: its mod-128 links will negotiate SREJ from then on, and a port configured above k=64 will run at 64.
+
+Downstream: [`axcall`](https://github.com/packet-net/axcall) v0.10.0, carrying its own reporting fix ([axcall#61](https://github.com/packet-net/axcall/issues/61): the connect line reported the parameters this end offered rather than the ones XID settled on, which on a mod-128 dial is always the wrong answer because the negotiation follows the SABME) plus both library fixes, its man page and `docs/acceptance-test.md` updated for `SREJ on` and the half-modulus window. Release green, 18 assets. `packet-term-tui` not bumped this cycle. TS leg not moved: [ax25-ts#88](https://github.com/packet-net/ax25-ts/issues/88) carries the v2.2 reject-scheme selection for `ax25-ts`.
+
 ### 2026-09-15 - RELEASE: lib-v0.38.0
 
 The monitor-trace modulo fix (entry below, PR [#816](https://github.com/packet-net/packet.net/pull/816)) and the Acknowledge Pending fix ([#813](https://github.com/packet-net/packet.net/pull/813)) shipped off `main` at `36cd985c`. `ci`, `interop`, `fuzz` and `live-smoke` all green on the merge commit; `plan-check` red on that push and cleared by this entry. 14 packages at 0.38.0, `publish-libs` green, 28 `Your package was pushed.` lines in the log. No `node-v*` this cycle (nothing in the node moved; the library fix reaches it on its next release). Downstream: [`axcall`](https://github.com/packet-net/axcall) bumps its pin and cuts a release of its own, carrying the reporting fix below.
