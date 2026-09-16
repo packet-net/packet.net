@@ -1384,6 +1384,12 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-16 - node: the capability cache plans a pre-connect XID on v2.2 dials too
+
+Caught while preparing the node release. `PeerCapabilityCache.Plan` forced the pre-connect XID off on the extended branch - `bool preConnectXid = !extended && PreConnectXidFor(...)`, commented "moot on the extended path (XID negotiation rides the SABME setup)". That was true when the pre-SABM exchange existed only as the mod-8 LinBPQ accommodation; since lib 0.40.0 it is how a dial negotiates on either modulus, so the node would have taken the new library and kept its v2.2 dials negotiating over live traffic - the one link type still doing the thing that release fixed.
+
+The rule is now the same on both versions: the port's `preConnectXid` declaration wins, then what the cache has freshly learned about that peer, so `off` and a peer known to ignore an XID both still skip it. Two tests pin exactly those (a port declaring off on a v22 dial, and a peer whose last dial sent an XID and saw no SREJ come back); the two that asserted "moot on the extended path" now assert the opposite.
+
 ### 2026-09-16 - RELEASE: lib-v0.40.0 (+ axcall v0.11.0)
 
 The negotiation-timing change (entry below, PR [#819](https://github.com/packet-net/packet.net/pull/819)) shipped off `main` at `73fec473`, with `ci`, `interop`, `fuzz`, `live-smoke` and `plan-check` all green on the merge commit, and the interop suite run locally against the branch beforehand as well - this one changes the first frame of every dial, so the container peers were the gate. 14 packages at 0.40.0, `publish-libs` green, 28 `Your package was pushed.` lines.
