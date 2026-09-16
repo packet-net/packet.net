@@ -444,10 +444,11 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// <summary>
     /// As <see cref="ConnectAsync(Callsign, Callsign, bool, CancellationToken)"/>, but also
     /// overrides the listener's <see cref="Ax25ListenerOptions.PreConnectXidNegotiatesSrej"/>
-    /// per dial. <paramref name="preConnectXidNegotiatesSrej"/> only takes effect on a mod-8
-    /// dial (<paramref name="extended"/> = <c>false</c>) - the v2.2/SABME path negotiates XID
-    /// post-UA. The node's per-peer capability cache uses this to skip the pre-SABM XID probe
-    /// for a neighbour it already knows does not answer one (go-back-N), or to force it.
+    /// per dial. It applies on both moduli: §6.3.2 ¶1 puts parameter negotiation before the
+    /// connection, so a dial exchanges XID ahead of the SABM(E) and the post-UA exchange is
+    /// only a fallback for peers that answer nowhere else. The node's per-peer capability
+    /// cache uses this to skip the probe for a neighbour it already knows does not answer
+    /// one, or to force it.
     /// </summary>
     public async Task<Ax25Session> ConnectAsync(Callsign remote, Callsign local, bool extended, bool preConnectXidNegotiatesSrej, CancellationToken ct = default)
     {
@@ -527,12 +528,16 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // (SrejXidViaNetsim). Safe regardless of peer: if no XID response arrives in
         // the budget, we fall through to a plain SABM (go-back-N link). Skipped on
         // the extended (SABME) path - that uses the figc4.6 post-UA MDL negotiation.
-        if (!extended && preConnectXidNegotiatesSrej)
+        // Nothing has been negotiated for the connection we are about to make, whatever
+        // the last one settled on.
+        cached.Session.Context.ParametersNegotiated = false;
+
+        if (preConnectXidNegotiatesSrej)
         {
             LogPreConnectXid(portName, local.ToString(), remote.ToString());
-            await NegotiateSrejBeforeConnectAsync(cached, ct).ConfigureAwait(false);
+            await NegotiateParametersBeforeConnectAsync(cached, extended, ct).ConfigureAwait(false);
             LogXidOutcome(portName, local.ToString(), remote.ToString(),
-                cached.Session.Context.SrejEnabled ? "confirmed" : "no response",
+                cached.Session.Context.ParametersNegotiated ? "confirmed" : "no response",
                 cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N");
         }
 
@@ -600,17 +605,30 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     }
 
     /// <summary>
-    /// Pre-SABM SREJ negotiation for the mod-8 dial (the LinBPQ accommodation gated
-    /// by <see cref="Ax25ListenerOptions.PreConnectXidNegotiatesSrej"/>). Sets the
-    /// context SREJ-capable so the management-data-link's XID offer advertises
-    /// SREJ + SREJ-multiframe at mod-8, opens the negotiation, and waits a bounded
-    /// time for the peer's XID response (which the inbound router applies via the MDL,
-    /// setting <see cref="Ax25SessionContext.SrejEnabled"/>) before returning so the
-    /// caller can post DL-CONNECT-request. A peer that does not answer XID leaves the
-    /// MDL to exhaust its TM201 retries; we cap the wait and proceed to a plain SABM
-    /// (go-back-N) regardless - the dial is never blocked by a non-XID peer.
+    /// Parameter negotiation before the connection, per §6.3.2 ¶1: "Parameter negotiation
+    /// occurs only before the connection is made." Sends the XID command, waits a bounded
+    /// time for the peer's XID response (which the inbound router applies through the MDL),
+    /// and returns so the caller can post DL-CONNECT-request with the link parameters
+    /// already settled. Gated by <see cref="Ax25ListenerOptions.PreConnectXidNegotiatesSrej"/>.
     /// </summary>
-    private async Task NegotiateSrejBeforeConnectAsync(CachedSession cached, CancellationToken ct)
+    /// <remarks>
+    /// <para>
+    /// Runs on both moduli. On modulo 8 it is also the LinBPQ accommodation: BPQ's XID
+    /// responder only runs on the no-active-link path, so an XID after the SABM is ignored
+    /// and this is the only way to reach it. On modulo 128 it replaces negotiating on top
+    /// of a live link, which is what the figc4.6 UA arm's (green, editorial) MDL-NEGOTIATE
+    /// box asks for and what Figure D.3 draws, and which turns one lost XID into TM201
+    /// retries over a connection that is already carrying traffic. The spec contradicts
+    /// itself on which moment is right; filed as packethacking/ax25spec#113. The post-UA
+    /// exchange is kept as the fallback for peers that only answer there (direwolf), and
+    /// is skipped once this has settled the parameters.
+    /// </para>
+    /// <para>
+    /// A peer that does not answer at all leaves the MDL to exhaust its TM201 retries; we
+    /// cap the wait and connect regardless, so the dial is never blocked by a non-XID peer.
+    /// </para>
+    /// </remarks>
+    private async Task NegotiateParametersBeforeConnectAsync(CachedSession cached, bool extended, CancellationToken ct)
     {
         var ctx = cached.Session.Context;
 
@@ -618,6 +636,8 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // OPSREJMult bit BPQ's XID responder requires. The peer's XID response is
         // applied by the inbound router (XidNegotiator.ApplyNegotiated), which sets
         // SrejEnabled to the MUTUAL result - true only if the peer also offered SREJ.
+        // On a v2.2 dial it is already on (the version selection chose it), and on a
+        // mod-8 one this is the offer being made, reverted below if nobody answers.
         ctx.SrejEnabled = true;
         ctx.ImplicitReject = false;
 
@@ -661,7 +681,10 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                     break;
                 }
 
-                try { await Task.Delay(25, linked.Token).ConfigureAwait(false); }
+                // On the listener's clock, not the wall: a consumer driving a
+                // FakeTimeProvider would otherwise spin here on real 25 ms sleeps
+                // against a budget that only its own clock can expire.
+                try { await Task.Delay(TimeSpan.FromMilliseconds(25), timeProvider, linked.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }
             }
         }
@@ -670,9 +693,13 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             cached.Mdl.MdlSignalEmitted -= OnMdl;
         }
 
-        // No confirmed XID negotiation (silent peer / give-up) → the peer can't do
-        // SREJ; revert to go-back-N so we never put SREJ on the wire unilaterally.
-        if (!confirmed)
+        // No confirmed negotiation (silent peer / give-up) on a mod-8 dial → the peer
+        // can't do SREJ; revert to go-back-N so we never put SREJ on the wire
+        // unilaterally. A v2.2 dial keeps it: §6.3.2's version-2.2 default set is
+        // "Set Selective Reject - Modulo = 128", and the SABME says which version this
+        // link is. The post-UA fallback negotiation still runs (nothing was settled),
+        // so a v2.2 peer that only answers XID there can still pull it back to REJ.
+        if (!confirmed && !extended)
         {
             ctx.SrejEnabled = false;
             ctx.ImplicitReject = true;
@@ -1176,6 +1203,20 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // data-link FRMR handling).
         if (cachedClassified is XidReceived && frame.IsCommand)
         {
+            // A cached session with no live link is in exactly the position of the
+            // pre-session responder below: it has no negotiated state to report, so it
+            // answers with what this station can do (SREJ, modulo 128) and lets the
+            // §6.3.2 merge and the following SABM(E) settle it. A session that IS
+            // established answers from its live context, so nothing an inbound XID says
+            // can move a running link's modulus.
+            if (string.Equals(cached.Session.CurrentState, "Disconnected", StringComparison.Ordinal))
+            {
+                var xidCtx = cached.Session.Context;
+                xidCtx.SrejEnabled = true;
+                xidCtx.ImplicitReject = false;
+                xidCtx.IsExtended = true;
+            }
+
             cached.Mdl.RespondToXidCommand(frame);
             return true;
         }
@@ -1297,10 +1338,19 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             AddToCache(key, xidSession);
             options.ConfigureSession?.Invoke(xidSession.Session);
 
-            // Seed SREJ-capable so DefaultOfferFor advertises SREJ in our response;
-            // the lesser-of merge reverts this if the peer's offer lacked SREJ.
+            // Seed the context with what this station CAN do, so DefaultOfferFor
+            // advertises capability rather than the state of a link that does not exist
+            // yet: SREJ, and modulo 128. §6.3.2's merge takes the lesser of the two
+            // selections, so the peer's offer decides both - an XID offering mod-8 and
+            // implicit reject settles there - and the SABM(E) that follows sets the
+            // version explicitly either way (figc4.1's Set Version 2.0 / 2.2), so a
+            // capability we advertised and the peer did not take is corrected twice over.
+            // Without the modulo seed a responder always answered "modulo 8", which drags
+            // a v2.2 caller's pre-connection negotiation down to mod-8 and makes it dial
+            // SABM: the negotiation would decide the version instead of reporting it.
             xidSession.Session.Context.SrejEnabled = true;
             xidSession.Session.Context.ImplicitReject = false;
+            xidSession.Session.Context.IsExtended = true;
 
             // Build + send the F=1 XID response (the figc5.1 responder path). DO NOT
             // raise SessionAccepted - there's no DL-CONNECT yet; the following SABM
@@ -1709,6 +1759,12 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
                 sig = reassembled;
             }
+            if (sig is DataLinkDisconnectIndication or DataLinkDisconnectConfirm)
+            {
+                // Parameters are per-connection: whatever this link agreed dies with it.
+                ctx.ParametersNegotiated = false;
+            }
+
             LogDlSignal(portName, ctx.Local.ToString(), ctx.Remote.ToString(), SignalName(sig));
             // Offer it to a dial that is waiting on this session (no-op otherwise);
             // the delivery bus for every consumer is the session event below.
@@ -1790,7 +1846,18 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // after a successful v2.2 connect; hand it to the MDL driver to open
             // the XID exchange. (Other internal signals - push_I_frame_queue - are
             // queue-management that mutate ctx directly; nothing to do here.)
-            sendInternal: sig => { if (sig is MdlNegotiateRequestSignal) { mdl.Negotiate(); } },
+            // The data-link figc4.6 UA-received path raises MDL-NEGOTIATE Request after a
+            // successful v2.2 connect. It is the fallback, not the main path: a dial
+            // negotiates before the SABM(E) per §6.3.2 ¶1, so this only opens an exchange
+            // for a link that has not settled its parameters yet - an inbound connection
+            // whose caller sent no XID, or a peer that ignored ours and answers only here.
+            sendInternal: sig =>
+            {
+                if (sig is MdlNegotiateRequestSignal && !ctx.ParametersNegotiated)
+                {
+                    mdl.Negotiate();
+                }
+            },
             subroutines: new DefaultSubroutineRegistry())
         {
             // Per-port timer overrides. InitialSrt seeds the establishment path's
@@ -2198,35 +2265,38 @@ public sealed class Ax25ListenerOptions
     public bool PreferExtendedConnect { get; init; } = true;
 
     /// <summary>
-    /// On a <b>mod-8 / v2.0</b> outbound dial (either a v2.0-preferred connect or
-    /// the mod-8 link a v2.2 dial degraded to), run an <b>XID command/response
-    /// exchange BEFORE the SABM</b> to negotiate Selective Reject (SREJ). When
-    /// <c>true</c> (default), the dial first puts an XID command on the wire
-    /// advertising SREJ + SREJ-multiframe at mod-8; if the peer answers with an XID
-    /// response that also offers SREJ, the link runs SREJ recovery (selective
-    /// retransmit) instead of go-back-N. If the peer does not answer XID (or rejects
-    /// it), the dial proceeds to a plain SABM and the link is go-back-N - so this is
-    /// always safe to leave on.
+    /// On an outbound dial, run the <b>XID command/response exchange BEFORE the
+    /// SABM(E)</b>, so the link's parameters are settled before the connection is made.
+    /// When <c>true</c> (default), the dial first puts an XID command on the wire
+    /// advertising this port's window, paclen, timers and reject scheme; the peer's
+    /// response settles them for both ends and the SABM(E) follows. If the peer does not
+    /// answer (or rejects it), the dial proceeds to the SABM(E) anyway - so this is
+    /// always safe to leave on. On a mod-8 dial an unanswered exchange means go-back-N;
+    /// on a v2.2 dial the version's own default set (selective reject) stands and the
+    /// post-UA exchange remains available.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is the <b>LinBPQ SREJ accommodation</b>, proven on the wire
-    /// (<c>SrejXidViaNetsim</c>): LinBPQ does mod-8 SREJ but only when an XID
-    /// <i>precedes</i> the SABM (its <c>L2Code.c</c> <c>ProcessXIDCommand</c> runs on
-    /// the no-active-link path and sets <c>LINK-&gt;Ver2point2</c>; an XID on an
-    /// already-established link is ignored). The AX.25 v2.2 figures instead negotiate
-    /// XID <i>after</i> the connect (figc4.6 raises MDL-NEGOTIATE on the UA), which is
-    /// what we do on the v2.2/SABME path and what direwolf does - but that post-connect
-    /// XID never reaches BPQ's responder. So speaking SREJ to BPQ specifically needs
-    /// the pre-SABM exchange; this knob enables it for the mod-8 dial.
+    /// Where the spec puts this is contested, and the implementations split the same way.
+    /// §6.3.2 ¶1 says "Parameter negotiation occurs only before the connection is made",
+    /// and <b>LinBPQ</b> follows it: its <c>L2Code.c</c> <c>ProcessXIDCommand</c> runs on
+    /// the no-active-link path only, so an XID on an established link is ignored and the
+    /// pre-SABM exchange is the only way to reach it (proven on the wire,
+    /// <c>SrejXidViaNetsim</c>). Figure D.3 and the (green, editorial) MDL-NEGOTIATE box
+    /// on figc4.6's UA arm instead put it after the connect, and <b>direwolf</b> follows
+    /// that. Filed as packethacking/ax25spec#113. We do it before the connection on both
+    /// moduli - it reaches every peer, it settles the parameters before any traffic can
+    /// run under the wrong ones, and it keeps a lost XID off a live link - and keep the
+    /// post-UA exchange as the fallback for peers that only answer there.
     /// </para>
     /// <para>
     /// Reuses the per-session management-data-link driver
     /// (<see cref="Ax25ManagementDataLink"/>) and the existing inbound XID routing -
     /// it is the same XID exchange the post-UA path runs, simply triggered before the
-    /// SABM. Affects the <em>outbound</em> dial only; the inbound answerer is
-    /// untouched. Set <c>false</c> to restore the historical plain-SABM mod-8 dial
-    /// (no pre-connect XID; the link is always go-back-N).
+    /// SABM(E). Affects the <em>outbound</em> dial only; the inbound answerer is
+    /// untouched (it answers an XID whenever one arrives, before or after its UA).
+    /// Set <c>false</c> to dial straight into the SABM(E), leaving negotiation to the
+    /// post-UA exchange on a v2.2 link and to nothing at all on a mod-8 one.
     /// </para>
     /// </remarks>
     public bool PreConnectXidNegotiatesSrej { get; init; } = true;

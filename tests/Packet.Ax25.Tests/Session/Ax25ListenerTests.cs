@@ -335,6 +335,10 @@ public class Ax25ListenerTests
         {
             MyCall = LocalCall,
             N2 = 4,
+            // The dial's own frames are what this test counts, so skip the pre-connect
+            // XID exchange: with it on, the first frame is the XID and the dial waits
+            // for an answer that no peer here will send.
+            PreConnectXidNegotiatesSrej = false,
         });
         await listener.StartAsync();
 
@@ -369,6 +373,10 @@ public class Ax25ListenerTests
             MyCall = LocalCall,
             N2 = 2,
             T1V = TimeSpan.FromSeconds(5),   // fake-clock budget = (N2+1)·T1V = 15 s
+            // This test drives the connect budget on a fake clock; the pre-connect XID
+            // exchange has a budget of its own on the same clock, which would have to be
+            // advanced through first. Not what is under test, so skip it.
+            PreConnectXidNegotiatesSrej = false,
         }, time);
         await listener.StartAsync();
 
@@ -481,6 +489,7 @@ public class Ax25ListenerTests
         {
             MyCall = LocalCall,
             K = 6,
+            PreConnectXidNegotiatesSrej = false,   // count the dial's own frames only
         });
         await listener.StartAsync();
 

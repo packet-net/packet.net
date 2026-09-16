@@ -177,6 +177,31 @@ public sealed class Ax25SessionContext
     public bool SrejEnabled { get; set; }
 
     /// <summary>
+    /// True once an XID exchange has settled this link's parameters (either end of it),
+    /// or a FRMR answer to our XID command has settled them as the version-2.0 set.
+    /// Cleared when the link goes down and when a fresh dial starts, so it always means
+    /// "negotiated for the connection in hand".
+    /// </summary>
+    /// <remarks>
+    /// Two things read it, both so that a settled negotiation is not undone by the
+    /// establishment that follows it (§6.3.2 ¶7, "Both TNCs set up based on the values
+    /// used in the XID response"). The <c>Set Version 2.2</c> action selects selective
+    /// reject only when nothing has been negotiated, so a peer that asked for implicit
+    /// reject in its XID response keeps it across the SABME; and the figc4.6 UA arm's
+    /// MDL-NEGOTIATE request is skipped, so a link whose parameters were agreed before
+    /// the connection does not negotiate them all over again on top of a live link.
+    /// <para>
+    /// Which of those two moments negotiation belongs to is a live question against the
+    /// spec: §6.3.2 opens "Parameter negotiation occurs only before the connection is
+    /// made", while Figure D.3 and the (green, editorial) MDL-NEGOTIATE box on figc4.6's
+    /// UA arm both put it after the UA. Filed as packethacking/ax25spec#113. We do it
+    /// before the connection, which is also the only thing LinBPQ's responder honours,
+    /// and keep the post-UA exchange as the fallback for peers that only answer there.
+    /// </para>
+    /// </remarks>
+    public bool ParametersNegotiated { get; set; }
+
+    /// <summary>
     /// True if the segmenter/reassembler has been negotiated via XID (the
     /// HDLC Optional Functions segmenter bit, §4.3.3.7) - a v2.2-only
     /// capability (§1621) enabled only when both peers advertise it. The MDL
