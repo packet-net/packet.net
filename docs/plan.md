@@ -1384,6 +1384,19 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-16 - RELEASE: node-v0.55.0
+
+Cut off `main` at `cf8e82b5` with `ci`, `interop`, `live-smoke` and `plan-check` all green on the merge commit. `publish-node` green, release non-draft with 7 assets. The lab box (`packetdotnet`) went 0.54.0 to 0.55.0 with the released amd64 `.deb` via `dpkg -i --force-confold`: service active, `/healthz` ok, config reloaded (schema v2, 1 port).
+
+Nothing in the node host itself moved this cycle apart from the capability-cache fix in the entry below; the release exists to carry four library changes the node had not seen:
+
+- the mod-128 monitor trace read at the session's modulo (#815), which is what the node's own `-d`-equivalent consumers see;
+- Acknowledge Pending no longer outliving an inline retransmission (#813);
+- SREJ on v2.2 links (#817) - **the one an operator will notice**: the node dials v2.2 by default for user connects, so those links now negotiate selective reject, and a port configured above `windowSize: 64` will run at 64 (the ax25spec#13 half-modulus hold);
+- negotiation before the connection rather than on top of it (ax25spec#113), which with the capability-cache fix now applies to the node's v2.2 dials as well. A dial to a peer that answers no XID costs the probe budget before the SABM(E); the cache learns that peer and skips it next time, and `preConnectXid: off` on the port is the explicit opt-out.
+
+Unrelated noise seen while verifying, not introduced here: the embedded tailscale logs a `PollNetMap` unmarshal error against the current control plane and backs off in a loop. It does not affect the node, but it makes `journalctl` hard to read.
+
 ### 2026-09-16 - node: the capability cache plans a pre-connect XID on v2.2 dials too
 
 Caught while preparing the node release. `PeerCapabilityCache.Plan` forced the pre-connect XID off on the extended branch - `bool preConnectXid = !extended && PreConnectXidFor(...)`, commented "moot on the extended path (XID negotiation rides the SABME setup)". That was true when the pre-SABM exchange existed only as the mod-8 LinBPQ accommodation; since lib 0.40.0 it is how a dial negotiates on either modulus, so the node would have taken the new library and kept its v2.2 dials negotiating over live traffic - the one link type still doing the thing that release fixed.
