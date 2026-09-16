@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Capabilities;
+using Packet.Node.Core.Configuration;
 
 namespace Packet.Node.Tests.Capabilities;
 
@@ -29,7 +30,7 @@ public sealed class PeerCapabilityCacheTests
         var plan = cache.PlanDial(Port, Peer, PeerDialPolicy.UserConnect);
 
         plan.Extended.Should().BeTrue();        // optimistic: offer SABME
-        plan.PreConnectXid.Should().BeFalse();  // moot on the extended path
+        plan.PreConnectXid.Should().BeTrue();   // and negotiate before the connect, per §6.3.2 ¶1
     }
 
     [Fact]
@@ -46,6 +47,34 @@ public sealed class PeerCapabilityCacheTests
     // --- PlanDial: fresh learned answers -----------------------------------------------------
 
     [Fact]
+    public void PlanDial_extended_still_honours_a_port_that_declares_preConnectXid_off()
+    {
+        // The pre-connect exchange applies on both versions now, so the port's opt-out has to
+        // reach the extended path too - it is the switch for a peer known to ignore an XID.
+        var cache = new PeerCapabilityCache(store: null, time: Clock());
+        var link = new PortLinkConfig { Dial = LinkDialPreference.V22, PreConnectXid = LinkPreConnectXid.Off };
+
+        var plan = cache.PlanDial(Port, Peer, PeerDialPolicy.UserConnect, link);
+
+        plan.Extended.Should().BeTrue();
+        plan.PreConnectXid.Should().BeFalse("the port declared it off");
+    }
+
+    [Fact]
+    public void PlanDial_extended_skips_the_XID_for_a_peer_freshly_learned_not_to_answer_one()
+    {
+        var cache = new PeerCapabilityCache(store: null, time: Clock());
+        // A dial that sent the XID and saw no SREJ come back: this peer does not answer one.
+        cache.RecordOutcome(Port, Peer, dialedExtended: true, observedIsExtended: true,
+            dialedPreConnectXid: true, observedSrejEnabled: false);
+
+        var plan = cache.PlanDial(Port, Peer, PeerDialPolicy.UserConnect);
+
+        plan.Extended.Should().BeTrue();
+        plan.PreConnectXid.Should().BeFalse("nothing is gained by probing a peer that ignored the last one");
+    }
+
+    [Fact]
     public void PlanDial_fresh_positive_extended_is_honoured_even_for_interlink()
     {
         var clock = Clock();
@@ -57,7 +86,7 @@ public sealed class PeerCapabilityCacheTests
         var plan = cache.PlanDial(Port, Peer, PeerDialPolicy.Interlink);
 
         plan.Extended.Should().BeTrue();        // known-extended ⇒ SABME despite the conservative policy
-        plan.PreConnectXid.Should().BeFalse();  // moot on the extended path
+        plan.PreConnectXid.Should().BeTrue();   // nothing learned says this peer ignores an XID
     }
 
     [Fact]

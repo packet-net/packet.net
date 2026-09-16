@@ -100,8 +100,7 @@ public sealed class PeerCapabilityCache
     /// The pre-connect-XID decision alone, for a dial whose version is <b>already settled</b> as
     /// mod-8 - the v2.0 retry the connector makes after a SABME drew no answer. Going back through
     /// <see cref="PlanDial(string, string, PeerDialPolicy, PortLinkConfig?)"/> would re-decide the
-    /// version (and, on the extended branch, report the XID probe as the moot <c>false</c>), so the
-    /// two decisions are separable here and share one rule.
+    /// version, so the two decisions are separable here and share one rule.
     /// </summary>
     public bool PlanPreConnectXid(string portId, string peer, PortLinkConfig? link)
     {
@@ -136,13 +135,19 @@ public sealed class PeerCapabilityCache
             _ => learnedExtended ?? (policy == PeerDialPolicy.UserConnect),
         };
 
-        // Pre-connect XID: moot on the extended path (XID negotiation rides the SABME setup).
-        bool preConnectXid = !extended && PreConnectXidFor(link, learnedSrejViaXid);
+        // Pre-connect XID: the same rule on both versions. It used to be forced off on the
+        // extended path, because a v2.2 dial negotiated after the UA and the pre-SABM exchange
+        // was only the LinBPQ mod-8 accommodation. Since lib 0.40.0 a dial negotiates before
+        // the connection on either modulus (§6.3.2 ¶1; packethacking/ax25spec#113), so an
+        // extended dial that skipped it here would be the one link type still negotiating over
+        // live traffic - and the port's `preConnectXid: off`, or a peer freshly learned not to
+        // answer, still turns it off.
+        bool preConnectXid = PreConnectXidFor(link, learnedSrejViaXid);
 
         return new PeerDialPlan(extended, preConnectXid);
     }
 
-    // The pre-connect-XID rule for a MOD-8 dial: the port's declaration wins, then the learned
+    // The pre-connect-XID rule, on either version: the port's declaration wins, then the learned
     // answer - send the XID unless we have freshly learned this peer does NOT answer one.
     private static bool PreConnectXidFor(PortLinkConfig? link, bool? learnedSrejViaXid)
         => PortLinkConfig.Resolve(link).PreConnectXid switch
