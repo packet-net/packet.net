@@ -1384,6 +1384,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-16 - RELEASE: lib-v0.40.0 (+ axcall v0.11.0)
+
+The negotiation-timing change (entry below, PR [#819](https://github.com/packet-net/packet.net/pull/819)) shipped off `main` at `73fec473`, with `ci`, `interop`, `fuzz`, `live-smoke` and `plan-check` all green on the merge commit, and the interop suite run locally against the branch beforehand as well - this one changes the first frame of every dial, so the container peers were the gate. 14 packages at 0.40.0, `publish-libs` green, 28 `Your package was pushed.` lines.
+
+Downstream: [`axcall`](https://github.com/packet-net/axcall) v0.11.0, release green with 18 assets. Its user-visible change is that both ends now print the agreed link on their first status line, because it is agreed before either end connects; the "negotiated with" second line added in axcall#62 is now the exception (`--no-xid`, or a peer that answers XID only once connected). A dial to a peer that answers no XID at all costs the probe budget before the SABM(E), as the mod-8 dial already did.
+
+No `node-v*` again this cycle. When one is cut it will carry three library changes the node has not seen: the mod-128 monitor trace fix, SREJ on v2.2 links, and this. The middle one is the notable one for a node operator, since a port configured above k=64 will run at 64 once SREJ is in effect.
+
 ### 2026-09-16 - ax25: a dial negotiates before the connection, not on top of it (ax25spec#113)
 
 On air on 2026-09-16, two of our stations on NinoTNCs through a 100 dB pad: a `-m e` dial sent seven XID commands over nineteen seconds, five of which the far end never saw, all of it after the link was up and usable. The loss is a separate question (the pad rules out RF; the TNC's own queue behaviour is the open lead, see `docs/nino-tnc-characterisation.md`), but the shape of the failure is ours: we were negotiating over a live connection, so a lost XID cost TM201 retries on a working link rather than on a channel with nothing else to do.
