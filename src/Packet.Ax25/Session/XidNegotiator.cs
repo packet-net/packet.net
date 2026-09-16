@@ -150,6 +150,12 @@ public static class XidNegotiator
         {
             context.N2 = n2;
         }
+
+        // This link's parameters are now settled (§6.3.2 ¶7, "Both TNCs set up based on
+        // the values used in the XID response"). The flag keeps the establishment that
+        // follows from undoing them, and stops a second negotiation being opened over a
+        // link that already has one - see Ax25SessionContext.ParametersNegotiated.
+        context.ParametersNegotiated = true;
     }
 
     /// <summary>
@@ -190,6 +196,9 @@ public static class XidNegotiator
         context.T1V = TimeSpan.FromMilliseconds(3000); // Acknowledge Timer
         context.Srt = TimeSpan.FromMilliseconds(1500); //   keep T1V == 2*SRT
         context.N2 = 10;                          // Retries
+        // A FRMR answer to our XID command settles the parameters just as an XID
+        // response does: §6.3.2 ¶1, "a version 2.0 connection is made".
+        context.ParametersNegotiated = true;
         context.SegmenterReassemblerEnabled = false;         // v2.2-only (§1621)
     }
 

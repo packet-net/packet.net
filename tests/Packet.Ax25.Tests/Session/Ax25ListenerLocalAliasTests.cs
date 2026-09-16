@@ -157,7 +157,13 @@ public class Ax25ListenerLocalAliasTests
     public async Task ConnectAsync_With_A_Local_Override_Originates_From_The_Alias()
     {
         var modem = new LoopbackModem();
-        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = NodeCall });
+        // No pre-connect XID: this is about which callsign the dial originates from, and
+        // the exchange would otherwise sit in front of the SABM waiting for an answer.
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        {
+            MyCall = NodeCall,
+            PreConnectXidNegotiatesSrej = false,
+        });
         await listener.StartAsync();
 
         var connect = listener.ConnectAsync(Peer, AppCall);

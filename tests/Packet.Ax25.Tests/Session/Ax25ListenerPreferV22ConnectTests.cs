@@ -40,6 +40,10 @@ public class Ax25ListenerPreferV22ConnectTests
         {
             MyCall = LocalCall,
             // PreferExtendedConnect defaults to true - assert that default, no override.
+            // Isolate the version choice from the pre-connect XID exchange, which now runs
+            // on both moduli and would otherwise make the FIRST frame an XID command
+            // (asserted separately below).
+            PreConnectXidNegotiatesSrej = false,
         });
         await listener.StartAsync();
 
@@ -107,6 +111,7 @@ public class Ax25ListenerPreferV22ConnectTests
         {
             MyCall = LocalCall,
             PreferExtendedConnect = false,   // listener default is v2.0 …
+            PreConnectXidNegotiatesSrej = false,   // … isolate from the pre-connect XID
         });
         await listener.StartAsync();
 
@@ -141,6 +146,32 @@ public class Ax25ListenerPreferV22ConnectTests
         Ax25Frame.TryParse(modem.SentFrames[0].Span, out var first).Should().BeTrue();
         UBase(first!).Should().Be(XidBase,
             "with PreConnectXidNegotiatesSrej on, a mod-8 dial leads with an XID command to negotiate SREJ before the SABM");
+    }
+
+    [Fact]
+    public async Task V22_dial_with_PreConnectXid_emits_XID_before_SABME()
+    {
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        {
+            MyCall = LocalCall,
+            PreferExtendedConnect = true,         // v2.2 dial …
+            // … with the default-on pre-connect negotiation (asserted explicitly here).
+            PreConnectXidNegotiatesSrej = true,
+        });
+        await listener.StartAsync();
+
+        _ = listener.ConnectAsync(PeerCall);
+
+        // §6.3.2 ¶1 puts parameter negotiation before the connection, so a v2.2 dial leads
+        // with the XID command exactly as a mod-8 one does; the SABME follows once the
+        // exchange settles or times out. No peer answers here, so only the lead XID is
+        // asserted (packethacking/ax25spec#113 covers the spec's own disagreement about
+        // which side of the connect this belongs on).
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
+        Ax25Frame.TryParse(modem.SentFrames[0].Span, out var first).Should().BeTrue();
+        UBase(first!).Should().Be(XidBase,
+            "a v2.2 dial negotiates before the connection, so its first frame is the XID command");
     }
 
     // --- the 5-arg overload's per-call preConnectXidNegotiatesSrej param ----------------------

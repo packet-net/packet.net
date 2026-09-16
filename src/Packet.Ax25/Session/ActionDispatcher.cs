@@ -821,8 +821,18 @@ public sealed class ActionDispatcher : IActionDispatcher
             Ax25ActionVerb.SetVersion22 => Do(() =>
             {
                 ctx.IsExtended = true;
-                ctx.ImplicitReject = false;
-                ctx.SrejEnabled = true;
+
+                // The selection is a default, not an override: once an XID exchange has
+                // settled this link's reject scheme, establishment must not undo it
+                // (§6.3.2 ¶7). With negotiation running before the connection - which is
+                // what §6.3.2 ¶1 asks for - the peer's answer has already landed by the
+                // time the SABME is processed, so this guard is what keeps a peer that
+                // asked for implicit reject on it.
+                if (!ctx.ParametersNegotiated)
+                {
+                    ctx.ImplicitReject = false;
+                    ctx.SrejEnabled = true;
+                }
             }),
 
             // Individual Set_Version_2_x body verbs (figc4.7), used inside the
