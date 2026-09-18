@@ -1384,6 +1384,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-18 - build: pin the .deb to xz compression
+
+`build-deb.sh` and `build-headend-deb.sh` called `dpkg-deb --build` with no `-Z`, so the compression came from whatever `dpkg-deb` on the build host defaults to. That host's `dpkg-deb` (1.22+) defaults to zstd (the switch landed in dpkg 1.21.18), and Debian Bullseye's own `dpkg` (1.20.x) cannot unpack a zstd-compressed `.deb` - install refuses outright. Both scripts now pass `-Zxz`, so the shipped `.deb` unpacks on Bullseye's dpkg as well as anything newer. Same fix went into `pdn-bbs`, `pdn-convers`, `axcall` and `pdn-soundmodem`, which build `.deb`s the same way.
+
 ### 2026-09-16 - RELEASE: node-v0.55.0
 
 Cut off `main` at `cf8e82b5` with `ci`, `interop`, `live-smoke` and `plan-check` all green on the merge commit. `publish-node` green, release non-draft with 7 assets. The lab box (`packetdotnet`) went 0.54.0 to 0.55.0 with the released amd64 `.deb` via `dpkg -i --force-confold`: service active, `/healthz` ok, config reloaded (schema v2, 1 port).
