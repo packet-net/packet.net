@@ -1384,6 +1384,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-18 - RELEASE: node-v0.55.1 + headend-v0.1.5 (Bullseye .deb fix, closes #821)
+
+Cut both off `main` at `35184048` with `ci`, `interop`, `plan-check`, `live-smoke` and `deb-smoke` all green on the merge commit (#822). `publish-node`, `publish-headend` and `publish-docker` all green; both releases non-draft with 7 assets each. Verified against the real release URLs, not just the build: `ar t` on `packetnet_amd64.deb` (via the permanent `/releases/latest/download/` link) and `packetnet-headend_0.1.5_amd64.deb` both show `control.tar.xz` / `data.tar.xz`, and `dpkg-deb -c` reads them cleanly.
+
+#821 asked to hold this fix until it could land alongside the apt-push-model conversion, to avoid opening the release workflow twice. Tom overrode that explicitly (`go ahead with #821, ignore that request`) rather than wait on unscheduled work - issue closed as resolved.
+
+Same root cause and fix landed the same day across the other four `.deb`-producing repos in the org: `pdn-bbs` v0.2.54, `pdn-convers` v0.1.4, `axcall` v0.11.1, `pdn-soundmodem` v0.71.1 - all verified xz on their released artifacts. Two of those (`pdn-bbs`, `pdn-soundmodem`) hit known-flaky, unrelated tests on their first CI attempt (`Bbs.Host.Tests.OutboundForwardingTests.ReversePoll_DialsEmptyOutboundPartner_AndCollectsItsQueue`; a 30 s timeout in `UplinkTests.Every_Audio_Rate_The_Station_Side_Offers_Is_One_This_Site_Can_Draw` under runner load) and went green on rerun.
+
 ### 2026-09-18 - build: pin the .deb to xz compression
 
 `build-deb.sh` and `build-headend-deb.sh` called `dpkg-deb --build` with no `-Z`, so the compression came from whatever `dpkg-deb` on the build host defaults to. That host's `dpkg-deb` (1.22+) defaults to zstd (the switch landed in dpkg 1.21.18), and Debian Bullseye's own `dpkg` (1.20.x) cannot unpack a zstd-compressed `.deb` - install refuses outright. Both scripts now pass `-Zxz`, so the shipped `.deb` unpacks on Bullseye's dpkg as well as anything newer. Same fix went into `pdn-bbs`, `pdn-convers`, `axcall` and `pdn-soundmodem`, which build `.deb`s the same way.
