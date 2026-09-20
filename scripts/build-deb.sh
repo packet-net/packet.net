@@ -21,6 +21,13 @@ case "$rid" in
   *) echo "unknown rid: $rid (want linux-x64 | linux-arm64 | linux-arm)" >&2; exit 2 ;;
 esac
 
+# readelf reads the library-version floors that go into Depends (the library-floor block
+# further down). Checked here, before the long publish, and fatal: falling back to an
+# unversioned Depends is precisely the bug that block exists to fix, so a host without
+# binutils must not be able to produce a .deb that understates what it needs.
+command -v readelf >/dev/null 2>&1 || {
+  echo "readelf not found - install binutils (the Depends library floors are read from the published ELF)" >&2; exit 2; }
+
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 proj="$root/src/Packet.Node/Packet.Node.csproj"
 pub="$root/artifacts/node/$rid"
@@ -162,8 +169,121 @@ install -m 0644 "$root/examples/lobby/README.md" "$stage/usr/share/packetnet/app
 # is committed in this repo; the node reads it from here at runtime.
 install -d "$stage/usr/share/packetnet/catalog"
 install -m 0644 "$root/catalog/apps.yaml" "$stage/usr/share/packetnet/catalog/apps.yaml"
-sed -e "s/@ARCH@/$arch/" -e "s/@VERSION@/$version/" \
+
+# --- library version floors, read from the binaries we ship -------------------------
+# pdn ships self-contained, so its symbol-version floor is whatever Microsoft's runtime
+# pack and the native NuGet shims for this RID were built against, not anything this repo
+# controls, and it moves without warning: .NET 10 raised linux-arm from glibc 2.16 to
+# 2.34, which is above Debian 11's 2.31 and above 32-bit Raspberry Pi OS's. While
+# Depends: named a bare `libc6`, apt installed that armhf package onto bullseye quite
+# happily and the binary then died in the dynamic loader with "version `GLIBC_2.33' not
+# found". Measure the floor off the ELF instead of asserting one here, so apt refuses the
+# install with a reason an operator can read, and so the next pack bump corrects itself.
+#
+# .gnu.version_r is the authoritative record of which symbol versions of which libraries
+# the loader must satisfy, so collect every shipped binary's copy of it into one blob and
+# take the highest of each family out of that. "GLIBC_" cannot match inside "GLIBCXX_",
+# so the two families do not overlap.
+#
+# Scratch under artifacts/, not /tmp: carving an embedded library out of the bundle copies
+# the tail of a ~170 MB executable, which is not something to put on a runner's tmpfs.
+scratch="$(mktemp -d -p "$root/artifacts" .floors.XXXXXX)"
+trap 'rm -rf "$scratch"' EXIT
+version_needs="$scratch/version-needs.txt"
+carved="$scratch/embedded.elf"
+: > "$version_needs"
+
+collect_needs() {
+  readelf --version-info "$1" 2>/dev/null | awk '/Version needs section/,0' >> "$version_needs" || true
+}
+
+# Every executable and shared object in the staged tree, not just the host binary: a
+# PDN_FAST build leaves the runtime's native shims loose beside it, and what the loader
+# has to satisfy is the highest floor any of them asks for. The static CGO-free Go
+# sidecar and the bundled Python apps have no version needs and contribute nothing, so
+# they can be fed in blind. wwwroot is 0644 data and never matches.
+staged_elf=0
+while IFS= read -r f; do
+  collect_needs "$f"
+  staged_elf=$((staged_elf + 1))
+done < <(find "$stage" -type f \( -perm -u+x -o -name '*.so' -o -name '*.so.*' \) | sort)
+[ "$staged_elf" -gt 0 ] || { echo "no executables staged for $arch - nothing to read a library floor from" >&2; exit 1; }
+
+# The staged files are not the whole story, and reading only them is how a floor comes out
+# too low. PublishSingleFile bundles the third-party native shims INSIDE the host
+# executable and the runtime extracts them at first run, so they are invisible to a
+# readelf of anything on disk - and they are not bound by the runtime pack's floor. The
+# amd64 host asks for glibc 2.27, but the SQLite shim travelling inside it asks for 2.34,
+# and it is the shim that aborts the process on Debian 11, long after apt said yes. The
+# bundle stores its entries verbatim and uncompressed, so find each embedded ELF by its
+# magic number and read it where it lies. Carving to end-of-file is enough: an ELF's
+# offsets are all relative to its own start, and trailing bytes are ignored. A stray
+# 0x7f 'E' 'L' 'F' in managed data carves to something readelf rejects, which costs a
+# temporary file and contributes nothing. Matching the whole 7-byte identification prefix
+# (magic, class, little-endian, version 1) rather than just the 4-byte magic keeps the
+# stray matches down to a handful.
+case "$arch" in
+  armhf) elf_class=$'\001' ;;   # ELFCLASS32
+  *)     elf_class=$'\002' ;;   # ELFCLASS64
+esac
+app_bin="$stage/opt/packetnet/app/packetnet"
+while IFS= read -r offset; do
+  dd if="$app_bin" of="$carved" bs=1M iflag=skip_bytes skip="$offset" status=none
+  collect_needs "$carved"
+done < <(grep -abo "$(printf '\177ELF')$elf_class$(printf '\001\001')" "$app_bin" | cut -d: -f1)
+
+max_needed() {
+  grep -oE "${1}_[0-9][0-9.]*" "$version_needs" | sed "s/^${1}_//" | sort -uV | tail -1 || true
+}
+
+# A glibc symbol version is the glibc release that introduced it, and libc6's package
+# version is that same release, so this maps straight onto a Debian version constraint.
+glibc_min="$(max_needed GLIBC)"
+[ -n "$glibc_min" ] || { echo "could not read a GLIBC floor from the staged binaries for $arch" >&2; exit 1; }
+libc_depends="libc6 (>= $glibc_min)"
+
+# libstdc++ versions its symbols by C++ ABI, not by package version, so this needs a
+# table. Anchors measured against the distributions themselves: Debian 10 ships GCC 8 and
+# tops out at 3.4.25, Debian 11 / GCC 10 at 3.4.28, Debian 12 / GCC 12 at 3.4.30, Debian
+# 13 / GCC 14 at 3.4.33. Unmeasured points round up to the next anchor, because the
+# failure modes are not symmetric: too high refuses an install that would have worked and
+# says why, too low ships the loader crash this whole block exists to prevent. An unknown
+# value is a new GCC ABI nobody has checked, so stop and make someone extend the table.
+# No GLIBCXX requirement at all means no libstdc++6 dependency; do not invent one.
+# libgcc-s1 stays off the list: libstdc++6 depends on it, and nothing here asks for a
+# GCC_* symbol version newer than the ones every distribution in scope has carried for
+# twenty years, so there is no floor worth naming.
+glibcxx_min="$(max_needed GLIBCXX)"
+if [ -n "$glibcxx_min" ]; then
+  case "$glibcxx_min" in
+    3.4|3.4.[0-9]|3.4.1[0-9]|3.4.2[01]) stdcxx_min=5 ;;
+    3.4.22)        stdcxx_min=6 ;;
+    3.4.23|3.4.24) stdcxx_min=7 ;;
+    3.4.25)        stdcxx_min=8 ;;
+    3.4.26)        stdcxx_min=9 ;;
+    3.4.27|3.4.28) stdcxx_min=10 ;;
+    3.4.29)        stdcxx_min=11 ;;
+    3.4.30)        stdcxx_min=12 ;;
+    3.4.31|3.4.32) stdcxx_min=13 ;;
+    3.4.33)        stdcxx_min=14 ;;
+    3.4.34)        stdcxx_min=15 ;;
+    *) echo "unknown GLIBCXX_$glibcxx_min - extend the table in $0" >&2; exit 1 ;;
+  esac
+  libc_depends="$libc_depends, libstdc++6 (>= $stdcxx_min)"
+fi
+echo "==> library floors for $arch: $libc_depends (GLIBC_$glibc_min${glibcxx_min:+, GLIBCXX_$glibcxx_min})"
+
+# `|` as the sed delimiter: the substituted text carries version relations, not slashes.
+sed -e "s/@ARCH@/$arch/" -e "s/@VERSION@/$version/" -e "s|@LIBC_DEPENDS@|$libc_depends|" \
     "$root/packaging/control.in" > "$stage/DEBIAN/control"
+# A template that grew a placeholder this script does not know about would otherwise ship
+# the literal text as a dependency name. The pattern is deliberately narrower than a bare
+# `@`, which the Maintainer address contains.
+if grep -qE '@[A-Z_]+@' "$stage/DEBIAN/control"; then
+  echo "unsubstituted placeholder left in DEBIAN/control:" >&2
+  grep -nE '@[A-Z_]+@' "$stage/DEBIAN/control" >&2
+  exit 1
+fi
 cp "$root/packaging/postinst" "$root/packaging/prerm" "$root/packaging/postrm" "$stage/DEBIAN/"
 # conffiles: only staged when NON-EMPTY. config-in-DB (#473) dropped the /etc YAML conffile,
 # so packaging/conffiles is now empty and we ship NO DEBIAN/conffiles at all - dpkg then never
