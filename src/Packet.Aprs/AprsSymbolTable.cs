@@ -31,7 +31,7 @@ public static class AprsSymbolTable
     /// </summary>
     public static AprsSymbol? FromDestination(AprsAddress destination)
     {
-        string d = destination.Callsign;
+        string d = destination.Base;
         if (d.Length == 6 && d.StartsWith("GPS", StringComparison.Ordinal) && d[3] is 'C' or 'E'
             && int.TryParse(d.AsSpan(4, 2), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int nn) && nn is >= 1 and <= 94)
         {

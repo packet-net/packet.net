@@ -41,7 +41,7 @@ public static class AprsDeviceIdentification
     /// most literal characters (<c>?</c> matches any character, <c>n</c> a digit, <c>*</c> the rest).
     /// Returns null for unknown identifiers and for Mic-E destinations.
     /// </summary>
-    public static AprsDevice? FromDestination(AprsAddress destination) => FromTocall(destination.Callsign);
+    public static AprsDevice? FromDestination(AprsAddress destination) => FromTocall(destination.Base);
 
     /// <summary>Looks up a tocall given as text (callsign part only).</summary>
     public static AprsDevice? FromTocall(string tocall)

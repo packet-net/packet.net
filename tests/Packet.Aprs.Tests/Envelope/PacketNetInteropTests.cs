@@ -53,6 +53,22 @@ public class PacketNetInteropTests
     }
 
     [Theory]
+    [InlineData("M0LTE-9", "M0LTE", "9")]
+    [InlineData("WIDE2-1", "WIDE2", "1")]
+    [InlineData("WHO-IS", "WHO", "IS")]
+    [InlineData("qAR", "qAR", "")]
+    public void Base_and_ssid_split_at_the_first_dash_as_they_do_for_a_callsign(string address, string expectedBase, string expectedSsid)
+    {
+        AprsAddress a = AprsAddress.Parse(address);
+        a.Base.Should().Be(expectedBase);
+        a.Ssid.Should().Be(expectedSsid);
+        if (a.TryGetCallsign(out Callsign callsign))
+        {
+            callsign.Base.Should().Be(a.Base);
+        }
+    }
+
+    [Theory]
     [InlineData("WHO-IS")]
     [InlineData("qAC")]
     [InlineData("T2SPAIN")]

@@ -31,8 +31,9 @@ public readonly record struct AprsAddress
     /// <summary>The address exactly as written, including any <c>-SSID</c> suffix.</summary>
     public string Value { get; }
 
-    /// <summary>The part before the first <c>-</c>, i.e. the callsign without its SSID.</summary>
-    public string Callsign => Value.IndexOf('-', StringComparison.Ordinal) is var i and >= 0 ? Value[..i] : Value;
+    /// <summary>The part before the first <c>-</c>: the callsign without its SSID, as
+    /// <see cref="Packet.Core.Callsign.Base"/> is for an AX.25 callsign.</summary>
+    public string Base => Value.IndexOf('-', StringComparison.Ordinal) is var i and >= 0 ? Value[..i] : Value;
 
     /// <summary>The SSID text after the first <c>-</c>, or empty if there is none.</summary>
     public string Ssid => Value.IndexOf('-', StringComparison.Ordinal) is var i and >= 0 ? Value[(i + 1)..] : "";
@@ -52,7 +53,7 @@ public readonly record struct AprsAddress
     {
         get
         {
-            string call = Callsign;
+            string call = Base;
             if (call.Length is < 1 or > 6 || !call.All(IsAx25Char))
             {
                 return false;
@@ -73,7 +74,7 @@ public readonly record struct AprsAddress
     /// treating a missing SSID and <c>-0</c> as equal. Case is significant (APRS is case-sensitive).
     /// </summary>
     public bool IsSameStation(AprsAddress other) =>
-        string.Equals(Callsign, other.Callsign, StringComparison.Ordinal)
+        string.Equals(Base, other.Base, StringComparison.Ordinal)
         && NumericSsid is { } a && other.NumericSsid is { } b && a == b;
 
     /// <summary>Parses an address in TNC2 text form. Throws <see cref="FormatException"/> if it is empty,
@@ -132,7 +133,7 @@ public readonly record struct AprsAddress
             return false;
         }
 
-        callsign = new Packet.Core.Callsign(Callsign, (byte)(NumericSsid ?? 0));
+        callsign = new Packet.Core.Callsign(Base, (byte)(NumericSsid ?? 0));
         return true;
     }
 

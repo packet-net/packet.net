@@ -3,7 +3,7 @@ namespace Packet.Aprs
     public readonly struct AprsAddress : System.IEquatable<Packet.Aprs.AprsAddress>
     {
         public const int MaxLength = 16;
-        public string Callsign { get; }
+        public string Base { get; }
         public bool IsAx25 { get; }
         public int? NumericSsid { get; }
         public string Ssid { get; }

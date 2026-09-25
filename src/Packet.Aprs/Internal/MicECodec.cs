@@ -320,7 +320,7 @@ internal static class MicECodec
     private static bool TryDecodeDestination(AprsAddress destination, DecodeContext ctx, out Destination result)
     {
         result = default;
-        string call = destination.Callsign;
+        string call = destination.Base;
         if (call.Length != 6)
         {
             ctx.Error(AprsDiagnosticCode.InvalidMicEDestination, $"Mic-E destination '{destination}' is not 6 characters (APRS12c ch. 10)");

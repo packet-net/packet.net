@@ -72,7 +72,16 @@ See [`aprs-validation.md`](aprs-validation.md) for the numbers.
 
 ## Fit with the rest of Packet.NET
 
-`Packet.Aprs` depends on `Packet.Core` only. Frames cross to and from `Packet.Ax25` in KISS form (no flags, no FCS): `AprsPacket.DecodeAx25(frame.ToBytes())` decodes a received `Ax25Frame`, and `Ax25Frame.TryParse(packet.ToAx25Frame(), ...)` gives one to send; `tests/Packet.Aprs.Tests/Envelope/PacketNetInteropTests.cs` holds both directions to strict `Ax25ParseOptions`. The codec checks for a UI frame with PID 0xF0 itself, so the caller doesn't have to. `AprsAddress.FromCallsign` and `TryGetCallsign` convert to and from `Packet.Core.Callsign`; an APRS-IS name such as `WHO-IS` or `qAC` has no `Callsign`, which is why the codec's own address type exists.
+`Packet.Aprs` depends on `Packet.Core` only. Frames cross to and from `Packet.Ax25` in KISS form (no flags, no FCS): `AprsPacket.DecodeAx25(frame.ToBytes())` decodes a received `Ax25Frame`, and `Ax25Frame.TryParse(packet.ToAx25Frame(), ...)` gives one to send; `tests/Packet.Aprs.Tests/Envelope/PacketNetInteropTests.cs` holds both directions to strict `Ax25ParseOptions`. The codec checks for a UI frame with PID 0xF0 itself, so the caller doesn't have to. `AprsAddress.FromCallsign` and `TryGetCallsign` convert to and from `Packet.Core.Callsign`.
+
+### Why two address types
+
+`Callsign` and `AprsAddress` look alike (`Base`, `Ssid`) but model different things, so they stay separate:
+
+- `Packet.Core.Callsign` is a station you can transmit as: 1-6 upper-case letters and digits, SSID 0-15. The whole AX.25 stack relies on that, so everything it sends is valid.
+- `AprsAddress` is a header token exactly as written. APRS headers are full of things that are not callsigns: q-constructs (`qAR`), `TCPIP`, path aliases (`WIDE2-1`), APRS-IS names (`WHO-IS`, `T2SPAIN`), lower-case and letter-SSID spellings, and `N0CALL-0` as distinct from `N0CALL`. Keeping the spelling is what lets a decoded packet re-encode to the bytes that were heard.
+
+Loosening `Callsign` would cost the AX.25 layer its guarantee; using only `Callsign` here would lose a large share of APRS-IS headers. The bridge is explicit instead: `AprsAddress.IsAx25` says whether an address is one, `TryGetCallsign` converts it, and `ToAx25Frame` refuses a packet whose addresses are not.
 
 ## Out of scope for v1
 

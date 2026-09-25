@@ -178,7 +178,7 @@ internal static class Ax25Codec
             throw new ArgumentException($"'{address}' is not a valid AX.25 address (1-6 upper-case letters and digits, SSID 1-15)", paramName);
         }
 
-        string call = address.Callsign.PadRight(6);
+        string call = address.Base.PadRight(6);
         for (int i = 0; i < 6; i++)
         {
             a[i] = (byte)(call[i] << 1);
