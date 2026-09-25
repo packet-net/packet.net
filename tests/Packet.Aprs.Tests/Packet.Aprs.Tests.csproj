@@ -1,7 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="FsCheck.Xunit" />
+    <PackageReference Include="PublicApiGenerator" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Packet.Aprs\Packet.Aprs.csproj" />
+    <!-- Only for the interop tests that hand frames to and from Ax25Frame; the library itself
+         depends on Packet.Core alone. -->
+    <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
   </ItemGroup>
 
 </Project>

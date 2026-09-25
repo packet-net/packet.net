@@ -8,7 +8,7 @@ namespace Packet.AprsIs.Spike;
 /// <summary>
 /// Differential test: walk every line with DTI <c>!</c> or <c>=</c> in
 /// the supplied corpus (joined to <c>direwolf_decoded</c> for the
-/// reference), run our <see cref="AprsPositionDecoder"/> on the same
+/// reference), run <see cref="AprsPacket"/> on the same
 /// payload, and tally agreements / disagreements / rejections.
 /// </summary>
 /// <remarks>
@@ -104,60 +104,16 @@ public static class DifferentialMode
                 _ = rdr.GetBoolean(5);  // used_rewrite — reserved for future per-bucket attribution
                 string destination = rdr.IsDBNull(6) ? "" : rdr.GetString(6);
 
-                // Dispatch by DTI. Mic-E (` / ') needs the AX.25 destination
-                // address as well; objects (;) and items ()) reuse position
-                // decoding; otherwise position-class DTIs (! = @ /).
-                bool usOk;
-                AprsPosition ours = default;
-                if (info.Length > 0 && info[0] == (byte)';')
+                // One decode for every position-bearing type; Mic-E takes half its
+                // position from the destination address, so pass the real one.
+                if (!AprsAddress.TryParse(destination, out AprsAddress dest))
                 {
-                    usOk = AprsObjectDecoder.TryDecode(info, out var obj);
-                    if (usOk)
-                    {
-                        ours = obj.Position;
-                    }
+                    dest = AprsAddress.Parse("APRS");
                 }
-                else if (info.Length > 0 && info[0] == (byte)')')
-                {
-                    usOk = AprsItemDecoder.TryDecode(info, out var itm);
-                    if (usOk)
-                    {
-                        ours = itm.Position;
-                    }
-                }
-                else if (info.Length > 0 && (info[0] == (byte)'`' || info[0] == (byte)'\''))
-                {
-                    // Mic-E encoding splits across dest address + info field.
-                    // Trim "-SSID" suffix and normalise to exactly 6 base chars.
-                    var destBase = destination;
-                    int dashIdx = destBase.IndexOf('-');
-                    if (dashIdx > 0)
-                    {
-                        destBase = destBase[..dashIdx];
-                    }
 
-                    if (destBase.Length > 6)
-                    {
-                        destBase = destBase[..6];
-                    }
-                    else if (destBase.Length < 6)
-                    {
-                        destBase = destBase.PadRight(6);
-                    }
-
-                    usOk = AprsMicEDecoder.TryDecode(destBase, info, out var mice);
-                    if (usOk)
-                    {
-                        // Wrap as AprsPosition for the existing comparison code.
-                        ours = new AprsPosition(mice.Latitude, mice.Longitude,
-                            mice.SymbolTable, mice.SymbolCode, mice.Comment,
-                            AprsPositionFormat.Uncompressed);
-                    }
-                }
-                else
-                {
-                    usOk = AprsPositionDecoder.TryDecode(info, out ours);
-                }
+                AprsPacket packet = AprsPacket.Decode(AprsAddress.Parse("N0CALL"), dest, [], info);
+                bool usOk = packet.Data is AprsPositionedData;
+                AprsPosition ours = packet.Data is AprsPositionedData positioned ? positioned.Position : default;
                 // dwOk = direwolf produced a position. has_error can be set
                 // for non-fatal warnings (e.g. lowercase callsign in the
                 // source, non-standard frequency in comment); we only use

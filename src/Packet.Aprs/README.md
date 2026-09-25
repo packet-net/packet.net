@@ -1,60 +1,115 @@
 # Packet.Aprs
 
-> Decode-focused APRS payload codec - position, Mic-E, message, object, item, status, telemetry.
+> APRS encoder and decoder: every APRS 1.2 data type, both directions, from AX.25 frames or TNC2 / APRS-IS text.
 
-Parses Automatic Packet Reporting System (APRS) information-field payloads per the APRS spec, with named strict-vs-pragmatic parse options for the quirks seen on the live APRS-IS firehose. Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack - this package sits above [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) and decodes the bytes carried inside an AX.25 UI frame's info field.
+Packet.Aprs encodes and decodes Automatic Packet Reporting System packets per [APRS12c](https://github.com/wb2osz/aprsspec), the merged APRS 1.0 + 1.1 + 1.2 reference, with *Understanding APRS Packets* and the [APRS device identification database](https://github.com/aprsorg/aprs-deviceid). It is spec-strict, with a named, individually switchable flag for each defect real traffic is full of. Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack; it sits above [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) and decodes what an AX.25 UI frame carries.
+
+Checked against real traffic: half a million full-feed APRS-IS packets decode without an exception, every spec-clean one re-encodes to identical data, and field values agree with Ham::APRS::FAP (the aprs.fi parser) except where FAP is wrong. See [docs/aprs-validation.md](https://github.com/packet-net/packet.net/blob/main/docs/aprs-validation.md).
 
 ## Install
 ```sh
 dotnet add package Packet.Aprs
 ```
 
-## Quick start
-Each report type has a static `TryDecode` that takes the info-field bytes (with or without the leading data-type identifier) and yields a `readonly record struct`:
-
+## Decode
 ```csharp
 using Packet.Aprs;
 
-// An uncompressed position report's info field (DTI '!' kept; it's stripped for you).
-ReadOnlySpan<byte> info = "!4725.22N/00810.83E_WX-station"u8;
+AprsPacket packet = AprsPacket.Decode("N0CALL-9>APZ001,WIDE1-1,qAR,M0LTE-10:!5130.00N/00007.00W>088/036/A=001234Hello");
 
-if (AprsPositionDecoder.TryDecode(info, out AprsPosition pos))
+switch (packet.Data)
 {
-    Console.WriteLine($"{pos.Latitude:F5}, {pos.Longitude:F5}");  // 47.42033, 8.18050
-    Console.WriteLine($"symbol {pos.SymbolTable}{pos.SymbolCode}, {pos.Format}");
-    Console.WriteLine(pos.Comment);                                // WX-station
+    case AprsPositionReport p:
+        Console.WriteLine($"{p.Position.Latitude}, {p.Position.Longitude} {p.Symbol.Description}");
+        Console.WriteLine($"{p.CourseDegrees} deg, {p.SpeedKnots} kn, {p.AltitudeFeet} ft, \"{p.Comment}\"");
+        break;
+    case AprsMicEReport m:
+        Console.WriteLine($"{m.Message} from a {m.Device}");
+        break;
+    case AprsTextMessage msg:
+        Console.WriteLine($"to {msg.Addressee}: {msg.Text} (ack wanted: {msg.RequestsAck})");
+        break;
+    case AprsUnrecognizedData u:
+        Console.WriteLine($"not decoded: {u.Reason}");
+        break;
 }
 ```
 
-The decoder is strict on the fixed-position fields (digit ranges, hemisphere indicators, base-91 range) and returns `false` for any structural defect rather than throwing. For the payload types where real-world senders diverge from the spec (status text, telemetry, legacy Mic-E DTIs), pass an `AprsParseOptions` preset:
+Decoding never throws because of the information field. `Data` is always set, and `Diagnostics` says what was wrong:
 
 ```csharp
-// Reject anything the spec forbids:
-AprsTelemetryDecoder.TryDecode(info, AprsParseOptions.Strict, out var telemetry);
-
-// Accept the firehose's quirks (this is also the parameterless default):
-AprsStatusDecoder.TryDecode(info, AprsParseOptions.Lenient, out var status);
+foreach (AprsDiagnostic d in packet.Diagnostics)
+{
+    Console.WriteLine(d); // e.g. "Warning WeatherComment @52: a weather report has no comment field ..."
+}
 ```
 
-Mic-E is the exception: it splits data across the AX.25 destination address and the info field, so its decoder also needs the 6-character destination base:
+Only an unusable header (no `SOURCE>DEST:`) throws `AprsFormatException`; `AprsPacket.TryDecode` returns false instead.
+
+## Strict or lenient
+```csharp
+AprsPacket.Decode(line);                              // AprsParseOptions.Lenient: accept and warn
+AprsPacket.Decode(line, AprsParseOptions.Strict);     // only packets that follow the spec
+AprsPacket.Decode(line, AprsParseOptions.Lenient with { AllowWeatherComment = false });
+```
+
+Every flag, the spec rule it relaxes, and how common it is on the network are listed in [docs/strict-vs-pragmatic-audit.md](https://github.com/packet-net/packet.net/blob/main/docs/strict-vs-pragmatic-audit.md#packetaprs).
+
+## Encode
+```csharp
+var report = new AprsPositionReport
+{
+    Position = new AprsPosition(51.5, -0.1166667),
+    Symbol = AprsSymbol.Parse("/>"),
+    MessagingCapable = true,
+    CourseDegrees = 88,
+    SpeedKnots = 36,
+    Comment = "Mobile",
+};
+
+AprsPacket packet = AprsPacket.Create("M0LTE-9", "APZ001", report, "WIDE1-1,WIDE2-1");
+byte[] tnc2 = packet.ToTnc2();       // M0LTE-9>APZ001,WIDE1-1,WIDE2-1:=5130.00N/00007.00W>088/036Mobile
+byte[] frame = packet.ToAx25Frame(); // KISS form: no flags, no FCS
+
+// Mic-E puts half the position in the destination address:
+AprsPacket micE = AprsPacket.CreateMicE(AprsAddress.Parse("M0LTE-9"), new AprsMicEReport { /* ... */ });
+```
+
+The encoder is strict. It never produces anything APRS12c forbids, and it throws `ArgumentException` naming the offending property. It also refuses comment text that would decode as something else, such as an `/A=` altitude, so every packet it builds decodes back to the same data.
+
+## With Packet.Ax25
+Frames cross in KISS form, the form `Ax25Frame.ToBytes()` writes and `Ax25Frame.TryParse` reads:
 
 ```csharp
-AprsMicEDecoder.TryDecode("Q0PDN0", info, out AprsMicE micE);
+AprsPacket aprs = AprsPacket.DecodeAx25(frame.ToBytes());       // a received Ax25Frame
+Ax25Frame.TryParse(packet.ToAx25Frame(), out Ax25Frame? ui);     // one to send
+
+AprsAddress me = AprsAddress.FromCallsign(new Callsign("M0LTE", 9));
+if (aprs.Source.TryGetCallsign(out Callsign source)) { /* an AX.25 station, not an APRS-IS name */ }
 ```
 
-## Key types
-- `AprsPositionDecoder` - uncompressed (`DDMM.mmN`) and base-91 compressed position reports; `TryDecode` strips DTI + timestamp, `TryDecodePayload` for embedded position payloads.
-- `AprsMicEDecoder` / `AprsMicE` - Mic-E reports, decoded from the destination base + info field (`MicEMessageType` carries the standard/custom/emergency bits).
-- `AprsMessageDecoder` / `AprsMessage` - text messages (DTI `:`) with addressee and optional message ID.
-- `AprsObjectDecoder` / `AprsItemDecoder` - object (DTI `;`) and item (DTI `)`) reports, with an embedded position.
-- `AprsStatusDecoder` / `AprsTelemetryDecoder` - status text (DTI `>`) and telemetry (DTI `T`) reports.
-- `AprsParseOptions` - strict-vs-pragmatic parse knobs with `Strict` / `Lenient` / `Direwolf` / `AprsIs` presets; each accommodation is a named, individually-toggleable flag.
-- `AprsCallsign` - permissive monitor-layer callsign that round-trips APRS-IS spellings (letter SSIDs, lowercase, long bases) that strict `Packet.Core.Callsign` rejects, with coercion helpers.
+## What's covered
+| Data type | Types |
+|---|---|
+| Positions (`! = / @`), uncompressed and compressed, with timestamps, ambiguity, `!DAO!` | `AprsPositionReport` |
+| Course/speed, PHG (+PHGR), RNG, DFS, DF bearing/NRQ, area objects, storm data, signposts | properties on `AprsPositionedData` |
+| Weather: complete, positionless, raw station formats | `AprsWeather`, `AprsWeatherReport`, `AprsRawWeatherReport` |
+| Mic-E, including device type codes, altitude, grid locator, legacy DTIs | `AprsMicEReport` |
+| Objects and items, including area and frequency objects | `AprsObjectReport`, `AprsItemReport` |
+| Messages, acks, rejects, reply-acks, bulletins, announcements, NWS | `AprsTextMessage`, `AprsMessageAck`, ... |
+| Telemetry reports, base-91 comment telemetry, PARM/UNIT/EQNS/BITS | `AprsTelemetryReport`, `AprsCommentTelemetry`, ... |
+| Status (incl. grid locator, meteor scatter beam/ERP), queries, capabilities | `AprsStatusReport`, `AprsGeneralQuery`, `AprsDirectedQuery`, ... |
+| Voice frequency / tone / offset (APRS 1.2) | `AprsVoiceFrequency` |
+| Third-party traffic, user-defined, NMEA, Maidenhead beacons, test data, Agrelo DF | ... |
+| Symbols, device identification, APRS-IS q-constructs | `AprsSymbolTable`, `AprsDeviceIdentification`, `AprsQConstruct` |
+
+Out of scope for now: an APRS-IS client, messaging state (retries, ack tracking), digipeater and IGate logic.
 
 ## See also
 - [Source & issues](https://github.com/packet-net/packet.net)
-- [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) - the AX.25 frames whose info field carries these payloads
+- [Design](https://github.com/packet-net/packet.net/blob/main/docs/aprs-design.md) and [spec interpretations](https://github.com/packet-net/packet.net/blob/main/docs/aprs-spec-interpretations.md): where APRS12c is ambiguous or wrong, and what this library does
+- [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) - the AX.25 frames whose information field carries these packets
 - [Packet.Core](https://www.nuget.org/packages/Packet.Core) - shared primitives including the strict `Callsign`
 
 ---
-*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack. The embedded device database is from [aprsorg/aprs-deviceid](https://github.com/aprsorg/aprs-deviceid), CC BY-SA 2.0; see THIRD-PARTY-NOTICES.md in the package.*

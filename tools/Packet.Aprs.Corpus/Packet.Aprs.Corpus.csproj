@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- APRS-IS corpus collector and Packet.Aprs validation harness (collect / stats / dump /
+       curate). See docs/aprs-validation.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>aprs-corpus</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Packet.Aprs\Packet.Aprs.csproj" />
+  </ItemGroup>
+
+</Project>

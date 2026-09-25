@@ -1,45 +1,58 @@
 namespace Packet.Aprs;
 
 /// <summary>
-/// A decoded APRS position report. Latitude and longitude are decimal
-/// degrees with WGS-84 reference (positive north / east). Symbol table +
-/// symbol code identify the station's icon per APRS12c §20 (symbol table
-/// page). Comment carries any trailing free-form text from the info field.
+/// A latitude and longitude in decimal degrees (WGS84 unless a <see cref="AprsDao"/> says
+/// otherwise), with the sender's position ambiguity.
 /// </summary>
-/// <param name="Latitude">Decimal-degree latitude, positive north, range [-90, 90].</param>
-/// <param name="Longitude">Decimal-degree longitude, positive east, range [-180, 180].</param>
-/// <param name="SymbolTable">
-/// Symbol table identifier: <c>/</c> = primary, <c>\</c> = alternate, or
-/// an overlay character (<c>0-9</c>, <c>A-Z</c>) for the alternate table
-/// with a single-character overlay per APRS12c §20.
-/// </param>
-/// <param name="SymbolCode">
-/// Symbol code byte from APRS12c §20's table - e.g. <c>&gt;</c> for car,
-/// <c>b</c> for bicycle, <c>_</c> for weather station.
-/// </param>
-/// <param name="Comment">
-/// Free-form trailing text after the position fields. May be empty.
-/// </param>
-/// <param name="Format">
-/// Which of the two on-wire formats the report used: uncompressed
-/// (20-byte fixed fields) or compressed (base-91, 13 bytes).
-/// </param>
-public readonly record struct AprsPosition(
-    double Latitude,
-    double Longitude,
-    char SymbolTable,
-    char SymbolCode,
-    string Comment,
-    AprsPositionFormat Format);
-
-/// <summary>
-/// Which on-wire encoding produced an <see cref="AprsPosition"/>.
-/// </summary>
-public enum AprsPositionFormat
+/// <remarks>
+/// <para>
+/// Position ambiguity (APRS12c §6) is how many trailing digits of the latitude minutes the
+/// sender blanked: 0 none, 1 hundredths, 2 all decimals, 3 units of minutes, 4 all minutes
+/// (nearest degree). An ambiguous position decodes to the centre of the range the remaining
+/// digits allow; see <c>docs/aprs-spec-interpretations.md</c>.
+/// </para>
+/// <para>
+/// Any extra precision from a <c>!DAO!</c> extension is already applied to
+/// <see cref="Latitude"/> and <see cref="Longitude"/>.
+/// </para>
+/// </remarks>
+/// <param name="Latitude">Degrees, positive north, -90 to 90.</param>
+/// <param name="Longitude">Degrees, positive east, -180 to 180.</param>
+/// <param name="Ambiguity">0 to 4 blanked trailing digits (Mic-E and uncompressed formats only).</param>
+public readonly record struct AprsPosition(double Latitude, double Longitude, int Ambiguity = 0)
 {
-    /// <summary>Uncompressed DDMM.mmN / DDDMM.mmW fixed-width form per APRS12c §8.</summary>
-    Uncompressed,
+    /// <summary>The "null position" 0N 0W that stations without a fix must send, with the
+    /// <c>\.</c> symbol (APRS12c §6 Default Null Position).</summary>
+    public static AprsPosition Null => new(0, 0);
 
-    /// <summary>Base-91 compressed form per APRS12c §9 (13 bytes).</summary>
-    Compressed,
+    /// <summary>
+    /// The approximate radius of uncertainty implied by <see cref="Ambiguity"/>, in nautical
+    /// miles: 0.01 (full precision), 0.1, 1, 10, 60 (APRS12c §6 Ambiguity Plots).
+    /// </summary>
+    public double AmbiguityRadiusNauticalMiles => Ambiguity switch
+    {
+        0 => 0.01,
+        1 => 0.1,
+        2 => 1,
+        3 => 10,
+        _ => 60,
+    };
+
+    internal void Validate(string paramName)
+    {
+        if (!double.IsFinite(Latitude) || Latitude is < -90 or > 90)
+        {
+            throw new ArgumentOutOfRangeException(paramName, Latitude, "latitude must be between -90 and 90 degrees");
+        }
+
+        if (!double.IsFinite(Longitude) || Longitude is < -180 or > 180)
+        {
+            throw new ArgumentOutOfRangeException(paramName, Longitude, "longitude must be between -180 and 180 degrees");
+        }
+
+        if (Ambiguity is < 0 or > 4)
+        {
+            throw new ArgumentOutOfRangeException(paramName, Ambiguity, "ambiguity must be 0 to 4");
+        }
+    }
 }

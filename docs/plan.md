@@ -4,8 +4,9 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-09-02
+**As of:** 2026-09-25
 **Current phase:** Phases 0-5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete - mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 - `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) - see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces); Phase 7's channel-aware in-app self-update is shipped for the two channels that remain - the apt repo is maintainer-owned and out of scope, and the self-contained installer + distribution feed were withdrawn 2026-08-05, leaving a `.deb` and a `.tar.gz` as the whole of what pdn distributes ([`docs/node-self-update-design.md`](node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-09-25 - **Packet.Aprs replaced by a full APRS 1.2 codec (SP-008)** - encode and decode every APRS12c data type from AX.25 frames or TNC2 / APRS-IS text; `AprsParseOptions` grows to 28 named flags with `Strict` / `Lenient` only; validated on every spec example, a 508k-packet APRS-IS capture and Ham::APRS::FAP; fuzzer, netsim scenario and APRS-IS spike ported; breaking on nuget but no consumer outside this repo, no TS leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-10 - **ax25: Acknowledge Pending no longer outlives an inline retransmission (#812)** - figc4.5's partial-ack arms end with Set Acknowledge Pending and rely on the re-queued frames popping off the queue (figc4.4 t03, Clear Acknowledge Pending) to reset it; packet.net replays retransmissions inline (`EmitOldIFrame`, original N(s)) and never ran that pop, so the flag stayed set and the peer's next I frame went unacknowledged until the peer's own T1 poll. The inline replay now carries the pop's acknowledgement bookkeeping and a Set later in the same chain is a no-op; no quirk, same in both modes; the H1 stranding itself is untouched](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-10 - **ax25: the out-of-window duplicate discard comes from the figure now, and the Ax25Spec40 quirk is retired** - `Packet.Ax25.Sdl` 0.10.2 to 0.11.0 brings the packethacking/ax25spec#40 erratum: figc4.4 and figc4.5 gain a `V(r) < N(s) < V(r) + k?` decision on the out-of-sequence I-frame arm, so a duplicate of an already-acknowledged frame is discarded with no REJ/SREJ exception and an RR F=1 only to a poll. The new `vr_lt_ns_lt_vr_plus_k` atom binds to `EffectiveWindow`; the quirk that faked this since #242, and its post-hoc `reject_exception` wrapper, are deleted. Wire behaviour is unchanged, which the unchanged conformance and adversarial properties are the proof of; the disposal now also holds under StrictlyFaithful](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-07 - **RELEASE: lib-v0.36.0 + node-v0.53.0** - the T3-300 s + observer-fallback change (#804) shipped: 14 packages at 0.36.0 on nuget.org, node-v0.53.0 `.deb`s, lab box upgraded 0.45.0 to 0.53.0, axcall v0.2.25 downstream, pdn-soundmodem bump held for v0.61.4; found #805 (LinBPQ rejects the SREJ probe XID) and #806 (web-ui order-dependent test)](#17-amendment-log)
@@ -349,7 +350,7 @@ These were settled during the initial planning round and have not been revisited
   Packet.Kiss.Serial/                 KISS over a serial port
   Packet.Kiss.NinoTnc/                NinoTNC mode catalog 0-15, SETHW byte, TX-test parsing
   Packet.Axudp/                       AXUDP transport (unicast + multipoint)
-  Packet.Aprs/                        APRS encode/decode (incl. Mic-E), APRS-IS client
+  Packet.Aprs/                        APRS 1.2 encode/decode, every data type, AX.25 or TNC2 / APRS-IS text
   Packet.NetRom/                      NET/ROM L3 + L4 wire, routing table, INP3
   Packet.Ax25.Radio/                  AX.25 adapters over M0LTE.Rig: RSSI frame tagging, DCD into CSMA
   Packet.Ax25.Radio.Tait/             AX.25 over a Tait's Transparent-mode FFSK pipe (no TNC)
@@ -368,6 +369,7 @@ These were settled during the initial planning round and have not been revisited
   conformance/                        YAML scenario fixtures
 
 /tools/                               Packet.Fuzz (parser fuzzer), Packet.LinkBench, Packet.Tune,
+                                      Packet.Aprs.Corpus (APRS-IS capture + codec validation),
                                       and the AprsIs / Mqtt / NinoTnc / Tait spikes
 /web/packetnet-ui/                    Vite + React SPA - the node's control panel
 /headend/                             split-station RF head-end daemon (Go)
@@ -773,7 +775,7 @@ bits / retry rates / error counts alone? If yes, gives `IRadioControl`'s
 quality signal a fallback path for users without CAT-capable radios.
 Investigate after SP-001 has produced enough real-world data to baseline.
 
-**SP-008 — Full APRS encoding/decoding library** ([#183](https://github.com/packet-net/packet.net/issues/183)) (large scope; significant
+**SP-008 — Full APRS encoding/decoding library** ([#183](https://github.com/packet-net/packet.net/issues/183)) - ✅ codec landed 2026-09-25 ([§17](#17-amendment-log)): `Packet.Aprs` replaced by an APRS12c encoder + decoder for every data type, validated against every spec example, a 508k-packet APRS-IS corpus and Ham::APRS::FAP. The open question below was decided **codec only**: no messaging state (acks, retries), APRS-IS client, digipeater or IGate. (large scope; significant
 ecosystem value). The SDL transcription work covers AX.25's link layer; APRS
 is the application-layer protocol that rides on UI frames. A native
 `Packet.Aprs` library covering position/weather/mic-E/messages/status/
@@ -887,7 +889,7 @@ Disposition legend: **DROP** (decided no), **PARK** (deferred / secondary — re
 | **Inbound FBB forwarding over internet-TCP** (BPQ `FBBPORT`) | CONSIDER | pdn-bbs | Protocol complete but inbound rides AX.25/RHP only; no raw-TCP forwarding port for an internet partner. |
 | **MHeard `MH` console verb + persisted heard log** | ✅ SHIPPED | packet.net | `MH` (node-wide) / `MH <port>` (per-port) console verb listing recently heard stations (callsign, last-heard, count, port[s]), sourced from the same telemetry tap that feeds `/api/v1/links`. Persisted heard log (`src/Packet.Node.Core/Heard/`: `HeardLog` over a resilient `SqliteHeardStore` in pdn.db) survives port teardown AND node restart; retention = 30-day age-out + 500/port cap (timer-free, re-applied every 2048 hearings + on startup). Per-port rows + a node-wide merge (per-callsign across ports). Also `GET /api/v1/heard[?port=]`. See §17 2026-06-17. |
 | **White Pages (WP consume)** | CONSIDER | pdn-bbs | Already tracked as forwarding.md F-3; GB7RDG receives `WP@<bbs>` each cycle (PDN stores as ordinary mail). |
-| **APRS** (encoder + position/object beaconing + digipeater + APRS-IS IGate) | PARK | packet.net | "Very much a secondary thing." Largest single chunk; `Packet.Aprs` is decoder-only today. Revisit after the cutover essentials. |
+| **APRS** (encoder + position/object beaconing + digipeater + APRS-IS IGate) | PARK | packet.net | "Very much a secondary thing." Largest single chunk. `Packet.Aprs` encodes as well as decodes since 2026-09-25 (SP-008); beaconing, digipeater and IGate stay parked. Revisit after the cutover essentials. |
 | **Application packet identity** (node-prompt command verb + node-owned callsign + opt-in NET/ROM alias) | ✅ **SHIPPED (slices 1–4)** | packet.net + pdn-bbs/bpqchat/convers/dapps | Spec + all four slices implemented and released — app-packages.md § Application packet identity. Three dimensions à la BPQ `APPLICATION` — `command` in the manifest (the app name, optional); `callsign` + `netrom.alias` node-owned in `packetnet.yaml apps[]`/`applications[]`; node resolves + injects `PDN_APP_CALLSIGN` (`AppCallsignResolver`). Bare command verb at the node prompt (service app ⇒ loopback connect, session app ⇒ attach); opt-in NODES alias advert (`AppNetromAdvert` → `NetRomService.AppAdvertSource`); `session.match` clean-replaced by `packet.command`. **NET/ROM alias opt-in, off by default.** Slice 4 — all four apps released: pdn-bbs v0.2.33, pdn-bpqchat v0.1.1, pdn-convers v0.1.3, DAPPS v0.34.2 — each binds `PDN_APP_CALLSIGN` + declares `packet.command`. Node in node-v0.13.23; lab-staged + slices 1/2/4 wire-verified (slice-3 advert staged, gated on `netRom.broadcast`). |
 | **AX.25 digipeating** (`DIGIFLAG`) | DROP | — | "An antipattern for nodes anyhow." |
 | **Multi-user telnet login** | DROP | — | "More of an admin interface than anything nowadays" — the telnet/SSH console stays a sysop interface, not a public multi-user login. |
@@ -1239,6 +1241,7 @@ Pinned in [`Directory.Packages.props`](../Directory.Packages.props). Versions so
 | WebAuthn | `Fido2.AspNet` | 4.0.0-beta.16 |
 | JWT | `Microsoft.IdentityModel.JsonWebTokens` | 8.5.0 |
 | Property tests | `FsCheck.Xunit` v3 | 3.1.0 |
+| Public-API snapshot (`Packet.Aprs.Tests`) | `PublicApiGenerator` | 11.4.5 |
 | ~~Mutation~~ | ~~`dotnet-stryker`~~ | Dropped 2026-08-17 (§7): the manifest and config were unused and unreferenced by any workflow |
 | Fuzzing | `SharpFuzz` | (TBD when added) |
 | Containers in tests | `Testcontainers` | 4.1.0 |
@@ -1277,6 +1280,9 @@ The original [`APRS101.pdf`](http://www.ui-view.net/files/APRS101.pdf) from 1998
 - [`APRS-Digipeater-Algorithm.pdf`](https://raw.githubusercontent.com/wb2osz/aprsspec/main/APRS-Digipeater-Algorithm.pdf) — digipeater behaviour (when we ever digipeat).
 
 When APRS101 and APRS12c disagree, **APRS12c wins** for our purposes.
+
+- [`aprsorg/aprs-deviceid`](https://github.com/aprsorg/aprs-deviceid): the device identification database APRS12c defers to (tocalls, Mic-E type codes); a snapshot is embedded in `Packet.Aprs` (CC BY-SA 2.0), refreshed by `scripts/update-aprs-deviceid.py`.
+- [Ham::APRS::FAP](https://github.com/hessu/perl-aprs-fap): the parser behind aprs.fi; `Packet.Aprs`'s differential reference (`tools/Packet.Aprs.Corpus/fap/`). An interop target, not the spec: its known defects are in [`aprs-spec-interpretations.md`](aprs-spec-interpretations.md).
 
 ### 13.2 Reference implementations
 
@@ -1383,6 +1389,16 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-09-25 - Packet.Aprs replaced by a full APRS 1.2 codec (SP-008)
+
+The decode-only `Packet.Aprs` (seven per-type `Aprs*Decoder` classes, three parse flags) is replaced by an encoder and decoder for every APRS12c data type, built as a standalone library first and moved in here under the same package id. SP-008's open question was decided **codec only**: no messaging state, APRS-IS client, digipeater or IGate.
+
+- **Surface.** `AprsPacket.Decode` / `TryDecode` (TNC2 / APRS-IS text), `DecodeAx25` / `TryDecodeAx25` (KISS-form UI frames) and `Decode(source, destination, path, info)`; `Data` is a closed `AprsData` hierarchy (positions incl. compressed, ambiguity and `!DAO!`; Mic-E with device codes, altitude and grid locator; objects, items, weather, telemetry and its metadata, messages, status, queries, third-party and the rest). Decoding never throws because of the information field and reports every deviation as an `AprsDiagnostic`. Encoding (`AprsPacket.Create`, `CreateMicE`, `ToTnc2`, `ToAx25Frame`) is strict and refuses comment text that would read back as something else. Depends on `Packet.Core` only; frames cross to `Packet.Ax25` as KISS bytes and addresses convert with `AprsAddress.FromCallsign` / `TryGetCallsign`. The permissive `AprsCallsign` is replaced by `AprsAddress`.
+- **Strict vs pragmatic.** `AprsParseOptions` now has 28 named flags with `Strict` (all off) and `Lenient` (all on, the default) presets; `Direwolf` and `AprsIs` were aliases of `Lenient` and are deleted (§2.5). The three old flags are retired because APRS12c made each of them spec behaviour. Every flag has a paired strict-rejects / lenient-accepts test and a real-world driver with its share of APRS-IS traffic: [`strict-vs-pragmatic-audit.md`](strict-vs-pragmatic-audit.md#packetaprs). Spec ambiguities and errata in APRS12c's own examples: [`aprs-spec-interpretations.md`](aprs-spec-interpretations.md).
+- **Validation** ([`aprs-validation.md`](aprs-validation.md)): every example in APRS12c and *Understanding APRS Packets*; FsCheck round trips; a 508,679-packet APRS-IS capture (0 decoder exceptions, 88.0% accepted by `Strict`, every one of 440,599 spec-clean packets re-encodes to identical data); field-by-field agreement with Ham::APRS::FAP (positions 99.996%, messages and telemetry 100%, each remaining difference inspected). `Packet.Aprs.Tests` goes from 143 to 319 tests, with a public-API snapshot (`PublicApiGenerator`, new test-only dependency, [§12](#12-locked-external-dependencies)) and a corpus approval test.
+- **Consumers.** `tools/Packet.Fuzz`'s `aprs` target now drives the codec three ways (info field, TNC2 line, AX.25 frame) under both presets and also checks that clean packets re-encode to equal data; a 1,000,000-input smoke at the nightly seed is clean ([`FINDINGS.md`](../tools/Packet.Fuzz/FINDINGS.md)). The netsim APRS scenario decodes with `AprsPacket.DecodeAx25` under `Strict`; the APRS-IS spike's direwolf differential and callsign coercion are ported. New `tools/Packet.Aprs.Corpus` (collect / stats / dump / curate, plus the FAP comparison scripts) and `scripts/update-aprs-deviceid.py`; the embedded aprs-deviceid snapshot is CC BY-SA 2.0, attributed in `src/Packet.Aprs/THIRD-PARTY-NOTICES.md`, which ships in the package.
+- **Release impact.** Breaking for `Packet.Aprs` on nuget.org (published since lib-v0.15.0); a code search of the packet-net and M0LTE orgs finds no consumer outside this repo, so no downstream pin moves. No TS leg: ax25-ts has no APRS code and its parity check does not cover `AprsParseOptions`.
 
 ### 2026-09-18 - RELEASE: node-v0.55.1 + headend-v0.1.5 (Bullseye .deb fix, closes #821)
 
