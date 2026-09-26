@@ -142,7 +142,7 @@ var repeater = new AprsObjectReport
     IsAlive = true,
     Timestamp = AprsTimestamp.DayHoursMinutes(25, 18, 30), // or AprsTimestamp.FromDateTime(DateTime.UtcNow)
     Position = new AprsPosition(51.4543, -0.9781),
-    Symbol = AprsSymbol.Parse("/r"),
+    Symbol = AprsSymbol.Repeater, // or AprsSymbol.Parse("/r")
     Frequency = new AprsVoiceFrequency { FrequencyMHz = 145.725m, ToneType = AprsToneType.Tone, ToneValue = 118, OffsetKHz = -600 },
     Comment = "Reading repeater",
 };
@@ -275,7 +275,7 @@ Each tolerance is a named flag, so you can turn off exactly the ones you don't w
 | Status (incl. grid locator, meteor scatter beam/ERP), queries, capabilities | `AprsStatusReport`, `AprsGeneralQuery`, `AprsDirectedQuery`, ... |
 | Voice frequency / tone / offset (APRS 1.2) | `AprsVoiceFrequency` |
 | Third-party traffic, user-defined, NMEA, Maidenhead beacons, test data, Agrelo DF | ... |
-| Symbols, device identification, APRS-IS q-constructs | `AprsSymbolTable`, `AprsDeviceIdentification`, `AprsQConstruct` |
+| Symbols (every defined one by name: `AprsSymbol.Car`, `AprsSymbol.Gateway.WithOverlay('I')`), device identification, APRS-IS q-constructs | `AprsSymbol`, `AprsSymbolTable`, `AprsDeviceIdentification`, `AprsQConstruct` |
 
 Out of scope for now: an APRS-IS client, messaging state (retries, ack tracking), digipeater and IGate logic.
 

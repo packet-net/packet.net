@@ -12,9 +12,15 @@ namespace Packet.Aprs;
 /// the digit here and re-encoded as the letter, so <see cref="Table"/> is always the
 /// uncompressed form.
 /// </remarks>
+/// <para>
+/// Every symbol the tables define has a name, so <c>AprsSymbol.Car</c> is <c>/&gt;</c> and
+/// <c>AprsSymbol.Hospital</c> is <c>/h</c>. The alternate-table symbols whose meaning comes from an
+/// overlay character are named <c>Overlay...</c>; give the overlay with <see cref="WithOverlay"/>,
+/// e.g. <c>AprsSymbol.OverlayDigipeater.WithOverlay('1')</c> for a fill-in digipeater.
+/// </para>
 /// <param name="Table">Symbol table identifier or overlay.</param>
 /// <param name="Code">Symbol code, printable ASCII <c>!</c> to <c>~</c>.</param>
-public readonly record struct AprsSymbol(char Table, char Code)
+public readonly partial record struct AprsSymbol(char Table, char Code)
 {
     /// <summary>True for the primary symbol table (<c>/</c>).</summary>
     public bool IsPrimaryTable => Table == '/';
@@ -36,6 +42,26 @@ public readonly record struct AprsSymbol(char Table, char Code)
     /// <summary>True when <see cref="Table"/> and <see cref="Code"/> are characters that may appear
     /// in a symbol on air.</summary>
     public bool IsValid => IsValidTable(Table) && Code is >= '!' and <= '~';
+
+    /// <summary>
+    /// This alternate-table symbol with an overlay character (<c>0</c>-<c>9</c> or <c>A</c>-<c>Z</c>)
+    /// drawn on it, e.g. <c>AprsSymbol.Gateway.WithOverlay('I')</c> for an IGate. Only the alternate
+    /// table takes overlays (APRS12c ch. 21).
+    /// </summary>
+    public AprsSymbol WithOverlay(char overlay)
+    {
+        if (IsPrimaryTable)
+        {
+            throw new InvalidOperationException($"'{this}' is on the primary table, which takes no overlay (APRS12c ch. 21)");
+        }
+
+        if (overlay is not ((>= '0' and <= '9') or (>= 'A' and <= 'Z')))
+        {
+            throw new ArgumentOutOfRangeException(nameof(overlay), overlay, "an overlay is 0-9 or A-Z (APRS12c ch. 21)");
+        }
+
+        return this with { Table = overlay };
+    }
 
     /// <summary>Parses a two-character symbol such as <c>/&gt;</c> or <c>\n</c> or <c>3#</c>.</summary>
     public static AprsSymbol Parse(string symbol)
