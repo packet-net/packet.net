@@ -15,6 +15,7 @@
     <!-- The neutral form of spec/aprs/README.md: shared with the vector runner in the test project,
          so `vectors fill` writes exactly what the tests compare against. -->
     <Compile Include="..\..\tests\Packet.Aprs.Tests\Vectors\NeutralJson.cs" Link="Vectors\NeutralJson.cs" />
+    <Compile Include="..\..\tests\Packet.Aprs.Tests\Vectors\JsonMatch.cs" Link="Vectors\JsonMatch.cs" />
   </ItemGroup>
 
 </Project>
