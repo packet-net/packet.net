@@ -6,6 +6,7 @@
 
 **As of:** 2026-09-26
 **Current phase:** Phases 0-5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete - mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 - `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) - see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces); Phase 7's channel-aware in-app self-update is shipped for the two channels that remain - the apt repo is maintainer-owned and out of scope, and the self-contained installer + distribution feed were withdrawn 2026-08-05, leaving a `.deb` and a `.tar.gz` as the whole of what pdn distributes ([`docs/node-self-update-design.md`](node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-09-26 - **RELEASE: lib-v0.42.0 (Packet.Aprs builder, named symbols, Rust-comparison fixes)** - NuGet 0.42.0 of all 14 library packages, only Packet.Aprs changed since lib-v0.41.0; no node or downstream app release; the sibling Rust and Python implementations are named `pdn-aprs`, and the Rust crate is on crates.io as 0.1.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-26 - **Packet.Aprs: three edge cases settled with the Rust implementation** - an NWS bulletin is addressed `NWS-` or `NWS_` (not anything starting NWS), a capabilities report with no capabilities is `InvalidCapabilities` and refused on encoding, and the vectors runner writes NMEA time fractions without trailing zeros; none occur in captured traffic; no API change, ships with the next lib release, no TS leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-26 - **Packet.Aprs: a fluent builder** - `Aprs.From("M0LTE-9").Via("WIDE1-1").Position(51.45, -0.98).Symbol(AprsSymbol.Car).Speed(36).Build()` and the same for objects, items, Mic-E, weather, messages, acks, bulletins, status and telemetry, so an application builds any packet without assembling records; additive API, ships with the next lib release, no TS leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-26 - **Packet.Aprs: symbols by name** - every symbol the APRS tables define is a named `AprsSymbol` property (`AprsSymbol.Car`, `AprsSymbol.Hospital`), with `WithOverlay('I')` for the alternate table, so building a report needs no table and code characters; additive API, ships with the next lib release, no TS leg](#17-amendment-log)
@@ -1397,6 +1398,18 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-09-26 - RELEASE: lib-v0.42.0 (Packet.Aprs builder, named symbols, Rust-comparison fixes)
+
+Tagged `lib-v0.42.0` on `38d2e86c` (main, `ci` and `interop` green); `publish-libs.yml` pushed all 14 packages at 0.42.0. Every library change since `lib-v0.41.0` is in Packet.Aprs:
+
+- the fluent builder, `Aprs.From(...)` (#834);
+- every symbol by name, `AprsSymbol.Car`, with `WithOverlay` (#833);
+- the fixes the Rust implementation and the whole-capture comparison found (#831, #832), and the three edge cases settled with it (#835).
+
+- **Sibling packages.** `M0LTE.Rig` 0.2.1 and `M0LTE.Tait.Ccdi` 0.2.0 are the latest tags and already pinned, so step 0a did not apply.
+- **Downstream.** No `axcall` or `packet-term-tui` bump: neither uses Packet.Aprs, the only package that changed. No `node-v*` tag: this was a library release only. No `ax25-ts` leg.
+- **Sibling APRS implementations.** Tom named the Rust and Python implementations `pdn-aprs` on every registry (the plain `aprs` is taken on crates.io, PyPI and npm). The Rust crate, packet-net/aprs-rs, is published to crates.io as `pdn-aprs` 0.1.0 and now publishes through crates.io trusted publishing (checked: the token exchange succeeds) rather than a stored token, which is deleted from the repo. The Python package, packet-net/aprs-py, is ready for PyPI as `pdn-aprs` once its trusted publisher is added. The TypeScript one, packet-net/aprs-ts, will be `pdn-aprs` on npm. Earlier entries call the Rust crate `packet-aprs`, its name at the time.
 
 ### 2026-09-26 - Packet.Aprs: three edge cases settled with the Rust implementation
 
