@@ -96,7 +96,7 @@ internal static class NeutralJson
                 break;
             case AprsRawWeatherReport r:
                 o["format"] = Kebab(r.Format.ToString());
-                o["data"] = r.Data;
+                Put(o, "data", r.Data);
                 break;
             case AprsNmeaReport n:
                 o["sentence"] = n.Sentence;

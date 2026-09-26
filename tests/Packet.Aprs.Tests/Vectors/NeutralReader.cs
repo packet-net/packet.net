@@ -76,7 +76,7 @@ internal static class NeutralReader
                 Comment = OptStr(d, "comment") ?? "",
             }, "sequence", "analog", "bits", "comment"),
             "weather" => Only(d, new AprsWeatherReport { Timestamp = Timestamp(d["timestamp"])!.Value, Weather = Weather(d["weather"]!.AsObject()), Comment = OptStr(d, "comment") ?? "" }, "timestamp", "weather", "comment"),
-            "raw-weather" => Only(d, new AprsRawWeatherReport { Format = Enum<AprsRawWeatherFormat>(Str(d, "format")), Data = Str(d, "data") }, "format", "data"),
+            "raw-weather" => Only(d, new AprsRawWeatherReport { Format = Enum<AprsRawWeatherFormat>(Str(d, "format")), Data = OptStr(d, "data") ?? "" }, "format", "data"),
             "nmea" => Only(d, new AprsNmeaReport
             {
                 Sentence = Str(d, "sentence"),

@@ -412,6 +412,12 @@ internal static class MicECodec
         AprsMicEMessage message = anyStandard && anyCustom ? AprsMicEMessage.Unknown : anyCustom ? Custom[index] : Standard[index];
         int degrees = (digits[0] * 10) + digits[1];
         double minutes = Minutes([digits[2], digits[3], digits[4], digits[5]], ambiguity);
+        if (minutes >= 60)
+        {
+            ctx.Error(AprsDiagnosticCode.InvalidMicEDestination, "Mic-E latitude minutes are 60 or more");
+            return false;
+        }
+
         double latitude = degrees + (minutes / 60);
         if (latitude > 90)
         {
