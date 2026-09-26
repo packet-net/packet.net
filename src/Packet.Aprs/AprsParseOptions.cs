@@ -178,7 +178,8 @@ public sealed record AprsParseOptions
     public bool AllowNonStandardWeatherFieldWidths { get; init; } = true;
 
     /// <summary>Accept wind as positionless-style <c>cDDDsSSS</c> fields in a position weather report
-    /// instead of the <c>DDD/SSS</c> extension. Driver: ESP32 and Ecowitt gateway firmware.</summary>
+    /// instead of the <c>DDD/SSS</c> extension, or after a compressed position whose cs bytes carry no
+    /// wind. Driver: ESP32 and Ecowitt gateway firmware, LoRa APRS trackers.</summary>
     public bool AllowWindFieldsInPositionWeather { get; init; } = true;
 
     /// <summary>Accept an uncompressed <c>DDD/SSS</c> wind extension after a compressed weather position,

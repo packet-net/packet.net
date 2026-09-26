@@ -193,7 +193,7 @@ public enum AprsDiagnosticCode
     /// <summary>A weather field is one character shorter or longer than its fixed width (UAP §5.31).</summary>
     NonStandardWeatherFieldWidth = 154,
 
-    /// <summary>Wind sent as c/s fields in a position weather report instead of the DDD/SSS extension.</summary>
+    /// <summary>Wind sent as c/s fields in a position weather report instead of the DDD/SSS extension, or after a compressed position whose cs bytes carry no wind.</summary>
     WindFieldsInsteadOfExtension = 155,
 
     /// <summary>An uncompressed wind extension after a compressed weather position (UAP §5.33).</summary>

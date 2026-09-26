@@ -365,6 +365,7 @@ internal static class PositionCodec
         if (fields.Symbol.IsWeatherStation)
         {
             var weather = fields.Weather ?? new AprsWeather();
+            bool windAsFields = false;
 
             // LoRa trackers send the uncompressed DDD/SSS wind extension after a compressed
             // position, whose cs bytes already carry wind (UAP §5.33).
@@ -386,17 +387,35 @@ internal static class PositionCodec
                     fields.CompressionType ??= AprsCompressionType.Default;
                 }
             }
+            else if (!csIsWind && info.Length >= pos + 4 && info[pos] == (byte)'c')
+            {
+                // Others leave the cs bytes blank and send positionless-style c/s wind fields.
+                if (!ctx.Tolerate(
+                        ctx.Options.AllowWindFieldsInPositionWeather,
+                        AprsDiagnosticCode.WindFieldsInsteadOfExtension,
+                        "wind sent as c/s fields after a compressed position with no wind in its cs bytes (APRS12c ch. 12)",
+                        pos))
+                {
+                    return false;
+                }
 
-            if (!WeatherCodec.TryReadFields(info, ref pos, ctx, ref weather, positionless: false))
+                windAsFields = true;
+            }
+
+            if (!WeatherCodec.TryReadFields(info, ref pos, ctx, ref weather, positionless: false, windAsFields))
             {
                 return false;
+            }
+
+            if (windAsFields && (weather.WindDirectionDegrees is not null || weather.WindSpeedMph is not null))
+            {
+                fields.CompressionType ??= AprsCompressionType.Default;
             }
 
             fields.Weather = weather;
             return CommentCodec.TryReadWeatherTail(info, pos, ctx, fields);
         }
 
-        _ = csIsWind;
         return CommentCodec.TryRead(info, pos, ctx, fields);
     }
 

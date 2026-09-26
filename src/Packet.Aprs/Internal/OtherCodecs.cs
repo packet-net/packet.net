@@ -15,9 +15,10 @@ internal static class RawWeatherCodec
         };
         ctx.Info(AprsDiagnosticCode.ObsoleteFormat, "raw weather station data is not recommended; senders should send a complete weather report (APRS12c ch. 12, UAP 5.19)", 0);
         ReadOnlySpan<byte> data = info[skip..];
-        if (!Text.IsAscii(data))
+        if (data.IndexOfAnyExceptInRange((byte)0x20, (byte)0x7E) >= 0)
         {
-            ctx.Error(AprsDiagnosticCode.InvalidWeather, "raw weather data must be ASCII", skip);
+            // Station output is printable text; a control byte means the packet was corrupted.
+            ctx.Error(AprsDiagnosticCode.InvalidWeather, "raw weather data must be printable ASCII", skip);
             return null;
         }
 

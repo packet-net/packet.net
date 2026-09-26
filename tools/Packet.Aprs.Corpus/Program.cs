@@ -7,6 +7,7 @@ return args.Length == 0 ? Usage() : args[0] switch
     "dump" => DumpCommand.Run(args[1..]),
     "curate" => CurateCommand.Run(args[1..]),
     "vectors" => VectorsCommand.Run(args[1..]),
+    "diff" => DiffCommand.Run(args[1..]),
     _ => Usage(),
 };
 
@@ -28,6 +29,8 @@ static int Usage()
           vectors   fill <cases.json>...  Complete decode cases in spec/aprs/cases from Packet.Aprs, for review.
                     from-samples <samples.txt> <cases.json> [source]  Add curated samples as observed cases.
                     refresh <cases.json>...  Work out observed cases again after an intended change.
+          diff      lines <corpus-dir> <lines.hex.gz>  The capture as one hex line per packet, for any implementation.
+                    dump <lines.hex.gz> <out.jsonl.gz>  Decode each line into the vectors' neutral form (aprs-vectors tools/compare.py).
         """);
     return 2;
 }
