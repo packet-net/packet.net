@@ -11,7 +11,7 @@ The APRS codec: every data type in the APRS 1.2 protocol reference, both directi
 
 Source code comments cite these as `APRS12c §n` / `UAP §n`. Spec text is not copied into the repo.
 
-direwolf (`decode_aprs`) and Ham::APRS::FAP (the parser behind aprs.fi) are **reference implementations, not the spec**. They're used for differential testing against the corpus. Where they disagree with each other or with the spec, the disagreement is recorded in [`aprs-spec-interpretations.md`](aprs-spec-interpretations.md).
+direwolf (`decode_aprs`) and Ham::APRS::FAP (the parser behind aprs.fi) are **reference implementations, not the spec**. They're used for differential testing against the corpus. Where they disagree with each other or with the spec, the disagreement is recorded in [`interpretations.md`](https://github.com/packet-net/aprs-vectors/blob/main/interpretations.md).
 
 ## Philosophy (the Packet.NET one)
 

@@ -1,6 +1,6 @@
 # RHPv2 wire grammar (CDDL)
 
-> This directory also holds the language-neutral APRS conformance vectors, in [`aprs/`](aprs/README.md).
+> `aprs/` is a git submodule: the language-neutral APRS conformance vectors from [packet-net/aprs-vectors](https://github.com/packet-net/aprs-vectors), which `Packet.Aprs.Tests` runs. `git submodule update --init spec/aprs` fetches it.
 
 This directory contains the machine-readable, language-neutral definition of the
 RHPv2 (PWP-0222 / PWP-0245) JSON-over-TCP wire format, expressed in

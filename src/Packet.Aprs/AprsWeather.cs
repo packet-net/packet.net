@@ -19,7 +19,7 @@ public sealed record AprsWeather
     public int? WindDirectionDegrees { get; init; }
 
     /// <summary>Sustained one-minute wind speed in mph (<c>s</c>, or the SPD part of the extension;
-    /// see <c>docs/aprs-spec-interpretations.md</c> on units). Fractional when it came from a compressed position.</summary>
+    /// see <c>interpretations.md</c> in <c>packet-net/aprs-vectors</c> on units). Fractional when it came from a compressed position.</summary>
     public double? WindSpeedMph { get; init; }
 
     /// <summary>Peak wind speed in the last 5 minutes, mph (<c>g</c>).</summary>

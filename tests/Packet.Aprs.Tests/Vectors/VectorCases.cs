@@ -3,7 +3,10 @@ using System.Text.Json.Nodes;
 
 namespace Packet.Aprs.Tests.Vectors;
 
-/// <summary>The cases in <c>spec/aprs/cases/*.json</c>, loaded once and looked up by id.</summary>
+/// <summary>
+/// The cases in <c>spec/aprs/cases/*.json</c> (a git submodule of packet-net/aprs-vectors), loaded
+/// once and looked up by id.
+/// </summary>
 internal static class VectorCases
 {
     private static readonly Lazy<IReadOnlyDictionary<string, JsonObject>> All = new(Load);
@@ -20,8 +23,14 @@ internal static class VectorCases
 
     private static Dictionary<string, JsonObject> Load()
     {
+        string folder = System.IO.Path.Combine(Directory, "cases");
+        if (!System.IO.Directory.Exists(folder))
+        {
+            throw new InvalidOperationException("spec/aprs is a git submodule (packet-net/aprs-vectors) and is not checked out: run 'git submodule update --init spec/aprs'.");
+        }
+
         var cases = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
-        foreach (string file in System.IO.Directory.EnumerateFiles(System.IO.Path.Combine(Directory, "cases"), "*.json").Order(StringComparer.Ordinal))
+        foreach (string file in System.IO.Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.Ordinal))
         {
             JsonArray array = JsonNode.Parse(File.ReadAllText(file))!["cases"]!.AsArray();
             foreach (JsonNode? node in array)

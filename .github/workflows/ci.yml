@@ -61,6 +61,10 @@ jobs:
           - Packet.Tune.Core.Tests
     steps:
       - uses: actions/checkout@v6
+        with:
+          # spec/aprs is the APRS conformance vectors (packet-net/aprs-vectors), which
+          # Packet.Aprs.Tests runs; the other legs don't need it.
+          submodules: ${{ matrix.project == 'Packet.Aprs.Tests' }}
 
       - name: report .NET
         run: dotnet --version
