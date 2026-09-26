@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using PublicApiGenerator;
 
 namespace Packet.Aprs.Tests;
@@ -35,6 +34,5 @@ public class PublicApiTests
 
     private static string Normalise(string api) => api.ReplaceLineEndings("\n").TrimEnd() + "\n";
 
-    private static string SnapshotPath(string fileName, [CallerFilePath] string thisFile = "") =>
-        Path.Combine(Path.GetDirectoryName(thisFile)!, fileName);
+    private static string SnapshotPath(string fileName) => TestPaths.InProject(fileName);
 }

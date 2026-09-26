@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -99,6 +98,5 @@ public class CorpusRegressionTests
         return [.. bytes];
     }
 
-    private static string PathOf(string name, [CallerFilePath] string thisFile = "") =>
-        Path.Combine(Path.GetDirectoryName(thisFile)!, name);
+    private static string PathOf(string name) => TestPaths.InProject("Corpus", name);
 }
