@@ -495,7 +495,7 @@ internal static class PositionCodec
     }
 
     /// <summary>PHGR beacon rate character: 1-9, then A = 10 up to Z = 35.</summary>
-    private static int? BeaconRate(byte b) => b switch
+    internal static int? BeaconRate(byte b) => b switch
     {
         >= (byte)'1' and <= (byte)'9' => b - '0',
         >= (byte)'A' and <= (byte)'Z' => b - 'A' + 10,

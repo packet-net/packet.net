@@ -1,0 +1,53 @@
+{
+  "cases": [
+    {
+      "id": "object/live-with-course-speed",
+      "description": "A live object with a timestamp, course and speed.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ";LEADER   *092345z4903.50N/07201.75W>088/036"},
+      "expect": {
+        "data": {"type": "object", "name": "LEADER", "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "course_degrees": 88, "speed_knots": 36}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "item/alive",
+      "description": "An item: variable-length name ended by !.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ")AID #2!4903.50N/07201.75WA"},
+      "expect": {
+        "data": {"type": "item", "name": "AID #2", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/A"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object/garbled-timestamp",
+      "description": "Seven timestamp-shaped characters that are not a timestamp, then a position: a lenient decoder skips them.",
+      "source": "APRS-IS 2026-09-25",
+      "authority": "observed",
+      "input": {"info": ";TESTOBJ  *ABCDEFz5301.01N/01745.68Er"},
+      "expect": {
+        "data": {"type": "object", "name": "TESTOBJ", "latitude": 53.01683333333333, "longitude": 17.761333333333333, "symbol": "/r"},
+        "diagnostics": ["warning:malformed-timestamp"]
+      },
+      "strict": {"rejected_by": "malformed-timestamp"},
+      "reencode": "refused"
+    },
+    {
+      "id": "object/name-with-leading-spaces",
+      "description": "Object names may start with spaces; only trailing spaces are padding.",
+      "source": "APRS12c ch. 11 (APRS-IS 2026-09-26)",
+      "authority": "spec",
+      "input": {"tnc2": "ON1TG-10>APMI06,TCPIP*,qAC,T2DENMARK:;   OR4F  *252047z5113.60N/00255.17EYMercator Oostende - ON4MO - OR4F"},
+      "expect": {
+        "data": {"type": "object", "name": "   OR4F", "timestamp": "252047z", "latitude": 51.22666666666667, "longitude": 2.9195, "symbol": "/Y", "comment": "Mercator Oostende - ON4MO - OR4F"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    }
+  ]
+}

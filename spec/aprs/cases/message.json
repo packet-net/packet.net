@@ -1,0 +1,77 @@
+{
+  "cases": [
+    {
+      "id": "message/with-id",
+      "description": "A message with a message ID, so it expects an ack.",
+      "source": "APRS12c ch. 14",
+      "authority": "spec",
+      "input": {"info": ":WU2Z     :Testing{003"},
+      "expect": {
+        "data": {"type": "message", "addressee": "WU2Z", "text": "Testing", "message_id": "003"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "message/ack",
+      "description": "An ack for message 003.",
+      "source": "APRS12c ch. 14",
+      "authority": "spec",
+      "input": {"info": ":KB2ICI-14:ack003"},
+      "expect": {
+        "data": {"type": "ack", "addressee": "KB2ICI-14", "acked_id": "003"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "message/reply-ack",
+      "description": "A reply-ack message: its own ID 12 and an ack for 34 in one.",
+      "source": "APRS12c ch. 14",
+      "authority": "spec",
+      "input": {"info": ":WU2Z     :Hello again{12}34"},
+      "expect": {
+        "data": {"type": "message", "addressee": "WU2Z", "text": "Hello again", "reply_ack": "34", "message_id": "12"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "message/announcement",
+      "description": "BLN then a letter: an announcement.",
+      "source": "APRS12c ch. 14",
+      "authority": "spec",
+      "input": {"info": ":BLNQ     :Mt St Helen digi will be QRT this weekend"},
+      "expect": {
+        "data": {"type": "bulletin", "addressee": "BLNQ", "text": "Mt St Helen digi will be QRT this weekend"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "message/brace-in-text",
+      "description": "A { that does not start a valid message ID: a strict decoder rejects it, a lenient one keeps it as text.",
+      "source": "APRS12c ch. 14 (APRS-IS 2026-09-26)",
+      "authority": "spec",
+      "input": {"tnc2": "NEX7>APK005R,N2EDX,qAR,AE7AF::OTA      :cq{"},
+      "expect": {
+        "data": {"type": "message", "addressee": "OTA", "text": "cq{"},
+        "diagnostics": ["warning:brace-in-message-text"]
+      },
+      "strict": {"rejected_by": "brace-in-message-text"},
+      "reencode": "refused"
+    },
+    {
+      "id": "message/directed-query",
+      "description": "A directed query asking a station for the stations it hears directly.",
+      "source": "APRS12c ch. 15",
+      "authority": "spec",
+      "input": {"info": ":KH2Z     :?APRSD"},
+      "expect": {
+        "data": {"type": "directed-query", "addressee": "KH2Z", "query_type": "APRSD"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    }
+  ]
+}

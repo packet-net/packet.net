@@ -1,0 +1,66 @@
+{
+  "cases": [
+    {
+      "id": "status/timestamped",
+      "description": "A status report with a DHM timestamp.",
+      "source": "APRS12c ch. 16",
+      "authority": "spec",
+      "input": {"info": ">092345zNet Control Center"},
+      "expect": {
+        "data": {"type": "status", "timestamp": "092345z", "text": "Net Control Center"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "capabilities/igate",
+      "description": "Station capabilities: TOKEN and TOKEN=VALUE items.",
+      "source": "APRS12c ch. 15",
+      "authority": "spec",
+      "input": {"info": "<IGATE,MSG_CNT=43,LOC_CNT=14"},
+      "expect": {
+        "data": {"type": "capabilities", "capabilities": [["IGATE"], ["MSG_CNT", "43"], ["LOC_CNT", "14"]]}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "nmea/rmc",
+      "description": "A raw NMEA RMC sentence with a valid checksum.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "$GPRMC,063909,A,3349.4302,N,11700.3721,W,43.022,89.3,291099,13.6,E*52"},
+      "expect": {
+        "data": {"type": "nmea", "sentence": "GPRMC,063909,A,3349.4302,N,11700.3721,W,43.022,89.3,291099,13.6,E*52", "has_checksum": true, "latitude": 33.823836666666665, "longitude": -117.00620166666667, "fix": "valid", "course_degrees": 89.3, "speed_knots": 43.022, "time": "06:39:09"},
+        "diagnostics": ["info:obsolete-format"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "nmea/checksum-mismatch",
+      "description": "A corrupted NMEA sentence (the longitude has lost characters) whose checksum does not match: an error in both modes.",
+      "source": "NMEA 0183 (APRS-IS 2026-09-26)",
+      "authority": "interpretation",
+      "interpretations": ["raw-nmea-with-a-checksum-that-doesnt-match"],
+      "input": {"tnc2": "N3EG-9>GPSMV,NICOLI,WIDE1,WICKI*,qAS,N3EG:$GPRMC,224137.000,A,4609.2815,N8.9077,W,29.11,125.01,250926,,,A*4B"},
+      "expect": {
+        "data": {"type": "unrecognized", "reason": "malformed"},
+        "diagnostics": ["info:obsolete-format", "error:nmea-checksum-mismatch"]
+      },
+      "strict": "same"
+    },
+    {
+      "id": "third-party/message",
+      "description": "Third-party traffic: an IGate relays an APRS-IS message to RF.",
+      "source": "APRS12c ch. 17",
+      "authority": "spec",
+      "input": {"tnc2": "G9RXG>APxxxx,WIDE2-2:}WB4APR-14>APxxxx,TCPIP,G9RXG*::G3NRW    :Hi Ian{001"},
+      "expect": {
+        "data": {"type": "third-party", "packet": {"source": "WB4APR-14", "destination": "APxxxx", "path": ["TCPIP*", "G9RXG*"], "data": {"type": "message", "addressee": "G3NRW", "text": "Hi Ian", "message_id": "001"}}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    }
+  ]
+}

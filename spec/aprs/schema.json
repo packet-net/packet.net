@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/packet-net/packet.net/blob/main/spec/aprs/schema.json",
+  "title": "APRS conformance vector file",
+  "description": "A file of cases in spec/aprs/cases. See spec/aprs/README.md for what each key means and how to compare results.",
+  "type": "object",
+  "required": ["cases"],
+  "additionalProperties": false,
+  "properties": {
+    "cases": { "type": "array", "items": { "$ref": "#/$defs/case" } }
+  },
+  "$defs": {
+    "diagnostic": { "type": "string", "pattern": "^(info|warning|error):[a-z0-9]+(-[a-z0-9]+)*$" },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "code": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "data": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["position", "mic-e", "object", "item", "message", "ack", "reject", "bulletin", "nws-bulletin",
+                   "telemetry-names", "telemetry-units", "telemetry-coefficients", "telemetry-bits", "directed-query",
+                   "status", "telemetry", "weather", "raw-weather", "nmea", "maidenhead-beacon", "query", "capabilities",
+                   "third-party", "user-defined", "test", "agrelo-df", "unrecognized"]
+        }
+      }
+    },
+    "header": {
+      "type": "object",
+      "required": ["source", "destination"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": "string" },
+        "destination": { "type": "string" },
+        "path": { "type": "array", "items": { "type": "string" } },
+        "q_construct": {
+          "type": "object",
+          "required": ["construct"],
+          "additionalProperties": false,
+          "properties": { "construct": { "type": "string" }, "station": { "type": "string" } }
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "required": ["id", "description", "source", "authority", "input", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]+/[a-z0-9-]+$" },
+        "description": { "type": "string" },
+        "source": { "type": "string" },
+        "authority": { "enum": ["spec", "interpretation", "observed"] },
+        "interpretations": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tnc2": { "type": "string" },
+            "tnc2_hex": { "type": "string", "pattern": "^([0-9A-Fa-f]{2})*$" },
+            "ax25_hex": { "type": "string", "pattern": "^([0-9A-Fa-f]{2})*$" },
+            "info": { "type": "string" },
+            "info_hex": { "type": "string", "pattern": "^([0-9A-Fa-f]{2})*$" },
+            "encode": { "$ref": "#/$defs/data" },
+            "source": { "type": "string" },
+            "destination": { "type": "string" },
+            "path": { "type": "array", "items": { "type": "string" } }
+          },
+          "oneOf": [
+            { "required": ["tnc2"] }, { "required": ["tnc2_hex"] }, { "required": ["ax25_hex"] },
+            { "required": ["info"] }, { "required": ["info_hex"] }, { "required": ["encode"] }
+          ]
+        },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "data": { "$ref": "#/$defs/data" },
+            "diagnostics": { "$ref": "#/$defs/diagnostics" },
+            "header": { "$ref": "#/$defs/header" },
+            "header_error": { "$ref": "#/$defs/diagnostics" },
+            "device": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "vendor": { "type": "string" }, "model": { "type": "string" } }
+            },
+            "info": { "type": "string" },
+            "refused": { "const": true }
+          }
+        },
+        "strict": {
+          "oneOf": [
+            { "const": "same" },
+            {
+              "type": "object",
+              "required": ["rejected_by"],
+              "additionalProperties": false,
+              "properties": { "rejected_by": { "$ref": "#/$defs/code" }, "header": { "type": "boolean" } }
+            },
+            {
+              "type": "object",
+              "required": ["data"],
+              "additionalProperties": false,
+              "properties": { "data": { "$ref": "#/$defs/data" }, "diagnostics": { "$ref": "#/$defs/diagnostics" } }
+            }
+          ]
+        },
+        "reencode": { "enum": ["identical", "equivalent", "refused"] },
+        "canonical_info": { "type": "string" }
+      }
+    }
+  }
+}

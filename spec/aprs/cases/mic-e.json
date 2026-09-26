@@ -1,0 +1,41 @@
+{
+  "cases": [
+    {
+      "id": "mic-e/spec-worked-example",
+      "description": "The spec's worked example: latitude, the Returning message and the +100 longitude offset in the destination; longitude, course, speed and symbol in the information field.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"tnc2": "N0CALL>S32UVT:`(_fn\"Oj/"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/yaesu-ftm-400dr",
+      "description": "A Yaesu FTM-400DR identified by the _% suffix, with altitude.",
+      "source": "UAP 2.2",
+      "authority": "spec",
+      "input": {"tnc2": "N1JCM-9>TRQP7T,WA1PLE-4*:`c'wl|+>/`\"4-}_%"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "off-duty", "type_code": "`", "device_suffix": "_%", "latitude": 42.179, "longitude": -71.1985, "symbol": "/>", "course_degrees": 215, "speed_knots": 9, "altitude_feet": 72.1784776902887},
+        "device": {"vendor": "Yaesu", "model": "FTM-400DR"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/grid-locator",
+      "description": "A Maidenhead locator with the /G symbol at the start of the status text.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"tnc2": "N0CALL>S32UVT:`(_fn\"Oj/`IO91SX/G Helloworld"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": "`", "locator": "IO91SX", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "comment": "Helloworld"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    }
+  ]
+}

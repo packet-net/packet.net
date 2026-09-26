@@ -118,8 +118,11 @@ public class ToleranceTests : AprsSpec
     {
         GivenPacket("UNCAN>APOT30:!4258.99N/07135.29W# 10.8V 98F PHG37306/ N1PA-Mt Uncanoonuc Digi");
         WhenDecoded();
-        ThenDataIs<AprsPositionReport>().Phg.Should().Be(new AprsPhg(3, 7, 3, 0));
+        // "PHG37306/" is PHGR: the rate 6 and '/' belong to it (UAP 5.15 shows it moved to the front whole).
+        ThenDataIs<AprsPositionReport>().Phg.Should().Be(new AprsPhg(3, 7, 3, 0, 6));
+        ThenCommentIs("10.8V 98F  N1PA-Mt Uncanoonuc Digi");
         ThenToleratedWith(AprsDiagnosticCode.DataExtensionInComment);
+        ThenRoundTrips();
     }
 
     [Fact]

@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "id": "encode/position-with-course-speed",
+      "description": "A messaging-capable position with course, speed and a comment.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"encode": {"type": "position", "messaging": true, "latitude": 51.5, "longitude": -0.11666666666666667, "symbol": "/>", "course_degrees": 88, "speed_knots": 36, "comment": "Mobile"}},
+      "expect": {
+        "info": "=5130.00N/00007.00W>088/036Mobile"
+      }
+    },
+    {
+      "id": "encode/message-with-id",
+      "description": "A message wanting an ack: the addressee padded to 9 characters, the ID after {.",
+      "source": "APRS12c ch. 14",
+      "authority": "spec",
+      "input": {"encode": {"type": "message", "addressee": "N0CALL-7", "text": "Meet at the club at 8?", "message_id": "42"}},
+      "expect": {
+        "info": ":N0CALL-7 :Meet at the club at 8?{42"
+      }
+    },
+    {
+      "id": "encode/message-text-too-long",
+      "description": "Message text over 67 characters: receivers accept it, but a sender must not write it.",
+      "source": "APRS12c ch. 14",
+      "authority": "spec",
+      "input": {"encode": {"type": "message", "addressee": "N0CALL", "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}},
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "id": "encode/comment-that-reads-as-altitude",
+      "description": "Comment text that would read back as an /A= altitude: the encoder must refuse it rather than change its meaning.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"encode": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/-", "comment": "/A=001234"}},
+      "expect": {
+        "refused": true
+      }
+    }
+  ]
+}

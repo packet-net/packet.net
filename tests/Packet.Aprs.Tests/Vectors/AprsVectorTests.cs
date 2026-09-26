@@ -1,0 +1,359 @@
+using System.Reflection;
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+
+namespace Packet.Aprs.Tests.Vectors;
+
+/// <summary>
+/// Runs the language-neutral cases in <c>spec/aprs/cases</c> against Packet.Aprs, and checks the
+/// case files themselves. The format is described in <c>spec/aprs/README.md</c>; every test here
+/// is named by case id, and a failure lists each field that differs.
+/// </summary>
+public partial class AprsVectorTests
+{
+    public static TheoryData<string> DecodeCases => [.. VectorCases.Ids(c => !VectorCases.IsEncodeCase(c))];
+
+    public static TheoryData<string> FlagCases => [.. VectorCases.Ids(c => c["strict"] is JsonObject && FlagFor(c) is not null)];
+
+    public static TheoryData<string> ReencodeCases => [.. VectorCases.Ids(c => c["reencode"] is not null)];
+
+    public static TheoryData<string> EncodeCases => [.. VectorCases.Ids(VectorCases.IsEncodeCase)];
+
+    [Theory]
+    [MemberData(nameof(DecodeCases))]
+    public void Lenient_decoding(string id)
+    {
+        JsonObject c = VectorCases.Get(id);
+        AprsPacket? packet = VectorCases.Decode(Input(c), AprsParseOptions.Lenient, out var headerDiagnostics);
+        Pass(c, Check(c["expect"]!.AsObject(), packet, headerDiagnostics));
+    }
+
+    [Theory]
+    [MemberData(nameof(DecodeCases))]
+    public void Strict_decoding(string id)
+    {
+        JsonObject c = VectorCases.Get(id);
+        AprsPacket? packet = VectorCases.Decode(Input(c), AprsParseOptions.Strict, out var headerDiagnostics);
+        Pass(c, CheckStrict(c, packet, headerDiagnostics));
+    }
+
+    /// <summary>Where strict and lenient differ, turning off only the flag for that deviation gives the strict result.</summary>
+    [Theory]
+    [MemberData(nameof(FlagCases))]
+    public void Only_its_own_flag_makes_the_difference(string id)
+    {
+        JsonObject c = VectorCases.Get(id);
+        PropertyInfo flag = typeof(AprsParseOptions).GetProperty(FlagFor(c)!)!;
+        AprsParseOptions options = AprsParseOptions.Lenient with { };
+        flag.SetValue(options, false);
+        AprsPacket? packet = VectorCases.Decode(Input(c), options, out var headerDiagnostics);
+        Pass(c, CheckStrict(c, packet, headerDiagnostics), $"with only {flag.Name} off");
+    }
+
+    [Theory]
+    [MemberData(nameof(ReencodeCases))]
+    public void Reencoding(string id)
+    {
+        JsonObject c = VectorCases.Get(id);
+        AprsPacket packet = VectorCases.Decode(Input(c), AprsParseOptions.Lenient, out _)!;
+        string expected = (string)c["reencode"]!;
+        byte[] info;
+        try
+        {
+            info = packet.Data is AprsMicEReport mic ? AprsPacket.CreateMicE(packet.Source, mic, packet.Path).Information.ToArray() : packet.Data.ToInformationField();
+        }
+        catch (ArgumentException ex)
+        {
+            Pass(c, expected == "refused" ? [] : [$"reencode: expected {expected}, but the encoder refused: {ex.Message}"]);
+            return;
+        }
+
+        var differences = new List<string>();
+        byte[] original = packet.Information.ToArray();
+        int end = original.Length;
+        while (end > 0 && original[end - 1] is (byte)'\r' or (byte)'\n')
+        {
+            end--;
+        }
+
+        switch (expected)
+        {
+            case "refused":
+                differences.Add($"reencode: expected the encoder to refuse, it wrote {Show(info)}");
+                break;
+            case "identical":
+                if (!info.AsSpan().SequenceEqual(original.AsSpan(0, end)))
+                {
+                    differences.Add($"reencode: expected the input back, got {Show(info)}");
+                }
+
+                if (packet.Data is AprsMicEReport m && AprsPacket.CreateMicE(packet.Source, m).Destination != packet.Destination)
+                {
+                    differences.Add($"reencode: expected the Mic-E destination {packet.Destination} back, got {AprsPacket.CreateMicE(packet.Source, m).Destination}");
+                }
+
+                break;
+            case "equivalent":
+                AprsPacket again = AprsPacket.Decode(packet.Source, packet.Destination, packet.Path, info);
+                differences.AddRange(JsonMatch.Differences(NeutralJson.Data(packet.Data), NeutralJson.Data(again.Data)).Select(d => "reencode: " + d));
+                if (again.HasErrors || again.HasWarnings)
+                {
+                    differences.Add($"reencode: {Show(info)} decodes with {string.Join(", ", again.Diagnostics.Select(d => NeutralJson.Diagnostic(d.Severity, d.Code)))}");
+                }
+
+                if (c["canonical_info"] is { } canonical && (string)canonical! != System.Text.Encoding.UTF8.GetString(info))
+                {
+                    differences.Add($"canonical_info: expected {canonical.ToJsonString()}, wrote {Show(info)}");
+                }
+
+                break;
+            default:
+                differences.Add($"reencode: unknown expectation '{expected}'");
+                break;
+        }
+
+        Pass(c, differences);
+    }
+
+    [Theory]
+    [MemberData(nameof(EncodeCases))]
+    public void Encoding_from_data(string id)
+    {
+        JsonObject c = VectorCases.Get(id);
+        JsonObject input = Input(c);
+        JsonObject expect = c["expect"]!.AsObject();
+        AprsData data = NeutralReader.Data(input["encode"]!.AsObject());
+        byte[] info;
+        try
+        {
+            info = AprsPacket.Create(VectorCases.Source(input), VectorCases.Destination(input), data).Information.ToArray();
+        }
+        catch (ArgumentException ex)
+        {
+            Pass(c, (bool?)expect["refused"] == true ? [] : [$"encode: expected {expect["info"]?.ToJsonString()}, but the encoder refused: {ex.Message}"]);
+            return;
+        }
+
+        Pass(c, (bool?)expect["refused"] == true
+            ? [$"encode: expected a refusal, wrote {Show(info)}"]
+            : System.Text.Encoding.UTF8.GetString(info) == (string)expect["info"]! ? [] : [$"encode: expected {expect["info"]!.ToJsonString()}, wrote {Show(info)}"]);
+    }
+
+    // ------------------------------------------------------------------ the case files
+
+    private static readonly string[] CaseKeys = ["id", "description", "source", "authority", "interpretations", "input", "expect", "strict", "reencode", "canonical_info"];
+    private static readonly string[] InputKeys = ["tnc2", "tnc2_hex", "ax25_hex", "info", "info_hex", "encode", "source", "destination", "path"];
+    private static readonly string[] ExpectKeys = ["data", "diagnostics", "header", "header_error", "device", "info", "refused"];
+    private static readonly string[] Authorities = ["spec", "interpretation", "observed"];
+
+    [Fact]
+    public void Every_case_is_well_formed()
+    {
+        HashSet<string> codes = [.. CodeCatalogue().Select(c => (string)c["id"]!)];
+        HashSet<string> anchors = [.. InterpretationAnchors()];
+        var problems = new List<string>();
+        foreach (var (id, c) in VectorCases.ById)
+        {
+            void Problem(string what) => problems.Add($"{id}: {what}");
+            foreach (string key in new[] { "id", "description", "source", "authority", "input", "expect" }.Where(k => c[k] is null))
+            {
+                Problem($"missing '{key}'");
+            }
+
+            problems.AddRange(Unknown(c, CaseKeys).Select(k => $"{id}: unknown key '{k}'"));
+            problems.AddRange(Unknown(c["input"]!.AsObject(), InputKeys).Select(k => $"{id}: unknown input key '{k}'"));
+            problems.AddRange(Unknown(c["expect"]!.AsObject(), ExpectKeys).Select(k => $"{id}: unknown expect key '{k}'"));
+            if (!Authorities.Contains((string?)c["authority"]))
+            {
+                Problem($"authority must be one of {string.Join(", ", Authorities)}");
+            }
+
+            if ((string?)c["authority"] == "interpretation" && c["interpretations"] is null)
+            {
+                Problem("an interpretation case must link the interpretation it depends on");
+            }
+
+            foreach (string anchor in c["interpretations"]?.AsArray().Select(a => (string)a!) ?? [])
+            {
+                if (!anchors.Contains(anchor))
+                {
+                    Problem($"no heading '#{anchor}' in docs/aprs-spec-interpretations.md");
+                }
+            }
+
+            foreach (string diagnostic in DiagnosticsIn(c))
+            {
+                string[] parts = diagnostic.Split(':');
+                if (parts.Length != 2 || parts[0] is not ("info" or "warning" or "error") || !codes.Contains(parts[1]))
+                {
+                    Problem($"'{diagnostic}' is not severity:code with a code from codes.json");
+                }
+            }
+
+            if (c["strict"] is JsonObject { } strict && strict["rejected_by"] is { } rejectedBy && !codes.Contains((string)rejectedBy!))
+            {
+                Problem($"rejected_by '{rejectedBy}' is not in codes.json");
+            }
+        }
+
+        problems.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_code_catalogue_matches_the_library()
+    {
+        JsonObject[] catalogue = [.. CodeCatalogue()];
+        catalogue.Select(c => (string)c["id"]!).Should().BeEquivalentTo(Enum.GetNames<AprsDiagnosticCode>().Select(NeutralJson.Kebab), "every AprsDiagnosticCode has exactly one entry in spec/aprs/codes.json");
+        catalogue.Where(c => (bool)c["tolerable"]!).Select(c => (string)c["id"]!).Should().BeEquivalentTo(Flags.Keys, "a code is tolerable exactly when an AprsParseOptions flag tolerates it");
+        Flags.Values.Should().BeEquivalentTo(typeof(AprsParseOptions).GetProperties().Where(p => p.PropertyType == typeof(bool)).Select(p => p.Name), "every flag is mapped to the code it tolerates");
+    }
+
+    /// <summary>Which AprsParseOptions flag tolerates each code. Packet.Aprs's own detail, kept out of the neutral files.</summary>
+    private static readonly Dictionary<string, string> Flags = new()
+    {
+        ["trailing-line-break"] = nameof(AprsParseOptions.StripTrailingLineBreaks),
+        ["non-utf8-text"] = nameof(AprsParseOptions.AllowNonUtf8Text),
+        ["lowercase-hemisphere"] = nameof(AprsParseOptions.AllowLowercaseHemisphere),
+        ["out-of-range-value"] = nameof(AprsParseOptions.AllowOutOfRangeValues),
+        ["object-without-timestamp"] = nameof(AprsParseOptions.AllowObjectWithoutTimestamp),
+        ["object-name-not-padded"] = nameof(AprsParseOptions.AllowShortObjectName),
+        ["incomplete-weather"] = nameof(AprsParseOptions.AllowIncompleteWeather),
+        ["weather-comment"] = nameof(AprsParseOptions.AllowWeatherComment),
+        ["data-extension-in-comment"] = nameof(AprsParseOptions.RecognizeDataExtensionInComment),
+        ["kenwood-ff-padding"] = nameof(AprsParseOptions.AllowKenwoodFfPadding),
+        ["empty-destination"] = nameof(AprsParseOptions.AllowEmptyDestination),
+        ["empty-path-entry"] = nameof(AprsParseOptions.AllowEmptyPathEntry),
+        ["multiple-used-markers"] = nameof(AprsParseOptions.AllowMultipleUsedMarkers),
+        ["nul-padded-address"] = nameof(AprsParseOptions.AllowNulPaddedAddress),
+        ["message-id-on-ack"] = nameof(AprsParseOptions.AllowMessageIdOnAck),
+        ["unpadded-addressee"] = nameof(AprsParseOptions.AllowUnpaddedAddressee),
+        ["invalid-ax25-address-characters"] = nameof(AprsParseOptions.AllowInvalidAx25AddressCharacters),
+        ["missing-space-after-locator"] = nameof(AprsParseOptions.AllowMissingSpaceAfterLocator),
+        ["invalid-telemetry"] = nameof(AprsParseOptions.AllowIncompleteTelemetry),
+        ["compression-type-reserved-bits"] = nameof(AprsParseOptions.AllowCompressionTypeReservedBits),
+        ["invalid-timestamp"] = nameof(AprsParseOptions.AllowInvalidTimestamp),
+        ["malformed-timestamp"] = nameof(AprsParseOptions.AllowMalformedTimestamp),
+        ["position-not-at-start"] = nameof(AprsParseOptions.AllowPositionNotAtStart),
+        ["non-standard-weather-field-width"] = nameof(AprsParseOptions.AllowNonStandardWeatherFieldWidths),
+        ["wind-fields-instead-of-extension"] = nameof(AprsParseOptions.AllowWindFieldsInPositionWeather),
+        ["wind-extension-after-compressed"] = nameof(AprsParseOptions.AllowWindExtensionAfterCompressed),
+        ["mic-e-altitude-not-first"] = nameof(AprsParseOptions.AllowMicEAltitudeAnywhere),
+        ["dao-with-ambiguity"] = nameof(AprsParseOptions.AllowDaoWithAmbiguity),
+        ["brace-in-message-text"] = nameof(AprsParseOptions.AllowBraceInMessageText),
+        ["invalid-addressee-characters"] = nameof(AprsParseOptions.AllowInvalidAddresseeCharacters),
+        ["letter-group-bulletin"] = nameof(AprsParseOptions.AllowLetterGroupBulletin),
+        ["free-text-capabilities"] = nameof(AprsParseOptions.AllowFreeTextCapabilities),
+    };
+
+    // ------------------------------------------------------------------ checking
+
+    private static IReadOnlyList<string> Check(JsonObject expect, AprsPacket? packet, IReadOnlyList<AprsDiagnostic> headerDiagnostics)
+    {
+        var differences = new List<string>();
+        if (expect["header_error"] is { } headerError)
+        {
+            if (packet is not null)
+            {
+                return [$"expected a header error, decoded {NeutralJson.Data(packet.Data).ToJsonString()}"];
+            }
+
+            return JsonMatch.DiagnosticDifferences(headerError, Strings(headerDiagnostics));
+        }
+
+        if (packet is null)
+        {
+            return [$"header error: {string.Join(", ", Strings(headerDiagnostics))}"];
+        }
+
+        differences.AddRange(JsonMatch.Differences(expect["data"], NeutralJson.Data(packet.Data)));
+        differences.AddRange(JsonMatch.DiagnosticDifferences(expect["diagnostics"], Strings(packet.Diagnostics)));
+        if (expect["header"] is { } header)
+        {
+            differences.AddRange(JsonMatch.Differences(header, NeutralJson.Header(packet)).Select(d => "header" + d.TrimStart('$')));
+        }
+
+        if (expect["device"] is JsonObject device)
+        {
+            AprsDevice? found = AprsDeviceIdentification.Identify(packet);
+            JsonObject actual = found is null ? [] : new JsonObject { ["vendor"] = found.Vendor, ["model"] = found.Model };
+            differences.AddRange(JsonMatch.Differences(device, actual).Select(d => "device" + d.TrimStart('$')));
+        }
+
+        return differences;
+    }
+
+    private static IReadOnlyList<string> CheckStrict(JsonObject c, AprsPacket? packet, IReadOnlyList<AprsDiagnostic> headerDiagnostics)
+    {
+        switch (c["strict"])
+        {
+            case null:
+            case JsonValue v when (string)v! == "same":
+                return Check(c["expect"]!.AsObject(), packet, headerDiagnostics);
+            case JsonObject s when s["rejected_by"] is { } code:
+                string error = $"error:{(string)code!}";
+                if ((bool?)s["header"] == true)
+                {
+                    return packet is null && Strings(headerDiagnostics).Contains(error) ? []
+                        : [$"strict: expected the header to be rejected with {error}, got {Describe(packet, headerDiagnostics)}"];
+                }
+
+                return packet is { Data: AprsUnrecognizedData { Reason: AprsUnrecognizedReason.Malformed } } && Strings(packet.Diagnostics).Contains(error) ? []
+                    : [$"strict: expected rejection with {error}, got {Describe(packet, headerDiagnostics)}"];
+            case JsonObject s:
+                return Check(s, packet, headerDiagnostics);
+            default:
+                return [$"strict: unknown expectation {c["strict"]!.ToJsonString()}"];
+        }
+    }
+
+    /// <summary>The flag behind a case's strict difference: the code it is rejected by, or the lenient warning a strict reading drops.</summary>
+    private static string? FlagFor(JsonObject c)
+    {
+        if (c["strict"] is JsonObject { } s && s["rejected_by"] is { } code)
+        {
+            return Flags.GetValueOrDefault((string)code!);
+        }
+
+        return (c["expect"]!["diagnostics"] as JsonArray)?.Select(d => ((string)d!).Split(':')[1]).Select(Flags.GetValueOrDefault).FirstOrDefault(f => f is not null);
+    }
+
+    private static void Pass(JsonObject c, IReadOnlyList<string> differences, string? how = null)
+    {
+        if (differences.Count > 0)
+        {
+            string header = $"{(string)c["id"]!}{(how is null ? "" : $" ({how})")}: {(string)c["description"]!}";
+            differences.Should().BeEmpty(header + Environment.NewLine + JsonMatch.Describe(differences));
+        }
+    }
+
+    private static JsonObject Input(JsonObject c) => c["input"]!.AsObject();
+
+    private static IEnumerable<string> Strings(IEnumerable<AprsDiagnostic> diagnostics) => diagnostics.Select(d => NeutralJson.Diagnostic(d.Severity, d.Code));
+
+    private static string Describe(AprsPacket? packet, IReadOnlyList<AprsDiagnostic> headerDiagnostics) =>
+        packet is null ? $"header error ({string.Join(", ", Strings(headerDiagnostics))})"
+            : $"{NeutralJson.Data(packet.Data).ToJsonString()} with [{string.Join(", ", Strings(packet.Diagnostics))}]";
+
+    private static string Show(byte[] info) => JsonValue.Create(System.Text.Encoding.Latin1.GetString(info)).ToJsonString();
+
+    private static IEnumerable<string> Unknown(JsonObject o, string[] known) => o.Select(kv => kv.Key).Except(known);
+
+    private static IEnumerable<string> DiagnosticsIn(JsonObject c)
+    {
+        IEnumerable<JsonNode?> lists = [c["expect"]!["diagnostics"], c["expect"]!["header_error"], (c["strict"] as JsonObject)?["diagnostics"]];
+        return lists.OfType<JsonArray>().SelectMany(a => a.Select(d => (string)d!));
+    }
+
+    private static IEnumerable<JsonObject> CodeCatalogue() =>
+        JsonNode.Parse(File.ReadAllText(Path.Combine(VectorCases.Directory, "codes.json")))!["codes"]!.AsArray().Select(n => n!.AsObject());
+
+    /// <summary>GitHub's anchors for the headings of docs/aprs-spec-interpretations.md.</summary>
+    private static IEnumerable<string> InterpretationAnchors() =>
+        File.ReadAllLines(TestPaths.InRepo("docs", "aprs-spec-interpretations.md"))
+            .Where(l => l.StartsWith("## ", StringComparison.Ordinal))
+            .Select(l => AnchorPunctuation().Replace(l[3..].Trim().ToLowerInvariant(), "").Replace(' ', '-'));
+
+    [GeneratedRegex(@"[^a-z0-9 _-]")]
+    private static partial Regex AnchorPunctuation();
+}

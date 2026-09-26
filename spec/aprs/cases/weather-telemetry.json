@@ -1,0 +1,66 @@
+{
+  "cases": [
+    {
+      "id": "weather/positionless",
+      "description": "A positionless weather report with an MDHM timestamp and software/unit type.",
+      "source": "APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"info": "_10090556c220s004g005t077r000p000P000h50b09900wRSW"},
+      "expect": {
+        "data": {"type": "weather", "timestamp": "10090556", "weather": {"wind_direction_degrees": 220, "wind_speed_mph": 4, "wind_gust_mph": 5, "temperature_f": 77, "rain_1h_in": 0, "rain_24h_in": 0, "rain_midnight_in": 0, "humidity_percent": 50, "pressure_mbar": 990, "software": "w", "unit": "RSW"}},
+        "diagnostics": ["info:obsolete-format"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather/with-comment",
+      "description": "A weather report with a comment, which the spec does not allow: rejected when strict, kept as the comment when lenient.",
+      "source": "UAP 2.7.1, APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"tnc2": "W1TG2>APU25N,UNCAN*:@091842z4256.20N/07049.42W_310/004g015t081r000p033P002h54b10001/ - Hampton, NH Wx"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "091842z", "messaging": true, "latitude": 42.93666666666667, "longitude": -70.82366666666667, "symbol": "/_", "weather": {"wind_direction_degrees": 310, "wind_speed_mph": 4, "wind_gust_mph": 15, "temperature_f": 81, "rain_1h_in": 0, "rain_24h_in": 0.33, "rain_midnight_in": 0.02, "humidity_percent": 54, "pressure_mbar": 1000.1}, "comment": " - Hampton, NH Wx"},
+        "diagnostics": ["warning:weather-comment"]
+      },
+      "strict": {"rejected_by": "weather-comment"},
+      "reencode": "refused"
+    },
+    {
+      "id": "telemetry/report",
+      "description": "A telemetry report: sequence, five analog values, eight bits.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "T#005,199,000,255,073,123,01101001"},
+      "expect": {
+        "data": {"type": "telemetry", "sequence": "005", "analog": [199, 0, 255, 73, 123], "bits": "01101001"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "telemetry/base91-in-comment",
+      "description": "Base-91 telemetry at the end of a position comment.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75W-Hello|ss11|"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/-", "telemetry": {"sequence": 7544, "analog": [1472]}, "comment": "Hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "telemetry/parameter-names",
+      "description": "PARM. names the channels, sent as a message to the station itself.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": ":N0QBF-11 :PARM.Battery,Btemp,ATemp,Pres,Alt,Camra,Chut,Sun,10m,ATV"},
+      "expect": {
+        "data": {"type": "telemetry-names", "addressee": "N0QBF-11", "names": ["Battery", "Btemp", "ATemp", "Pres", "Alt", "Camra", "Chut", "Sun", "10m", "ATV"]}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    }
+  ]
+}

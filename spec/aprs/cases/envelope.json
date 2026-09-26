@@ -1,0 +1,68 @@
+{
+  "cases": [
+    {
+      "id": "envelope/digipeated-path",
+      "description": "A TNC2 header whose path has been digipeated twice.",
+      "source": "UAP 1",
+      "authority": "spec",
+      "input": {"tnc2": "WB2OSZ>APDW18,N2GH,W2UB*,WIDE2-1:>hello"},
+      "expect": {
+        "header": {"source": "WB2OSZ", "destination": "APDW18", "path": ["N2GH*", "W2UB*", "WIDE2-1"]},
+        "data": {"type": "status", "text": "hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "envelope/q-construct",
+      "description": "An APRS-IS header with a q-construct naming the IGate.",
+      "source": "APRS-IS",
+      "authority": "spec",
+      "input": {"tnc2": "N0CALL-9>APZ001,WIDE1-1,qAR,M0LTE-10:>hello"},
+      "expect": {
+        "header": {"source": "N0CALL-9", "destination": "APZ001", "path": ["WIDE1-1", "qAR", "M0LTE-10"], "q_construct": {"construct": "qAR", "station": "M0LTE-10"}},
+        "data": {"type": "status", "text": "hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "envelope/ax25-frame",
+      "description": "The same kind of packet as an AX.25 UI frame (KISS form: no flags, no FCS).",
+      "source": "APRS12c ch. 3",
+      "authority": "spec",
+      "input": {"ax25_hex": "82A0B4606062E09A6098A88A40729A6098A88A40E2AE92888A64406303F03E68656C6C6F"},
+      "expect": {
+        "header": {"source": "M0LTE-9", "destination": "APZ001", "path": ["M0LTE-1*", "WIDE2-1"]},
+        "data": {"type": "status", "text": "hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "envelope/no-header",
+      "description": "A line with no SOURCE>DEST: header cannot be decoded at all.",
+      "source": "UAP 1",
+      "authority": "spec",
+      "input": {"tnc2": "no header at all"},
+      "expect": {
+        "header_error": ["error:invalid-header"]
+      },
+      "strict": "same"
+    },
+    {
+      "id": "envelope/multiple-used-markers",
+      "description": "Several path entries marked * : a strict decoder rejects the header, a lenient one takes the last as the last used.",
+      "source": "UAP 5.30",
+      "authority": "spec",
+      "input": {"tnc2": "K2CAT-1>APAT51,K2RVW-1*,WIDE1*,WIDE2-2,qAR,N1ATP-12:!4150.67N/07404.71W-000/000/A=000000HVNY-73"},
+      "expect": {
+        "header": {"source": "K2CAT-1", "destination": "APAT51", "path": ["K2RVW-1*", "WIDE1*", "WIDE2-2", "qAR", "N1ATP-12"], "q_construct": {"construct": "qAR", "station": "N1ATP-12"}},
+        "data": {"type": "position", "latitude": 41.8445, "longitude": -74.0785, "symbol": "/-", "course_degrees": 0, "speed_knots": 0, "altitude_feet": 0, "comment": "HVNY-73"},
+        "diagnostics": ["warning:multiple-used-markers"]
+      },
+      "strict": {"rejected_by": "multiple-used-markers", "header": true},
+      "reencode": "identical"
+    }
+  ]
+}

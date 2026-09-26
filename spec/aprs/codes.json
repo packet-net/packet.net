@@ -1,0 +1,325 @@
+{
+  "description": "Every diagnostic code the vectors use. A tolerable code is one a lenient decoder may accept with a warning (a strict decoder rejects it); the others are errors in both modes, or information only. The ids are Packet.Aprs's AprsDiagnosticCode names in kebab-case.",
+  "codes": [
+    {
+      "id": "invalid-header",
+      "meaning": "/// Stable identifiers for decoding diagnostics. Values are never renumbered; new codes are added /// at the end. /// </summary> public enum AprsDiagnosticCode { // ---- envelope /// <summary>The TNC2 header is not SOURCE>DEST[,PATH]:.",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-address",
+      "meaning": "An address is empty, too long, or has characters that cannot appear in one.",
+      "tolerable": false
+    },
+    {
+      "id": "empty-destination",
+      "meaning": "The destination address is empty (UAP 5.2).",
+      "tolerable": true
+    },
+    {
+      "id": "empty-path-entry",
+      "meaning": "The digipeater path has an empty entry (UAP 5.6).",
+      "tolerable": true
+    },
+    {
+      "id": "multiple-used-markers",
+      "meaning": "More than one path entry is marked used with *; only the last used one should be (UAP 5.30).",
+      "tolerable": true
+    },
+    {
+      "id": "not-aprs-frame",
+      "meaning": "The AX.25 frame is not a UI frame with PID 0xF0, or is too short (APRS12c ch. 3).",
+      "tolerable": false
+    },
+    {
+      "id": "nul-padded-address",
+      "meaning": "An AX.25 address is padded with NUL rather than spaces (UAP 5.29).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-ax25-address-characters",
+      "meaning": "An AX.25 address has characters other than upper-case letters and digits.",
+      "tolerable": true
+    },
+    {
+      "id": "too-many-digipeaters",
+      "meaning": "The AX.25 frame has more than 8 digipeater addresses.",
+      "tolerable": false
+    },
+    {
+      "id": "trailing-line-break",
+      "meaning": "The information field ends with CR or LF (APRS12c ch. 5, UAP 5.13).",
+      "tolerable": true
+    },
+    {
+      "id": "non-utf8-text",
+      "meaning": "Text that is not valid UTF-8 (UAP 5.16).",
+      "tolerable": true
+    },
+    {
+      "id": "truncated",
+      "meaning": "The information field is shorter than its format requires.",
+      "tolerable": false
+    },
+    {
+      "id": "not-aprs",
+      "meaning": "The first byte is not a data type identifier (APRS12c ch. 20).",
+      "tolerable": false
+    },
+    {
+      "id": "reserved-data-type",
+      "meaning": "A reserved data type identifier with no defined format (APRS12c ch. 5).",
+      "tolerable": false
+    },
+    {
+      "id": "obsolete-format",
+      "meaning": "A format the spec marks obsolete or not recommended, e.g. raw NMEA or raw weather.",
+      "tolerable": false
+    },
+    {
+      "id": "out-of-range-value",
+      "meaning": "A value in a well-formed field is out of range and was dropped.",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-timestamp",
+      "meaning": "A timestamp is malformed or out of range (APRS12c ch. 6, UAP 5.8).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-position",
+      "meaning": "The position is missing or starts with something that cannot begin one.",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-latitude",
+      "meaning": "The latitude is malformed (APRS12c ch. 6, UAP 5.7).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-longitude",
+      "meaning": "The longitude is malformed (APRS12c ch. 6, UAP 5.7).",
+      "tolerable": false
+    },
+    {
+      "id": "lowercase-hemisphere",
+      "meaning": "A lower-case hemisphere letter (UAP 5.9).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-symbol-table",
+      "meaning": "The symbol table identifier is not /, \\, 0-9 or A-Z.",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-symbol-code",
+      "meaning": "The symbol code is not printable ASCII.",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-compressed-position",
+      "meaning": "A compressed position is malformed (APRS12c ch. 9).",
+      "tolerable": false
+    },
+    {
+      "id": "dao-with-ambiguity",
+      "meaning": "A !DAO! adds precision to an ambiguous position, which contradicts it.",
+      "tolerable": true
+    },
+    {
+      "id": "data-extension-in-comment",
+      "meaning": "A data extension (PHG, RNG, DFS) appears later in the comment (UAP 5.15).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-object-name",
+      "meaning": "The object name is empty or not printable ASCII.",
+      "tolerable": false
+    },
+    {
+      "id": "object-name-not-padded",
+      "meaning": "The object name is not padded to 9 characters.",
+      "tolerable": true
+    },
+    {
+      "id": "object-without-timestamp",
+      "meaning": "An object report has no timestamp (APRS12c ch. 11).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-item-name",
+      "meaning": "The item name is not 3-9 printable characters followed by ! or _.",
+      "tolerable": false
+    },
+    {
+      "id": "incomplete-weather",
+      "meaning": "A weather report lacks a mandatory field (APRS12c ch. 12).",
+      "tolerable": true
+    },
+    {
+      "id": "weather-comment",
+      "meaning": "Text after the weather data; weather reports have no comment (UAP 2.7.1, ch. 5.33).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-weather",
+      "meaning": "Positionless or raw weather data that could not be decoded.",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-mic-e-destination",
+      "meaning": "The destination address is not a valid Mic-E encoding (APRS12c ch. 10).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-mic-e-information",
+      "meaning": "The Mic-E information field is malformed (APRS12c ch. 10).",
+      "tolerable": false
+    },
+    {
+      "id": "kenwood-ff-padding",
+      "meaning": "Kenwood TM-D710 0xFF padding was removed (UAP 5.10).",
+      "tolerable": true
+    },
+    {
+      "id": "mic-e-missing-device-type",
+      "meaning": "A Mic-E report without a device type prefix (UAP 5.4).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-message",
+      "meaning": "A message is malformed (APRS12c ch. 14).",
+      "tolerable": false
+    },
+    {
+      "id": "unpadded-addressee",
+      "meaning": "The addressee is not padded to 9 characters.",
+      "tolerable": true
+    },
+    {
+      "id": "message-id-on-ack",
+      "meaning": "An ack or rej carries a message ID of its own (UAP 5.32).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-telemetry-metadata",
+      "meaning": "A telemetry metadata message (PARM/UNIT/EQNS/BITS) is malformed (APRS12c ch. 13).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-query",
+      "meaning": "A directed query is malformed (APRS12c ch. 15, UAP 5.18).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-telemetry",
+      "meaning": "A telemetry report is malformed (APRS12c ch. 13).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-status",
+      "meaning": "A status report is malformed (APRS12c ch. 16).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-locator",
+      "meaning": "A Maidenhead locator is malformed.",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-nmea",
+      "meaning": "An NMEA sentence is malformed.",
+      "tolerable": false
+    },
+    {
+      "id": "nmea-checksum-mismatch",
+      "meaning": "An NMEA sentence's checksum does not match, so the sentence is corrupt and is not decoded.",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-third-party",
+      "meaning": "A third-party header is malformed (APRS12c ch. 17).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-general-query",
+      "meaning": "A general query is malformed (APRS12c ch. 15).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-capabilities",
+      "meaning": "A station capabilities report is malformed (APRS12c ch. 15).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-user-defined",
+      "meaning": "A user-defined packet is shorter than its 3-byte header (APRS12c ch. 19).",
+      "tolerable": false
+    },
+    {
+      "id": "invalid-agrelo-df",
+      "meaning": "An Agrelo DF report is malformed.",
+      "tolerable": false
+    },
+    {
+      "id": "missing-space-after-locator",
+      "meaning": "A grid-locator status report lacks the mandatory space before its text (UAP 5.17).",
+      "tolerable": true
+    },
+    {
+      "id": "compression-type-reserved-bits",
+      "meaning": "A compressed position's type byte sets its unused high bits (APRS12c ch. 9).",
+      "tolerable": true
+    },
+    {
+      "id": "malformed-timestamp",
+      "meaning": "A timestamped position report whose timestamp is missing or not timestamp-shaped (UAP 5.8).",
+      "tolerable": true
+    },
+    {
+      "id": "position-not-at-start",
+      "meaning": "A ! position found after other text (obsolete TNC beacon rule).",
+      "tolerable": true
+    },
+    {
+      "id": "non-standard-weather-field-width",
+      "meaning": "A weather field is one character shorter or longer than its fixed width (UAP 5.31).",
+      "tolerable": true
+    },
+    {
+      "id": "wind-fields-instead-of-extension",
+      "meaning": "Wind sent as c/s fields in a position weather report instead of the DDD/SSS extension.",
+      "tolerable": true
+    },
+    {
+      "id": "wind-extension-after-compressed",
+      "meaning": "An uncompressed wind extension after a compressed weather position (UAP 5.33).",
+      "tolerable": true
+    },
+    {
+      "id": "mic-e-altitude-not-first",
+      "meaning": "A Mic-E altitude after other status text instead of first (APRS12c ch. 10).",
+      "tolerable": true
+    },
+    {
+      "id": "brace-in-message-text",
+      "meaning": "Message text contains a { that does not start a valid message ID (APRS12c ch. 14).",
+      "tolerable": true
+    },
+    {
+      "id": "invalid-addressee-characters",
+      "meaning": "A message addressee contains a space or : (APRS12c ch. 14).",
+      "tolerable": true
+    },
+    {
+      "id": "letter-group-bulletin",
+      "meaning": "A bulletin addressee has a group name after a letter, e.g. BLNCNET; group bulletins use a digit (APRS12c ch. 14).",
+      "tolerable": true
+    },
+    {
+      "id": "free-text-capabilities",
+      "meaning": "A < station capabilities packet holds free text rather than TOKEN / TOKEN=VALUE items (APRS12c ch. 15).",
+      "tolerable": true
+    }
+  ]
+}

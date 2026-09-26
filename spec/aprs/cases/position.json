@@ -1,0 +1,133 @@
+{
+  "cases": [
+    {
+      "id": "position/no-timestamp-with-comment",
+      "description": "A plain position report: no timestamp, no messaging, comment after the symbol.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75W-Test 001234"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/-", "comment": "Test 001234"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/timestamp-messaging-course-speed",
+      "description": "Local-time timestamp, messaging capable, course and speed extension.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "@092345/4903.50N/07201.75W>088/036"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345/", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "course_degrees": 88, "speed_knots": 36}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/phg",
+      "description": "PHG extension straight after the symbol.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "=4903.50N/07201.75W#PHG5132"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/#", "phg": {"power": 5, "height": 1, "gain": 3, "directivity": 2}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/ambiguity-4",
+      "description": "Position ambiguity to the nearest degree; the decoded point is the centre of that degree.",
+      "source": "APRS12c ch. 6",
+      "authority": "interpretation",
+      "interpretations": ["position-ambiguity-which-point-is-reported"],
+      "input": {"info": "!49  .  N/07201.75W-"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.5, "longitude": -72.5, "ambiguity": 4, "symbol": "/-"}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "!49  .  N/072  .  W-"
+    },
+    {
+      "id": "position/compressed-course-speed",
+      "description": "Compressed position with course and speed in the cs bytes, compression type from RMC.",
+      "source": "APRS12c ch. 9",
+      "authority": "spec",
+      "input": {"info": "=/5L!!<*e7>7P["},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "/>", "compressed": true, "compression": {"fix": "current", "source": "rmc", "origin": "software"}, "course_degrees": 88, "speed_knots": 36.23201216883807}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/weather",
+      "description": "A complete weather report carried in a position report; wind speed in mph.",
+      "source": "APRS12c ch. 8",
+      "authority": "interpretation",
+      "interpretations": ["weather-wind-speed-unit-in-the-dirspd-extension"],
+      "input": {"info": "=4903.50N/07201.75W_225/000g000t050r000p001h00b10138dU2k"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/_", "weather": {"wind_direction_degrees": 225, "wind_speed_mph": 0, "wind_gust_mph": 0, "temperature_f": 50, "rain_1h_in": 0, "rain_24h_in": 0.01, "humidity_percent": 100, "pressure_mbar": 1013.8, "software": "d", "unit": "U2k"}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/dao-base91",
+      "description": "!DAO! with base-91 precision refines the position.",
+      "source": "APRS12c ch. 18",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75W-!wAb!"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05839194139194, "longitude": -72.02928571428572, "symbol": "/-", "dao": {"datum": "W", "precision": "base91"}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/lowercase-hemisphere",
+      "description": "Lower-case hemisphere letters: a strict decoder rejects them, a lenient one reads them as upper case.",
+      "source": "UAP 5.9",
+      "authority": "spec",
+      "input": {"tnc2": "N1EOE>APN391,N1NCI-3*,WIDE2-1:!4216.95n/07243.20w#phg6230/ Easthampton MA"},
+      "expect": {
+        "data": {"type": "position", "latitude": 42.2825, "longitude": -72.72, "symbol": "/#", "comment": "phg6230/ Easthampton MA"},
+        "diagnostics": ["warning:lowercase-hemisphere", "warning:lowercase-hemisphere"]
+      },
+      "strict": {"rejected_by": "lowercase-hemisphere"},
+      "reencode": "equivalent",
+      "canonical_info": "!4216.95N/07243.20W#phg6230/ Easthampton MA"
+    },
+    {
+      "id": "position/phg-after-comment-text",
+      "description": "PHG after other comment text: a lenient decoder lifts it out, a strict one leaves it as text (an interpretation, not a rejection).",
+      "source": "UAP 5.15",
+      "authority": "interpretation",
+      "interpretations": ["delimiters-at-the-start-of-free-text"],
+      "input": {"tnc2": "UNCAN>APOT30:!4258.99N/07135.29W# 10.8V 98F PHG37306/ N1PA-Mt Uncanoonuc Digi"},
+      "expect": {
+        "data": {"type": "position", "latitude": 42.98316666666667, "longitude": -71.58816666666667, "symbol": "/#", "phg": {"power": 3, "height": 7, "gain": 3, "directivity": 0, "beacons_per_hour": 6}, "comment": "10.8V 98F  N1PA-Mt Uncanoonuc Digi"},
+        "diagnostics": ["warning:data-extension-in-comment"]
+      },
+      "strict": {"data": {"type": "position", "latitude": 42.98316666666667, "longitude": -71.58816666666667, "symbol": "/#", "comment": "10.8V 98F PHG37306/ N1PA-Mt Uncanoonuc Digi"}},
+      "reencode": "equivalent",
+      "canonical_info": "!4258.99N/07135.29W#PHG37306/10.8V 98F  N1PA-Mt Uncanoonuc Digi"
+    },
+    {
+      "id": "position/frequency-later-in-comment",
+      "description": "A frequency after PHG and a space is comment text, not a voice frequency, and is written back where it was.",
+      "source": "APRS-IS 2026-09-26",
+      "authority": "observed",
+      "input": {"tnc2": "SQ9MDD-4>APBOX0,TCPIP*,qAC,T2WARSPL:=5215.02N/02055.60E-PHG2201 /145.575MHz lub SR5WZ"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 52.25033333333333, "longitude": 20.926666666666666, "symbol": "/-", "phg": {"power": 2, "height": 2, "gain": 0, "directivity": 1}, "comment": "/145.575MHz lub SR5WZ"}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "=5215.02N/02055.60E-PHG2201//145.575MHz lub SR5WZ"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # RHPv2 wire grammar (CDDL)
 
+> This directory also holds the language-neutral APRS conformance vectors, in [`aprs/`](aprs/README.md).
+
 This directory contains the machine-readable, language-neutral definition of the
 RHPv2 (PWP-0222 / PWP-0245) JSON-over-TCP wire format, expressed in
 [CDDL](https://datatracker.ietf.org/doc/html/rfc8610) (RFC 8610).
