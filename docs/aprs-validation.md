@@ -20,17 +20,24 @@ Five independent checks, from the spec outward.
 
 ## 4. The live APRS-IS feed
 
-`tools/Packet.Aprs.Corpus` (`aprs-corpus collect`) captures the receive-only full feed; `stats` decodes all of it. On 2026-09-25, 508,679 packets:
+`tools/Packet.Aprs.Corpus` (`aprs-corpus collect`) captures the receive-only full feed; `stats` decodes all of it. On 2026-09-26, after about ten hours of collection, 3,078,983 packets:
 
 | | |
 |---|---|
 | decoder exceptions | 0 |
 | unparseable headers | 0 |
-| accepted by `Strict` | 88.0% |
-| spec-clean packets that re-encode to identical data | 100% (440,599 of 440,599) |
-| spec-clean packets whose sender was already byte-canonical | 67.6% |
+| accepted by `Strict` | 88.1% |
+| spec-clean packets that re-encode to identical data | 100% (2,668,301 of 2,668,301) |
+| spec-clean packets whose sender was already byte-canonical | 65.7% |
+| spec-clean packets the encoder refuses | 2,905 (0.11%): all but one are message or bulletin text over 67 characters, which APRS12c tells receivers to accept and senders not to write |
 
-The last figure is about senders, not the library. Non-canonical but legal choices are normalised on re-encode: filler bytes in compressed positions, delimiters, weather field order, telemetry padding, and the Mic-E speed encoding. The exact received bytes are always in `AprsPacket.Information`.
+The byte-canonical figure is about senders, not the library. Non-canonical but legal choices are normalised on re-encode: filler bytes in compressed positions, delimiters, weather field order, telemetry padding, and the Mic-E speed encoding. The exact received bytes are always in `AprsPacket.Information`.
+
+The first run (508,679 packets, 2026-09-25) found one bug, an object with a garbled timestamp read as a made-up position. The ten-hour run found no crash and no clean packet that failed to round-trip, but it did show where "decodes cleanly" and "can be written back" disagreed:
+
+- **The decoder was too quiet** about four things the spec forbids, each now a named flag with a paired test: a `{` in message text, a space or `:` inside an addressee, `BLN` + letter + group name, and free text after `<` (see [`strict-vs-pragmatic-audit.md`](strict-vs-pragmatic-audit.md#packetaprs)). A query whose "target" is a sentence now decodes as a plain message, and `PARM.` / `UNIT.` for more than 13 channels likewise.
+- **The encoder was too strict** in two places: object names may start with spaces, and a comment that would read as something else only if written first (a frequency after PHG or an altitude) is now confirmed by decoding rather than refused on sight.
+- **One real error was being let through**: a raw NMEA sentence whose checksum doesn't match is corrupt, and is now rejected in both modes.
 
 `aprs-corpus curate` picks a few packets of every distinct shape (data type, diagnostics, optional elements present) into `tests/Packet.Aprs.Tests/Corpus/samples.txt`; `CorpusRegressionTests` decodes them and compares with an approved snapshot, so any change in how real traffic decodes shows up as a reviewed diff.
 

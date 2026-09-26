@@ -11,6 +11,13 @@ internal sealed class InfoWriter
 
     public int Length => buffer.WrittenCount;
 
+    /// <summary>
+    /// Set by a comment check that cannot tell from the text alone whether the comment will read
+    /// back unchanged, because that depends on what is written around it. <see cref="AprsData.ToInformationField"/>
+    /// then decodes the finished field to find out, and refuses with this message if it does not.
+    /// </summary>
+    public string? CommentCheck { get; set; }
+
     public ReadOnlySpan<byte> Written => buffer.WrittenSpan;
 
     public InfoWriter Byte(byte b)

@@ -27,6 +27,27 @@ internal static class RawWeatherCodec
 
 internal static class NmeaCodec
 {
+    /// <summary>Finds a trailing <c>*hh</c> checksum; <paramref name="sum"/> is the XOR of
+    /// everything before the <c>*</c>, which is what it should equal.</summary>
+    public static bool TryReadChecksum(string sentence, out int star, out byte expected, out byte sum)
+    {
+        sum = 0;
+        expected = 0;
+        star = sentence.LastIndexOf('*');
+        if (star < 0 || star != sentence.Length - 3
+            || !byte.TryParse(sentence.AsSpan(star + 1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out expected))
+        {
+            return false;
+        }
+
+        foreach (char c in sentence.AsSpan(0, star))
+        {
+            sum ^= (byte)c;
+        }
+
+        return true;
+    }
+
     public static AprsData? Decode(ReadOnlySpan<byte> info, DecodeContext ctx)
     {
         ctx.Info(AprsDiagnosticCode.ObsoleteFormat, "raw NMEA sentences are obsolete; trackers should send position reports (UAP 5.20)", 0);
@@ -39,26 +60,21 @@ internal static class NmeaCodec
 
         string sentence = Text.Latin1(body);
         string content = sentence;
-        bool? checksumValid = null;
-        int star = sentence.LastIndexOf('*');
-        if (star >= 0 && star == sentence.Length - 3 && byte.TryParse(sentence.AsSpan(star + 1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte expected))
+        if (TryReadChecksum(sentence, out int star, out byte expected, out byte sum))
         {
-            content = sentence[..star];
-            byte sum = 0;
-            foreach (char c in content)
+            // A checksum that doesn't match means the sentence was corrupted on the way, so none
+            // of its fields can be trusted (NMEA 0183; Ham::APRS::FAP rejects it too).
+            if (sum != expected)
             {
-                sum ^= (byte)c;
+                ctx.Error(AprsDiagnosticCode.NmeaChecksumMismatch, $"NMEA checksum is {expected:X2} but the sentence sums to {sum:X2}; the sentence is corrupt", 1 + star);
+                return null;
             }
 
-            checksumValid = sum == expected;
-            if (!checksumValid.Value)
-            {
-                ctx.Warn(AprsDiagnosticCode.NmeaChecksumMismatch, $"NMEA checksum is {expected:X2} but the sentence sums to {sum:X2}", 1 + star);
-            }
+            content = sentence[..star];
         }
 
         string[] f = content.Split(',');
-        var report = new AprsNmeaReport { Sentence = sentence, ChecksumValid = checksumValid };
+        var report = new AprsNmeaReport { Sentence = sentence };
         string type = f[0].Length >= 5 ? f[0][2..5] : "";
         return type switch
         {
@@ -226,6 +242,18 @@ internal static class CapabilitiesCodec
 
             int eq = item.IndexOf('=', StringComparison.Ordinal);
             caps.Add(eq < 0 ? new AprsCapability(item, null) : new AprsCapability(item[..eq].Trim(), item[(eq + 1)..].Trim()));
+        }
+
+        // Each capability is a TOKEN or TOKEN=VALUE (APRS12c ch. 15). A "token" with spaces in it is
+        // free text: a beacon sent with the wrong data type identifier.
+        if (caps.Any(c => c.Token.Length == 0 || c.Token.Any(ch => ch is <= ' ' or '\x7F') || (c.Value is { } v && v.Any(ch => ch is < ' ' or '\x7F')))
+            && !ctx.Tolerate(
+                ctx.Options.AllowFreeTextCapabilities,
+                AprsDiagnosticCode.FreeTextCapabilities,
+                "station capabilities are TOKEN or TOKEN=VALUE items separated by commas; this is free text (APRS12c ch. 15)",
+                1))
+        {
+            return null;
         }
 
         return new AprsStationCapabilities { Capabilities = caps };

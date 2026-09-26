@@ -265,6 +265,10 @@ namespace Packet.Aprs
         WindFieldsInsteadOfExtension = 155,
         WindExtensionAfterCompressed = 156,
         MicEAltitudeNotFirst = 157,
+        BraceInMessageText = 158,
+        InvalidAddresseeCharacters = 159,
+        LetterGroupBulletin = 160,
+        FreeTextCapabilities = 161,
     }
     public enum AprsDiagnosticSeverity
     {
@@ -398,10 +402,10 @@ namespace Packet.Aprs
             "your compiler.", true)]
         public AprsNmeaReport() { }
         public double? AltitudeMetres { get; init; }
-        public bool? ChecksumValid { get; init; }
         public double? CourseDegrees { get; init; }
         public override char DataTypeIdentifier { get; }
         public bool? FixValid { get; init; }
+        public bool HasChecksum { get; }
         public Packet.Aprs.AprsPosition? Position { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Sentence { get; init; }
@@ -472,15 +476,19 @@ namespace Packet.Aprs
     public sealed class AprsParseOptions : System.IEquatable<Packet.Aprs.AprsParseOptions>
     {
         public AprsParseOptions() { }
+        public bool AllowBraceInMessageText { get; init; }
         public bool AllowCompressionTypeReservedBits { get; init; }
         public bool AllowDaoWithAmbiguity { get; init; }
         public bool AllowEmptyDestination { get; init; }
         public bool AllowEmptyPathEntry { get; init; }
+        public bool AllowFreeTextCapabilities { get; init; }
         public bool AllowIncompleteTelemetry { get; init; }
         public bool AllowIncompleteWeather { get; init; }
+        public bool AllowInvalidAddresseeCharacters { get; init; }
         public bool AllowInvalidAx25AddressCharacters { get; init; }
         public bool AllowInvalidTimestamp { get; init; }
         public bool AllowKenwoodFfPadding { get; init; }
+        public bool AllowLetterGroupBulletin { get; init; }
         public bool AllowLowercaseHemisphere { get; init; }
         public bool AllowMalformedTimestamp { get; init; }
         public bool AllowMessageIdOnAck { get; init; }

@@ -35,6 +35,10 @@ public class ToleranceTests : AprsSpec
         { nameof(AprsParseOptions.AllowWindExtensionAfterCompressed), AprsDiagnosticCode.WindExtensionAfterCompressed, "IZ8QHW-10>APLS01,TCPIP*,qAC,T2DENMARK:!L9ix<R5>$_!!G000/000g000t089P000p000h36b10203" },
         { nameof(AprsParseOptions.AllowDaoWithAmbiguity), AprsDiagnosticCode.DaoWithAmbiguity, "N0CALL>APZ001:!4903.  N/07201.  W-Hello!W12!" },
         { nameof(AprsParseOptions.AllowMalformedTimestamp), AprsDiagnosticCode.MalformedTimestamp, "OE3XXI>APMI06,WIDE2-1,qAR,OE3XTV:@252041_4810.14N/01637.23E&semiduplex 2/70 Gateway U=13.3V,T=23.6C" },
+        { nameof(AprsParseOptions.AllowBraceInMessageText), AprsDiagnosticCode.BraceInMessageText, "NEX7>APK005R,N2EDX,qAR,AE7AF::OTA      :cq{" },
+        { nameof(AprsParseOptions.AllowInvalidAddresseeCharacters), AprsDiagnosticCode.InvalidAddresseeCharacters, "W2DMB-7>APBTUV,WIDE1-1,WIDE2-1,qAR,W2DMB-10::QRX B-10 :ack78667" },
+        { nameof(AprsParseOptions.AllowLetterGroupBulletin), AprsDiagnosticCode.LetterGroupBulletin, "K8SRR-10>APDW18,TCPIP*,qAS,K8SRR::BLNCNET  :E Panhandle Traffic Net @6:45pm ET on 147.255+ T123.0 09/25" },
+        { nameof(AprsParseOptions.AllowFreeTextCapabilities), AprsDiagnosticCode.FreeTextCapabilities, "F5OHH>ID,qAR,F4GXS-3:<F5OHH PLX Digi v1.04 F5OHH Chris" },
     };
 
     [Theory]

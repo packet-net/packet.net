@@ -160,6 +160,7 @@ public class EncodingTests : AprsSpec
         { "comment that reads as a DAO", new AprsPositionReport { Position = Somewhere, Symbol = AprsSymbol.Parse("/-"), Comment = "x !W12!" } },
         { "comment with a line break", new AprsPositionReport { Position = Somewhere, Symbol = AprsSymbol.Parse("/-"), Comment = "a\rb" } },
         { "status with a non-DHM timestamp", new AprsStatusReport { Timestamp = AprsTimestamp.HoursMinutesSeconds(1, 2, 3), Text = "x" } },
+        { "NMEA sentence whose checksum doesn't match", new AprsNmeaReport { Sentence = "GPRMC,063909,A,3349.4302,N,11700.3721,W,43.022,89.3,291099,13.6,E*53" } },
         { "telemetry with 4 channels", new AprsTelemetryReport { Sequence = "001", Analog = [1, 2, 3, 4], Digital = 0 } },
         { "unknown Mic-E message type", new AprsMicEReport { Position = Somewhere, Symbol = AprsSymbol.Parse("/>"), Message = AprsMicEMessage.Unknown } },
     };

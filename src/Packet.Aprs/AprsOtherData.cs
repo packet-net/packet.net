@@ -66,8 +66,11 @@ public sealed record AprsNmeaReport : AprsData
     /// <summary>The talker and sentence type, e.g. <c>GPRMC</c>.</summary>
     public string SentenceType => Sentence.Length >= 5 ? Sentence[..5] : Sentence;
 
-    /// <summary>True if the <c>*hh</c> checksum matches, false if it does not, null if absent.</summary>
-    public bool? ChecksumValid { get; init; }
+    /// <summary>
+    /// True when the sentence ends with a <c>*hh</c> checksum. A decoded sentence's checksum always
+    /// matches: one that doesn't is corrupt and is not decoded, and the encoder refuses to send it.
+    /// </summary>
+    public bool HasChecksum => Internal.NmeaCodec.TryReadChecksum(Sentence, out _, out _, out _);
 
     /// <summary>The position, for GGA, RMC, GLL and WPL.</summary>
     public AprsPosition? Position { get; init; }
@@ -98,6 +101,11 @@ public sealed record AprsNmeaReport : AprsData
         if (Sentence.Length < 5 || Sentence.Any(c => c is < ' ' or > '~'))
         {
             throw new ArgumentException("an NMEA sentence is printable ASCII", nameof(Sentence));
+        }
+
+        if (Internal.NmeaCodec.TryReadChecksum(Sentence, out _, out byte expected, out byte sum) && sum != expected)
+        {
+            throw new ArgumentException($"the NMEA checksum is {expected:X2} but the sentence sums to {sum:X2}", nameof(Sentence));
         }
 
         writer.Char('$').Ascii(Sentence);

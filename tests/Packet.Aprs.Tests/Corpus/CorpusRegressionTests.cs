@@ -41,10 +41,23 @@ public class CorpusRegressionTests
                 received.Append("  ").Append(d.Severity).Append(' ').Append(d.Code).Append(d.Offset is { } o ? $" @{o}" : "").Append('\n');
             }
 
-            // Every sample that decoded cleanly must re-encode to data that decodes identically.
+            // Every sample that decoded cleanly must re-encode to data that decodes identically, or
+            // be refused by the encoder. Refusals go in the snapshot, so a new one is a reviewed
+            // change: some clean packets can be read but not sent, such as message text over the
+            // 67 characters senders are held to (APRS12c ch. 14).
             if (!packet.HasWarnings && !packet.HasErrors && packet.Data is not AprsUnrecognizedData)
             {
-                byte[] again = packet.Data.ToInformationField();
+                byte[] again;
+                try
+                {
+                    again = packet.Data.ToInformationField();
+                }
+                catch (ArgumentException ex)
+                {
+                    received.Append("  encoder refuses: ").Append(ex.Message).Append('\n');
+                    continue;
+                }
+
                 AprsPacket.Decode(packet.Source, packet.Destination, packet.Path, again).Data.Should().Be(packet.Data, sample);
             }
         }

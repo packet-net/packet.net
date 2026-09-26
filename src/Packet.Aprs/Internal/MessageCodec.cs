@@ -7,6 +7,12 @@ internal static class MessageCodec
 {
     public const int MaxTextLength = 67;
 
+    /// <summary>PARM. and UNIT. name the 5 analog and 8 digital channels (APRS12c ch. 13).</summary>
+    public const int MaxChannelNames = 13;
+
+    /// <summary>EQNS. carries 3 coefficients for each of the 5 analog channels.</summary>
+    public const int MaxCoefficients = 15;
+
     public static AprsData? Decode(ReadOnlySpan<byte> info, DecodeContext ctx)
     {
         int second = info.Length > 10 && info[10] == (byte)':' ? 10 : -1;
@@ -47,6 +53,16 @@ internal static class MessageCodec
             return null;
         }
 
+        // Trailing spaces are padding; a space or ':' inside the addressee is not an address.
+        if (addressee.Any(c => c is ' ' or ':') && !ctx.Tolerate(
+                ctx.Options.AllowInvalidAddresseeCharacters,
+                AprsDiagnosticCode.InvalidAddresseeCharacters,
+                $"message addressee '{addressee}' contains a space or ':' (APRS12c ch. 14)",
+                1))
+        {
+            return null;
+        }
+
         int textAt = second + 1;
         ReadOnlySpan<byte> text = info[textAt..];
 
@@ -64,14 +80,23 @@ internal static class MessageCodec
 
         if (IsBulletinAddressee(addressee))
         {
+            if (addressee.Length > 4 && !char.IsAsciiDigit(addressee[3]) && !ctx.Tolerate(
+                    ctx.Options.AllowLetterGroupBulletin,
+                    AprsDiagnosticCode.LetterGroupBulletin,
+                    $"'{addressee}' names a group after a letter; a group bulletin has a digit after BLN, and an announcement has no group (APRS12c ch. 14)",
+                    1))
+            {
+                return null;
+            }
+
             SplitId(text, allowReplyAck: false, out ReadOnlySpan<byte> body, out string? id, out _);
-            return Text.TryDecode(body, ctx, textAt, out string s) ? new AprsBulletin { Addressee = addressee, Text = s, MessageId = id } : null;
+            return CheckBrace(body, textAt, ctx) && Text.TryDecode(body, ctx, textAt, out string s) ? new AprsBulletin { Addressee = addressee, Text = s, MessageId = id } : null;
         }
 
         if (addressee.StartsWith("NWS", StringComparison.Ordinal))
         {
             SplitId(text, allowReplyAck: false, out ReadOnlySpan<byte> body, out string? id, out _);
-            return Text.TryDecode(body, ctx, textAt, out string s) ? new AprsNwsBulletin { Addressee = addressee, Text = s, MessageId = id } : null;
+            return CheckBrace(body, textAt, ctx) && Text.TryDecode(body, ctx, textAt, out string s) ? new AprsNwsBulletin { Addressee = addressee, Text = s, MessageId = id } : null;
         }
 
         if (text.Length >= 5 && text[4] == (byte)'.' && TryMetadata(addressee, text, textAt, ctx, out AprsData? metadata))
@@ -85,12 +110,26 @@ internal static class MessageCodec
         }
 
         SplitId(text, allowReplyAck: true, out ReadOnlySpan<byte> messageText, out string? messageId, out string? replyAck);
-        if (!Text.TryDecode(messageText, ctx, textAt, out string decoded))
+        if (!CheckBrace(messageText, textAt, ctx) || !Text.TryDecode(messageText, ctx, textAt, out string decoded))
         {
             return null;
         }
 
         return new AprsTextMessage { Addressee = addressee, Text = decoded, MessageId = messageId, ReplyAck = replyAck };
+    }
+
+    /// <summary>
+    /// Message text never contains <c>{</c>, which starts the message ID (APRS12c ch. 14). One that
+    /// is left in the text after the ID was split off is not followed by a valid ID.
+    /// </summary>
+    private static bool CheckBrace(ReadOnlySpan<byte> text, int offset, DecodeContext ctx)
+    {
+        int brace = text.IndexOf((byte)'{');
+        return brace < 0 || ctx.Tolerate(
+            ctx.Options.AllowBraceInMessageText,
+            AprsDiagnosticCode.BraceInMessageText,
+            "message text contains '{' that does not start a valid message ID (up to 5 letters or digits, APRS12c ch. 14); kept as text",
+            offset + brace);
     }
 
     /// <summary>
@@ -173,19 +212,28 @@ internal static class MessageCodec
         }
 
         SplitId(text[5..], allowReplyAck: false, out ReadOnlySpan<byte> body, out string? id, out _);
-        if (!Text.TryDecode(body, ctx, offset + 5, out string s))
+        if (!CheckBrace(body, offset + 5, ctx) || !Text.TryDecode(body, ctx, offset + 5, out string s))
         {
             return true;
         }
 
         switch ((char)kind[0])
         {
-            case 'P':
-                data = new AprsTelemetryParameterNames { Addressee = addressee, Names = s.Split(','), MessageId = id };
+            case 'P' or 'U':
+            {
+                string[] entries = s.Split(',');
+                if (entries.Length > MaxChannelNames)
+                {
+                    ctx.Info(AprsDiagnosticCode.InvalidTelemetryMetadata, $"{Text.Latin1(kind)} has {entries.Length} entries, more than the 13 channels; decoded as a plain message", offset);
+                    return false;
+                }
+
+                data = kind[0] == (byte)'P'
+                    ? new AprsTelemetryParameterNames { Addressee = addressee, Names = entries, MessageId = id }
+                    : new AprsTelemetryUnits { Addressee = addressee, Units = entries, MessageId = id };
                 return true;
-            case 'U':
-                data = new AprsTelemetryUnits { Addressee = addressee, Units = s.Split(','), MessageId = id };
-                return true;
+            }
+
             case 'E':
             {
                 // "The list may stop at any field" (APRS12c §13): trailing empty entries are the list stopping.
@@ -201,7 +249,7 @@ internal static class MessageCodec
                     values.Add(v);
                 }
 
-                if (values.Count > 15)
+                if (values.Count > MaxCoefficients)
                 {
                     ctx.Info(AprsDiagnosticCode.InvalidTelemetryMetadata, "EQNS has more than 15 coefficients; decoded as a plain message", offset + 5);
                     return false;
@@ -251,6 +299,12 @@ internal static class MessageCodec
             if (s.StartsWith(type, StringComparison.Ordinal))
             {
                 string target = s[type.Length..].Trim();
+                if (target.Length > 9 || target.Any(c => c is < '!' or > '~'))
+                {
+                    ctx.Info(AprsDiagnosticCode.InvalidQuery, "a query target is one callsign of up to 9 characters; decoded as a plain message", offset);
+                    return false;
+                }
+
                 query = new AprsDirectedQuery { Addressee = addressee, QueryType = type, Target = target.Length > 0 ? target : null };
                 return true;
             }
@@ -275,6 +329,12 @@ internal static class MessageCodec
         }
 
         string rest = s[end..].Trim();
+        if (rest.Length > 9 || rest.Any(c => c is < '!' or > '~'))
+        {
+            ctx.Info(AprsDiagnosticCode.InvalidQuery, "a query target is one callsign of up to 9 characters; decoded as a plain message", offset);
+            return false;
+        }
+
         query = new AprsDirectedQuery { Addressee = addressee, QueryType = s[..end], Target = rest.Length > 0 ? rest : null };
         return true;
     }
@@ -341,9 +401,10 @@ internal static class MessageCodec
     /// <summary>Writes <c>PARM.</c>, <c>UNIT.</c> or <c>EQNS.</c> and its comma-separated values.</summary>
     public static void WriteList(InfoWriter writer, string prefix, IReadOnlyList<string> items, AprsMessage message)
     {
-        if (items.Count is < 1 or > 15)
+        int max = prefix == "EQNS." ? MaxCoefficients : MaxChannelNames;
+        if (items.Count < 1 || items.Count > max)
         {
-            throw new ArgumentException($"{prefix} needs between 1 and 13 entries");
+            throw new ArgumentException($"{prefix} needs between 1 and {max} entries");
         }
 
         foreach (string item in items)

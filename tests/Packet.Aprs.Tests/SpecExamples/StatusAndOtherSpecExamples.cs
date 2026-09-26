@@ -188,6 +188,36 @@ public class StatusAndOtherSpecExamples : AprsSpec
         ThenReEncodesExactly();
     }
 
+    [Theory]
+    [InlineData("$GPGGA,102705,5157.9762,N,00029.3256,W,1,04,2.0,75.7,M,47.6,M,,*62", true)]
+    [InlineData("$GPGLL,2554.459,N,08020.187,W,154027.281,A", false)]
+    public void Section8_a_raw_nmea_checksum_is_optional(string info, bool hasChecksum)
+    {
+        GivenInformationField(info);
+        WhenDecoded();
+        ThenDataIs<AprsNmeaReport>().HasChecksum.Should().Be(hasChecksum);
+    }
+
+    /// <summary>
+    /// Heard on APRS-IS: the longitude field has lost characters ("N8.9077"). NMEA 0183's checksum
+    /// exists to catch exactly this, so the sentence is corrupt and nothing in it is trusted, in either
+    /// mode (Ham::APRS::FAP rejects it too). Not a tolerance: the data can't be recovered.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Section8_raw_nmea_with_a_checksum_that_does_not_match_is_corrupt(bool strict)
+    {
+        GivenPacket("N3EG-9>GPSMV,NICOLI,WIDE1,WICKI*,qAS,N3EG:$GPRMC,224137.000,A,4609.2815,N8.9077,W,29.11,125.01,250926,,,A*4B");
+        if (strict)
+        {
+            GivenStrictDecoding();
+        }
+
+        WhenDecoded();
+        ThenRejectedWith(AprsDiagnosticCode.NmeaChecksumMismatch);
+    }
+
     [Fact]
     public void Section8_raw_nmea_course_and_speed()
     {

@@ -153,9 +153,10 @@ internal static class ObjectCodec
     public static void ValidateObjectName(string name, string paramName)
     {
         ArgumentNullException.ThrowIfNull(name, paramName);
-        if (name.Length is < 1 or > 9 || name.Any(c => c is < ' ' or > '~') || name.EndsWith(' ') || name.StartsWith(' '))
+        // Any printable ASCII including spaces (APRS12c ch. 11), except trailing ones, which are padding.
+        if (name.Length is < 1 or > 9 || name.Any(c => c is < ' ' or > '~') || name.EndsWith(' '))
         {
-            throw new ArgumentException("object name must be 1-9 printable ASCII characters without leading or trailing spaces (APRS12c ch. 11)", paramName);
+            throw new ArgumentException("object name must be 1-9 printable ASCII characters, not ending in a space (APRS12c ch. 11)", paramName);
         }
     }
 

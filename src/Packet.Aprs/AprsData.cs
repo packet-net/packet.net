@@ -32,7 +32,13 @@ public abstract record AprsData
     {
         var writer = new InfoWriter();
         Encode(writer);
-        return writer.ToArray();
+        byte[] info = writer.ToArray();
+        if (writer.CommentCheck is { } problem && this is AprsPositionedData positioned)
+        {
+            CommentCodec.VerifyReadsBack(positioned, info, problem);
+        }
+
+        return info;
     }
 
     internal abstract void Encode(InfoWriter writer);

@@ -184,7 +184,10 @@ internal static class FrequencyCodec
             }
         }
 
-        throw new ArgumentException("the comment starts with text that would be read as part of the frequency specification", nameof(comment));
+        // The comment starts with text that could read as more of the frequency specification (a
+        // range, say). A '/' delimiter ends the specification; decoding the finished field confirms it.
+        w.Bytes([.. alone.Written, .. " /"u8, .. text]);
+        w.CommentCheck ??= "the comment starts with text that would be read as part of the frequency specification";
     }
 
     public static void Write(InfoWriter w, AprsVoiceFrequency f)

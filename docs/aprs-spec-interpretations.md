@@ -45,6 +45,24 @@ APRS 1.2 reassigned `` ` `` and `'` after the symbol to "messaging capable" and 
 
 `>JN55VD Powered by...` is a bare 6-character locator followed by text: plain status text, not the grid format. The grid format requires a symbol straight after the locator. A 4-character reading (`JN55` with symbol `VD`) is only tried when the first 6 characters are not themselves a locator.
 
+## Object names may start with spaces
+
+- APRS12c §11: the name "may consist of any printable ASCII characters, including embedded spaces. Trailing spaces are used to make the field 9 characters wide."
+
+**Decision:** leading spaces are part of the name (`;   OR4F  *...` is the object `   OR4F`), and the encoder writes them. Only a trailing space is refused, since it would be read back as padding.
+
+## Raw NMEA with a checksum that doesn't match
+
+- APRS12c defers the sentence format to NMEA 0183, whose `*hh` checksum exists to detect corruption. FAP rejects a mismatch (`nmea_inv_cksum`).
+
+**Decision:** a mismatch is an error in both modes, not a tolerance: the sentence is corrupt, and a real one (`$GPRMC,...,4609.2815,N8.9077,W,...`) had lost characters from its longitude. The encoder refuses to write a sentence whose checksum is wrong. A sentence with no checksum is fine; `HasChecksum` says which.
+
+## A directed query's target is one callsign
+
+- APRS12c §15: a directed query is `?APRSx` with, for some types, the callsign it asks about.
+
+**Decision:** text after the query type that is longer than 9 characters or contains spaces is not a target, so the message is a plain text message (with an `Info` diagnostic), not a query. A bot's help text that begins `?APRSM for the last 10...` is the case that found this.
+
 ## Where Packet.Aprs and Ham::APRS::FAP deliberately differ
 
 Found by comparing decodes of the same 33,000 APRS-IS packets (see [`aprs-validation.md`](aprs-validation.md)):

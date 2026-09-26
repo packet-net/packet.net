@@ -57,6 +57,10 @@ public sealed record AprsParseOptions
         AllowWindExtensionAfterCompressed = false,
         AllowMicEAltitudeAnywhere = false,
         AllowDaoWithAmbiguity = false,
+        AllowBraceInMessageText = false,
+        AllowInvalidAddresseeCharacters = false,
+        AllowLetterGroupBulletin = false,
+        AllowFreeTextCapabilities = false,
     };
 
     /// <summary>
@@ -188,4 +192,34 @@ public sealed record AprsParseOptions
     /// <summary>Accept a <c>!DAO!</c> with extra precision on an ambiguous position, which contradict
     /// each other; the extra precision is ignored and the datum kept.</summary>
     public bool AllowDaoWithAmbiguity { get; init; } = true;
+
+    /// <summary>
+    /// Keep a <c>{</c> in message, bulletin or telemetry-metadata text when it does not start a valid
+    /// message ID (1-5 letters or digits at the end, APRS12c §14): <c>cq{</c>, <c>IPINFO={...}</c>,
+    /// or text appended after the ID. Driver: script-generated messages to self (<c>IPINFO={...}</c>)
+    /// and an iGate path that appends signal reports after the ID.
+    /// </summary>
+    public bool AllowBraceInMessageText { get; init; } = true;
+
+    /// <summary>
+    /// Accept a message addressee with a space or <c>:</c> inside it (<c>CA4NDW -7</c>,
+    /// <c>QRX B-10</c>). Trailing spaces are padding and always fine (APRS12c §14). Driver: hand-typed
+    /// addressees, the BTECH UV-PRO's <c>QRX</c> messages, and RF bit errors.
+    /// </summary>
+    public bool AllowInvalidAddresseeCharacters { get; init; } = true;
+
+    /// <summary>
+    /// Read <c>BLN</c> + letter + name (<c>BLNCNET</c>, <c>BLNALUX</c>) as a group bulletin. APRS12c
+    /// §14 defines only a digit before a group name, and a letter with no name for announcements.
+    /// Driver: net and club announcements from APRS PropView, direwolf and Microsat beacons.
+    /// </summary>
+    public bool AllowLetterGroupBulletin { get; init; } = true;
+
+    /// <summary>
+    /// Accept a <c>&lt;</c> station capabilities packet whose items are free text rather than
+    /// <c>TOKEN</c> / <c>TOKEN=VALUE</c> (APRS12c §15), keeping each comma-separated piece as a
+    /// token. Driver: TNC ID beacons, node announcements and aprsd start-up notices sent with the
+    /// wrong data type identifier.
+    /// </summary>
+    public bool AllowFreeTextCapabilities { get; init; } = true;
 }

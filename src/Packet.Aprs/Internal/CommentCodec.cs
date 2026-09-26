@@ -394,7 +394,7 @@ internal static class CommentCodec
     /// <summary>Writes altitude, frequency, free text, braces, telemetry and DAO in canonical order.</summary>
     public static void Write(InfoWriter w, AprsPositionedData d, bool altitudeInCs)
     {
-        RequireCleanComment(d);
+        CheckComment(w, d);
         if (d.AltitudeFeet is { } alt && !altitudeInCs)
         {
             WriteAltitude(w, alt);
@@ -513,9 +513,12 @@ internal static class CommentCodec
 
     /// <summary>
     /// The encoder refuses comment text that the decoder would read back as a structured element,
-    /// so every encoded report decodes to the same data. Set the matching property instead.
+    /// so every encoded report decodes to the same data (set the matching property instead). This
+    /// looks at the comment on its own; when it finds something, whether it is really read back
+    /// depends on what is written in front of it, so the finished field is decoded to check
+    /// (<see cref="InfoWriter.CommentCheck"/>, <see cref="VerifyReadsBack"/>).
     /// </summary>
-    internal static void RequireCleanComment(AprsPositionedData d)
+    internal static void CheckComment(InfoWriter w, AprsPositionedData d)
     {
         string comment = d.Comment ?? throw new ArgumentNullException(nameof(d.Comment));
         Text.RequireNoLineBreaks(comment, nameof(d.Comment));
@@ -527,19 +530,45 @@ internal static class CommentCodec
             || probe.Frequency is not null || probe.Phg != d.Phg || probe.RadioRangeMiles != d.RadioRangeMiles
             || probe.DfSignalStrength != d.DfSignalStrength || probe.AreaObject != d.AreaObject)
         {
-            throw new ArgumentException(
-                "comment text contains something that decodes as a structured element (altitude, !DAO!, |telemetry|, frequency, PHG/RNG/DFS or braces); set the property instead",
-                nameof(d.Comment));
+            w.CommentCheck = "comment text contains something that decodes as a structured element (altitude, !DAO!, |telemetry|, frequency, PHG/RNG/DFS or braces); set the property instead";
         }
-
-
     }
 
     /// <summary>
-    /// Mic-E status text must not start with something read back as altitude or a data extension,
-    /// or end with a device suffix, unless the matching property is set.
+    /// Decodes an encoded field and throws <paramref name="problem"/> unless the comment, and
+    /// everything text in the comment could turn into, reads back as it was sent.
     /// </summary>
-    internal static void RequireCleanMicEComment(AprsMicEReport r)
+    internal static void VerifyReadsBack(AprsPositionedData sent, byte[] info, string problem)
+    {
+        AprsAddress destination = sent is AprsMicEReport mic ? MicECodec.EncodeDestination(mic) : AprsAddress.Parse("APZ001");
+        AprsPacket back = AprsPacket.Decode(AprsAddress.Parse("N0CALL"), destination, [], info);
+        if (back.HasWarnings || back.HasErrors || back.Data is not AprsPositionedData b || !ReadsBackTheSame(sent, b))
+        {
+            throw new ArgumentException(problem, nameof(sent.Comment));
+        }
+    }
+
+    private static bool ReadsBackTheSame(AprsPositionedData sent, AprsPositionedData back) =>
+        back.GetType() == sent.GetType()
+        && back.Comment == sent.Comment
+        && back.Frequency == sent.Frequency
+        && back.Phg == sent.Phg
+        && back.SignpostText == sent.SignpostText
+        && (back.AltitudeFeet is null) == (sent.AltitudeFeet is null)
+        && (back.Dao is null) == (sent.Dao is null)
+        && (back.Telemetry is null) == (sent.Telemetry is null)
+        && (back.RadioRangeMiles is null) == (sent.RadioRangeMiles is null)
+        && (back.DfSignalStrength is null) == (sent.DfSignalStrength is null)
+        && (back.AreaObject is null) == (sent.AreaObject is null)
+        && (sent is not AprsMicEReport m
+            || (back is AprsMicEReport bm && bm.TypeCode == m.TypeCode && bm.DeviceSuffix == m.DeviceSuffix && bm.MaidenheadLocator == m.MaidenheadLocator));
+
+    /// <summary>
+    /// Mic-E status text must not start with something read back as altitude or a data extension,
+    /// or end with a device suffix, unless the matching property is set. As for
+    /// <see cref="CheckComment"/>, a finding is confirmed by decoding the finished field.
+    /// </summary>
+    internal static void CheckMicEComment(InfoWriter w, AprsMicEReport r)
     {
         string comment = r.Comment ?? throw new ArgumentNullException(nameof(r));
         Text.RequireNoLineBreaks(comment, nameof(r.Comment));
@@ -559,9 +588,7 @@ internal static class CommentCodec
             || probe.Phg != r.Phg || probe.RadioRangeMiles != r.RadioRangeMiles || probe.DfSignalStrength != r.DfSignalStrength
             || startsWithAltitude || startsWithExtension || endsWithSuffix || comment.Contains('\xFF', StringComparison.Ordinal))
         {
-            throw new ArgumentException(
-                "Mic-E status text contains something that decodes as a structured element (altitude, extension, !DAO!, |telemetry|, frequency or device suffix); set the property instead",
-                nameof(r));
+            w.CommentCheck = "Mic-E status text contains something that decodes as a structured element (altitude, extension, !DAO!, |telemetry|, frequency or device suffix); set the property instead";
         }
     }
 

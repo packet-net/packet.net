@@ -160,7 +160,7 @@ public enum AprsDiagnosticCode
     /// <summary>An NMEA sentence is malformed.</summary>
     InvalidNmea = 143,
 
-    /// <summary>An NMEA sentence's checksum does not match.</summary>
+    /// <summary>An NMEA sentence's checksum does not match, so the sentence is corrupt and is not decoded.</summary>
     NmeaChecksumMismatch = 144,
 
     /// <summary>A third-party header is malformed (APRS12c §17).</summary>
@@ -201,4 +201,16 @@ public enum AprsDiagnosticCode
 
     /// <summary>A Mic-E altitude after other status text instead of first (APRS12c §10).</summary>
     MicEAltitudeNotFirst = 157,
+
+    /// <summary>Message text contains a <c>{</c> that does not start a valid message ID (APRS12c §14).</summary>
+    BraceInMessageText = 158,
+
+    /// <summary>A message addressee contains a space or <c>:</c> (APRS12c §14).</summary>
+    InvalidAddresseeCharacters = 159,
+
+    /// <summary>A bulletin addressee has a group name after a letter, e.g. <c>BLNCNET</c>; group bulletins use a digit (APRS12c §14).</summary>
+    LetterGroupBulletin = 160,
+
+    /// <summary>A <c>&lt;</c> station capabilities packet holds free text rather than TOKEN / TOKEN=VALUE items (APRS12c §15).</summary>
+    FreeTextCapabilities = 161,
 }

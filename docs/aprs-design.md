@@ -67,6 +67,8 @@ Values are held in the units APRS uses on air, with the unit in the property nam
 - Canonical input decodes and re-encodes **byte for byte**. Every spec example is a test of this.
 - Legal but non-canonical input re-encodes to the canonical form, and **decoding is idempotent**: `decode(encode(decode(x)))` equals `decode(x)`. This holds for every spec-clean packet in the corpus. A packet decoded under a tolerance may lose precision it didn't have a canonical place for (for example, wind direction moved into a compressed position's 4-degree cs byte). The encoder refuses anything it can't write legally, such as a weather report with a comment.
 - The received bytes are always in `AprsPacket.Information`. Retransmit those, not a re-encode, to pass a packet on unchanged.
+- **Comments are checked, then confirmed.** Before writing free text, the encoder asks whether the comment on its own would read back as something structured (a frequency, `/A=` altitude, `!DAO!`, telemetry, PHG and so on). Whether it really would depends on what is written in front of it, so when the answer is yes the encoder decodes the finished field and refuses only if the comment, or anything it could have turned into, comes back different. A frequency later in a comment, after PHG or an altitude, is therefore written back where the sender had it.
+- Some clean packets can be read but not sent: message text over 67 characters (APRS12c tells receivers to accept it and senders not to write it), or a comment whose layout the canonical form can't reproduce. The encoder refuses those with `ArgumentException`, and the corpus snapshot records each refusal so a new one is a reviewed change.
 
 See [`aprs-validation.md`](aprs-validation.md) for the numbers.
 

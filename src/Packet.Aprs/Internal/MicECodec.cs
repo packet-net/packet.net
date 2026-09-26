@@ -617,7 +617,7 @@ internal static class MicECodec
             w.Ascii("DFS").Digits(dfs.StrengthCode, 1).Char((char)('0' + dfs.HeightCode)).Digits(dfs.GainCode, 1).Digits(dfs.DirectivityCode, 1);
         }
 
-        CommentCodec.RequireCleanMicEComment(r);
+        CommentCodec.CheckMicEComment(w, r);
         if (altitudeAsFeet)
         {
             CommentCodec.WriteAltitude(w, r.AltitudeFeet!.Value);

@@ -124,32 +124,36 @@ Rewritten 2026-09-25, when `Packet.Aprs` was replaced by a full APRS 1.2 codec (
 
 ### Pragmatic accommodations (`AprsParseOptions`)
 
-Default: every flag on (`Lenient`); off in `Strict`. Share is the fraction of 508,679 full-feed APRS-IS packets (captured 2026-09-25) that needed the flag, from `tools/Packet.Aprs.Corpus stats`. Locations are under `src/Packet.Aprs/Internal/`.
+Default: every flag on (`Lenient`); off in `Strict`. Share is the fraction of 3,078,983 full-feed APRS-IS packets (captured 2026-09-25/26, about ten hours) that needed the flag, from `tools/Packet.Aprs.Corpus stats`. Locations are under `src/Packet.Aprs/Internal/`.
 
 | Flag | Location | Strict spec says | What we accept, and the real-world driver | Share |
 |---|---|---|---|---|
-| `AllowWeatherComment` | `CommentCodec`, `StatusCodec` | A complete weather report has no comment field (APRS12c §12, UAP §2.7.1). | Text after the weather data, kept as the comment. Almost every weather station appends a description or sensor readout. | 9.23% |
-| `AllowIncompleteWeather` | `WeatherCodec` | Wind, gust and temperature are mandatory, as dots if unknown (APRS12c §12). | Reports missing some of them. Stations without a gust sensor omit `g`. | 0.95% |
-| `AllowWindExtensionAfterCompressed` | `PositionCodec` | A compressed weather position carries wind in its cs bytes; no `DDD/SSS` follows (UAP §5.33). | A `DDD/SSS` after a compressed position. LoRa APRS trackers (`APLRG1`, `APLS01`). | 0.84% |
-| `AllowMultipleUsedMarkers` | `Tnc2Codec` | Only the last used path entry carries `*` (UAP §5.30). | Several starred entries. Some IGates and DMR gateways mark every used entry. | 0.81% |
-| `AllowNonStandardWeatherFieldWidths` | `WeatherCodec` | Fixed field widths: `t` 3, `h` 2, `b` 5, ... (APRS12c §12). | `t45`, `h070`, `h100`, `b...` from Ecowitt / ESP32 / AmbientCWOP gateways (UAP §5.31). The spec width is always tried first. | 0.48% |
-| `AllowNonUtf8Text` | `Text` | Text is ASCII or UTF-8 (APRS12c §5). | Invalid UTF-8, read as Latin-1 per byte. Code page 437 degree signs, legacy Asian encodings, Kenwood 0xFF (UAP §5.10, §5.16, §5.25). | 0.41% |
+| `AllowWeatherComment` | `CommentCodec`, `StatusCodec` | A complete weather report has no comment field (APRS12c §12, UAP §2.7.1). | Text after the weather data, kept as the comment. Almost every weather station appends a description or sensor readout. | 9.15% |
+| `AllowIncompleteWeather` | `WeatherCodec` | Wind, gust and temperature are mandatory, as dots if unknown (APRS12c §12). | Reports missing some of them. Stations without a gust sensor omit `g`. | 0.92% |
+| `AllowWindExtensionAfterCompressed` | `PositionCodec` | A compressed weather position carries wind in its cs bytes; no `DDD/SSS` follows (UAP §5.33). | A `DDD/SSS` after a compressed position. LoRa APRS trackers (`APLRG1`, `APLS01`). | 0.85% |
+| `AllowMultipleUsedMarkers` | `Tnc2Codec` | Only the last used path entry carries `*` (UAP §5.30). | Several starred entries. Some IGates and DMR gateways mark every used entry. | 0.85% |
+| `AllowNonStandardWeatherFieldWidths` | `WeatherCodec` | Fixed field widths: `t` 3, `h` 2, `b` 5, ... (APRS12c §12). | `t45`, `h070`, `h100`, `b...` from Ecowitt / ESP32 / AmbientCWOP gateways (UAP §5.31). The spec width is always tried first. | 0.51% |
+| `AllowNonUtf8Text` | `Text` | Text is ASCII or UTF-8 (APRS12c §5). | Invalid UTF-8, read as Latin-1 per byte. Code page 437 degree signs, legacy Asian encodings, Kenwood 0xFF (UAP §5.10, §5.16, §5.25). | 0.42% |
 | `AllowInvalidTimestamp` | `TimestampCodec`, `AprsTimestamp` | Timestamp fields in range (APRS12c §6). | `000000z` placeholders, `204140z` (a clock time with the DHM suffix). FAP also accepts these with a warning. | 0.32% |
-| `AllowWindFieldsInPositionWeather` | `WeatherCodec` | Wind is the `DDD/SSS` extension in a position weather report (APRS12c §12). | `c180s000g000t068...` from ESP32 and Ecowitt gateway firmware. | 0.28% |
+| `AllowWindFieldsInPositionWeather` | `WeatherCodec` | Wind is the `DDD/SSS` extension in a position weather report (APRS12c §12). | `c180s000g000t068...` from ESP32 and Ecowitt gateway firmware. | 0.27% |
 | `AllowIncompleteTelemetry` | `StatusCodec` | Five analog values and eight digital bits (APRS12c §13). | Fewer channels, or the bits omitted, from LoRa and SvxLink telemetry. | 0.23% |
 | `RecognizeDataExtensionInComment` | `CommentCodec` | PHG / RNG / DFS go straight after the symbol; elsewhere they are free text (UAP §5.15). | PHG after other comment text, or after a compressed position (UI-View). *Interpretation flag.* | 0.20% |
 | `AllowMalformedTimestamp` | `InfoDecoder`, `ObjectCodec` | `/` and `@` reports and objects carry a 7-character timestamp (APRS12c §6). | Garbled (`@252041_`, `*111111Z`) or missing timestamps (UAP §5.8); the position either side is found and the timestamp dropped. | 0.11% |
-| `AllowShortObjectName` | `ObjectCodec` | Object names are space-padded to 9 characters (APRS12c §11). | Shorter names. Hand-built object beacons. | 0.09% |
-| `AllowMicEAltitudeAnywhere` | `MicECodec` | Mic-E `xxx}` altitude comes first in the status text (APRS12c §10). | Altitude elsewhere; several radios put it at the end. *Interpretation flag.* | 0.07% |
+| `AllowShortObjectName` | `ObjectCodec` | Object names are space-padded to 9 characters (APRS12c §11). | Shorter names. Hand-built object beacons. | 0.08% |
+| `AllowMicEAltitudeAnywhere` | `MicECodec` | Mic-E `xxx}` altitude comes first in the status text (APRS12c §10). | Altitude elsewhere; several radios put it at the end. *Interpretation flag.* | 0.06% |
 | `AllowObjectWithoutTimestamp` | `ObjectCodec` | An object always has a timestamp (APRS12c §11). | None. Beacon texts, and two of the spec's own examples. | 0.04% |
 | `AllowLowercaseHemisphere` | `PositionCodec` | `N S E W` are upper case (UAP §5.9). | Lower case. Hand-typed beacon texts. | 0.03% |
-| `AllowOutOfRangeValues` | `PositionCodec`, `MicECodec`, `WeatherCodec` | Course and wind direction at most 360, humidity at most 100. | The value is dropped and the rest decoded. Assorted firmware. | 0.02% |
+| `AllowOutOfRangeValues` | `PositionCodec`, `MicECodec`, `WeatherCodec` | Course and wind direction at most 360, humidity at most 100. | The value is dropped and the rest decoded. Assorted firmware. | 0.03% |
 | `AllowMissingSpaceAfterLocator` | `StatusCodec`, `MicECodec` | Text after a grid locator starts with a space (APRS12c §10, §16, UAP §5.17). | No space. APRSIS32 DX reports. | 0.02% |
-| `AllowCompressionTypeReservedBits` | `PositionCodec` | The two high bits of the compression type byte are unused (APRS12c §9). | Set bits. UI-View32 compressed weather. | 0.02% |
+| `AllowCompressionTypeReservedBits` | `PositionCodec` | The two high bits of the compression type byte are unused (APRS12c §9). | Set bits. UI-View32 compressed weather. | 0.01% |
 | `AllowPositionNotAtStart` | `InfoDecoder` | The data type identifier is the first byte; the old TNC beacon rule allowing `!` anywhere in the first 40 characters was abandoned in 2012. | Old TNC beacon texts. FAP still applies the rule. *Interpretation flag.* | 0.01% |
 | `AllowKenwoodFfPadding` | `MicECodec` | No stray bytes in Mic-E status text. | Kenwood TM-D710 0xFF bursts (UAP §5.10). | 0.01% |
 | `AllowUnpaddedAddressee` | `MessageCodec` | Message addressees are padded to 9 characters (APRS12c §14). | Shorter addressees. Hand-built messages. | 0.01% |
 | `AllowMessageIdOnAck` | `MessageCodec` | An ack carries only the ID it acknowledges (UAP §5.32). | A defective bot, `ack1348{4205`. | <0.01% |
+| `AllowFreeTextCapabilities` | `CapabilitiesCodec` (`OtherCodecs`) | Station capabilities are `TOKEN` or `TOKEN=VALUE` items separated by commas (APRS12c §15). | Free text after `<`, kept piece by piece as tokens: TNC ID beacons, a NODEAXIP announcement, aprsd start-up notices. | 0.01% |
+| `AllowLetterGroupBulletin` | `MessageCodec` | A group bulletin is `BLN` + digit + name; an announcement is `BLN` + letter, no name (APRS12c §14). | `BLN` + letter + name (`BLNCNET`, `BLNALUX`) read as a group bulletin: net and club announcements from APRS PropView, direwolf and Microsat beacons. | 0.01% |
+| `AllowBraceInMessageText` | `MessageCodec` | Message text excludes `{`, which starts the message ID (APRS12c §14). | A `{` not followed by a valid ID is kept as text: `cq{`, scripts sending `IPINFO={...}`, an iGate path appending signal reports after the ID. | <0.01% |
+| `AllowInvalidAddresseeCharacters` | `MessageCodec` | The addressee is a 9-character field padded with trailing spaces (APRS12c §14). | A space or `:` inside it (`CA4NDW -7`, the BTECH UV-PRO's `QRX B-10`, RF bit errors). | <0.01% |
 | `AllowDaoWithAmbiguity` | `CommentCodec` | Extra `!DAO!` precision contradicts position ambiguity. | Found in randomised testing; not yet in the corpus. | 0 |
 | `StripTrailingLineBreaks` | `InfoDecoder` | No CR / LF at the end of the information field (APRS12c §5). | Kenwood acks, Yaesu comments (UAP §5.13, §5.26). IGates strip these before APRS-IS, so this appears on RF / KISS. | RF only |
 | `AllowEmptyDestination` | `Tnc2Codec`, `Ax25Codec` | The destination is not empty. | Anytone radios send six spaces (UAP §5.2). | RF only |
@@ -157,7 +161,7 @@ Default: every flag on (`Lenient`); off in `Strict`. Share is the fraction of 50
 | `AllowNulPaddedAddress` | `Ax25Codec` | AX.25 addresses are padded with spaces (UAP §5.29). | NUL padding, from an unnamed AX.25 implementation. | AX.25 only |
 | `AllowInvalidAx25AddressCharacters` | `Ax25Codec` | AX.25 addresses are upper-case letters and digits (UAP §1.1). | Lower-case callsigns. | AX.25 only |
 
-`Strict` accepts 88.0% of the captured packets; the first two rows rescue most of the rest.
+`Strict` accepts 88.1% of the captured packets; the first two rows rescue most of the rest.
 
 ### Spec interpretations (not pragmatic)
 
@@ -173,6 +177,7 @@ Left as errors, because the data can't be recovered without guessing:
 - Symbol tables other than `/ \ 0-9 A-Z` in uncompressed positions (`=3350.45Nh12026.63E#`). Lower-case tables are not defined anywhere.
 - Timestamps of the wrong shape where no position can be found either side of them.
 - Telemetry values that are not numbers.
+- Raw NMEA sentences whose `*hh` checksum doesn't match: the sentence is corrupt (NMEA 0183), and Ham::APRS::FAP rejects it too. See [`aprs-spec-interpretations.md`](aprs-spec-interpretations.md#raw-nmea-with-a-checksum-that-doesnt-match).
 
 ## Packet.NetRom (full vanilla L3+L4 stack)
 
