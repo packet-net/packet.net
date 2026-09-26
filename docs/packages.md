@@ -15,7 +15,7 @@ The [developer guide](../guide/index.md) walks this surface from a raw frame dum
 | `src/Packet.Ax25.Radio.Tait/` | `TaitTransparentTransport` - AX.25 over a Tait radio's own Transparent-mode FFSK modem, no external TNC | [`Packet.Ax25.Radio.Tait`](https://www.nuget.org/packages/Packet.Ax25.Radio.Tait) |
 | `src/Packet.NetRom/` | NET/ROM L3 routing + L4 circuits + INP3 time-routing | [`Packet.NetRom`](https://www.nuget.org/packages/Packet.NetRom) |
 | `src/Packet.Kiss/` | KISS framing, ACKMODE, multi-drop, TCP transport (`KissFrame`, `KissTcpClient`) | [`Packet.Kiss`](https://www.nuget.org/packages/Packet.Kiss) |
-| `src/Packet.Aprs/` | APRS payload codec (position, mic-E, message, object, telemetry) | [`Packet.Aprs`](https://www.nuget.org/packages/Packet.Aprs) |
+| `src/Packet.Aprs/` | APRS 1.2 encoder and decoder: every data type, from AX.25 frames or TNC2 / APRS-IS text | [`Packet.Aprs`](https://www.nuget.org/packages/Packet.Aprs) |
 | `src/Packet.Agw/` | AGW (AGWPE / SV2AGW) client | [`Packet.Agw`](https://www.nuget.org/packages/Packet.Agw) |
 | `src/Packet.Axudp/` | AXUDP (AX.25-over-IP / RFC 1226) transport (`AxudpSocket`) | [`Packet.Axudp`](https://www.nuget.org/packages/Packet.Axudp) |
 | `src/Packet.Kiss.Serial/` | Generic serial-port KISS modem | [`Packet.Kiss.Serial`](https://www.nuget.org/packages/Packet.Kiss.Serial) |

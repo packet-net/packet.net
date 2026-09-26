@@ -240,6 +240,22 @@ the one-shot path - only the `Try*` peek was wrong. Regression pinned in
 (`TryReadDataLength_returns_false_for_an_overflowing_length_rather_than_throwing`),
 and the `agw` fuzz target guards it from regressing.
 
+## 2026-09-25 - APRS target re-pointed at the replacement Packet.Aprs codec
+
+`Packet.Aprs` was replaced by a full APRS 1.2 codec (see `docs/plan.md` §17), so `FuzzAprsBytes` now drives `AprsPacket` instead of the seven old per-type decoders. Each input goes through three ways under both `Strict` and `Lenient`: as an information field behind a plain destination and behind a Mic-E-shaped one derived from the same bytes, as a TNC2 / APRS-IS text line (`TryDecode`), and as a KISS-form AX.25 frame (`TryDecodeAx25`). Two contracts are checked: decoding never throws because of the information field, and a packet that decodes with no warning re-encodes (`ToInformationField`) to data that decodes back equal, unless the encoder refuses it with `ArgumentException`. The structured generator gained fragments for weather, compressed positions, the data extensions, `!DAO!`, comment telemetry, frequencies, Mic-E locator and altitude, and telemetry metadata; six seeds were added (`weather`, `wx-position`, `mic-e`, `extensions`, `tnc2-line`, `third-party`).
+
+About one generated input in seven decodes cleanly and reaches the round-trip check (measured over 200,000 inputs: 29,050 clean, 28,482 re-encoded, 568 refused by the encoder).
+
+### Result
+
+```
+Packet.Fuzz smoke run: 1000000 iterations per parser, seed=0x12345678
+── APRS codec (Packet.Aprs) ──
+  1000462 inputs (14 seed + 448 seed-mutations + 1000000 generated) / 0 unhandled exceptions
+```
+
+Clean: no throws and no round-trip mismatches.
+
 ## How to re-run
 
 ```sh

@@ -114,43 +114,70 @@ A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyF
 
 ## Packet.Aprs
 
-Three pragmatic accommodations, several spec-interpretation choices
-(not pragmatism), and one decoder that's entirely spec-strict.
+Rewritten 2026-09-25, when `Packet.Aprs` was replaced by a full APRS 1.2 codec ([plan §17](plan.md#17-amendment-log)). The spec is [APRS12c](https://github.com/wb2osz/aprsspec) (APRS12c wins over APRS101, [plan §13](plan.md#13-reference-shelf)), with *Understanding APRS Packets* (UAP) for the de facto rules and its catalogue of real-world errors.
 
-### Pragmatic accommodations
+- Every accommodation is a named flag on `AprsParseOptions`. `Lenient` has every flag on: the defect is accepted and the packet gets a `Warning` diagnostic naming it. `Strict` has every flag off: the defect is an `Error` and `Data` is `AprsUnrecognizedData`, or for a header defect the decode throws `AprsFormatException`. The parameterless decode methods use `Lenient`, as `Ax25ParseOptions` does.
+- Each flag has a paired test in `tests/Packet.Aprs.Tests/RealWorld/ToleranceTests.cs`: `Strict` rejects, `Lenient` accepts with a warning, and turning off only that flag rejects. A reflection test fails the build if a flag has no pair, and another that `Strict` / `Lenient` are all-off / all-on.
+- There are no peer presets. The old `Direwolf` and `AprsIs` presets were aliases of `Lenient` and were deleted rather than carried (plan §2.5): APRS-IS is the aggregate of every RF sender's quirks, so there is no narrower set to name, and the only flags that don't apply to APRS-IS text are the AX.25-address ones, which simply never fire there.
+- Three flags are **interpretation** flags rather than acceptance flags. Switching one off rejects nothing; it stops an extra reading. With `RecognizeDataExtensionInComment` off, a late PHG stays in the comment. With `AllowPositionNotAtStart` off, the packet stays a non-APRS beacon. With `AllowMicEAltitudeAnywhere` off, a trailing `xxx}` stays in the comment.
+- The encoder is strict in every case: it never writes anything APRS12c forbids, and throws `ArgumentException` naming the offending property.
 
-| Location | What we accept | Strict spec says | Driver | Flag name | Default |
-|---|---|---|---|---|---|
-| `AprsStatusDecoder.cs:55` `Encoding.UTF8.GetString` | UTF-8 multi-byte sequences in status text; invalid bytes get replacement char | APRS101 §16 "any printable ASCII characters except `\|` or `~`" - codes 33-126 only | Chinese-station status beacons emit UTF-8 in the APRS-IS firehose | `AllowNonAsciiStatusText` | `true` |
-| `AprsTelemetryDecoder.cs:67–73` | Analog values parsed as `double`; accepts `0`, `184`, `3.2`, etc. | APRS101 §13 "five 8-bit unsigned analog data values (expressed as 3-digit decimal numbers in the range 000-255)" | ~30% of corpus telemetry is variable-width int or float (SimplexLogic, RepeaterLogic, BPQ etc.) | `AllowNonIntegerTelemetry` | `true` |
-| `AprsMicEDecoder.cs:42` | DTI bytes `0x1C` and `0x1D` in addition to `` ` `` (0x60) and `'` (0x27) | APRS101 §10 lists `` ` `` and `'` (and notes `0x1C` / `0x1D` are "Rev. 0 beta units only") | Early Kenwood firmware still exists on the air | `AllowMicELegacyDtiBytes` | `true` |
+### Pragmatic accommodations (`AprsParseOptions`)
 
-### `AprsCallsign` - by-design permissive type
+Default: every flag on (`Lenient`); off in `Strict`. Share is the fraction of 3,078,983 full-feed APRS-IS packets (captured 2026-09-25/26, about ten hours) that needed the flag, from `tools/Packet.Aprs.Corpus stats`. Locations are under `src/Packet.Aprs/Internal/`.
 
-| Location | Behaviour |
-|---|---|
-| `AprsCallsign.cs` | Accepts 1-9 char bases (vs strict 1-6), letter SSIDs (`-R`, `-D`, `-B`, etc.), lowercase, all-numeric. Used at the **monitor / display** layer for the ~31% of APRS-IS traffic that doesn't fit `Callsign`. Outbound frame construction still uses strict `Callsign`. |
+| Flag | Location | Strict spec says | What we accept, and the real-world driver | Share |
+|---|---|---|---|---|
+| `AllowWeatherComment` | `CommentCodec`, `StatusCodec` | A complete weather report has no comment field (APRS12c §12, UAP §2.7.1). | Text after the weather data, kept as the comment. Almost every weather station appends a description or sensor readout. | 9.15% |
+| `AllowIncompleteWeather` | `WeatherCodec` | Wind, gust and temperature are mandatory, as dots if unknown (APRS12c §12). | Reports missing some of them. Stations without a gust sensor omit `g`. | 0.92% |
+| `AllowWindExtensionAfterCompressed` | `PositionCodec` | A compressed weather position carries wind in its cs bytes; no `DDD/SSS` follows (UAP §5.33). | A `DDD/SSS` after a compressed position. LoRa APRS trackers (`APLRG1`, `APLS01`). | 0.85% |
+| `AllowMultipleUsedMarkers` | `Tnc2Codec` | Only the last used path entry carries `*` (UAP §5.30). | Several starred entries. Some IGates and DMR gateways mark every used entry. | 0.85% |
+| `AllowNonStandardWeatherFieldWidths` | `WeatherCodec` | Fixed field widths: `t` 3, `h` 2, `b` 5, ... (APRS12c §12). | `t45`, `h070`, `h100`, `b...` from Ecowitt / ESP32 / AmbientCWOP gateways (UAP §5.31). The spec width is always tried first. | 0.51% |
+| `AllowNonUtf8Text` | `Text` | Text is ASCII or UTF-8 (APRS12c §5). | Invalid UTF-8, read as Latin-1 per byte. Code page 437 degree signs, legacy Asian encodings, Kenwood 0xFF (UAP §5.10, §5.16, §5.25). | 0.42% |
+| `AllowInvalidTimestamp` | `TimestampCodec`, `AprsTimestamp` | Timestamp fields in range (APRS12c §6). | `000000z` placeholders, `204140z` (a clock time with the DHM suffix). FAP also accepts these with a warning. | 0.32% |
+| `AllowWindFieldsInPositionWeather` | `WeatherCodec` | Wind is the `DDD/SSS` extension in a position weather report (APRS12c §12). | `c180s000g000t068...` from ESP32 and Ecowitt gateway firmware. | 0.27% |
+| `AllowIncompleteTelemetry` | `StatusCodec` | Five analog values and eight digital bits (APRS12c §13). | Fewer channels, or the bits omitted, from LoRa and SvxLink telemetry. | 0.23% |
+| `RecognizeDataExtensionInComment` | `CommentCodec` | PHG / RNG / DFS go straight after the symbol; elsewhere they are free text (UAP §5.15). | PHG after other comment text, or after a compressed position (UI-View). *Interpretation flag.* | 0.20% |
+| `AllowMalformedTimestamp` | `InfoDecoder`, `ObjectCodec` | `/` and `@` reports and objects carry a 7-character timestamp (APRS12c §6). | Garbled (`@252041_`, `*111111Z`) or missing timestamps (UAP §5.8); the position either side is found and the timestamp dropped. | 0.11% |
+| `AllowShortObjectName` | `ObjectCodec` | Object names are space-padded to 9 characters (APRS12c §11). | Shorter names. Hand-built object beacons. | 0.08% |
+| `AllowMicEAltitudeAnywhere` | `MicECodec` | Mic-E `xxx}` altitude comes first in the status text (APRS12c §10). | Altitude elsewhere; several radios put it at the end. *Interpretation flag.* | 0.06% |
+| `AllowObjectWithoutTimestamp` | `ObjectCodec` | An object always has a timestamp (APRS12c §11). | None. Beacon texts, and two of the spec's own examples. | 0.04% |
+| `AllowLowercaseHemisphere` | `PositionCodec` | `N S E W` are upper case (UAP §5.9). | Lower case. Hand-typed beacon texts. | 0.03% |
+| `AllowOutOfRangeValues` | `PositionCodec`, `MicECodec`, `WeatherCodec` | Course and wind direction at most 360, humidity at most 100. | The value is dropped and the rest decoded. Assorted firmware. | 0.03% |
+| `AllowMissingSpaceAfterLocator` | `StatusCodec`, `MicECodec` | Text after a grid locator starts with a space (APRS12c §10, §16, UAP §5.17). | No space. APRSIS32 DX reports. | 0.02% |
+| `AllowCompressionTypeReservedBits` | `PositionCodec` | The two high bits of the compression type byte are unused (APRS12c §9). | Set bits. UI-View32 compressed weather. | 0.01% |
+| `AllowPositionNotAtStart` | `InfoDecoder` | The data type identifier is the first byte; the old TNC beacon rule allowing `!` anywhere in the first 40 characters was abandoned in 2012. | Old TNC beacon texts. FAP still applies the rule. *Interpretation flag.* | 0.01% |
+| `AllowKenwoodFfPadding` | `MicECodec` | No stray bytes in Mic-E status text. | Kenwood TM-D710 0xFF bursts (UAP §5.10). | 0.01% |
+| `AllowUnpaddedAddressee` | `MessageCodec` | Message addressees are padded to 9 characters (APRS12c §14). | Shorter addressees. Hand-built messages. | 0.01% |
+| `AllowMessageIdOnAck` | `MessageCodec` | An ack carries only the ID it acknowledges (UAP §5.32). | A defective bot, `ack1348{4205`. | <0.01% |
+| `AllowFreeTextCapabilities` | `CapabilitiesCodec` (`OtherCodecs`) | Station capabilities are `TOKEN` or `TOKEN=VALUE` items separated by commas (APRS12c §15). | Free text after `<`, kept piece by piece as tokens: TNC ID beacons, a NODEAXIP announcement, aprsd start-up notices. | 0.01% |
+| `AllowLetterGroupBulletin` | `MessageCodec` | A group bulletin is `BLN` + digit + name; an announcement is `BLN` + letter, no name (APRS12c §14). | `BLN` + letter + name (`BLNCNET`, `BLNALUX`) read as a group bulletin: net and club announcements from APRS PropView, direwolf and Microsat beacons. | 0.01% |
+| `AllowBraceInMessageText` | `MessageCodec` | Message text excludes `{`, which starts the message ID (APRS12c §14). | A `{` not followed by a valid ID is kept as text: `cq{`, scripts sending `IPINFO={...}`, an iGate path appending signal reports after the ID. | <0.01% |
+| `AllowInvalidAddresseeCharacters` | `MessageCodec` | The addressee is a 9-character field padded with trailing spaces (APRS12c §14). | A space or `:` inside it (`CA4NDW -7`, the BTECH UV-PRO's `QRX B-10`, RF bit errors). | <0.01% |
+| `AllowDaoWithAmbiguity` | `CommentCodec` | Extra `!DAO!` precision contradicts position ambiguity. | Found in randomised testing; not yet in the corpus. | 0 |
+| `StripTrailingLineBreaks` | `InfoDecoder` | No CR / LF at the end of the information field (APRS12c §5). | Kenwood acks, Yaesu comments (UAP §5.13, §5.26). IGates strip these before APRS-IS, so this appears on RF / KISS. | RF only |
+| `AllowEmptyDestination` | `Tnc2Codec`, `Ax25Codec` | The destination is not empty. | Anytone radios send six spaces (UAP §5.2). | RF only |
+| `AllowEmptyPathEntry` | `Tnc2Codec`, `Ax25Codec` | No empty digipeater addresses. | An old TNC-2 EPROM (UAP §5.6). | RF only |
+| `AllowNulPaddedAddress` | `Ax25Codec` | AX.25 addresses are padded with spaces (UAP §5.29). | NUL padding, from an unnamed AX.25 implementation. | AX.25 only |
+| `AllowInvalidAx25AddressCharacters` | `Ax25Codec` | AX.25 addresses are upper-case letters and digits (UAP §1.1). | Lower-case callsigns. | AX.25 only |
 
-`AprsCallsign` is the existing precedent for the "strict outbound /
-permissive inbound" split. It's not a pragmatic *flag* - it's a
-parallel type. No retrofit needed; the type itself documents its
-intent.
+`Strict` accepts 88.1% of the captured packets; the first two rows rescue most of the rest.
 
 ### Spec interpretations (not pragmatic)
 
-| Location | Choice | Why it's not a flag |
-|---|---|---|
-| `AprsPositionDecoder.TryParseLatitude/Longitude` accept ASCII space in minute/hundredth positions | APRS101 §6 explicitly defines position ambiguity via spaces. Our acceptance is the spec-defined feature. | Spec-blessed. |
-| `AprsObjectDecoder` accepts `h` HMS timestamp | APRS101 §11's diagram column header says "Time DHM/HMS"; the prose says "DHM only" but is contradicted by the format diagram. Real-world frames use `h`. | Spec-table says it's legal; prose disagrees. We follow the table. |
-| `AprsTelemetryDecoder` optional comma after `MIC` sequence | APRS101 §13 prose: "there may or may not be a comma preceding the first analog data value" | Explicitly spec-blessed both ways. |
-| `AprsMicEDecoder` SP+28 / DC+28 dual encodings | APRS101 §10 documents both "old" (non-printable prefix) and "new" (printable prefix) encodings; the §10 worked example shows the unified decode rule. | Spec-blessed both. |
+Where APRS12c itself tells receivers to accept something, it is accepted in both modes and is not a flag: message text over 67 characters, variable-width or decimal telemetry values, the AX.25 C bits, lower-case Maidenhead letters on receive, UTF-8 in free text, and a leading `/` or space delimiter before free text (§18). Where the spec is ambiguous or contradicts itself (the wind speed unit in a weather report's `DDD/SSS`, which point an ambiguous position reports, compressed rounding, errata in its own examples), the decision and the reasoning are in [`aprs-spec-interpretations.md`](aprs-spec-interpretations.md).
 
-### Decoders that are spec-strict
+The three flags of the codec this one replaced are gone because APRS12c made each of them spec behaviour rather than pragmatism: `AllowNonAsciiStatusText` (APRS12c §16 allows "any printable ASCII or UTF-8 characters" in status text), `AllowNonIntegerTelemetry` (APRS12c §13 allows variable-width and decimal values) and `AllowMicELegacyDtiBytes` (the Rev 0 `0x1C` / `0x1D` data types decode with an `Info` diagnostic, `ObsoleteFormat`, as the spec still documents them). The permissive `AprsCallsign` type is replaced by `AprsAddress`, which holds any TNC2 address as written and reports `IsAx25`; `AprsAddress.TryGetCallsign` converts to the strict `Packet.Core.Callsign` for the AX.25 layer, and outbound AX.25 encoding refuses a non-AX.25 address.
 
-- `AprsMessageDecoder` - no pragmatic choices found.
-- `AprsItemDecoder` - strict spec, name-length window `[3, 9]` per §11.
-- `AprsObjectDecoder` apart from the `h` timestamp (which is an
-  interpretation, not pragmatism).
+### Not tolerated
+
+Left as errors, because the data can't be recovered without guessing:
+
+- Latitudes and longitudes with non-digits or wrong widths (`4232.02N/0135.07E`, `003-0.00W`).
+- Symbol tables other than `/ \ 0-9 A-Z` in uncompressed positions (`=3350.45Nh12026.63E#`). Lower-case tables are not defined anywhere.
+- Timestamps of the wrong shape where no position can be found either side of them.
+- Telemetry values that are not numbers.
+- Raw NMEA sentences whose `*hh` checksum doesn't match: the sentence is corrupt (NMEA 0183), and Ham::APRS::FAP rejects it too. See [`aprs-spec-interpretations.md`](aprs-spec-interpretations.md#raw-nmea-with-a-checksum-that-doesnt-match).
 
 ## Packet.NetRom (full vanilla L3+L4 stack)
 
@@ -276,20 +303,17 @@ documented in those files - the parser is not specialised to either node.
 ## Summary table: flags × presets
 
 The presets we agreed to seed are `Strict`, `Bpq`, `Xrouter`,
-`Direwolf`, and `AprsIs`. Mapping the four flags found above:
+`Direwolf`, and `AprsIs`. Mapping the AX.25-layer flags found above
+(`AprsParseOptions` has only `Strict` and `Lenient`; see Packet.Aprs):
 
 | Flag | `Strict` | `Bpq` | `Xrouter` | `Direwolf` | `AprsIs` |
 |---|:-:|:-:|:-:|:-:|:-:|
 | `AllowEmptyCallsignBase` | ✗ | ✓ | ? | ? | ? |
 | `AllowInfoOnSupervisoryFrames` | ✗ | ✓ | ? | ? | n/a |
-| `AllowNonAsciiStatusText` | ✗ | n/a | n/a | ✓ | ✓ |
-| `AllowNonIntegerTelemetry` | ✗ | n/a | n/a | ✓ | ✓ |
-| `AllowMicELegacyDtiBytes` | ✗ | n/a | n/a | ✓ | ✓ |
 
 `?` = not yet verified for that implementation (needs a targeted
 corpus or a test against the live container before we commit).
-`n/a` = flag doesn't apply to that layer (e.g. the BPQ AX.25-layer
-preset doesn't care about APRS status text encoding).
+`n/a` = flag doesn't apply to that source (APRS-IS carries no S frames).
 
 `Xrouter` is mostly TBD - we don't have a corpus of frames emitted
 by Xrouter yet. Seed it as a copy of `Strict` and let it grow as we
@@ -337,7 +361,9 @@ The fix is in the routing, not in the options: on a failed modulo-8 parse the pu
 3. **Retrofit `Packet.Ax25`**: lift `AllowInfoOnSupervisoryFrames`
    into `Ax25Frame.TryParse(span, options, out frame)`.
 4. **Retrofit `Packet.Aprs`**: the three flags above + thread
-   options through `TryDecode` overloads on each decoder.
+   options through `TryDecode` overloads on each decoder. (Done
+   2026-05-14; superseded 2026-09-25 by the replacement codec's own
+   inventory in the Packet.Aprs section.)
 5. **Verify the `?` cells**: once `Xrouter` and `Direwolf` AX.25-layer
    coverage is on, run targeted tests to populate the
    `AllowEmptyCallsignBase` and `AllowInfoOnSupervisoryFrames`

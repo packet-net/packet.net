@@ -109,7 +109,7 @@ public class NetsimUiFrameScenarios
         // Exercises the whole stack end-to-end: we encode an APRS
         // position via our AX.25 layer, push through net-sim's
         // AFSK1200 sim, then decode on the receive side and verify
-        // AprsPositionDecoder still extracts the same lat/lon.
+        // Packet.Aprs still extracts the same lat/lon.
         await SkipIfNetsimDown();
         using var cts = new CancellationTokenSource(RxBudget);
         await using var sender = await KissTcpClient.ConnectAsync(Host, NodeAKissPort, cts.Token);
@@ -129,11 +129,13 @@ public class NetsimUiFrameScenarios
         await sender.SendAsync(0, KissCommand.Data, outbound.ToBytes(), cts.Token);
 
         var rx = await WaitForOurFrame(receiver, ourSource, cts.Token);
-        AprsPositionDecoder.TryDecode(rx.Info.Span, out var pos).Should().BeTrue();
-        pos.Latitude.Should().BeApproximately(51.3025, 1e-3);
-        pos.Longitude.Should().BeApproximately(-0.6431, 1e-3);
-        pos.SymbolTable.Should().Be('/');
-        pos.SymbolCode.Should().Be('-');
+        AprsPacket aprs = AprsPacket.DecodeAx25(rx.ToBytes(), AprsParseOptions.Strict);
+        var pos = aprs.Data.Should().BeOfType<AprsPositionReport>().Subject;
+        pos.Position.Latitude.Should().BeApproximately(51.3025, 1e-3);
+        pos.Position.Longitude.Should().BeApproximately(-0.6431, 1e-3);
+        pos.Symbol.Should().Be(AprsSymbol.Parse("/-"));
+        pos.Comment.Should().Be("Reading UK test");
+        aprs.Source.Value.Should().Be("PNAPRS-9");
     }
 
     [SkippableFact]

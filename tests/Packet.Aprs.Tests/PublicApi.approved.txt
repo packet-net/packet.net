@@ -1,0 +1,880 @@
+namespace Packet.Aprs
+{
+    public readonly struct AprsAddress : System.IEquatable<Packet.Aprs.AprsAddress>
+    {
+        public const int MaxLength = 16;
+        public string Base { get; }
+        public bool IsAx25 { get; }
+        public int? NumericSsid { get; }
+        public string Ssid { get; }
+        public string Value { get; }
+        public bool IsSameStation(Packet.Aprs.AprsAddress other) { }
+        public override string ToString() { }
+        public bool TryGetCallsign(out Packet.Core.Callsign callsign) { }
+        public static Packet.Aprs.AprsAddress FromAx25(string callsign, int ssid = 0) { }
+        public static Packet.Aprs.AprsAddress FromCallsign(Packet.Core.Callsign callsign) { }
+        public static Packet.Aprs.AprsAddress Parse(string value) { }
+        public static bool TryParse([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? value, out Packet.Aprs.AprsAddress address) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsAgreloDfReport : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsAgreloDfReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsAgreloDfReport() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public int BearingDegrees { get; init; }
+        public override char DataTypeIdentifier { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public int Quality { get; init; }
+    }
+    public enum AprsAreaColor
+    {
+        Black = 0,
+        Blue = 1,
+        Green = 2,
+        Cyan = 3,
+        Red = 4,
+        Violet = 5,
+        Yellow = 6,
+        Gray = 7,
+        BlackLow = 8,
+        BlueLow = 9,
+        GreenLow = 10,
+        CyanLow = 11,
+        RedLow = 12,
+        VioletLow = 13,
+        YellowLow = 14,
+        GrayLow = 15,
+    }
+    public readonly struct AprsAreaObject : System.IEquatable<Packet.Aprs.AprsAreaObject>
+    {
+        public AprsAreaObject(Packet.Aprs.AprsAreaShape Shape, Packet.Aprs.AprsAreaColor Color, int LatitudeOffsetCode, int LongitudeOffsetCode, int? CorridorWidthMiles = default) { }
+        public Packet.Aprs.AprsAreaColor Color { get; init; }
+        public int? CorridorWidthMiles { get; init; }
+        public int LatitudeOffsetCode { get; init; }
+        public double LatitudeOffsetDegrees { get; }
+        public int LongitudeOffsetCode { get; init; }
+        public double LongitudeOffsetDegrees { get; }
+        public Packet.Aprs.AprsAreaShape Shape { get; init; }
+    }
+    public enum AprsAreaShape
+    {
+        OpenCircle = 0,
+        LineDownRight = 1,
+        OpenEllipse = 2,
+        OpenTriangle = 3,
+        OpenBox = 4,
+        FilledCircle = 5,
+        LineDownLeft = 6,
+        FilledEllipse = 7,
+        FilledTriangle = 8,
+        FilledBox = 9,
+    }
+    public readonly struct AprsBeamHeading : System.IEquatable<Packet.Aprs.AprsBeamHeading>
+    {
+        public AprsBeamHeading(char HeadingCode, char PowerCode) { }
+        public int ErpWatts { get; }
+        public char HeadingCode { get; init; }
+        public int HeadingDegrees { get; }
+        public char PowerCode { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsBulletin : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsBulletin>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsBulletin() { }
+        public string? GroupName { get; }
+        public char Id { get; }
+        public Packet.Aprs.AprsBulletinKind Kind { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Text { get; init; }
+        public static Packet.Aprs.AprsBulletin Create(char id, string text) { }
+        public static Packet.Aprs.AprsBulletin CreateGroup(char id, string group, string text) { }
+    }
+    public enum AprsBulletinKind
+    {
+        General = 0,
+        Announcement = 1,
+        Group = 2,
+    }
+    public readonly struct AprsCapability : System.IEquatable<Packet.Aprs.AprsCapability>
+    {
+        public AprsCapability(string Token, string? Value) { }
+        public string Token { get; init; }
+        public string? Value { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsCommentTelemetry : System.IEquatable<Packet.Aprs.AprsCommentTelemetry>
+    {
+        public const int MaxValue = 8280;
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsCommentTelemetry() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.IReadOnlyList<int> Analog { get; init; }
+        public byte? Digital { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public int Sequence { get; init; }
+    }
+    public enum AprsCompressionOrigin
+    {
+        Compressed = 0,
+        TncBeaconText = 1,
+        Software = 2,
+        Reserved3 = 3,
+        Kpc3 = 4,
+        Pico = 5,
+        OtherTracker = 6,
+        DigipeaterConversion = 7,
+    }
+    public readonly struct AprsCompressionType : System.IEquatable<Packet.Aprs.AprsCompressionType>
+    {
+        public AprsCompressionType(Packet.Aprs.AprsGpsFix Fix, Packet.Aprs.AprsNmeaSource Source, Packet.Aprs.AprsCompressionOrigin Origin) { }
+        public Packet.Aprs.AprsGpsFix Fix { get; init; }
+        public Packet.Aprs.AprsCompressionOrigin Origin { get; init; }
+        public Packet.Aprs.AprsNmeaSource Source { get; init; }
+        public static Packet.Aprs.AprsCompressionType Default { get; }
+    }
+    public readonly struct AprsDao : System.IEquatable<Packet.Aprs.AprsDao>
+    {
+        public AprsDao(char Datum, Packet.Aprs.AprsDaoPrecision Precision) { }
+        public char Datum { get; init; }
+        public Packet.Aprs.AprsDaoPrecision Precision { get; init; }
+        public static Packet.Aprs.AprsDao Wgs84Base91 { get; }
+    }
+    public enum AprsDaoPrecision
+    {
+        None = 0,
+        Thousandths = 1,
+        Base91 = 2,
+    }
+    public abstract class AprsData : System.IEquatable<Packet.Aprs.AprsData>
+    {
+        public abstract char DataTypeIdentifier { get; }
+        public byte[] ToInformationField() { }
+    }
+    public sealed class AprsDevice : System.IEquatable<Packet.Aprs.AprsDevice>
+    {
+        public AprsDevice(string? Vendor, string? Model, string? DeviceClass, string? OperatingSystem, System.Collections.Generic.IReadOnlyList<string> Features) { }
+        public string? DeviceClass { get; init; }
+        public System.Collections.Generic.IReadOnlyList<string> Features { get; init; }
+        public string? Model { get; init; }
+        public string? OperatingSystem { get; init; }
+        public bool SupportsMessaging { get; }
+        public string? Vendor { get; init; }
+        public override string ToString() { }
+    }
+    public static class AprsDeviceIdentification
+    {
+        public static string DatabaseVersion { get; }
+        public static Packet.Aprs.AprsDevice? FromDestination(Packet.Aprs.AprsAddress destination) { }
+        public static Packet.Aprs.AprsDevice? FromMicE(char? typeCode, string suffix) { }
+        public static Packet.Aprs.AprsDevice? FromTocall(string tocall) { }
+        public static Packet.Aprs.AprsDevice? Identify(Packet.Aprs.AprsPacket packet) { }
+    }
+    public readonly struct AprsDfBearing : System.IEquatable<Packet.Aprs.AprsDfBearing>
+    {
+        public AprsDfBearing(int BearingDegrees, int Number, int Range, int Quality) { }
+        public double? BeamwidthDegrees { get; }
+        public int BearingDegrees { get; init; }
+        public int Number { get; init; }
+        public int Quality { get; init; }
+        public int Range { get; init; }
+        public double RangeMiles { get; }
+    }
+    public readonly struct AprsDfSignalStrength : System.IEquatable<Packet.Aprs.AprsDfSignalStrength>
+    {
+        public AprsDfSignalStrength(int StrengthCode, int HeightCode, int GainCode, int DirectivityCode) { }
+        public int DirectivityCode { get; init; }
+        public int? DirectivityDegrees { get; }
+        public int GainCode { get; init; }
+        public int HeightCode { get; init; }
+        public double HeightFeet { get; }
+        public int StrengthCode { get; init; }
+    }
+    public readonly struct AprsDiagnostic : System.IEquatable<Packet.Aprs.AprsDiagnostic>
+    {
+        public AprsDiagnostic(Packet.Aprs.AprsDiagnosticCode Code, Packet.Aprs.AprsDiagnosticSeverity Severity, string Message, int? Offset = default) { }
+        public Packet.Aprs.AprsDiagnosticCode Code { get; init; }
+        public string Message { get; init; }
+        public int? Offset { get; init; }
+        public Packet.Aprs.AprsDiagnosticSeverity Severity { get; init; }
+        public override string ToString() { }
+    }
+    public enum AprsDiagnosticCode
+    {
+        InvalidHeader = 1,
+        InvalidAddress = 2,
+        EmptyDestination = 3,
+        EmptyPathEntry = 4,
+        MultipleUsedMarkers = 5,
+        NotAprsFrame = 6,
+        NulPaddedAddress = 7,
+        InvalidAx25AddressCharacters = 8,
+        TooManyDigipeaters = 9,
+        TrailingLineBreak = 20,
+        NonUtf8Text = 21,
+        Truncated = 22,
+        NotAprs = 23,
+        ReservedDataType = 24,
+        ObsoleteFormat = 25,
+        OutOfRangeValue = 26,
+        InvalidTimestamp = 40,
+        InvalidPosition = 41,
+        InvalidLatitude = 42,
+        InvalidLongitude = 43,
+        LowercaseHemisphere = 44,
+        InvalidSymbolTable = 45,
+        InvalidSymbolCode = 46,
+        InvalidCompressedPosition = 47,
+        DaoWithAmbiguity = 48,
+        DataExtensionInComment = 49,
+        InvalidObjectName = 60,
+        ObjectNameNotPadded = 61,
+        ObjectWithoutTimestamp = 62,
+        InvalidItemName = 63,
+        IncompleteWeather = 80,
+        WeatherComment = 81,
+        InvalidWeather = 82,
+        InvalidMicEDestination = 100,
+        InvalidMicEInformation = 101,
+        KenwoodFfPadding = 102,
+        MicEMissingDeviceType = 103,
+        InvalidMessage = 120,
+        UnpaddedAddressee = 121,
+        MessageIdOnAck = 122,
+        InvalidTelemetryMetadata = 123,
+        InvalidQuery = 124,
+        InvalidTelemetry = 140,
+        InvalidStatus = 141,
+        InvalidLocator = 142,
+        InvalidNmea = 143,
+        NmeaChecksumMismatch = 144,
+        InvalidThirdParty = 145,
+        InvalidGeneralQuery = 146,
+        InvalidCapabilities = 147,
+        InvalidUserDefined = 148,
+        InvalidAgreloDf = 149,
+        MissingSpaceAfterLocator = 150,
+        CompressionTypeReservedBits = 151,
+        MalformedTimestamp = 152,
+        PositionNotAtStart = 153,
+        NonStandardWeatherFieldWidth = 154,
+        WindFieldsInsteadOfExtension = 155,
+        WindExtensionAfterCompressed = 156,
+        MicEAltitudeNotFirst = 157,
+        BraceInMessageText = 158,
+        InvalidAddresseeCharacters = 159,
+        LetterGroupBulletin = 160,
+        FreeTextCapabilities = 161,
+    }
+    public enum AprsDiagnosticSeverity
+    {
+        Info = 0,
+        Warning = 1,
+        Error = 2,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsDirectedQuery : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsDirectedQuery>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsDirectedQuery() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string QueryType { get; init; }
+        public string? Target { get; init; }
+        public static System.Collections.Generic.IReadOnlyList<string> KnownTypes { get; }
+    }
+    public sealed class AprsFormatException : System.FormatException
+    {
+        public AprsFormatException() { }
+        public AprsFormatException(string message) { }
+        public AprsFormatException(string message, System.Exception innerException) { }
+        public System.Collections.Generic.IReadOnlyList<Packet.Aprs.AprsDiagnostic> Diagnostics { get; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsGeneralQuery : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsGeneralQuery>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsGeneralQuery() { }
+        public override char DataTypeIdentifier { get; }
+        public Packet.Aprs.AprsQueryFootprint? Footprint { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string QueryType { get; init; }
+    }
+    public enum AprsGpsFix
+    {
+        Old = 0,
+        Current = 1,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsItemReport : Packet.Aprs.AprsPositionedData, System.IEquatable<Packet.Aprs.AprsItemReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsItemReport() { }
+        public override char DataTypeIdentifier { get; }
+        public bool IsAlive { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Name { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsMaidenheadBeacon : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsMaidenheadBeacon>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsMaidenheadBeacon() { }
+        public string Comment { get; init; }
+        public override char DataTypeIdentifier { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Locator { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public abstract class AprsMessage : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsMessage>
+    {
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Addressee { get; init; }
+        public override char DataTypeIdentifier { get; }
+        public string? MessageId { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsMessageAck : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsMessageAck>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsMessageAck() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string AcknowledgedId { get; init; }
+        public string? ReplyAck { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsMessageReject : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsMessageReject>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsMessageReject() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string RejectedId { get; init; }
+        public string? ReplyAck { get; init; }
+    }
+    public enum AprsMicEMessage
+    {
+        Emergency = 0,
+        OffDuty = 1,
+        EnRoute = 2,
+        InService = 3,
+        Returning = 4,
+        Committed = 5,
+        Special = 6,
+        Priority = 7,
+        Custom0 = 8,
+        Custom1 = 9,
+        Custom2 = 10,
+        Custom3 = 11,
+        Custom4 = 12,
+        Custom5 = 13,
+        Custom6 = 14,
+        Unknown = 15,
+    }
+    public sealed class AprsMicEReport : Packet.Aprs.AprsPositionedData, System.IEquatable<Packet.Aprs.AprsMicEReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsMicEReport() { }
+        public override char DataTypeIdentifier { get; }
+        public int DestinationSsid { get; init; }
+        public Packet.Aprs.AprsDevice? Device { get; }
+        public string DeviceSuffix { get; init; }
+        public bool IsCurrent { get; init; }
+        public System.Collections.Generic.IReadOnlyList<int>? LegacyTelemetry { get; init; }
+        public string? MaidenheadLocator { get; init; }
+        public Packet.Aprs.AprsMicEMessage Message { get; init; }
+        public bool? MessagingCapable { get; }
+        public char? TypeCode { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsNmeaReport : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsNmeaReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsNmeaReport() { }
+        public double? AltitudeMetres { get; init; }
+        public double? CourseDegrees { get; init; }
+        public override char DataTypeIdentifier { get; }
+        public bool? FixValid { get; init; }
+        public bool HasChecksum { get; }
+        public Packet.Aprs.AprsPosition? Position { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Sentence { get; init; }
+        public string SentenceType { get; }
+        public double? SpeedKnots { get; init; }
+        public System.TimeOnly? Time { get; init; }
+        public string? WaypointName { get; init; }
+    }
+    public enum AprsNmeaSource
+    {
+        Other = 0,
+        Gll = 1,
+        Gga = 2,
+        Rmc = 3,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsNwsBulletin : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsNwsBulletin>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsNwsBulletin() { }
+        public string Severity { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Text { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsObjectReport : Packet.Aprs.AprsPositionedData, System.IEquatable<Packet.Aprs.AprsObjectReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsObjectReport() { }
+        public override char DataTypeIdentifier { get; }
+        public bool IsAlive { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Name { get; init; }
+        public Packet.Aprs.AprsTimestamp? Timestamp { get; init; }
+    }
+    public sealed class AprsPacket : System.IEquatable<Packet.Aprs.AprsPacket>
+    {
+        public Packet.Aprs.AprsData Data { get; }
+        public Packet.Aprs.AprsAddress Destination { get; }
+        public System.Collections.Generic.IReadOnlyList<Packet.Aprs.AprsDiagnostic> Diagnostics { get; }
+        public bool HasErrors { get; }
+        public bool HasWarnings { get; }
+        public System.ReadOnlyMemory<byte> Information { get; }
+        public System.Collections.Generic.IReadOnlyList<Packet.Aprs.AprsPathEntry> Path { get; }
+        public Packet.Aprs.AprsQConstruct? QConstruct { get; }
+        public Packet.Aprs.AprsAddress Source { get; }
+        public bool Equals(Packet.Aprs.AprsPacket? other) { }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public byte[] ToAx25Frame() { }
+        public override string ToString() { }
+        public byte[] ToTnc2() { }
+        public static Packet.Aprs.AprsPacket Create(Packet.Aprs.AprsAddress source, Packet.Aprs.AprsAddress destination, Packet.Aprs.AprsData data, System.Collections.Generic.IEnumerable<Packet.Aprs.AprsPathEntry>? path = null) { }
+        public static Packet.Aprs.AprsPacket Create(string source, string destination, Packet.Aprs.AprsData data, string path = "") { }
+        public static Packet.Aprs.AprsPacket CreateMicE(Packet.Aprs.AprsAddress source, Packet.Aprs.AprsMicEReport report, System.Collections.Generic.IEnumerable<Packet.Aprs.AprsPathEntry>? path = null) { }
+        public static Packet.Aprs.AprsPacket Decode(System.ReadOnlySpan<byte> tnc2, Packet.Aprs.AprsParseOptions? options = null) { }
+        public static Packet.Aprs.AprsPacket Decode(string tnc2, Packet.Aprs.AprsParseOptions? options = null) { }
+        public static Packet.Aprs.AprsPacket Decode(Packet.Aprs.AprsAddress source, Packet.Aprs.AprsAddress destination, System.Collections.Generic.IEnumerable<Packet.Aprs.AprsPathEntry> path, System.ReadOnlySpan<byte> information, Packet.Aprs.AprsParseOptions? options = null) { }
+        public static Packet.Aprs.AprsPacket DecodeAx25(System.ReadOnlySpan<byte> frame, Packet.Aprs.AprsParseOptions? options = null) { }
+        public static bool TryDecode(System.ReadOnlySpan<byte> tnc2, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Packet.Aprs.AprsPacket? packet, Packet.Aprs.AprsParseOptions? options = null) { }
+        public static bool TryDecode(string tnc2, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Packet.Aprs.AprsPacket? packet, Packet.Aprs.AprsParseOptions? options = null) { }
+        public static bool TryDecodeAx25(System.ReadOnlySpan<byte> frame, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Packet.Aprs.AprsPacket? packet, Packet.Aprs.AprsParseOptions? options = null) { }
+        public static bool operator !=(Packet.Aprs.AprsPacket? left, Packet.Aprs.AprsPacket? right) { }
+        public static bool operator ==(Packet.Aprs.AprsPacket? left, Packet.Aprs.AprsPacket? right) { }
+    }
+    public sealed class AprsParseOptions : System.IEquatable<Packet.Aprs.AprsParseOptions>
+    {
+        public AprsParseOptions() { }
+        public bool AllowBraceInMessageText { get; init; }
+        public bool AllowCompressionTypeReservedBits { get; init; }
+        public bool AllowDaoWithAmbiguity { get; init; }
+        public bool AllowEmptyDestination { get; init; }
+        public bool AllowEmptyPathEntry { get; init; }
+        public bool AllowFreeTextCapabilities { get; init; }
+        public bool AllowIncompleteTelemetry { get; init; }
+        public bool AllowIncompleteWeather { get; init; }
+        public bool AllowInvalidAddresseeCharacters { get; init; }
+        public bool AllowInvalidAx25AddressCharacters { get; init; }
+        public bool AllowInvalidTimestamp { get; init; }
+        public bool AllowKenwoodFfPadding { get; init; }
+        public bool AllowLetterGroupBulletin { get; init; }
+        public bool AllowLowercaseHemisphere { get; init; }
+        public bool AllowMalformedTimestamp { get; init; }
+        public bool AllowMessageIdOnAck { get; init; }
+        public bool AllowMicEAltitudeAnywhere { get; init; }
+        public bool AllowMissingSpaceAfterLocator { get; init; }
+        public bool AllowMultipleUsedMarkers { get; init; }
+        public bool AllowNonStandardWeatherFieldWidths { get; init; }
+        public bool AllowNonUtf8Text { get; init; }
+        public bool AllowNulPaddedAddress { get; init; }
+        public bool AllowObjectWithoutTimestamp { get; init; }
+        public bool AllowOutOfRangeValues { get; init; }
+        public bool AllowPositionNotAtStart { get; init; }
+        public bool AllowShortObjectName { get; init; }
+        public bool AllowUnpaddedAddressee { get; init; }
+        public bool AllowWeatherComment { get; init; }
+        public bool AllowWindExtensionAfterCompressed { get; init; }
+        public bool AllowWindFieldsInPositionWeather { get; init; }
+        public bool RecognizeDataExtensionInComment { get; init; }
+        public bool StripTrailingLineBreaks { get; init; }
+        public static Packet.Aprs.AprsParseOptions Lenient { get; }
+        public static Packet.Aprs.AprsParseOptions Strict { get; }
+    }
+    public readonly struct AprsPathEntry : System.IEquatable<Packet.Aprs.AprsPathEntry>
+    {
+        public AprsPathEntry(Packet.Aprs.AprsAddress Address, bool HasBeenRepeated = false) { }
+        public Packet.Aprs.AprsAddress Address { get; init; }
+        public bool HasBeenRepeated { get; init; }
+        public override string ToString() { }
+        public static string FormatList(System.Collections.Generic.IEnumerable<Packet.Aprs.AprsPathEntry> path) { }
+        public static System.Collections.Generic.IReadOnlyList<Packet.Aprs.AprsPathEntry> ParseList(string path) { }
+    }
+    public readonly struct AprsPhg : System.IEquatable<Packet.Aprs.AprsPhg>
+    {
+        public AprsPhg(int PowerCode, int HeightCode, int GainCode, int DirectivityCode, int? BeaconsPerHour = default) { }
+        public int? BeaconsPerHour { get; init; }
+        public int DirectivityCode { get; init; }
+        public int? DirectivityDegrees { get; }
+        public int GainCode { get; init; }
+        public int GainDbi { get; }
+        public int HeightCode { get; init; }
+        public double HeightFeet { get; }
+        public int PowerCode { get; init; }
+        public int PowerWatts { get; }
+        public double RangeMiles { get; }
+    }
+    public readonly struct AprsPosition : System.IEquatable<Packet.Aprs.AprsPosition>
+    {
+        public AprsPosition(double Latitude, double Longitude, int Ambiguity = 0) { }
+        public int Ambiguity { get; init; }
+        public double AmbiguityRadiusNauticalMiles { get; }
+        public double Latitude { get; init; }
+        public double Longitude { get; init; }
+        public static Packet.Aprs.AprsPosition Null { get; }
+    }
+    public sealed class AprsPositionReport : Packet.Aprs.AprsPositionedData, System.IEquatable<Packet.Aprs.AprsPositionReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsPositionReport() { }
+        public override char DataTypeIdentifier { get; }
+        public bool MessagingCapable { get; init; }
+        public Packet.Aprs.AprsTimestamp? Timestamp { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public abstract class AprsPositionedData : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsPositionedData>
+    {
+        public double? AltitudeFeet { get; init; }
+        public Packet.Aprs.AprsAreaObject? AreaObject { get; init; }
+        public string Comment { get; init; }
+        public Packet.Aprs.AprsCompressionType? CompressionType { get; init; }
+        public int? CourseDegrees { get; init; }
+        public Packet.Aprs.AprsDao? Dao { get; init; }
+        public Packet.Aprs.AprsDfBearing? DfBearing { get; init; }
+        public Packet.Aprs.AprsDfSignalStrength? DfSignalStrength { get; init; }
+        public Packet.Aprs.AprsVoiceFrequency? Frequency { get; init; }
+        public bool IsCompressed { get; init; }
+        public Packet.Aprs.AprsPhg? Phg { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Packet.Aprs.AprsPosition Position { get; init; }
+        public double? RadioRangeMiles { get; init; }
+        public string? SignpostText { get; init; }
+        public double? SpeedKnots { get; init; }
+        public Packet.Aprs.AprsStorm? Storm { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Packet.Aprs.AprsSymbol Symbol { get; init; }
+        public Packet.Aprs.AprsCommentTelemetry? Telemetry { get; init; }
+        public Packet.Aprs.AprsWeather? Weather { get; init; }
+    }
+    public readonly struct AprsQConstruct : System.IEquatable<Packet.Aprs.AprsQConstruct>
+    {
+        public AprsQConstruct(string Construct, Packet.Aprs.AprsAddress? Station, int PathIndex) { }
+        public string Construct { get; init; }
+        public bool IsFromRf { get; }
+        public int PathIndex { get; init; }
+        public Packet.Aprs.AprsAddress? Station { get; init; }
+    }
+    public readonly struct AprsQueryFootprint : System.IEquatable<Packet.Aprs.AprsQueryFootprint>
+    {
+        public AprsQueryFootprint(decimal Latitude, decimal Longitude, int RadiusMiles) { }
+        public decimal Latitude { get; init; }
+        public decimal Longitude { get; init; }
+        public int RadiusMiles { get; init; }
+    }
+    public enum AprsRawWeatherFormat
+    {
+        PeetBrosHash = 0,
+        PeetBrosStar = 1,
+        UltimeterPacket = 2,
+        UltimeterLogging = 3,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsRawWeatherReport : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsRawWeatherReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsRawWeatherReport() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Data { get; init; }
+        public override char DataTypeIdentifier { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Packet.Aprs.AprsRawWeatherFormat Format { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsStationCapabilities : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsStationCapabilities>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsStationCapabilities() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.IReadOnlyList<Packet.Aprs.AprsCapability> Capabilities { get; init; }
+        public override char DataTypeIdentifier { get; }
+    }
+    public sealed class AprsStatusReport : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsStatusReport>
+    {
+        public AprsStatusReport() { }
+        public Packet.Aprs.AprsBeamHeading? BeamHeading { get; init; }
+        public override char DataTypeIdentifier { get; }
+        public string? MaidenheadLocator { get; init; }
+        public Packet.Aprs.AprsSymbol? Symbol { get; init; }
+        public string Text { get; init; }
+        public Packet.Aprs.AprsTimestamp? Timestamp { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsStorm : System.IEquatable<Packet.Aprs.AprsStorm>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsStorm() { }
+        public int? CentralPressureMillibars { get; init; }
+        public int? GustKnots { get; init; }
+        public int? HurricaneWindRadiusNauticalMiles { get; init; }
+        public int? SustainedWindKnots { get; init; }
+        public int? TropicalStormWindRadiusNauticalMiles { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Packet.Aprs.AprsStormType Type { get; init; }
+        public int? WholeGaleRadiusNauticalMiles { get; init; }
+    }
+    public enum AprsStormType
+    {
+        TropicalStorm = 0,
+        Hurricane = 1,
+        TropicalDepression = 2,
+    }
+    public readonly struct AprsSymbol : System.IEquatable<Packet.Aprs.AprsSymbol>
+    {
+        public AprsSymbol(char Table, char Code) { }
+        public char Code { get; init; }
+        public string? Description { get; }
+        public bool IsAlternateTable { get; }
+        public bool IsPrimaryTable { get; }
+        public bool IsValid { get; }
+        public bool IsWeatherStation { get; }
+        public char? Overlay { get; }
+        public char Table { get; init; }
+        public override string ToString() { }
+        public static Packet.Aprs.AprsSymbol Parse(string symbol) { }
+    }
+    public static class AprsSymbolTable
+    {
+        public static string? Describe(Packet.Aprs.AprsSymbol symbol) { }
+        public static Packet.Aprs.AprsSymbol? FromDestination(Packet.Aprs.AprsAddress destination) { }
+        public static Packet.Aprs.AprsSymbol? FromSourceSsid(int ssid) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsTelemetryBitSense : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsTelemetryBitSense>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsTelemetryBitSense() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public byte Bits { get; init; }
+        public string ProjectTitle { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsTelemetryCoefficients : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsTelemetryCoefficients>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsTelemetryCoefficients() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.IReadOnlyList<decimal> Coefficients { get; init; }
+        public decimal Scale(int channel, decimal raw) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsTelemetryParameterNames : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsTelemetryParameterNames>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsTelemetryParameterNames() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.IReadOnlyList<string> Names { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsTelemetryReport : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsTelemetryReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsTelemetryReport() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.IReadOnlyList<decimal?> Analog { get; init; }
+        public string Comment { get; init; }
+        public override char DataTypeIdentifier { get; }
+        public byte? Digital { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Sequence { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsTelemetryUnits : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsTelemetryUnits>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsTelemetryUnits() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.IReadOnlyList<string> Units { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsTestData : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsTestData>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsTestData() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Data { get; init; }
+        public override char DataTypeIdentifier { get; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsTextMessage : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsTextMessage>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsTextMessage() { }
+        public string? ReplyAck { get; init; }
+        public bool RequestsAck { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Text { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsThirdPartyTraffic : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsThirdPartyTraffic>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsThirdPartyTraffic() { }
+        public bool CameFromInternet { get; }
+        public override char DataTypeIdentifier { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Packet.Aprs.AprsPacket Packet { get; init; }
+    }
+    public readonly struct AprsTimestamp : System.IEquatable<Packet.Aprs.AprsTimestamp>
+    {
+        public int Day { get; }
+        public Packet.Aprs.AprsTimestampFormat Format { get; }
+        public int Hour { get; }
+        public bool IsPermanentObjectMarker { get; }
+        public bool IsValid { get; }
+        public int Minute { get; }
+        public int Month { get; }
+        public int Second { get; }
+        public System.DateTime? Resolve(System.DateTime reference) { }
+        public override string ToString() { }
+        public static Packet.Aprs.AprsTimestamp DayHoursMinutes(int day, int hour, int minute, bool utc = true) { }
+        public static Packet.Aprs.AprsTimestamp FromDateTime(System.DateTime utc, Packet.Aprs.AprsTimestampFormat format = 0) { }
+        public static Packet.Aprs.AprsTimestamp HoursMinutesSeconds(int hour, int minute, int second) { }
+        public static Packet.Aprs.AprsTimestamp MonthDayHoursMinutes(int month, int day, int hour, int minute) { }
+    }
+    public enum AprsTimestampFormat
+    {
+        DayHoursMinutesUtc = 0,
+        DayHoursMinutesLocal = 1,
+        HoursMinutesSecondsUtc = 2,
+        MonthDayHoursMinutesUtc = 3,
+    }
+    public enum AprsToneType
+    {
+        Tone = 0,
+        Ctcss = 1,
+        Dcs = 2,
+        ToneBurst = 3,
+        Off = 4,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsUnrecognizedData : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsUnrecognizedData>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsUnrecognizedData() { }
+        public override char DataTypeIdentifier { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.IReadOnlyList<byte> Raw { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Packet.Aprs.AprsUnrecognizedReason Reason { get; init; }
+        public string Text { get; }
+    }
+    public enum AprsUnrecognizedReason
+    {
+        Empty = 0,
+        NotAprs = 1,
+        ReservedDataType = 2,
+        Malformed = 3,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsUserDefinedData : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsUserDefinedData>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsUserDefinedData() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.IReadOnlyList<byte> Data { get; init; }
+        public string DataText { get; }
+        public override char DataTypeIdentifier { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public char PacketType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public char UserId { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsVoiceFrequency : System.IEquatable<Packet.Aprs.AprsVoiceFrequency>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsVoiceFrequency() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public decimal FrequencyMHz { get; init; }
+        public bool Narrow { get; init; }
+        public int? OffsetKHz { get; init; }
+        public int? Range { get; init; }
+        public bool RangeInKilometres { get; init; }
+        public bool TenKilohertzResolution { get; init; }
+        public Packet.Aprs.AprsToneType? ToneType { get; init; }
+        public int? ToneValue { get; init; }
+    }
+    public sealed class AprsWeather : System.IEquatable<Packet.Aprs.AprsWeather>
+    {
+        public AprsWeather() { }
+        public System.Collections.Generic.IReadOnlyList<Packet.Aprs.AprsWeatherField> AdditionalFields { get; init; }
+        public int? HumidityPercent { get; init; }
+        public int? LuminosityWattsPerSquareMetre { get; init; }
+        public double? PressureMillibars { get; init; }
+        public double? RainLast24HoursInches { get; init; }
+        public double? RainLastHourInches { get; init; }
+        public int? RainRawCounter { get; init; }
+        public double? RainSinceMidnightInches { get; init; }
+        public decimal? SnowfallLast24HoursInches { get; init; }
+        public char? SoftwareType { get; init; }
+        public int? TemperatureFahrenheit { get; init; }
+        public string? UnitType { get; init; }
+        public int? WindDirectionDegrees { get; init; }
+        public int? WindGustMph { get; init; }
+        public double? WindSpeedMph { get; init; }
+    }
+    public readonly struct AprsWeatherField : System.IEquatable<Packet.Aprs.AprsWeatherField>
+    {
+        public AprsWeatherField(char Letter, string Value) { }
+        public char Letter { get; init; }
+        public string Value { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class AprsWeatherReport : Packet.Aprs.AprsData, System.IEquatable<Packet.Aprs.AprsWeatherReport>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public AprsWeatherReport() { }
+        public string Comment { get; init; }
+        public override char DataTypeIdentifier { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Packet.Aprs.AprsTimestamp Timestamp { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Packet.Aprs.AprsWeather Weather { get; init; }
+    }
+}

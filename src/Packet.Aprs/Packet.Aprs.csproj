@@ -3,13 +3,26 @@
   <PropertyGroup>
     <PackageId>Packet.Aprs</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Title>Packet.Aprs — APRS payload codec</Title>
-    <Description>Automatic Packet Reporting System (APRS) payload parsing per APRS12c.pdf — position (the four DTI variants !, =, /, @), mic-E (`, '), message, object, item, status, and telemetry, with Strict/Lenient/Direwolf/AprsIs parse-option presets. Decode-focused. Source: github.com/packet-net/packet.net.</Description>
-    <PackageTags>aprs;amateur-radio;packet-radio;codec</PackageTags>
+    <Title>Packet.Aprs - APRS packet encoder and decoder</Title>
+    <Description>APRS (Automatic Packet Reporting System) packet codec per APRS12c: encode and decode every APRS 1.2 data type (positions, compressed and Mic-E, objects, items, weather, telemetry, messages, status, and the rest) from AX.25 frames or TNC2 / APRS-IS text. Spec-strict with Strict / Lenient parse-option presets and a named flag for each real-world deviation. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>aprs;ax25;aprs-is;mic-e;amateur-radio;packet-radio;codec</PackageTags>
+    <!-- CA2208: encoders validate the properties of the record being encoded, and name the
+         offending property in the exception, which is more useful than a method parameter. -->
+    <NoWarn>$(NoWarn);CA2208</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Snapshot of aprsorg/aprs-deviceid (CC BY-SA 2.0); refresh with scripts/update-aprs-deviceid.py. -->
+    <EmbeddedResource Include="Data/aprs-deviceid.json" LogicalName="Packet.Aprs.Data.aprs-deviceid.json" />
+    <None Include="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Aprs.Tests" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,5 @@
 using System.Text;
+using Packet.Core;
 
 namespace Packet.AprsIs.Spike;
 
@@ -144,18 +145,10 @@ public static class Tnc2Parser
             return null;
         }
 
-        if (!Packet.Aprs.AprsCallsign.TryParse(parsed.Source, out var srcA))
+        if (CoerceToAx25(parsed.Source) is not { } newSrc || CoerceToAx25(parsed.Destination) is not { } newDest)
         {
             return null;
         }
-
-        if (!Packet.Aprs.AprsCallsign.TryParse(parsed.Destination, out var destA))
-        {
-            return null;
-        }
-
-        string newSrc = srcA.ToStrictCallsignOrCoerced().ToString();
-        string newDest = destA.ToStrictCallsignOrCoerced().ToString();
 
         var sb = new StringBuilder(line.Length);
         sb.Append(newSrc).Append('>').Append(newDest);
@@ -169,9 +162,9 @@ public static class Tnc2Parser
                 // and direwolf's q-construct stripper handles them anyway.
                 sb.Append(d.Callsign);
             }
-            else if (Packet.Aprs.AprsCallsign.TryParse(d.Callsign, out var digiA))
+            else if (CoerceToAx25(d.Callsign) is { } digi)
             {
-                sb.Append(digiA.ToStrictCallsignOrCoerced().ToString());
+                sb.Append(digi);
             }
             else
             {
@@ -190,5 +183,32 @@ public static class Tnc2Parser
         sb.Append(Encoding.Latin1.GetString(parsed.Info.Span));
 
         return sb.ToString();
+    }
+    /// <summary>
+    /// Best-effort coercion of an APRS-IS address to one direwolf accepts as AX.25: base
+    /// upper-cased with non-alphanumerics dropped and cut to 6 (<c>X</c> if nothing is left); a
+    /// non-numeric or out-of-range SSID becomes 1. Null when the text isn't even a plausible
+    /// APRS-IS callsign (base 1-9 and SSID 0-3 letters or digits).
+    /// </summary>
+    private static string? CoerceToAx25(string text)
+    {
+        if (Callsign.TryParse(text, out Callsign strict))
+        {
+            return strict.ToString();
+        }
+
+        int dash = text.IndexOf('-', StringComparison.Ordinal);
+        string @base = dash >= 0 ? text[..dash] : text;
+        string ssid = dash >= 0 ? text[(dash + 1)..] : "";
+        if (@base.Length is < 1 or > 9 || ssid.Length > 3 || !@base.All(char.IsAsciiLetterOrDigit) || !ssid.All(char.IsAsciiLetterOrDigit))
+        {
+            return null;
+        }
+
+        string coerced = new([.. @base.ToUpperInvariant().Where(char.IsAsciiLetterOrDigit).Take(6)]);
+        byte n = ssid.Length == 0 ? (byte)0
+            : byte.TryParse(ssid, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out byte v) && v <= 15 ? v
+            : (byte)1;
+        return new Callsign(coerced.Length == 0 ? "X" : coerced, n).ToString();
     }
 }

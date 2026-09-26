@@ -144,6 +144,9 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="FsCheck.Xunit" Version="3.3.4" />
+    <!-- Public-API snapshot for Packet.Aprs (tests/Packet.Aprs.Tests/PublicApiTests.cs): renders
+         the assembly's public surface to text so any change to it is a reviewed diff. -->
+    <PackageVersion Include="PublicApiGenerator" Version="11.4.5" />
     <PackageVersion Include="Testcontainers" Version="4.14.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
     <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />

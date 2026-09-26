@@ -128,7 +128,7 @@ public static class Program
         Console.WriteLine("  Packet.Fuzz xid [corpus-dir]       AFL/libfuzzer harness for XidInfoField.TryParse.");
         Console.WriteLine("  Packet.Fuzz segment [corpus-dir]   AFL/libfuzzer harness for Reassembler.Push + SegmentationLayer.");
         Console.WriteLine("  Packet.Fuzz command [corpus-dir]   AFL/libfuzzer harness for the node console command parser.");
-        Console.WriteLine("  Packet.Fuzz aprs [corpus-dir]      AFL/libfuzzer harness for the APRS info-field decoders.");
+        Console.WriteLine("  Packet.Fuzz aprs [corpus-dir]      AFL/libfuzzer harness for the APRS codec (Packet.Aprs).");
         Console.WriteLine("  Packet.Fuzz agw [corpus-dir]       AFL/libfuzzer harness for AgwFrame.Parse.");
         Console.WriteLine("  Packet.Fuzz netrom [corpus-dir]    AFL/libfuzzer harness for the NET/ROM wire parsers.");
     }
@@ -232,7 +232,7 @@ public static class Program
             Console.WriteLine($"  command/{name} — {bytes.Length} bytes");
         }
 
-        // ── APRS info-field seeds (raw info bytes, sans AX.25 header) ─────
+        // ── APRS seeds (info fields, plus a TNC2 line and a third-party packet) ─
         foreach (var (name, bytes) in AprsSeeds())
         {
             string path = Path.Combine(root, "aprs", name);
@@ -427,9 +427,10 @@ public static class Program
         var cmd = SmokeOne("NodeCommandParser.Parse", iterations, FuzzCommandBytes, cmdSeeds, seed,
             structuredGenerator: MostlyValidCommand);
         Console.WriteLine();
-        // The APRS decoders are total by contract - every public TryDecode must return
-        // false on a malformed info field, never throw. The target runs each in turn.
-        var aprs = SmokeOne("APRS info-field decoders", iterations, FuzzAprsBytes, aprsSeeds, seed,
+        // The APRS codec's decoding is total by contract - it never throws because of the
+        // information field - and a packet that decodes cleanly must re-encode to the same
+        // data. The target checks both, as an info field, a TNC2 line and an AX.25 frame.
+        var aprs = SmokeOne("APRS codec (Packet.Aprs)", iterations, FuzzAprsBytes, aprsSeeds, seed,
             structuredGenerator: MostlyValidAprs);
         Console.WriteLine();
         // AgwFrame.Parse throws InvalidDataException by documented contract on a short /
@@ -1136,31 +1137,60 @@ public static class Program
 
     // ─── APRS / AGW / NET/ROM targets ────────────────────────────────────
 
+    private static readonly AprsAddress AprsFuzzSource = AprsAddress.Parse("N0CALL");
+    private static readonly AprsAddress AprsFuzzDestination = AprsAddress.Parse("APZ001");
+
     /// <summary>
-    /// Drive arbitrary info-field bytes through every public APRS decoder. All are total
-    /// by contract (return <c>false</c> on a malformed field, never throw); a single
-    /// hostile APRS-IS / RF info field must not crash any of them. The MIC-E decoder also
-    /// takes a destination-base string (the encoded latitude in the AX.25 dest callsign),
-    /// so it is fed a structured-ish base derived from the same bytes.
+    /// Drive arbitrary bytes through the APRS codec three ways, under both option presets: as
+    /// an information field (behind a plain destination and behind a Mic-E-shaped one derived
+    /// from the same bytes, since Mic-E carries half its position in the destination), as a
+    /// TNC2 / APRS-IS text line, and as a KISS-form AX.25 frame. Decoding is total by contract:
+    /// it never throws because of the information field, and an unusable header is a
+    /// <c>false</c> from <c>TryDecode</c>. The codec also promises that a packet which decodes
+    /// with no warning re-encodes to data that decodes back equal, unless the encoder refuses
+    /// it with <see cref="ArgumentException"/>, so a mismatch is a finding too.
     /// </summary>
     private static void FuzzAprsBytes(byte[] bytes)
     {
-        var info = bytes.AsSpan();
+        AprsAddress micEDestination = AprsAddress.Parse(MicEDestBase(bytes));
         foreach (var options in new[] { AprsParseOptions.Strict, AprsParseOptions.Lenient })
         {
-            _ = AprsPositionDecoder.TryDecode(info, out _);
-            _ = AprsPositionDecoder.TryDecodePayload(info, out _);
-            _ = AprsMessageDecoder.TryDecode(info, out _);
-            _ = AprsStatusDecoder.TryDecode(info, options, out _);
-            _ = AprsObjectDecoder.TryDecode(info, out _);
-            _ = AprsItemDecoder.TryDecode(info, out _);
-            _ = AprsTelemetryDecoder.TryDecode(info, options, out _);
+            CheckAprsRoundTrip(AprsPacket.Decode(AprsFuzzSource, AprsFuzzDestination, [], bytes, options));
+            CheckAprsRoundTrip(AprsPacket.Decode(AprsFuzzSource, micEDestination, [], bytes, options));
+            if (AprsPacket.TryDecode(bytes, out AprsPacket? line, options))
+            {
+                CheckAprsRoundTrip(line);
+            }
 
-            // MIC-E needs a 6-char destination base (the lat-encoding callsign); derive a
-            // plausible-but-fuzzed one from the leading bytes so the decoder's dest-field
-            // math is exercised too.
-            string destBase = MicEDestBase(bytes);
-            _ = AprsMicEDecoder.TryDecode(destBase, info, options, out _);
+            if (AprsPacket.TryDecodeAx25(bytes, out AprsPacket? frame, options))
+            {
+                CheckAprsRoundTrip(frame);
+            }
+        }
+    }
+
+    private static void CheckAprsRoundTrip(AprsPacket packet)
+    {
+        if (packet.Data is AprsUnrecognizedData || packet.HasWarnings || packet.HasErrors)
+        {
+            return;
+        }
+
+        byte[] info;
+        try
+        {
+            info = packet.Data.ToInformationField();
+        }
+        catch (ArgumentException)
+        {
+            return; // the encoder refusing is documented
+        }
+
+        AprsPacket again = AprsPacket.Decode(packet.Source, packet.Destination, packet.Path, info);
+        if (!Equals(again.Data, packet.Data))
+        {
+            throw new InvalidOperationException(
+                $"APRS round trip changed the data: '{packet}' re-encoded as '{Encoding.Latin1.GetString(info)}'");
         }
     }
 
@@ -1235,6 +1265,10 @@ public static class Program
             "5126.30N/00121.30W>", "4903.50N/07201.75W#", "WB2OSZ   :hello{1",
             "LEADER   *092345z", "T#005,199,000,255,073,123,01101001", "My status",
             "AID!4903.50N", "/A=001234", "000/000", "!!", "    ",
+            "/5L!!<*e7>7P[", "4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900",
+            "c220s004g005t077", "PHG5132", "RNG0050", "DFS2360", "!W5,!", "|ss11|",
+            "146.520MHz T100 -060 ", "IO91SX/G ", "123}", "{UIV32N}", "}", "*092345z",
+            "ack1}", "PARM.Battery,Btemp", "EQNS.0,5.2,0,0,.53,-32", "BITS.10110000,Balloon",
         };
         int frags = rng.Next(1, 4);
         for (int f = 0; f < frags; f++)
@@ -1335,6 +1369,12 @@ public static class Program
             ("object.bin",    ";LEADER   *092345z4903.50N/07201.75W>"),
             ("item.bin",      ")AID!4903.50N/07201.75W#"),
             ("compressed.bin","!/5L!!<*e7>{?!"),
+            ("weather.bin",   "_10090556c220s004g005t077r000p000P000h50b09900wRSW"),
+            ("wx-position.bin", "@092345z4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900wRSW"),
+            ("mic-e.bin",     "`(_fn\"Oj/]IO91SX/G 146.520MHz T100 -060 ="),
+            ("extensions.bin","!4903.50N/07201.75W#PHG5132 146.520MHz /A=001234 |ss11| !W5,!"),
+            ("tnc2-line.bin", "M0LTE-9>APZ001,WIDE1-1,qAR,N0CALL-10:!4903.50N/07201.75W>088/036Mobile"),
+            ("third-party.bin", "}N0CALL>APZ001,TCPIP,M0LTE*:>relayed status"),
         };
         foreach (var (name, text) in seeds)
         {
