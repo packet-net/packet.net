@@ -85,7 +85,7 @@ internal static class NeutralReader
                 CourseDegrees = (double?)d["course_degrees"],
                 SpeedKnots = (double?)d["speed_knots"],
                 AltitudeMetres = (double?)d["altitude_m"],
-                Time = OptStr(d, "time") is { } t ? TimeOnly.ParseExact(t, ["HH:mm:ss", "HH:mm:ss.fff"], CultureInfo.InvariantCulture) : null,
+                Time = OptStr(d, "time") is { } t ? TimeOnly.ParseExact(t, "HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture) : null,
                 WaypointName = OptStr(d, "waypoint"),
             }, "sentence", "has_checksum", "latitude", "longitude", "fix", "course_degrees", "speed_knots", "altitude_m", "time", "waypoint"),
             "maidenhead-beacon" => Only(d, new AprsMaidenheadBeacon { Locator = Str(d, "locator"), Comment = OptStr(d, "comment") ?? "" }, "locator", "comment"),

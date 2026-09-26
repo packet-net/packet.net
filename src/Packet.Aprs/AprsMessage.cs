@@ -215,9 +215,9 @@ public sealed record AprsNwsBulletin : AprsMessage
 
     private protected override void EncodeText(InfoWriter writer)
     {
-        if (!Addressee.StartsWith("NWS", StringComparison.Ordinal))
+        if (!MessageCodec.IsNwsAddressee(Addressee))
         {
-            throw new ArgumentException("an NWS bulletin addressee starts NWS", nameof(Addressee));
+            throw new ArgumentException("an NWS bulletin is addressed NWS- or NWS_ (APRS12c ch. 14)", nameof(Addressee));
         }
 
         Internal.Text.RequireNoLineBreaks(Text, nameof(Text));

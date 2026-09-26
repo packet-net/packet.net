@@ -245,6 +245,12 @@ internal static class CapabilitiesCodec
             caps.Add(eq < 0 ? new AprsCapability(item, null) : new AprsCapability(item[..eq].Trim(), item[(eq + 1)..].Trim()));
         }
 
+        if (caps.Count == 0)
+        {
+            ctx.Error(AprsDiagnosticCode.InvalidCapabilities, "a capabilities report lists at least one capability (APRS12c ch. 15)", 1);
+            return null;
+        }
+
         // Each capability is a TOKEN or TOKEN=VALUE (APRS12c ch. 15). A "token" with spaces in it is
         // free text: a beacon sent with the wrong data type identifier.
         if (caps.Any(c => c.Token.Length == 0 || c.Token.Any(ch => ch is <= ' ' or '\x7F') || (c.Value is { } v && v.Any(ch => ch is < ' ' or '\x7F')))
