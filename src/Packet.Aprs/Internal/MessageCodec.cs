@@ -212,11 +212,11 @@ internal static class MessageCodec
         }
 
         SplitId(text[5..], allowReplyAck: false, out ReadOnlySpan<byte> body, out string? id, out _);
-        if (!CheckBrace(body, offset + 5, ctx) || !Text.TryDecode(body, ctx, offset + 5, out string s))
-        {
-            return true;
-        }
 
+        // Checked quietly first: if this turns out not to be metadata, the text is reported once,
+        // as a plain message, rather than once here and again there.
+        string s = Text.ForDisplay(body);
+        AprsData? candidate;
         switch ((char)kind[0])
         {
             case 'P' or 'U':
@@ -228,10 +228,10 @@ internal static class MessageCodec
                     return false;
                 }
 
-                data = kind[0] == (byte)'P'
+                candidate = kind[0] == (byte)'P'
                     ? new AprsTelemetryParameterNames { Addressee = addressee, Names = entries, MessageId = id }
                     : new AprsTelemetryUnits { Addressee = addressee, Units = entries, MessageId = id };
-                return true;
+                break;
             }
 
             case 'E':
@@ -255,8 +255,8 @@ internal static class MessageCodec
                     return false;
                 }
 
-                data = new AprsTelemetryCoefficients { Addressee = addressee, Coefficients = values, MessageId = id };
-                return true;
+                candidate = new AprsTelemetryCoefficients { Addressee = addressee, Coefficients = values, MessageId = id };
+                break;
             }
 
             default:
@@ -278,10 +278,18 @@ internal static class MessageCodec
                     }
                 }
 
-                data = new AprsTelemetryBitSense { Addressee = addressee, Bits = value, ProjectTitle = comma >= 0 ? s[(comma + 1)..] : "", MessageId = id };
-                return true;
+                candidate = new AprsTelemetryBitSense { Addressee = addressee, Bits = value, ProjectTitle = comma >= 0 ? s[(comma + 1)..] : "", MessageId = id };
+                break;
             }
         }
+
+        // It is metadata: now its text's defects are reported.
+        if (CheckBrace(body, offset + 5, ctx) && Text.TryDecode(body, ctx, offset + 5, out _))
+        {
+            data = candidate;
+        }
+
+        return true;
     }
 
     private static bool TryDirectedQuery(string addressee, ReadOnlySpan<byte> text, int offset, DecodeContext ctx, out AprsDirectedQuery? query)

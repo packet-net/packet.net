@@ -131,7 +131,7 @@ internal static class StatusCodec
                 throw new ArgumentException("a status report timestamp must be DHM UTC (APRS12c ch. 16)", nameof(r));
             }
 
-            w.Ascii(ts.ToString());
+            TimestampCodec.Write(w, ts, allowMonthDay: false);
         }
 
         byte[] text = System.Text.Encoding.UTF8.GetBytes(r.Text);
