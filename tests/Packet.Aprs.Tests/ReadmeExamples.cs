@@ -20,6 +20,15 @@ public class ReadmeExamples
         $"{p.CourseDegrees} deg at {p.SpeedKnots} kn".Should().Be("88 deg at 36 kn");
         $"{p.AltitudeFeet} ft, \"{p.Comment}\"".Should().Be("1234 ft, \"Hello\"");
         packet.QConstruct!.Value.Station!.Value.Value.Should().Be("M0LTE-10");
+
+        AprsPacket beacon = Aprs.From("M0LTE-9").Via("WIDE1-1", "WIDE2-1")
+            .Position(51.4543, -0.9781)
+            .Symbol(AprsSymbol.Car)
+            .Course(88).Speed(36).Altitude(120)
+            .Comment("Mobile")
+            .Build();
+
+        beacon.ToString().Should().Be("M0LTE-9>APZ001,WIDE1-1,WIDE2-1:!5127.26N/00058.69W>088/036/A=000120Mobile");
     }
 
     [Fact]
@@ -113,39 +122,38 @@ public class ReadmeExamples
     [Fact]
     public void Example_4_send_a_message_and_know_when_it_arrived()
     {
-        var message = new AprsTextMessage { Addressee = "N0CALL-7", Text = "Meet at the club at 8?", MessageId = "42" };
-        AprsPacket outgoing = AprsPacket.Create("M0LTE-9", "APZ001", message, "WIDE1-1,WIDE2-1");
+        AprsStation me = Aprs.From("M0LTE-9").Via("WIDE1-1", "WIDE2-1");
+        AprsPacket outgoing = me.Message("N0CALL-7", "Meet at the club at 8?").WithId("42").Build();
         outgoing.ToString().Should().Be("M0LTE-9>APZ001,WIDE1-1,WIDE2-1::N0CALL-7 :Meet at the club at 8?{42");
 
         AprsPacket incoming = AprsPacket.Decode("N0CALL-7>APDR16,WIDE1-1,qAR,N0CALL-10::M0LTE-9  :ack42");
-        bool delivered = incoming.Data is AprsMessageAck ack && ack.Addressee == "M0LTE-9" && ack.AcknowledgedId == message.MessageId;
+        bool delivered = incoming.Data is AprsMessageAck ack && ack.Addressee == me.Source.Value && ack.AcknowledgedId == "42";
 
         delivered.Should().BeTrue();
+
+        AprsPacket reply = me.Ack("N0CALL-7", "17").Build();
+        reply.ToString().Should().Be("M0LTE-9>APZ001,WIDE1-1,WIDE2-1::N0CALL-7 :ack17");
     }
 
     [Fact]
     public void Example_5_announce_a_repeater()
     {
-        var repeater = new AprsObjectReport
-        {
-            Name = "MYRPTR",
-            IsAlive = true,
-            Timestamp = AprsTimestamp.DayHoursMinutes(25, 18, 30),
-            Position = new AprsPosition(51.4543, -0.9781),
-            Symbol = AprsSymbol.Parse("/r"),
-            Frequency = new AprsVoiceFrequency { FrequencyMHz = 145.725m, ToneType = AprsToneType.Tone, ToneValue = 118, OffsetKHz = -600 },
-            Comment = "Reading repeater",
-        };
+        AprsObjectBuilder repeater = Aprs.From("M0LTE").Via("WIDE2-1")
+            .Object("MYRPTR").At(51.4543, -0.9781)
+            .Symbol(AprsSymbol.Repeater)
+            .Timestamp(AprsTimestamp.DayHoursMinutes(25, 18, 30))
+            .Frequency(145.725, tone: 118.8, offsetKHz: -600)
+            .Comment("Reading repeater");
 
-        AprsPacket.Create("M0LTE", "APZ001", repeater, "WIDE2-1").ToString()
+        repeater.Build().ToString()
             .Should().Be("M0LTE>APZ001,WIDE2-1:;MYRPTR   *251830z5127.26N/00058.69Wr145.725MHz T118 -060 Reading repeater");
 
-        AprsPacket kill = AprsPacket.Create("M0LTE", "APZ001", repeater with { IsAlive = false }, "WIDE2-1");
+        AprsPacket kill = repeater.Kill().Build();
         kill.ToString().Should().Contain(";MYRPTR   _251830z");
 
         var heard = (AprsObjectReport)AprsPacket.Decode(kill.ToString()).Data;
         heard.IsAlive.Should().BeFalse();
-        heard.Frequency.Should().Be(repeater.Frequency);
+        heard.Frequency.Should().Be(new AprsVoiceFrequency { FrequencyMHz = 145.725m, ToneType = AprsToneType.Tone, ToneValue = 118, OffsetKHz = -600 });
         heard.Position.Latitude.Should().BeApproximately(51.4543, 0.01 / 60);
     }
 
