@@ -5,7 +5,7 @@ namespace Packet.Aprs.Corpus;
 /// <summary>
 /// Picks a small regression set from the corpus: for each distinct "shape" (data type, the set of
 /// diagnostic codes, and which optional elements are present), up to N example packets. Writes them
-/// as escaped text lines for tests/Packet.Aprs.Tests/Corpus/samples.txt.
+/// as escaped text lines, which <c>vectors from-samples</c> adds to spec/aprs/cases/corpus.json.
 /// </summary>
 internal static class CurateCommand
 {
@@ -46,7 +46,7 @@ internal static class CurateCommand
         return 0;
     }
 
-    private static string Shape(AprsPacket packet)
+    internal static string Shape(AprsPacket packet)
     {
         AprsData data = packet.Data is AprsThirdPartyTraffic t ? t.Packet.Data : packet.Data;
         var sb = new StringBuilder(data is AprsUnrecognizedData u ? $"Unrecognized({u.Reason})" : data.GetType().Name);
@@ -74,6 +74,26 @@ internal static class CurateCommand
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>The inverse of <see cref="Escape"/>.</summary>
+    internal static byte[] Unescape(string text)
+    {
+        var bytes = new List<byte>(text.Length);
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\\' && i + 3 < text.Length && text[i + 1] == 'x')
+            {
+                bytes.Add(Convert.ToByte(text.Substring(i + 2, 2), 16));
+                i += 3;
+            }
+            else
+            {
+                bytes.Add((byte)text[i]);
+            }
+        }
+
+        return [.. bytes];
     }
 
     /// <summary>Printable ASCII kept; backslash and everything else written as \xNN.</summary>

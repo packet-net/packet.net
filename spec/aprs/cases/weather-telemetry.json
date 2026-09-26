@@ -1,0 +1,281 @@
+{
+  "cases": [
+    {
+      "id": "weather/positionless",
+      "description": "A positionless weather report with an MDHM timestamp and software/unit type.",
+      "source": "APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"info": "_10090556c220s004g005t077r000p000P000h50b09900wRSW"},
+      "expect": {
+        "data": {"type": "weather", "timestamp": "10090556", "weather": {"wind_direction_degrees": 220, "wind_speed_mph": 4, "wind_gust_mph": 5, "temperature_f": 77, "rain_1h_in": 0, "rain_24h_in": 0, "rain_midnight_in": 0, "humidity_percent": 50, "pressure_mbar": 990, "software": "w", "unit": "RSW"}},
+        "diagnostics": ["info:obsolete-format"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather/with-comment",
+      "description": "A weather report with a comment, which the spec does not allow: rejected when strict, kept as the comment when lenient.",
+      "source": "UAP 2.7.1, APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"tnc2": "W1TG2>APU25N,UNCAN*:@091842z4256.20N/07049.42W_310/004g015t081r000p033P002h54b10001/ - Hampton, NH Wx"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "091842z", "messaging": true, "latitude": 42.93666666666667, "longitude": -70.82366666666667, "symbol": "/_", "weather": {"wind_direction_degrees": 310, "wind_speed_mph": 4, "wind_gust_mph": 15, "temperature_f": 81, "rain_1h_in": 0, "rain_24h_in": 0.33, "rain_midnight_in": 0.02, "humidity_percent": 54, "pressure_mbar": 1000.1}, "comment": " - Hampton, NH Wx"},
+        "diagnostics": ["warning:weather-comment"]
+      },
+      "strict": {"rejected_by": "weather-comment"},
+      "reencode": "refused"
+    },
+    {
+      "id": "telemetry/report",
+      "description": "A telemetry report: sequence, five analog values, eight bits.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "T#005,199,000,255,073,123,01101001"},
+      "expect": {
+        "data": {"type": "telemetry", "sequence": "005", "analog": [199, 0, 255, 73, 123], "bits": "01101001"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "telemetry/base91-in-comment",
+      "description": "Base-91 telemetry at the end of a position comment.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75W-Hello|ss11|"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/-", "telemetry": {"sequence": 7544, "analog": [1472]}, "comment": "Hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "telemetry/parameter-names",
+      "description": "PARM. names the channels, sent as a message to the station itself.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": ":N0QBF-11 :PARM.Battery,Btemp,ATemp,Pres,Alt,Camra,Chut,Sun,10m,ATV"},
+      "expect": {
+        "data": {"type": "telemetry-names", "addressee": "N0QBF-11", "names": ["Battery", "Btemp", "ATemp", "Pres", "Alt", "Camra", "Chut", "Sun", "10m", "ATV"]}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/raw-weather-station-formats-are-kept-as-text",
+      "description": "Raw weather station formats are kept as text.",
+      "source": "APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"info": "#50B7500820082"},
+      "expect": {
+        "data": {"type": "raw-weather", "format": "peet-bros-hash", "data": "50B7500820082"},
+        "diagnostics": ["info:obsolete-format"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/raw-weather-station-formats-are-kept-as-text-2",
+      "description": "Raw weather station formats are kept as text.",
+      "source": "APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"info": "!!006B005803500000----03E9--------002105140000005D"},
+      "expect": {
+        "data": {"type": "raw-weather", "format": "ultimeter-logging", "data": "006B005803500000----03E9--------002105140000005D"},
+        "diagnostics": ["info:obsolete-format"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/raw-weather-station-formats-are-kept-as-text-3",
+      "description": "Raw weather station formats are kept as text.",
+      "source": "APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"info": "*7007600000000"},
+      "expect": {
+        "data": {"type": "raw-weather", "format": "peet-bros-star", "data": "7007600000000"},
+        "diagnostics": ["info:obsolete-format"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/raw-weather-station-formats-are-kept-as-text-4",
+      "description": "Raw weather station formats are kept as text.",
+      "source": "APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"info": "$ULTW0031003702CE0069----000086A00001----011901CC00000005"},
+      "expect": {
+        "data": {"type": "raw-weather", "format": "ultimeter-packet", "data": "0031003702CE0069----000086A00001----011901CC00000005"},
+        "diagnostics": ["info:obsolete-format"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/complete-weather-reports",
+      "description": "Complete weather reports.",
+      "source": "APRS12c ch. 12",
+      "authority": "interpretation",
+      "interpretations": ["weather-wind-speed-unit-in-the-dirspd-extension"],
+      "input": {"info": "@092345z4903.50N/07201.75W_220/004g005t-07r000p000P000h50b09900wRSW"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/_", "weather": {"wind_direction_degrees": 220, "wind_speed_mph": 4, "wind_gust_mph": 5, "temperature_f": -7, "rain_1h_in": 0, "rain_24h_in": 0, "rain_midnight_in": 0, "humidity_percent": 50, "pressure_mbar": 990, "software": "w", "unit": "RSW"}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/complete-weather-reports-2",
+      "description": "Complete weather reports.",
+      "source": "APRS12c ch. 12",
+      "authority": "interpretation",
+      "interpretations": ["weather-wind-speed-unit-in-the-dirspd-extension"],
+      "input": {"info": "!4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900wRSW"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/_", "weather": {"wind_direction_degrees": 220, "wind_speed_mph": 4, "wind_gust_mph": 5, "temperature_f": 77, "rain_1h_in": 0, "rain_24h_in": 0, "rain_midnight_in": 0, "humidity_percent": 50, "pressure_mbar": 990, "software": "w", "unit": "RSW"}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/rain-gauge-with-unknown-wind-and-temperature",
+      "description": "Rain gauge with unknown wind and temperature.",
+      "source": "APRS12c ch. 12",
+      "authority": "spec",
+      "input": {"info": "_10090556c...s...g...t...P012Jim"},
+      "expect": {
+        "data": {"type": "weather", "timestamp": "10090556", "weather": {"rain_midnight_in": 0.12, "software": "J", "unit": "im"}},
+        "diagnostics": ["info:obsolete-format"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/base91-comment-telemetry",
+      "description": "Base91 comment telemetry.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75W-Hello|ss112233|"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/-", "telemetry": {"sequence": 7544, "analog": [1472, 1564, 1656]}, "comment": "Hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/base91-comment-telemetry-2",
+      "description": "Base91 comment telemetry.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75W-Hello|!!!!|"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/-", "telemetry": {"sequence": 0, "analog": [0]}, "comment": "Hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/base91-comment-telemetry-3",
+      "description": "Base91 comment telemetry.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75W-Hello|ss1122334455!\"|"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/-", "telemetry": {"sequence": 7544, "analog": [1472, 1564, 1656, 1748, 1840], "digital": 1}, "comment": "Hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/telemetry-reports",
+      "description": "Telemetry reports.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "T#151,45.7,2.3,190.0,91.0,-7.3,00001100"},
+      "expect": {
+        "data": {"type": "telemetry", "sequence": "151", "analog": [45.7, 2.3, 190.0, 91.0, -7.3], "bits": "00001100"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/telemetry-reports-2",
+      "description": "Telemetry reports.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": "T#MIC199,000,255,073,123,01101001"},
+      "expect": {
+        "data": {"type": "telemetry", "sequence": "MIC", "analog": [199, 0, 255, 73, 123], "bits": "01101001"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/equation-coefficients-scale-199-to-10-348-volts",
+      "description": "Equation coefficients scale 199 to 10 348 volts.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": ":N0QBF-11 :EQNS.0,5.2,0,0,.53,-32,3,4.39,49,-32,3,18,1,2,3"},
+      "expect": {
+        "data": {"type": "telemetry-coefficients", "addressee": "N0QBF-11", "coefficients": [0, 5.2, 0, 0, 0.53, -32, 3, 4.39, 49, -32, 3, 18, 1, 2, 3]}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": ":N0QBF-11 :EQNS.0,5.2,0,0,0.53,-32,3,4.39,49,-32,3,18,1,2,3"
+    },
+    {
+      "id": "weather-telemetry/bit-sense-and-project-name",
+      "description": "Bit sense and project name.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": ":N0QBF-11 :BITS.10110000,N0QBF's Big Balloon"},
+      "expect": {
+        "data": {"type": "telemetry-bits", "addressee": "N0QBF-11", "bits": "10110000", "project": "N0QBF's Big Balloon"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/complete-weather-report-with-unknown-pressure-digits",
+      "description": "Complete weather report with unknown pressure digits.",
+      "source": "APRS12c ch. 12",
+      "authority": "interpretation",
+      "interpretations": ["weather-wind-speed-unit-in-the-dirspd-extension"],
+      "input": {"info": "!4903.50N/07201.75W_220/004g005t077r000p000P000h50b.....wRSW"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/_", "weather": {"wind_direction_degrees": 220, "wind_speed_mph": 4, "wind_gust_mph": 5, "temperature_f": 77, "rain_1h_in": 0, "rain_24h_in": 0, "rain_midnight_in": 0, "humidity_percent": 50, "software": "w", "unit": "RSW"}}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "!4903.50N/07201.75W_220/004g005t077r000p000P000h50wRSW"
+    },
+    {
+      "id": "weather-telemetry/units",
+      "description": "Units.",
+      "source": "APRS12c ch. 13",
+      "authority": "spec",
+      "input": {"info": ":N0QBF-11 :UNIT.v/100,deg.F,deg.F,Mbar,Kft,Click,OPEN,on,on,hi"},
+      "expect": {
+        "data": {"type": "telemetry-units", "addressee": "N0QBF-11", "units": ["v/100", "deg.F", "deg.F", "Mbar", "Kft", "Click", "OPEN", "on", "on", "hi"]}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "weather-telemetry/compressed-weather-report-carries-wind-in-cs",
+      "description": "Compressed weather report carries wind in cs.",
+      "source": "APRS12c ch. 12",
+      "authority": "interpretation",
+      "interpretations": ["errata-in-aprs12cs-own-examples", "weather-wind-speed-unit-in-the-dirspd-extension"],
+      "input": {"info": "@092345z/5L!!<*e7_7P[g005t077r000p000P000h50b09900wRSW"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "messaging": true, "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "/_", "compressed": true, "compression": {"fix": "current", "source": "rmc", "origin": "software"}, "weather": {"wind_direction_degrees": 88, "wind_speed_mph": 41.695054964437745, "wind_gust_mph": 5, "temperature_f": 77, "rain_1h_in": 0, "rain_24h_in": 0, "rain_midnight_in": 0, "humidity_percent": 50, "pressure_mbar": 990, "software": "w", "unit": "RSW"}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    }
+  ]
+}

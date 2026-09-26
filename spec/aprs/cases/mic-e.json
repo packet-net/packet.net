@@ -1,0 +1,404 @@
+{
+  "cases": [
+    {
+      "id": "mic-e/spec-worked-example",
+      "description": "The spec's worked example: latitude, the Returning message and the +100 longitude offset in the destination; longitude, course, speed and symbol in the information field.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"tnc2": "N0CALL>S32UVT:`(_fn\"Oj/"},
+      "expect": {
+        "header": {"source": "N0CALL", "destination": "S32UVT"},
+        "data": {"type": "mic-e", "mic_e_message": "returning", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/yaesu-ftm-400dr",
+      "description": "A Yaesu FTM-400DR identified by the _% suffix, with altitude.",
+      "source": "UAP 2.2",
+      "authority": "spec",
+      "input": {"tnc2": "N1JCM-9>TRQP7T,WA1PLE-4*:`c'wl|+>/`\"4-}_%"},
+      "expect": {
+        "header": {"source": "N1JCM-9", "destination": "TRQP7T", "path": ["WA1PLE-4*"]},
+        "data": {"type": "mic-e", "mic_e_message": "off-duty", "type_code": "`", "device_suffix": "_%", "latitude": 42.179, "longitude": -71.1985, "symbol": "/>", "course_degrees": 215, "speed_knots": 9, "altitude_feet": 72.1784776902887},
+        "device": {"vendor": "Yaesu", "model": "FTM-400DR"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/grid-locator",
+      "description": "A Maidenhead locator with the /G symbol at the start of the status text.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"tnc2": "N0CALL>S32UVT:`(_fn\"Oj/`IO91SX/G Helloworld"},
+      "expect": {
+        "header": {"source": "N0CALL", "destination": "S32UVT"},
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": "`", "locator": "IO91SX", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "comment": "Helloworld"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/device-type-codes-identify-the-radio",
+      "description": "Device type codes identify the radio.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["mic-e-type-codes"],
+      "input": {"tnc2": "N1ZZN-9>T2SP0W:`c_Vm6hk/>\"49}Test"},
+      "expect": {
+        "header": {"source": "N1ZZN-9", "destination": "T2SP0W"},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": ">", "latitude": 42.50116666666667, "longitude": -71.12633333333333, "symbol": "/k", "course_degrees": 276, "speed_knots": 12, "altitude_feet": 111.54855643044618, "comment": "Test"},
+        "device": {"vendor": "Kenwood", "model": "TH-D7A"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/device-type-codes-identify-the-radio-2",
+      "description": "Device type codes identify the radio.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["mic-e-type-codes"],
+      "input": {"tnc2": "N1ZZN-9>T2SP0W:`c_Vm6hk/`\"49}Test_ "},
+      "expect": {
+        "header": {"source": "N1ZZN-9", "destination": "T2SP0W"},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": "`", "device_suffix": "_ ", "latitude": 42.50116666666667, "longitude": -71.12633333333333, "symbol": "/k", "course_degrees": 276, "speed_knots": 12, "altitude_feet": 111.54855643044618, "comment": "Test"},
+        "device": {"vendor": "Yaesu", "model": "VX-8"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/device-type-codes-identify-the-radio-3",
+      "description": "Device type codes identify the radio.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["mic-e-type-codes"],
+      "input": {"tnc2": "N1ZZN-9>T2SP0W:`c_Vm6hk/]\"49}Test"},
+      "expect": {
+        "header": {"source": "N1ZZN-9", "destination": "T2SP0W"},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": "]", "latitude": 42.50116666666667, "longitude": -71.12633333333333, "symbol": "/k", "course_degrees": 276, "speed_knots": 12, "altitude_feet": 111.54855643044618, "comment": "Test"},
+        "device": {"vendor": "Kenwood", "model": "TM-D700"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/device-type-codes-identify-the-radio-4",
+      "description": "Device type codes identify the radio.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["mic-e-type-codes"],
+      "input": {"tnc2": "N1ZZN-9>T2SP0W:`c_Vm6hk/'\"49}Test|4"},
+      "expect": {
+        "header": {"source": "N1ZZN-9", "destination": "T2SP0W"},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": "'", "device_suffix": "|4", "latitude": 42.50116666666667, "longitude": -71.12633333333333, "symbol": "/k", "course_degrees": 276, "speed_knots": 12, "altitude_feet": 111.54855643044618, "comment": "Test"},
+        "device": {"vendor": "Byonics", "model": "TinyTrak4"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/device-type-codes-identify-the-radio-5",
+      "description": "Device type codes identify the radio.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["mic-e-type-codes"],
+      "input": {"tnc2": "N1ZZN-9>T2SP0W:`c_Vm6hk/>\"49}Test^"},
+      "expect": {
+        "header": {"source": "N1ZZN-9", "destination": "T2SP0W"},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": ">", "device_suffix": "^", "latitude": 42.50116666666667, "longitude": -71.12633333333333, "symbol": "/k", "course_degrees": 276, "speed_knots": 12, "altitude_feet": 111.54855643044618, "comment": "Test"},
+        "device": {"vendor": "Kenwood", "model": "TH-D74"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/device-type-codes-identify-the-radio-6",
+      "description": "Device type codes identify the radio.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["mic-e-type-codes"],
+      "input": {"tnc2": "N1ZZN-9>T2SP0W:`c_Vm6hk/>\"49}Test="},
+      "expect": {
+        "header": {"source": "N1ZZN-9", "destination": "T2SP0W"},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": ">", "device_suffix": "=", "latitude": 42.50116666666667, "longitude": -71.12633333333333, "symbol": "/k", "course_degrees": 276, "speed_knots": 12, "altitude_feet": 111.54855643044618, "comment": "Test"},
+        "device": {"vendor": "Kenwood", "model": "TH-D72"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/device-type-codes-identify-the-radio-7",
+      "description": "Device type codes identify the radio.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["mic-e-type-codes"],
+      "input": {"tnc2": "N1ZZN-9>T2SP0W:`c_Vm6hk/]\"49}Test="},
+      "expect": {
+        "header": {"source": "N1ZZN-9", "destination": "T2SP0W"},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": "]", "device_suffix": "=", "latitude": 42.50116666666667, "longitude": -71.12633333333333, "symbol": "/k", "course_degrees": 276, "speed_knots": 12, "altitude_feet": 111.54855643044618, "comment": "Test"},
+        "device": {"vendor": "Kenwood", "model": "TM-D710"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/device-type-codes-identify-the-radio-8",
+      "description": "Device type codes identify the radio.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["mic-e-type-codes"],
+      "input": {"tnc2": "N1ZZN-9>T2SP0W:`c_Vm6hk/`\"49}Test_$"},
+      "expect": {
+        "header": {"source": "N1ZZN-9", "destination": "T2SP0W"},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": "`", "device_suffix": "_$", "latitude": 42.50116666666667, "longitude": -71.12633333333333, "symbol": "/k", "course_degrees": 276, "speed_knots": 12, "altitude_feet": 111.54855643044618, "comment": "Test"},
+        "device": {"vendor": "Yaesu", "model": "FT1D"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/text-straight-after-the-locator-is-rejected-when-strict",
+      "description": "Text straight after the locator is rejected when strict.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/`IO91SX/GHello", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": "`", "locator": "IO91SX", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "comment": "Hello"},
+        "diagnostics": ["warning:missing-space-after-locator"]
+      },
+      "strict": {"rejected_by": "missing-space-after-locator"},
+      "reencode": "equivalent",
+      "canonical_info": "`(_fn\"Oj/`IO91SX/G Hello"
+    },
+    {
+      "id": "mic-e/four-character-locator-alone",
+      "description": "Four character locator alone.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/`IO91/G", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": "`", "locator": "IO91", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/locator-after-altitude",
+      "description": "Locator after altitude.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/`\"4T}IO91SX/G Hello", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": "`", "locator": "IO91SX", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "altitude_feet": 200.1312335958005, "comment": "Hello"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/ambiguity-in-the-destination-applies-to-the-longitude",
+      "description": "Ambiguity in the destination applies to the longitude.",
+      "source": "APRS12c ch. 10",
+      "authority": "interpretation",
+      "interpretations": ["position-ambiguity-which-point-is-reported"],
+      "input": {"info": "`(_fn\"Oj/", "destination": "T4SQZZ"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "latitude": 44.525, "longitude": -112.125, "ambiguity": 2, "symbol": "/j", "course_degrees": 251, "speed_knots": 20}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "`(_Nn\"Oj/"
+    },
+    {
+      "id": "mic-e/maidenhead-locator-in-the-status-text",
+      "description": "Maidenhead locator in the status text.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/]IO91SX/G Helloworld", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": "]", "locator": "IO91SX", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "comment": "Helloworld"},
+        "device": {"vendor": "Kenwood", "model": "TM-D700"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/maidenhead-locator-in-the-status-text-2",
+      "description": "Maidenhead locator in the status text.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/IO91SX/G Helloworld", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "locator": "IO91SX", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "comment": "Helloworld"},
+        "diagnostics": ["info:mic-e-missing-device-type"]
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/maidenhead-locator-in-the-status-text-3",
+      "description": "Maidenhead locator in the status text.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/>IO91SX/G Helloworld", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": ">", "locator": "IO91SX", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "comment": "Helloworld"},
+        "device": {"vendor": "Kenwood", "model": "TH-D7A"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/locator-letters-may-be-received-in-lower-case",
+      "description": "Locator letters may be received in lower case.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/`io91sx/G Hello", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": "`", "locator": "IO91SX", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "comment": "Hello"}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "`(_fn\"Oj/`IO91SX/G Hello"
+    },
+    {
+      "id": "mic-e/altitude-in-status-text-is-metres-above-minus-10km",
+      "description": "Altitude in status text is metres above minus 10km.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/`\"4T}", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "type_code": "`", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20, "altitude_feet": 200.1312335958005}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/position-comment-bits",
+      "description": "Position comment bits.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/", "destination": "F2DU6T"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "custom2", "latitude": 52.594, "longitude": -12.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/position-comment-bits-2",
+      "description": "Position comment bits.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/", "destination": "234U6T"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "emergency", "latitude": 23.760666666666665, "longitude": -12.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/position-comment-bits-3",
+      "description": "Position comment bits.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/", "destination": "S32U6T"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "latitude": 33.42733333333334, "longitude": -12.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/aircraft-with-altitude-telemetry-dao-and-tinytrak-suffix",
+      "description": "Aircraft with altitude telemetry dao and tinytrak suffix.",
+      "source": "UAP 3.5",
+      "authority": "spec",
+      "input": {"tnc2": "N83MZ>T2TQ5U,WA1PLE-4*:`c.l+@&'/'\"G:} KJ6TMS|!:&0'p|!w#f!|3"},
+      "expect": {
+        "header": {"source": "N83MZ", "destination": "T2TQ5U", "path": ["WA1PLE-4*"]},
+        "data": {"type": "mic-e", "mic_e_message": "in-service", "type_code": "'", "device_suffix": "|3", "latitude": 42.69250366300366, "longitude": -71.3134597069597, "symbol": "/'", "course_degrees": 210, "speed_knots": 153, "altitude_feet": 5787.401574803149, "dao": {"datum": "W", "precision": "base91"}, "telemetry": {"sequence": 25, "analog": [470, 625]}, "comment": "KJ6TMS"},
+        "device": {"vendor": "Byonics", "model": "TinyTrak3"}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "`c.l{@&'/'\"G:}KJ6TMS|!:&0'p|!w#f!|3"
+    },
+    {
+      "id": "mic-e/information-field-decodes-to-112-07-74-west-20-knots-course",
+      "description": "Information field decodes to 112 07 74 west 20 knots course 251 jeep.",
+      "source": "APRS12c ch. 10",
+      "authority": "spec",
+      "input": {"info": "`(_fn\"Oj/", "destination": "S32UVT"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "returning", "latitude": 33.42733333333334, "longitude": -112.129, "symbol": "/j", "course_degrees": 251, "speed_knots": 20}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/kenwood-ff-padding-is-removed-before-the-suffix",
+      "description": "Kenwood ff padding is removed before the suffix.",
+      "source": "UAP 5.10",
+      "authority": "spec",
+      "input": {"tnc2_hex": "57315348532D393E3452315839552C57314D52412C5742324F535A2D352A3A6063301D6D494C3E2F5D2234547DFFFFFFFF3D0D"},
+      "expect": {
+        "header": {"source": "W1SHS-9", "destination": "4R1X9U", "path": ["W1MRA*", "WB2OSZ-5*"]},
+        "data": {"type": "mic-e", "mic_e_message": "special", "type_code": "]", "device_suffix": "=", "latitude": 42.31583333333333, "longitude": -71.3335, "symbol": "/>", "course_degrees": 148, "speed_knots": 14, "altitude_feet": 200.1312335958005},
+        "diagnostics": ["warning:trailing-line-break", "warning:kenwood-ff-padding"],
+        "device": {"vendor": "Kenwood", "model": "TM-D710"}
+      },
+      "strict": {"rejected_by": "trailing-line-break"},
+      "reencode": "equivalent",
+      "canonical_info": "`c0\u001DmIL>/]\"4T}="
+    },
+    {
+      "id": "mic-e/yaesu-with-altitude-suffix-and-trailing-cr",
+      "description": "Yaesu with altitude suffix and trailing cr.",
+      "source": "UAP 2.2",
+      "authority": "spec",
+      "input": {"tnc2": "N1JCM-9>TRQP7T,WA1PLE-4*:`c'wl|+>/`\"4-}_%\r"},
+      "expect": {
+        "header": {"source": "N1JCM-9", "destination": "TRQP7T", "path": ["WA1PLE-4*"]},
+        "data": {"type": "mic-e", "mic_e_message": "off-duty", "type_code": "`", "device_suffix": "_%", "latitude": 42.179, "longitude": -71.1985, "symbol": "/>", "course_degrees": 215, "speed_knots": 9, "altitude_feet": 72.1784776902887},
+        "diagnostics": ["warning:trailing-line-break"],
+        "device": {"vendor": "Yaesu", "model": "FTM-400DR"}
+      },
+      "strict": {"rejected_by": "trailing-line-break"},
+      "reencode": "identical"
+    },
+    {
+      "id": "mic-e/unprintable-bytes-and-altitude-without-type-code",
+      "description": "Unprintable bytes and altitude without type code.",
+      "source": "UAP 2.2",
+      "authority": "spec",
+      "input": {"tnc2": "N1YOQ-1>TRUW5X,UNCAN*,WIDE2-1:`c9r\u001C\u001F;#/\"5D}Solar Powered Digipeter"},
+      "expect": {
+        "header": {"source": "N1YOQ-1", "destination": "TRUW5X", "path": ["UNCAN*", "WIDE2-1"]},
+        "data": {"type": "mic-e", "mic_e_message": "off-duty", "latitude": 42.959666666666664, "longitude": -71.49766666666666, "symbol": "/#", "course_degrees": 331, "speed_knots": 0, "altitude_feet": 446.19422572178473, "comment": "Solar Powered Digipeter"},
+        "diagnostics": ["info:mic-e-missing-device-type"]
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "`c9rl#;#/\"5D}Solar Powered Digipeter"
+    },
+    {
+      "id": "mic-e/kenwood-ff-padding-is-rejected-when-strict",
+      "description": "Kenwood ff padding is rejected when strict.",
+      "source": "UAP 5.10",
+      "authority": "spec",
+      "input": {"tnc2_hex": "57315348532D393E3452315839553A6063301D6D494C3E2F5D2234547DFFFF3D"},
+      "expect": {
+        "data": {"type": "mic-e", "mic_e_message": "special", "type_code": "]", "device_suffix": "=", "latitude": 42.31583333333333, "longitude": -71.3335, "symbol": "/>", "course_degrees": 148, "speed_knots": 14, "altitude_feet": 200.1312335958005},
+        "diagnostics": ["warning:kenwood-ff-padding"],
+        "device": {"vendor": "Kenwood", "model": "TM-D710"}
+      },
+      "strict": {"rejected_by": "kenwood-ff-padding"},
+      "reencode": "equivalent",
+      "canonical_info": "`c0\u001DmIL>/]\"4T}="
+    }
+  ]
+}

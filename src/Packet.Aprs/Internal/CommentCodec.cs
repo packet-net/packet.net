@@ -350,16 +350,21 @@ internal static class CommentCodec
             {
                 f.DfSignalStrength = new AprsDfSignalStrength(ext[3] - '0', ext[4] - '0', ext[5] - '0', ext[6] - '0');
             }
-            else
+
+            int length = 7;
+            if (tag[0] == (byte)'P')
             {
-                f.Phg = new AprsPhg(ext[3] - '0', ext[4] - '0', ext[5] - '0', ext[6] - '0');
+                // PHGR: a beacon-rate character and '/' after the digits, as at the start of a comment.
+                int? rate = s.Length >= at + 9 && s[at + 8] == (byte)'/' ? PositionCodec.BeaconRate(s[at + 7]) : null;
+                f.Phg = new AprsPhg(ext[3] - '0', ext[4] - '0', ext[5] - '0', ext[6] - '0', rate);
+                length = rate is null ? 7 : 9;
             }
 
             ctx.Warn(
                 AprsDiagnosticCode.DataExtensionInComment,
                 $"{Text.Latin1(tag)} found later in the comment; the spec puts data extensions straight after the symbol (UAP 5.15)",
                 offset + at);
-            c.RemoveRange(at, 7);
+            c.RemoveRange(at, length);
             return;
         }
     }

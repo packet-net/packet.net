@@ -1,0 +1,243 @@
+{
+  "cases": [
+    {
+      "id": "object/live-with-course-speed",
+      "description": "A live object with a timestamp, course and speed.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ";LEADER   *092345z4903.50N/07201.75W>088/036"},
+      "expect": {
+        "data": {"type": "object", "name": "LEADER", "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "course_degrees": 88, "speed_knots": 36}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "item/alive",
+      "description": "An item: variable-length name ended by !.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ")AID #2!4903.50N/07201.75WA"},
+      "expect": {
+        "data": {"type": "item", "name": "AID #2", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/A"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object/garbled-timestamp",
+      "description": "Seven timestamp-shaped characters that are not a timestamp, then a position: a lenient decoder skips them.",
+      "source": "APRS-IS 2026-09-25",
+      "authority": "observed",
+      "input": {"info": ";TESTOBJ  *ABCDEFz5301.01N/01745.68Er"},
+      "expect": {
+        "data": {"type": "object", "name": "TESTOBJ", "latitude": 53.01683333333333, "longitude": 17.761333333333333, "symbol": "/r"},
+        "diagnostics": ["warning:malformed-timestamp"]
+      },
+      "strict": {"rejected_by": "malformed-timestamp"},
+      "reencode": "refused"
+    },
+    {
+      "id": "object/name-with-leading-spaces",
+      "description": "Object names may start with spaces; only trailing spaces are padding.",
+      "source": "APRS12c ch. 11 (APRS-IS 2026-09-26)",
+      "authority": "spec",
+      "input": {"tnc2": "ON1TG-10>APMI06,TCPIP*,qAC,T2DENMARK:;   OR4F  *252047z5113.60N/00255.17EYMercator Oostende - ON4MO - OR4F"},
+      "expect": {
+        "data": {"type": "object", "name": "   OR4F", "timestamp": "252047z", "latitude": 51.22666666666667, "longitude": 2.9195, "symbol": "/Y", "comment": "Mercator Oostende - ON4MO - OR4F"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/area-objects",
+      "description": "Area objects.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ";SEARCH   *092345z4903.50N\\07201.75Wl710/310"},
+      "expect": {
+        "data": {"type": "object", "name": "SEARCH", "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "\\l", "area": {"shape": "filled-ellipse", "color": "cyan", "lat_offset": 10, "lon_offset": 10}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/area-objects-2",
+      "description": "Area objects.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ";SEARCH   *092345z4903.50N\\07201.75Wl8101310"},
+      "expect": {
+        "data": {"type": "object", "name": "SEARCH", "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "\\l", "area": {"shape": "filled-triangle", "color": "violet-low", "lat_offset": 10, "lon_offset": 10}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/line-object-with-corridor-width",
+      "description": "Line object with corridor width.",
+      "source": "APRS12c ch. 11",
+      "authority": "interpretation",
+      "interpretations": ["errata-in-aprs12cs-own-examples"],
+      "input": {"info": ";FLIGHTPTH*4903.50N\\07201.75Wl610/310{100}"},
+      "expect": {
+        "data": {"type": "object", "name": "FLIGHTPTH", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "\\l", "area": {"shape": "line-down-left", "color": "cyan", "lat_offset": 10, "lon_offset": 10, "corridor_width_miles": 100}},
+        "diagnostics": ["warning:object-without-timestamp"]
+      },
+      "strict": {"rejected_by": "object-without-timestamp"},
+      "reencode": "refused"
+    },
+    {
+      "id": "object-item/items",
+      "description": "Items.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ")AID #2_4903.50N/07201.75WA"},
+      "expect": {
+        "data": {"type": "item", "name": "AID #2", "killed": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/A"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/items-2",
+      "description": "Items.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ")AID#2!4903.50N/07201.75WA"},
+      "expect": {
+        "data": {"type": "item", "name": "AID#2", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/A"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/weather-object-with-timestamp",
+      "description": "Weather object with timestamp.",
+      "source": "APRS12c ch. 12",
+      "authority": "interpretation",
+      "interpretations": ["errata-in-aprs12cs-own-examples", "weather-wind-speed-unit-in-the-dirspd-extension"],
+      "input": {"info": ";BRENDA   *092345z4903.50N/07201.75W_220/004g005b0990"},
+      "expect": {
+        "data": {"type": "object", "name": "BRENDA", "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/_", "weather": {"wind_direction_degrees": 220, "wind_speed_mph": 4, "wind_gust_mph": 5, "pressure_mbar": 99}},
+        "diagnostics": ["warning:non-standard-weather-field-width", "warning:incomplete-weather"]
+      },
+      "strict": {"rejected_by": "non-standard-weather-field-width"},
+      "reencode": "equivalent",
+      "canonical_info": ";BRENDA   *092345z4903.50N/07201.75W_220/004g005t...b00990"
+    },
+    {
+      "id": "object-item/hurricane-objects-with-storm-data",
+      "description": "Hurricane objects with storm data.",
+      "source": "APRS12c ch. 12",
+      "authority": "interpretation",
+      "interpretations": ["errata-in-aprs12cs-own-examples"],
+      "input": {"info": ";BRENDA   *092345z4903.50N\\07202.75W@088/036/HC/150^200/0980>090&030%040"},
+      "expect": {
+        "data": {"type": "object", "name": "BRENDA", "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.04583333333333, "symbol": "\\@", "course_degrees": 88, "speed_knots": 36, "storm": {"type": "hurricane", "sustained_wind_knots": 150, "gust_knots": 200, "central_pressure_mbar": 980, "hurricane_radius_nm": 90, "tropical_storm_radius_nm": 30, "whole_gale_radius_nm": 40}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/hurricane-objects-with-storm-data-2",
+      "description": "Hurricane objects with storm data.",
+      "source": "APRS12c ch. 12",
+      "authority": "interpretation",
+      "interpretations": ["errata-in-aprs12cs-own-examples"],
+      "input": {"info": ";BRENDA   *100045z4905.50N/07201.75W@101/047/HC/104^123/0980>065&020%040"},
+      "expect": {
+        "data": {"type": "object", "name": "BRENDA", "timestamp": "100045z", "latitude": 49.09166666666667, "longitude": -72.02916666666667, "symbol": "/@", "course_degrees": 101, "speed_knots": 47, "storm": {"type": "hurricane", "sustained_wind_knots": 104, "gust_knots": 123, "central_pressure_mbar": 980, "hurricane_radius_nm": 65, "tropical_storm_radius_nm": 20, "whole_gale_radius_nm": 40}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/killed-object",
+      "description": "Killed object.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ";LEADER   _092345z4903.50N/07201.75W>088/036"},
+      "expect": {
+        "data": {"type": "object", "name": "LEADER", "killed": true, "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "course_degrees": 88, "speed_knots": 36}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/compressed-item",
+      "description": "Compressed item.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ")MOBIL!\\5L!!<*e79 sT"},
+      "expect": {
+        "data": {"type": "item", "name": "MOBIL", "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "\\9", "compressed": true}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/frequency-object-with-permanent-marker",
+      "description": "Frequency object with permanent marker.",
+      "source": "APRS12c ch. 18",
+      "authority": "spec",
+      "input": {"tnc2": "EKONCT>BEACON:;146.730CT*111111z4134.84N/07206.31Wr146.730MHz T156 R30m ECTN 9P DAILY RASON"},
+      "expect": {
+        "header": {"source": "EKONCT", "destination": "BEACON"},
+        "data": {"type": "object", "name": "146.730CT", "timestamp": "111111z", "latitude": 41.580666666666666, "longitude": -72.10516666666666, "symbol": "/r", "frequency": {"mhz": 146.73, "tone": "tone", "tone_value": 156, "range": 30}, "comment": "ECTN 9P DAILY RASON"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/item-somewhere-in-england-to-the-nearest-degree",
+      "description": "Item somewhere in england to the nearest degree.",
+      "source": "APRS12c ch. 11",
+      "authority": "interpretation",
+      "interpretations": ["position-ambiguity-which-point-is-reported"],
+      "input": {"info": ")G/WB4APR!53  .  N\\002  .  Wd"},
+      "expect": {
+        "data": {"type": "item", "name": "G/WB4APR", "latitude": 53.5, "longitude": -2.5, "ambiguity": 4, "symbol": "\\d"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/signpost-item",
+      "description": "Signpost item.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ")I91 3N!4903.50N\\07201.75Wm{55}"},
+      "expect": {
+        "data": {"type": "item", "name": "I91 3N", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "\\m", "signpost": "55"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/compressed-object",
+      "description": "Compressed object.",
+      "source": "APRS12c ch. 11",
+      "authority": "spec",
+      "input": {"info": ";LEADER   *092345z/5L!!<*e7>7P["},
+      "expect": {
+        "data": {"type": "object", "name": "LEADER", "timestamp": "092345z", "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "/>", "compressed": true, "compression": {"fix": "current", "source": "rmc", "origin": "software"}, "course_degrees": 88, "speed_knots": 36.23201216883807}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "object-item/object-with-permanent-timestamp-and-dao",
+      "description": "Object with permanent timestamp and dao.",
+      "source": "UAP 2.3",
+      "authority": "spec",
+      "input": {"tnc2": "W1OEM-5>APWW11,EKONCT,WA1PLE-4*:;ELYME    *190116z4122.06N/07212.98W#145.03 Packet Node ELYME!W98!"},
+      "expect": {
+        "header": {"source": "W1OEM-5", "destination": "APWW11", "path": ["EKONCT*", "WA1PLE-4*"]},
+        "data": {"type": "object", "name": "ELYME", "timestamp": "190116z", "latitude": 41.36781666666666, "longitude": -72.21646666666668, "symbol": "/#", "dao": {"datum": "W", "precision": "thousandths"}, "comment": "145.03 Packet Node ELYME"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    }
+  ]
+}

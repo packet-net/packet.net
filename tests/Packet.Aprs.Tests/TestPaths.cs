@@ -7,14 +7,15 @@ namespace Packet.Aprs.Tests;
 /// </summary>
 internal static class TestPaths
 {
-    public static string InProject(params string[] parts)
+    public static string InProject(params string[] parts) => InRepo(["tests", "Packet.Aprs.Tests", .. parts]);
+
+    public static string InRepo(params string[] parts)
     {
         for (string? dir = AppContext.BaseDirectory; dir is not null; dir = Path.GetDirectoryName(dir))
         {
-            string project = Path.Combine(dir, "tests", "Packet.Aprs.Tests");
-            if (File.Exists(Path.Combine(project, "Packet.Aprs.Tests.csproj")))
+            if (File.Exists(Path.Combine(dir, "tests", "Packet.Aprs.Tests", "Packet.Aprs.Tests.csproj")))
             {
-                return Path.Combine([project, .. parts]);
+                return Path.Combine([dir, .. parts]);
             }
         }
 

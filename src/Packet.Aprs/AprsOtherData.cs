@@ -248,7 +248,7 @@ public sealed record AprsUserDefinedData : AprsData
 
     internal override void Encode(InfoWriter writer)
     {
-        if (UserId is < '!' or > '~' || PacketType is < '!' or > '~')
+        if (UserId is < ' ' or > '~' || PacketType is < ' ' or > '~')
         {
             throw new ArgumentException("user ID and packet type are printable ASCII");
         }

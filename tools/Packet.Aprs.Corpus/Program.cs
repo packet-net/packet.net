@@ -6,6 +6,7 @@ return args.Length == 0 ? Usage() : args[0] switch
     "stats" => StatsCommand.Run(args[1..]),
     "dump" => DumpCommand.Run(args[1..]),
     "curate" => CurateCommand.Run(args[1..]),
+    "vectors" => VectorsCommand.Run(args[1..]),
     _ => Usage(),
 };
 
@@ -23,7 +24,10 @@ static int Usage()
                     --max-gb <n>          stop writing once out-dir holds this much (default 25)
           stats     [corpus-dir] [max-lines]  Decode the corpus and report types, diagnostics, round trips.
           dump      <lines-file> <out.jsonl>  Decode raw lines to JSON for tools/Packet.Aprs.Corpus/fap/compare-fap.py.
-          curate    <corpus-dir> <samples-out> [per-shape]  Pick regression samples for tests/Packet.Aprs.Tests/Corpus.
+          curate    <corpus-dir> <samples-out> [per-shape]  Pick one or two packets of every distinct shape.
+          vectors   fill <cases.json>...  Complete decode cases in spec/aprs/cases from Packet.Aprs, for review.
+                    from-samples <samples.txt> <cases.json> [source]  Add curated samples as observed cases.
+                    refresh <cases.json>...  Work out observed cases again after an intended change.
         """);
     return 2;
 }
