@@ -4,7 +4,7 @@ Five independent checks, from the spec outward.
 
 ## 1. Every example in the spec
 
-Every example packet printed in APRS12c, and the real packets quoted in *Understanding APRS Packets*, is a case in the language-neutral conformance vectors ([`spec/aprs`](../spec/aprs/README.md)). Each case gives the values the documents give, what a lenient and a strict decoder each make of the packet, and whether it re-encodes byte for byte. Encoding has cases of its own, and every tolerance flag has a case showing that turning off only that flag gives the strict result. `tests/Packet.Aprs.Tests/Vectors` runs all of them against Packet.Aprs; any other implementation can run the same files. Four examples in the spec itself are wrong; see [`aprs-spec-interpretations.md`](aprs-spec-interpretations.md#errata-in-aprs12cs-own-examples).
+Every example packet printed in APRS12c, and the real packets quoted in *Understanding APRS Packets*, is a case in the language-neutral conformance vectors ([packet-net/aprs-vectors](https://github.com/packet-net/aprs-vectors)). Each case gives the values the documents give, what a lenient and a strict decoder each make of the packet, and whether it re-encodes byte for byte. Encoding has cases of its own, and every tolerance flag has a case showing that turning off only that flag gives the strict result. `tests/Packet.Aprs.Tests/Vectors` runs all of them against Packet.Aprs; any other implementation can run the same files. Four examples in the spec itself are wrong; see [`interpretations.md`](https://github.com/packet-net/aprs-vectors/blob/main/interpretations.md#errata-in-aprs12cs-own-examples).
 
 What the vectors deliberately leave out is checked in C#: values the library works out from a decoded field (PHG in watts, a beam heading in degrees, whether a message wants an ack) in `DerivedValueTests`, and the API itself (headers, AX.25 frames, errors thrown) in the other test classes.
 
@@ -43,7 +43,7 @@ The first run (508,679 packets, 2026-09-25) found one bug, an object with a garb
 
 A rerun at about 17 hours of collection (5,905,332 packets) gave the same picture: no exception, no unparseable header, 88.4% accepted by `Strict`, and every one of 5,136,667 clean packets the encoder wrote decoded back equal. It found one more clean packet the encoder refused without cause: a user-defined packet whose type character is a space (a BPQ node's test beacon). APRS12c puts no limit on that character, and the encoder now writes it.
 
-`aprs-corpus curate` picks a few packets of every distinct shape (data type, diagnostics, optional elements present), and `aprs-corpus vectors from-samples` adds them to [`spec/aprs/cases/corpus.json`](../spec/aprs/cases/corpus.json) as observed cases (1,395 so far). They run with the rest of the vectors, so any change in how real traffic decodes fails the build; if the change is intended, `aprs-corpus vectors refresh` works the cases out again and the change shows up as a reviewed diff. Every clean one must re-encode to data that decodes back equal, or be refused by the encoder, and a refusal is recorded in the case.
+`aprs-corpus curate` picks a few packets of every distinct shape (data type, diagnostics, optional elements present), and `aprs-corpus vectors from-samples` adds them to [`corpus.json`](https://github.com/packet-net/aprs-vectors/blob/main/cases/corpus.json) as observed cases (1,395 so far). They run with the rest of the vectors, so any change in how real traffic decodes fails the build; if the change is intended, `aprs-corpus vectors refresh` works the cases out again and the change shows up as a reviewed diff. Every clean one must re-encode to data that decodes back equal, or be refused by the encoder, and a refusal is recorded in the case.
 
 ## 5. Against Ham::APRS::FAP
 
@@ -68,7 +68,7 @@ Every remaining disagreement was inspected. Each is one of three things:
 - **A deliberate presentation difference.** Examples: frequencies and Mic-E device codes lifted out of the comment.
 - **A named tolerance** that FAP doesn't have.
 
-The cases are listed in [`aprs-spec-interpretations.md`](aprs-spec-interpretations.md#where-packetaprs-and-hamaprsfap-deliberately-differ).
+The cases are listed in [`interpretations.md`](https://github.com/packet-net/aprs-vectors/blob/main/interpretations.md#where-these-decisions-and-hamaprsfap-differ).
 
 To reproduce:
 

@@ -213,7 +213,7 @@ internal static class PositionCodec
     }
 
     /// <summary>Half the resolution left by an ambiguity level, in minutes, so an ambiguous
-    /// position decodes to the centre of its range (docs/aprs-spec-interpretations.md).</summary>
+    /// position decodes to the centre of its range (interpretations.md in packet-net/aprs-vectors).</summary>
     private static double AmbiguityCentre(int ambiguity) => ambiguity switch
     {
         0 => 0,

@@ -4,7 +4,7 @@
 
 Packet.Aprs encodes and decodes Automatic Packet Reporting System packets per [APRS12c](https://github.com/wb2osz/aprsspec), the merged APRS 1.0 + 1.1 + 1.2 reference, with *Understanding APRS Packets* and the [APRS device identification database](https://github.com/aprsorg/aprs-deviceid). It is spec-strict, with a named, individually switchable flag for each defect real traffic is full of. Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack; it sits above [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) and decodes what an AX.25 UI frame carries.
 
-Checked against real traffic: three million full-feed APRS-IS packets decode without an exception, every spec-clean one re-encodes to identical data, and field values agree with Ham::APRS::FAP (the aprs.fi parser) except where FAP is wrong. See [docs/aprs-validation.md](https://github.com/packet-net/packet.net/blob/main/docs/aprs-validation.md). Its test cases are published in a language-neutral form, [spec/aprs](https://github.com/packet-net/packet.net/tree/main/spec/aprs), that any APRS implementation can run.
+Checked against real traffic: three million full-feed APRS-IS packets decode without an exception, every spec-clean one re-encodes to identical data, and field values agree with Ham::APRS::FAP (the aprs.fi parser) except where FAP is wrong. See [docs/aprs-validation.md](https://github.com/packet-net/packet.net/blob/main/docs/aprs-validation.md). Its test cases are published in a language-neutral form, [packet-net/aprs-vectors](https://github.com/packet-net/aprs-vectors), that any APRS implementation can run.
 
 ## Install
 ```sh
@@ -281,7 +281,7 @@ Out of scope for now: an APRS-IS client, messaging state (retries, ack tracking)
 
 ## See also
 - [Source & issues](https://github.com/packet-net/packet.net)
-- [Design](https://github.com/packet-net/packet.net/blob/main/docs/aprs-design.md) and [spec interpretations](https://github.com/packet-net/packet.net/blob/main/docs/aprs-spec-interpretations.md): where APRS12c is ambiguous or wrong, and what this library does
+- [Design](https://github.com/packet-net/packet.net/blob/main/docs/aprs-design.md) and [spec interpretations](https://github.com/packet-net/aprs-vectors/blob/main/interpretations.md): where APRS12c is ambiguous or wrong, and what this library does
 - [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) - the AX.25 frames whose information field carries these packets
 - [Packet.Core](https://www.nuget.org/packages/Packet.Core) - shared primitives including the strict `Callsign`
 

@@ -1,16 +1,15 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 namespace Packet.Aprs.Tests.Vectors;
 
 /// <summary>
-/// Runs the language-neutral cases in <c>spec/aprs/cases</c> against Packet.Aprs, and checks the
-/// case files themselves. The format is described in <c>spec/aprs/README.md</c>; every test here
-/// is named by case id, and a failure lists each field that differs.
+/// Runs the language-neutral cases in <c>spec/aprs/cases</c> against Packet.Aprs. <c>spec/aprs</c>
+/// is a git submodule of packet-net/aprs-vectors, whose README describes the format; every test
+/// here is named by case id, and a failure lists each field that differs.
 /// </summary>
-public partial class AprsVectorTests
+public class AprsVectorTests
 {
     public static TheoryData<string> DecodeCases => [.. VectorCases.Ids(c => !VectorCases.IsEncodeCase(c))];
 
@@ -181,59 +180,25 @@ public partial class AprsVectorTests
     private static readonly string[] CaseKeys = ["id", "description", "source", "authority", "interpretations", "input", "expect", "strict", "reencode", "canonical_info"];
     private static readonly string[] InputKeys = ["tnc2", "tnc2_hex", "ax25_hex", "info", "info_hex", "encode", "source", "destination", "path"];
     private static readonly string[] ExpectKeys = ["data", "diagnostics", "header", "header_error", "device", "info", "destination", "refused"];
-    private static readonly string[] Authorities = ["spec", "interpretation", "observed"];
 
+    /// <summary>
+    /// The cases' own consistency (schema, ids, codes, interpretation links) is checked in
+    /// packet-net/aprs-vectors. What is checked here is this runner: a key it does not know would
+    /// otherwise be skipped silently, so a format change that adds one fails until the runner
+    /// checks it.
+    /// </summary>
     [Fact]
-    public void Every_case_is_well_formed()
+    public void The_runner_checks_every_key_the_cases_use()
     {
-        HashSet<string> codes = [.. CodeCatalogue().Select(c => (string)c["id"]!)];
-        HashSet<string> anchors = [.. InterpretationAnchors()];
-        var problems = new List<string>();
+        var unknown = new List<string>();
         foreach (var (id, c) in VectorCases.ById)
         {
-            void Problem(string what) => problems.Add($"{id}: {what}");
-            foreach (string key in new[] { "id", "description", "source", "authority", "input", "expect" }.Where(k => c[k] is null))
-            {
-                Problem($"missing '{key}'");
-            }
-
-            problems.AddRange(Unknown(c, CaseKeys).Select(k => $"{id}: unknown key '{k}'"));
-            problems.AddRange(Unknown(c["input"]!.AsObject(), InputKeys).Select(k => $"{id}: unknown input key '{k}'"));
-            problems.AddRange(Unknown(c["expect"]!.AsObject(), ExpectKeys).Select(k => $"{id}: unknown expect key '{k}'"));
-            if (!Authorities.Contains((string?)c["authority"]))
-            {
-                Problem($"authority must be one of {string.Join(", ", Authorities)}");
-            }
-
-            if ((string?)c["authority"] == "interpretation" && c["interpretations"] is null)
-            {
-                Problem("an interpretation case must link the interpretation it depends on");
-            }
-
-            foreach (string anchor in c["interpretations"]?.AsArray().Select(a => (string)a!) ?? [])
-            {
-                if (!anchors.Contains(anchor))
-                {
-                    Problem($"no heading '#{anchor}' in docs/aprs-spec-interpretations.md");
-                }
-            }
-
-            foreach (string diagnostic in DiagnosticsIn(c))
-            {
-                string[] parts = diagnostic.Split(':');
-                if (parts.Length != 2 || parts[0] is not ("info" or "warning" or "error") || !codes.Contains(parts[1]))
-                {
-                    Problem($"'{diagnostic}' is not severity:code with a code from codes.json");
-                }
-            }
-
-            if (c["strict"] is JsonObject { } strict && strict["rejected_by"] is { } rejectedBy && !codes.Contains((string)rejectedBy!))
-            {
-                Problem($"rejected_by '{rejectedBy}' is not in codes.json");
-            }
+            unknown.AddRange(Unknown(c, CaseKeys).Select(k => $"{id}: '{k}'"));
+            unknown.AddRange(Unknown(c["input"]!.AsObject(), InputKeys).Select(k => $"{id}: input '{k}'"));
+            unknown.AddRange(Unknown(c["expect"]!.AsObject(), ExpectKeys).Select(k => $"{id}: expect '{k}'"));
         }
 
-        problems.Should().BeEmpty();
+        unknown.Should().BeEmpty();
     }
 
     [Fact]
@@ -384,21 +349,6 @@ public partial class AprsVectorTests
 
     private static IEnumerable<string> Unknown(JsonObject o, string[] known) => o.Select(kv => kv.Key).Except(known);
 
-    private static IEnumerable<string> DiagnosticsIn(JsonObject c)
-    {
-        IEnumerable<JsonNode?> lists = [c["expect"]!["diagnostics"], c["expect"]!["header_error"], (c["strict"] as JsonObject)?["diagnostics"]];
-        return lists.OfType<JsonArray>().SelectMany(a => a.Select(d => (string)d!));
-    }
-
     private static IEnumerable<JsonObject> CodeCatalogue() =>
         JsonNode.Parse(File.ReadAllText(Path.Combine(VectorCases.Directory, "codes.json")))!["codes"]!.AsArray().Select(n => n!.AsObject());
-
-    /// <summary>GitHub's anchors for the headings of docs/aprs-spec-interpretations.md.</summary>
-    private static IEnumerable<string> InterpretationAnchors() =>
-        File.ReadAllLines(TestPaths.InRepo("docs", "aprs-spec-interpretations.md"))
-            .Where(l => l.StartsWith("## ", StringComparison.Ordinal))
-            .Select(l => AnchorPunctuation().Replace(l[3..].Trim().ToLowerInvariant(), "").Replace(' ', '-'));
-
-    [GeneratedRegex(@"[^a-z0-9 _-]")]
-    private static partial Regex AnchorPunctuation();
 }

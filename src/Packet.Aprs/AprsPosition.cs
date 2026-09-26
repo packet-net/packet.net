@@ -9,7 +9,7 @@ namespace Packet.Aprs;
 /// Position ambiguity (APRS12c §6) is how many trailing digits of the latitude minutes the
 /// sender blanked: 0 none, 1 hundredths, 2 all decimals, 3 units of minutes, 4 all minutes
 /// (nearest degree). An ambiguous position decodes to the centre of the range the remaining
-/// digits allow; see <c>docs/aprs-spec-interpretations.md</c>.
+/// digits allow; see <c>interpretations.md</c> in <c>packet-net/aprs-vectors</c>.
 /// </para>
 /// <para>
 /// Any extra precision from a <c>!DAO!</c> extension is already applied to
