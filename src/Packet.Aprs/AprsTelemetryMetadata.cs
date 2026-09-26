@@ -69,12 +69,17 @@ public sealed record AprsTelemetryBitSense : AprsMessage
     /// <summary>The 8 bit-sense flags; bit 0 is B1.</summary>
     public required byte Bits { get; init; }
 
-    /// <summary>The project title (the spec suggests up to 23 characters), or empty.</summary>
+    /// <summary>The project title, up to 23 characters (APRS12c ch. 13), or empty. Decoding accepts a longer one.</summary>
     public string ProjectTitle { get; init; } = "";
 
     private protected override void EncodeText(InfoWriter writer)
     {
         Internal.Text.RequireNoLineBreaks(ProjectTitle, nameof(ProjectTitle));
+        if (ProjectTitle.EnumerateRunes().Count() > 23)
+        {
+            throw new ArgumentException("the telemetry project title is limited to 23 characters (APRS12c ch. 13)", nameof(ProjectTitle));
+        }
+
         writer.Ascii("BITS.");
         for (int i = 0; i < 8; i++)
         {
