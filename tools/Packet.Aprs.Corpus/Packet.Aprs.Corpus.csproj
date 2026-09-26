@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- APRS-IS corpus collector and Packet.Aprs validation harness (collect / stats / dump /
-       curate). See docs/aprs-validation.md. -->
+       curate / vectors). See docs/aprs-validation.md. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>aprs-corpus</AssemblyName>
@@ -9,6 +9,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Packet.Aprs\Packet.Aprs.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The neutral form of spec/aprs/README.md: shared with the vector runner in the test project,
+         so `vectors fill` writes exactly what the tests compare against. -->
+    <Compile Include="..\..\tests\Packet.Aprs.Tests\Vectors\NeutralJson.cs" Link="Vectors\NeutralJson.cs" />
   </ItemGroup>
 
 </Project>

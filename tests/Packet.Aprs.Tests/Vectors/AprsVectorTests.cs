@@ -124,10 +124,12 @@ public partial class AprsVectorTests
         JsonObject input = Input(c);
         JsonObject expect = c["expect"]!.AsObject();
         AprsData data = NeutralReader.Data(input["encode"]!.AsObject());
-        byte[] info;
+        AprsPacket packet;
         try
         {
-            info = AprsPacket.Create(VectorCases.Source(input), VectorCases.Destination(input), data).Information.ToArray();
+            packet = data is AprsMicEReport mic
+                ? AprsPacket.CreateMicE(VectorCases.Source(input), mic)
+                : AprsPacket.Create(VectorCases.Source(input), VectorCases.Destination(input), data);
         }
         catch (ArgumentException ex)
         {
@@ -135,16 +137,50 @@ public partial class AprsVectorTests
             return;
         }
 
-        Pass(c, (bool?)expect["refused"] == true
-            ? [$"encode: expected a refusal, wrote {Show(info)}"]
-            : System.Text.Encoding.UTF8.GetString(info) == (string)expect["info"]! ? [] : [$"encode: expected {expect["info"]!.ToJsonString()}, wrote {Show(info)}"]);
+        byte[] info = packet.Information.ToArray();
+        var differences = new List<string>();
+        if ((bool?)expect["refused"] == true)
+        {
+            differences.Add($"encode: expected a refusal, wrote {Show(info)}");
+        }
+        else
+        {
+            if (System.Text.Encoding.UTF8.GetString(info) != (string)expect["info"]!)
+            {
+                differences.Add($"encode: expected {expect["info"]!.ToJsonString()}, wrote {Show(info)}");
+            }
+
+            if (expect["destination"] is { } destination && (string)destination! != packet.Destination.Value)
+            {
+                differences.Add($"encode: expected destination {destination.ToJsonString()}, computed \"{packet.Destination.Value}\"");
+            }
+        }
+
+        Pass(c, differences);
+    }
+
+    /// <summary>The reader is the writer's inverse: every decoded case's data reads back to the same neutral form.</summary>
+    [Theory]
+    [MemberData(nameof(DecodeCases))]
+    public void Neutral_form_reads_back(string id)
+    {
+        JsonObject c = VectorCases.Get(id);
+        AprsPacket? packet = VectorCases.Decode(Input(c), AprsParseOptions.Lenient, out _);
+        if (packet is null || packet.Data is AprsUnrecognizedData || packet.Data is AprsThirdPartyTraffic { Packet.Data: AprsUnrecognizedData })
+        {
+            return; // nothing to build: undecoded data cannot be encoded
+        }
+
+        JsonObject written = JsonNode.Parse(NeutralJson.Data(packet.Data).ToJsonString())!.AsObject();
+        JsonObject readBack = NeutralJson.Data(NeutralReader.Data(written));
+        Pass(c, JsonMatch.Differences(written, readBack).Select(d => "read back: " + d).ToList());
     }
 
     // ------------------------------------------------------------------ the case files
 
     private static readonly string[] CaseKeys = ["id", "description", "source", "authority", "interpretations", "input", "expect", "strict", "reencode", "canonical_info"];
     private static readonly string[] InputKeys = ["tnc2", "tnc2_hex", "ax25_hex", "info", "info_hex", "encode", "source", "destination", "path"];
-    private static readonly string[] ExpectKeys = ["data", "diagnostics", "header", "header_error", "device", "info", "refused"];
+    private static readonly string[] ExpectKeys = ["data", "diagnostics", "header", "header_error", "device", "info", "destination", "refused"];
     private static readonly string[] Authorities = ["spec", "interpretation", "observed"];
 
     [Fact]
@@ -207,6 +243,14 @@ public partial class AprsVectorTests
         catalogue.Select(c => (string)c["id"]!).Should().BeEquivalentTo(Enum.GetNames<AprsDiagnosticCode>().Select(NeutralJson.Kebab), "every AprsDiagnosticCode has exactly one entry in spec/aprs/codes.json");
         catalogue.Where(c => (bool)c["tolerable"]!).Select(c => (string)c["id"]!).Should().BeEquivalentTo(Flags.Keys, "a code is tolerable exactly when an AprsParseOptions flag tolerates it");
         Flags.Values.Should().BeEquivalentTo(typeof(AprsParseOptions).GetProperties().Where(p => p.PropertyType == typeof(bool)).Select(p => p.Name), "every flag is mapped to the code it tolerates");
+    }
+
+    /// <summary>Each tolerance needs a case showing both sides of it: strict rejecting (or reading differently) and lenient accepting.</summary>
+    [Fact]
+    public void Every_tolerance_flag_has_a_case()
+    {
+        HashSet<string> covered = [.. VectorCases.ById.Values.Where(c => c["strict"] is JsonObject).Select(FlagFor).OfType<string>()];
+        Flags.Values.Except(covered).Should().BeEmpty("each flag needs a case in spec/aprs/cases whose strict result differs");
     }
 
     /// <summary>Which AprsParseOptions flag tolerates each code. Packet.Aprs's own detail, kept out of the neutral files.</summary>
@@ -307,15 +351,16 @@ public partial class AprsVectorTests
         }
     }
 
-    /// <summary>The flag behind a case's strict difference: the code it is rejected by, or the lenient warning a strict reading drops.</summary>
+    /// <summary>
+    /// The flag behind a case's strict difference: the one tolerance its lenient decoding used. A
+    /// packet with two tolerated defects has no single flag to turn off, so it has none.
+    /// </summary>
     private static string? FlagFor(JsonObject c)
     {
-        if (c["strict"] is JsonObject { } s && s["rejected_by"] is { } code)
-        {
-            return Flags.GetValueOrDefault((string)code!);
-        }
-
-        return (c["expect"]!["diagnostics"] as JsonArray)?.Select(d => ((string)d!).Split(':')[1]).Select(Flags.GetValueOrDefault).FirstOrDefault(f => f is not null);
+        string[] flags = [.. (c["expect"]!["diagnostics"] as JsonArray ?? [])
+            .Select(d => (string)d!).Where(d => d.StartsWith("warning:", StringComparison.Ordinal))
+            .Select(d => Flags.GetValueOrDefault(d["warning:".Length..])).OfType<string>().Distinct()];
+        return flags.Length == 1 ? flags[0] : null;
     }
 
     private static void Pass(JsonObject c, IReadOnlyList<string> differences, string? how = null)

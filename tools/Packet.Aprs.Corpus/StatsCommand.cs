@@ -109,7 +109,8 @@ internal static class StatsCommand
             catch (ArgumentException ex)
             {
                 reencodeThrew++;
-                string key = $"{type}: {ex.Message}";
+                // Refusing a clean packet is the case to look at: nothing was tolerated to read it.
+                string key = $"{(isClean ? "CLEAN " : "")}{type}: {ex.Message}";
                 if (!encodeFailures.TryGetValue(key, out Bucket? b))
                 {
                     encodeFailures[key] = b = new Bucket();

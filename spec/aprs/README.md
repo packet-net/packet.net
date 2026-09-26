@@ -10,13 +10,15 @@ The cases come from three places, and each says which:
 | `interpretation` | The spec is ambiguous, contradicts itself or is wrong here; the expected values follow a decision recorded in [`docs/aprs-spec-interpretations.md`](../../docs/aprs-spec-interpretations.md), linked from the case. | match them or document why not |
 | `observed` | A real packet from the APRS-IS feed; the expected values are what Packet.Aprs does, kept as a regression record. | treat a difference as a question, not a failure |
 
-> **Status:** a first batch (one or two cases of each kind) to settle the format before the Packet.Aprs test suite moves onto it. **Licence:** not yet decided.
+About 250 cases cover every example packet printed in APRS12c and UAP, the encoder, and every defect a lenient decoder may tolerate; another 1,395 are real packets of every distinct shape seen on APRS-IS. The Packet.Aprs test suite is built on them: what it still checks in C# is only what these files deliberately leave out (values derived from other fields, and its own API).
+
+**Licence:** AGPL-3.0-or-later, the same as the rest of this repository.
 
 ## Files
 
 | File | What |
 |---|---|
-| `cases/*.json` | The cases, one file per area (`position`, `mic-e`, `message`, ...). Each file is `{"cases": [ ... ]}`. |
+| `cases/*.json` | The cases, one file per area (`position`, `mic-e`, `message`, ...). Each file is `{"cases": [ ... ]}`. `deviations.json` holds the tolerated defects; `corpus.json` the real packets. |
 | `codes.json` | Every diagnostic code a case can name, with its meaning and whether a lenient decoder may tolerate it. |
 | `schema.json` | JSON Schema (2020-12) for the case files. |
 
@@ -73,7 +75,7 @@ For a decode case:
 | `header_error` | Instead of `data`: the header is unusable and nothing is decoded; the diagnostics that say why. |
 | `device` | The sending device from the [aprs-deviceid](https://github.com/aprsorg/aprs-deviceid) database: `vendor`, `model`. Depends on the database version. |
 
-For an encode case, `expect` is `{"info": "..."}` (the information field to write) or `{"refused": true}`.
+For an encode case, `expect` is `{"info": "..."}` (the information field to write) or `{"refused": true}`. A Mic-E encode case also gives `"destination"`, the address the encoder computes, since Mic-E carries half its position there.
 
 ## The data form
 
@@ -93,6 +95,7 @@ The rules, which make absence meaningful: a field that is not listed must not be
 - Strings, booleans and integers compare exactly.
 - Other numbers compare within 1e-9, relative to the larger magnitude (or absolute below 1). Implementations reach the same degrees by different arithmetic.
 - An implementation that does not produce some field should skip it, and knows it has not been tested on it.
+- An implementation with no lenient mode can run `strict` alone.
 
 ### Fields by type
 
@@ -143,4 +146,19 @@ Positioned fields:
 
 ## Adding a case
 
-Write the input, description, source and authority by hand; for `spec` and `interpretation` cases, check every expected value against the document it cites rather than copying the decoder's output. Then run `dotnet test tests/Packet.Aprs.Tests --filter Vectors`: a new case must pass, and it should fail if the behaviour it describes is broken.
+Write the `id`, `description`, `source`, `authority` and `input` by hand, then let Packet.Aprs work out the rest:
+
+```sh
+dotnet run --project tools/Packet.Aprs.Corpus -- vectors fill spec/aprs/cases/position.json
+```
+
+`fill` completes every decode case that has no `expect` yet (`expect`, `strict`, `reencode`), and leaves the others alone. For `spec` and `interpretation` cases, check every value it wrote against the document the case cites: the decoder's output is a draft, not the authority. Encode cases are written by hand in full. Then run `dotnet test tests/Packet.Aprs.Tests --filter Vectors`: the case must pass, and it should fail if the behaviour it describes is broken.
+
+Real packets come from the APRS-IS capture that `aprs-corpus collect` writes:
+
+```sh
+dotnet run --project tools/Packet.Aprs.Corpus -c Release -- curate ~/aprs-corpus samples.txt
+dotnet run --project tools/Packet.Aprs.Corpus -c Release -- vectors from-samples samples.txt spec/aprs/cases/corpus.json
+```
+
+`curate` picks one or two packets of every distinct shape; `from-samples` adds the ones not already in the file after the existing cases, which keep their ids. When Packet.Aprs changes on purpose, `vectors refresh <files>` works out every observed case again, so the change can be reviewed as a diff.

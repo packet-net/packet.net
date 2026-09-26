@@ -128,6 +128,318 @@
       "strict": "same",
       "reencode": "equivalent",
       "canonical_info": "=5215.02N/02055.60E-PHG2201//145.575MHz lub SR5WZ"
+    },
+    {
+      "id": "position/compressed-altitude-from-gga",
+      "description": "Compressed altitude from gga.",
+      "source": "APRS12c ch. 9",
+      "authority": "spec",
+      "input": {"info": "=/5L!!<*e7OS]S"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "/O", "compressed": true, "compression": {"fix": "current", "source": "gga", "origin": "software"}, "altitude_feet": 10004.52005070133}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/compressed-with-timestamp",
+      "description": "Compressed with timestamp.",
+      "source": "APRS12c ch. 9",
+      "authority": "spec",
+      "input": {"info": "@092345z/5L!!<*e7>{?!"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "messaging": true, "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "/>", "compressed": true, "compression": {"fix": "old", "source": "other", "origin": "compressed"}, "range_miles": 20.1253137781469}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/df-report-without-course-and-speed",
+      "description": "Df report without course and speed.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "/092345z4903.50N/07201.75W\\000/000/270/729"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/\\", "course_degrees": 0, "speed_knots": 0, "df_bearing": {"bearing_degrees": 270, "number": 7, "range": 2, "quality": 9}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/with-timestamp",
+      "description": "With timestamp.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "@092345/4903.50N/07201.75W>Test1234"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345/", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "comment": "Test1234"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/with-timestamp-2",
+      "description": "With timestamp.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "/092345z4903.50N/07201.75W>Test1234"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "comment": "Test1234"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/ambiguity-in-the-latitude-applies-to-the-longitude",
+      "description": "Ambiguity in the latitude applies to the longitude.",
+      "source": "APRS12c ch. 6",
+      "authority": "interpretation",
+      "interpretations": ["position-ambiguity-which-point-is-reported"],
+      "input": {"info": "!4903.5 N/07201.75W-"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05916666666667, "longitude": -72.02916666666667, "ambiguity": 1, "symbol": "/-"}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "!4903.5 N/07201.7 W-"
+    },
+    {
+      "id": "position/ambiguity-in-the-latitude-applies-to-the-longitude-2",
+      "description": "Ambiguity in the latitude applies to the longitude.",
+      "source": "APRS12c ch. 6",
+      "authority": "interpretation",
+      "interpretations": ["position-ambiguity-which-point-is-reported"],
+      "input": {"info": "!4903.  N/07201.75W-"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.025, "ambiguity": 2, "symbol": "/-"}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "!4903.  N/07201.  W-"
+    },
+    {
+      "id": "position/ambiguity-in-the-latitude-applies-to-the-longitude-3",
+      "description": "Ambiguity in the latitude applies to the longitude.",
+      "source": "APRS12c ch. 6",
+      "authority": "interpretation",
+      "interpretations": ["position-ambiguity-which-point-is-reported"],
+      "input": {"info": "!490 .  N/07201.75W-"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.083333333333336, "longitude": -72.08333333333333, "ambiguity": 3, "symbol": "/-"}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "!490 .  N/0720 .  W-"
+    },
+    {
+      "id": "position/df-signal-strength",
+      "description": "Df signal strength.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "/234517h4903.50N/07201.75W>DFS2360"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "234517h", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "dfs": {"strength": 2, "height": 3, "gain": 6, "directivity": 0}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/position-to-the-nearest-degree-is-the-centre-of-that-degree",
+      "description": "Position to the nearest degree is the centre of that degree.",
+      "source": "APRS12c ch. 8",
+      "authority": "interpretation",
+      "interpretations": ["position-ambiguity-which-point-is-reported"],
+      "input": {"info": "!49  .  N/072  .  W-"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.5, "longitude": -72.5, "ambiguity": 4, "symbol": "/-"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/null-position-keeps-its-west-hemisphere",
+      "description": "Null position keeps its west hemisphere.",
+      "source": "APRS12c ch. 6",
+      "authority": "spec",
+      "input": {"info": "!0000.00N\\00000.00W."},
+      "expect": {
+        "data": {"type": "position", "latitude": 0, "longitude": 0, "symbol": "\\."}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/hms-timestamp-with-phg",
+      "description": "Hms timestamp with phg.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "@234517h4903.50N/07201.75W>PHG5132"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "234517h", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "phg": {"power": 5, "height": 1, "gain": 3, "directivity": 2}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/df-report-with-bearing-and-nrq",
+      "description": "Df report with bearing and nrq.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "=4903.50N/07201.75W\\000/036/270/729"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/\\", "course_degrees": 0, "speed_knots": 36, "df_bearing": {"bearing_degrees": 270, "number": 7, "range": 2, "quality": 9}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/df-report-with-bearing-and-nrq-2",
+      "description": "Df report with bearing and nrq.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "@092345z4903.50N/07201.75W\\088/036/270/729"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/\\", "course_degrees": 88, "speed_knots": 36, "df_bearing": {"bearing_degrees": 270, "number": 7, "range": 2, "quality": 9}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/df-report-with-bearing-and-nrq-3",
+      "description": "Df report with bearing and nrq.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "=4903.50N/07201.75W\\088/036/270/729"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/\\", "course_degrees": 88, "speed_knots": 36, "df_bearing": {"bearing_degrees": 270, "number": 7, "range": 2, "quality": 9}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/compressed-radio-range",
+      "description": "Compressed radio range.",
+      "source": "APRS12c ch. 9",
+      "authority": "spec",
+      "input": {"info": "=/5L!!<*e7>{?!"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "/>", "compressed": true, "compression": {"fix": "old", "source": "other", "origin": "compressed"}, "range_miles": 20.1253137781469}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/uncompressed-overlay",
+      "description": "Uncompressed overlay.",
+      "source": "APRS12c ch. 21",
+      "authority": "spec",
+      "input": {"info": "@092345z4903.50N307201.75W>"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "3>"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/compressed-letter-overlay",
+      "description": "Compressed letter overlay.",
+      "source": "APRS12c ch. 21",
+      "authority": "interpretation",
+      "interpretations": ["errata-in-aprs12cs-own-examples"],
+      "input": {"info": "=B5L!!<*e7>7P["},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "B>", "compressed": true, "compression": {"fix": "current", "source": "rmc", "origin": "software"}, "course_degrees": 88, "speed_knots": 36.23201216883807}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/radio-range",
+      "description": "Radio range.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "@092345z4903.50N/07201.75W>RNG0050"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/>", "range_miles": 50}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/compressed-without-course-speed",
+      "description": "Compressed without course speed.",
+      "source": "APRS12c ch. 9",
+      "authority": "spec",
+      "input": {"info": "=/5L!!<*e7> sTComment"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "/>", "compressed": true, "comment": "Comment"}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/weather-with-timestamp-and-software-type",
+      "description": "Weather with timestamp and software type.",
+      "source": "APRS12c ch. 8",
+      "authority": "interpretation",
+      "interpretations": ["weather-wind-speed-unit-in-the-dirspd-extension"],
+      "input": {"info": "@092345z4903.50N/07201.75W_090/000g000t066r000p000dUII"},
+      "expect": {
+        "data": {"type": "position", "timestamp": "092345z", "messaging": true, "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/_", "weather": {"wind_direction_degrees": 90, "wind_speed_mph": 0, "wind_gust_mph": 0, "temperature_f": 66, "rain_1h_in": 0, "rain_24h_in": 0, "software": "d", "unit": "UII"}}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/altitude-anywhere-in-the-comment",
+      "description": "Altitude anywhere in the comment.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75W-Test /A=001234"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/-", "altitude_feet": 1234, "comment": "Test "}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "!4903.50N/07201.75W-/A=001234Test "
+    },
+    {
+      "id": "position/negative-altitude",
+      "description": "Below sea level the altitude is a minus sign and five digits, which APRS12c notes many applications read. The packet is from UAP; the space after the altitude is a delimiter.",
+      "source": "APRS12c ch. 6, UAP 3.4 and 5.27",
+      "authority": "interpretation",
+      "interpretations": ["delimiters-at-the-start-of-free-text"],
+      "input": {"info": "=4212.14N/07111.22W$007/045/A=-00031 https://aprsdroid.org/", "source": "N1EDF-15", "destination": "APDR16"},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 42.202333333333335, "longitude": -71.187, "symbol": "/$", "course_degrees": 7, "speed_knots": 45, "altitude_feet": -31, "comment": "https://aprsdroid.org/"}
+      },
+      "strict": "same",
+      "reencode": "equivalent",
+      "canonical_info": "=4212.14N/07111.22W$007/045/A=-00031https://aprsdroid.org/"
+    },
+    {
+      "id": "position/compressed-numeric-overlay-is-written-as-a-letter",
+      "description": "Compressed numeric overlay is written as a letter.",
+      "source": "APRS12c ch. 21",
+      "authority": "spec",
+      "input": {"info": "=d5L!!<*e7>7P["},
+      "expect": {
+        "data": {"type": "position", "messaging": true, "latitude": 49.5, "longitude": -72.75000393777269, "symbol": "3>", "compressed": true, "compression": {"fix": "current", "source": "rmc", "origin": "software"}, "course_degrees": 88, "speed_knots": 36.23201216883807}
+      },
+      "strict": "same",
+      "reencode": "identical"
+    },
+    {
+      "id": "position/symbol-n",
+      "description": "Symbol n.",
+      "source": "APRS12c ch. 8",
+      "authority": "spec",
+      "input": {"info": "!4903.50N/07201.75Wn"},
+      "expect": {
+        "data": {"type": "position", "latitude": 49.05833333333333, "longitude": -72.02916666666667, "symbol": "/n"}
+      },
+      "strict": "same",
+      "reencode": "identical"
     }
   ]
 }

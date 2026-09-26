@@ -84,6 +84,7 @@
               "properties": { "vendor": { "type": "string" }, "model": { "type": "string" } }
             },
             "info": { "type": "string" },
+            "destination": { "type": "string" },
             "refused": { "const": true }
           }
         },

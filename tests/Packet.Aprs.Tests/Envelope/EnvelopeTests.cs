@@ -26,14 +26,6 @@ public class EnvelopeTests : AprsSpec
         Packet.ToString().Should().Be("N0CALL>APZ001:>hi");
     }
 
-    [Fact]
-    public void Colons_after_the_first_belong_to_the_information_field()
-    {
-        GivenPacket("N0CALL>APZ001::N0CALL-1 :hi");
-        WhenDecoded();
-        ThenDataIs<AprsTextMessage>().Addressee.Should().Be("N0CALL-1");
-    }
-
     [Theory]
     [InlineData("no header at all")]
     [InlineData(">APZ001:>hi")]
@@ -45,15 +37,6 @@ public class EnvelopeTests : AprsSpec
         WhenDecodingIsAttempted();
         ThenDecodingFailed();
         AprsPacket.TryDecode(line, out _).Should().BeFalse();
-    }
-
-    [Fact]
-    public void Aprs_is_q_construct_and_igate()
-    {
-        GivenPacket("KB1QV-1>4SQP3U,WIDE1-1,WIDE2-1,qAR,N3LLO-2:`cK+l <0x1c>>/");
-        WhenDecoded();
-        Packet.QConstruct.Should().Be(new AprsQConstruct("qAR", AprsAddress.Parse("N3LLO-2"), 2));
-        Packet.QConstruct!.Value.IsFromRf.Should().BeTrue();
     }
 
     [Fact]
@@ -117,47 +100,6 @@ public class EnvelopeTests : AprsSpec
         frame[21].Should().Be(0x03);
         frame[22].Should().Be(0xF0);
         frame[23].Should().Be((byte)'>');
-    }
-
-    [Fact]
-    public void Ax25_rejects_non_ui_frames()
-    {
-        byte[] frame = AprsPacket.Decode("N0CALL>APZ001:>x").ToAx25Frame();
-        frame[14] = 0x3F; // SABM
-        GivenBytes(frame);
-
-        FluentActions.Invoking(WhenDecodedAsAx25).Should().Throw<AprsFormatException>()
-            .Which.Diagnostics.Should().Contain(d => d.Code == AprsDiagnosticCode.NotAprsFrame);
-    }
-
-    [Fact]
-    public void Ax25_nul_padding_is_tolerated_by_default_and_rejected_when_strict()
-    {
-        byte[] frame = AprsPacket.Decode("K2CAT-1>APAT51:!4150.67N/07404.71W-").ToAx25Frame();
-        frame[7 + 5] = 0; // UAP §5.29: "K2CAT" padded with NUL instead of a space
-        GivenBytes(frame);
-
-        WhenDecodedAsAx25();
-        Packet.Source.Value.Should().Be("K2CAT-1");
-        ThenToleratedWith(AprsDiagnosticCode.NulPaddedAddress);
-
-        GivenStrictDecoding();
-        FluentActions.Invoking(WhenDecodedAsAx25).Should().Throw<AprsFormatException>();
-    }
-
-    [Fact]
-    public void Ax25_lower_case_address_is_tolerated_by_default_and_rejected_when_strict()
-    {
-        byte[] frame = AprsPacket.Decode("N2GH>APZ001:>x").ToAx25Frame();
-        frame[7] = (byte)('n' << 1);
-        GivenBytes(frame);
-
-        WhenDecodedAsAx25();
-        Packet.Source.Value.Should().Be("n2GH");
-        ThenToleratedWith(AprsDiagnosticCode.InvalidAx25AddressCharacters);
-
-        GivenStrictDecoding();
-        FluentActions.Invoking(WhenDecodedAsAx25).Should().Throw<AprsFormatException>();
     }
 
     [Fact]
