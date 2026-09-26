@@ -93,7 +93,7 @@ internal static class MessageCodec
             return CheckBrace(body, textAt, ctx) && Text.TryDecode(body, ctx, textAt, out string s) ? new AprsBulletin { Addressee = addressee, Text = s, MessageId = id } : null;
         }
 
-        if (addressee.StartsWith("NWS", StringComparison.Ordinal))
+        if (IsNwsAddressee(addressee))
         {
             SplitId(text, allowReplyAck: false, out ReadOnlySpan<byte> body, out string? id, out _);
             return CheckBrace(body, textAt, ctx) && Text.TryDecode(body, ctx, textAt, out string s) ? new AprsNwsBulletin { Addressee = addressee, Text = s, MessageId = id } : null;
@@ -346,6 +346,11 @@ internal static class MessageCodec
         query = new AprsDirectedQuery { Addressee = addressee, QueryType = s[..end], Target = rest.Length > 0 ? rest : null };
         return true;
     }
+
+    /// <summary>An NWS bulletin is addressed <c>NWS-</c> (APRS12c ch. 14) or <c>NWS_</c> (aprs-is.net/wx);
+    /// <c>NWSBOT</c> is an ordinary addressee (vectors <c>interpretations.md</c>).</summary>
+    public static bool IsNwsAddressee(string addressee) =>
+        addressee.StartsWith("NWS-", StringComparison.Ordinal) || addressee.StartsWith("NWS_", StringComparison.Ordinal);
 
     public static bool IsBulletinAddressee(string addressee) =>
         addressee.Length is >= 4 and <= 9 && addressee.StartsWith("BLN", StringComparison.Ordinal)

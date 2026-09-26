@@ -111,7 +111,7 @@ internal static class NeutralJson
                 Put(o, "course_degrees", n.CourseDegrees);
                 Put(o, "speed_knots", n.SpeedKnots);
                 Put(o, "altitude_m", n.AltitudeMetres);
-                Put(o, "time", n.Time?.ToString(n.Time.Value.Millisecond == 0 ? "HH:mm:ss" : "HH:mm:ss.fff", CultureInfo.InvariantCulture));
+                Put(o, "time", n.Time?.ToString("HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
                 Put(o, "waypoint", n.WaypointName);
                 break;
             case AprsMaidenheadBeacon mb:

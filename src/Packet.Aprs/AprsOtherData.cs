@@ -182,6 +182,11 @@ public sealed record AprsStationCapabilities : AprsData
 
     internal override void Encode(InfoWriter writer)
     {
+        if (Capabilities.Count == 0)
+        {
+            throw new ArgumentException("a capabilities report lists at least one capability (APRS12c ch. 15)", nameof(Capabilities));
+        }
+
         writer.Char('<');
         for (int i = 0; i < Capabilities.Count; i++)
         {
