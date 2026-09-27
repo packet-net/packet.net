@@ -6,6 +6,7 @@
 
 **As of:** 2026-09-26
 **Current phase:** Phases 0-5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete - mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 - `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) - see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces); Phase 7's channel-aware in-app self-update is shipped for the two channels that remain - the apt repo is maintainer-owned and out of scope, and the self-contained installer + distribution feed were withdrawn 2026-08-05, leaving a `.deb` and a `.tar.gz` as the whole of what pdn distributes ([`docs/node-self-update-design.md`](node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-09-27 - **RELEASE: lib-v0.43.0 (Packet.Aprs Mic-E Rev 0 telemetry)** - NuGet 0.43.0 of the library packages, only Packet.Aprs changed; released alongside the sibling implementations (pdn-aprs Rust 0.2.1, Python 0.1.1, TypeScript 0.1.1, C 0.1.1) carrying the same ruling; no node or downstream app release](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-27 - **Packet.Aprs: Mic-E Rev 0 binary telemetry is written back** - read once 0xFF padding is removed, and re-encoded as received rather than refused, as the other obsolete formats are; a ruling the five implementations now share (aprs-vectors); no API change, ships with the next lib release, no TS leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-26 - **RELEASE: lib-v0.42.0 (Packet.Aprs builder, named symbols, Rust-comparison fixes)** - NuGet 0.42.0 of all 14 library packages, only Packet.Aprs changed since lib-v0.41.0; no node or downstream app release; the sibling Rust and Python implementations are named `pdn-aprs`, and the Rust crate is on crates.io as 0.1.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-26 - **Packet.Aprs: three edge cases settled with the Rust implementation** - an NWS bulletin is addressed `NWS-` or `NWS_` (not anything starting NWS), a capabilities report with no capabilities is `InvalidCapabilities` and refused on encoding, and the vectors runner writes NMEA time fractions without trailing zeros; none occur in captured traffic; no API change, ships with the next lib release, no TS leg](#17-amendment-log)
@@ -1399,6 +1400,13 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-09-27 - RELEASE: lib-v0.43.0 (Packet.Aprs Mic-E Rev 0 telemetry)
+
+Tagged `lib-v0.43.0` on `e2823a28` (main, `ci` and `interop` green); `publish-libs.yml` pushed the library packages at 0.43.0. The only library change since `lib-v0.42.0` is #837, the Mic-E Rev 0 binary telemetry ruling. The four sibling APRS implementations released the same ruling at the same time: `pdn-aprs` 0.2.1 on crates.io, `pdn-aprs` 0.1.1 on PyPI, `@packet-net/pdn-aprs` 0.1.1 on npm, and `pdn_aprs` 0.1.1 (packet-net/aprs-c, C, MIT) on GitHub releases.
+
+- **Sibling packages.** `M0LTE.Rig` and `M0LTE.Tait.Ccdi` unchanged, so step 0a did not apply.
+- **Downstream.** No `axcall` or `packet-term-tui` bump, since neither uses Packet.Aprs. No `node-v*` tag and no `ax25-ts` leg.
 
 ### 2026-09-27 - Packet.Aprs: Mic-E Rev 0 binary telemetry is written back
 
