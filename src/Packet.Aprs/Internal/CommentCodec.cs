@@ -288,41 +288,35 @@ internal static class CommentCodec
         }
 
         // The overlay is "specified by enclosing the 1-3 characters in braces" (APRS12c ch. 11): the
-        // first { whose next brace is a } with 1-3 characters between them, wherever it is, so a
-        // { that encloses nothing ({5Wm{55}) stays in the comment.
-        int open = -1;
-        int close = -1;
-        for (int i = c.IndexOf((byte)'{'); i >= 0 && open < 0; i = c.IndexOf((byte)'{', i + 1))
+        // first well-formed braces wherever they are, a {, 1-3 characters that are not braces and
+        // a }, holding printable ASCII for a signpost or digits for a corridor. Braces that do not
+        // qualify are comment text and do not stop the search, as a malformed data extension does
+        // not (vectors README, Comments).
+        for (int open = c.IndexOf((byte)'{'); open >= 0; open = c.IndexOf((byte)'{', open + 1))
         {
-            int next = c.FindIndex(i + 1, b => b is (byte)'{' or (byte)'}');
-            if (next >= 0 && c[next] == (byte)'}' && next - i - 1 is >= 1 and <= 3)
+            int close = c.FindIndex(open + 1, b => b is (byte)'{' or (byte)'}');
+            if (close < 0 || c[close] != (byte)'}' || close - open - 1 is < 1 or > 3)
             {
-                open = i;
-                close = next;
+                continue;
             }
-        }
 
-        int length = close - open - 1;
-        if (open < 0)
-        {
+            byte[] inner = c.GetRange(open + 1, close - open - 1).ToArray();
+            if (signpost && inner.All(Text.IsPrintableAscii))
+            {
+                f.SignpostText = Text.Latin1(inner);
+            }
+            else if (corridor && Text.AllDigits(inner))
+            {
+                f.AreaObject = f.AreaObject!.Value with { CorridorWidthMiles = Text.ParseDigits(inner) };
+            }
+            else
+            {
+                continue;
+            }
+
+            c.RemoveRange(open, close - open + 1);
             return;
         }
-
-        byte[] inner = c.GetRange(open + 1, length).ToArray();
-        if (signpost && inner.All(Text.IsPrintableAscii))
-        {
-            f.SignpostText = Text.Latin1(inner);
-        }
-        else if (corridor && Text.AllDigits(inner))
-        {
-            f.AreaObject = f.AreaObject!.Value with { CorridorWidthMiles = Text.ParseDigits(inner) };
-        }
-        else
-        {
-            return;
-        }
-
-        c.RemoveRange(open, close - open + 1);
     }
 
     /// <summary>
