@@ -69,8 +69,18 @@ internal static class DiffCommand
                 ["n"] = n,
                 ["lenient"] = Result(line, AprsParseOptions.Lenient, out AprsPacket? lenient),
                 ["strict"] = Result(line, AprsParseOptions.Strict, out _),
-                ["reencode"] = Reencode(lenient),
+                ["reencode"] = Reencode(lenient, out byte[]? written, out AprsAddress? writtenDestination),
             };
+            if (written is not null)
+            {
+                o["written"] = Convert.ToHexStringLower(written);
+            }
+
+            if (writtenDestination is not null)
+            {
+                o["written_destination"] = writtenDestination.ToString();
+            }
+
             w.WriteLine(o.ToJsonString(Compact));
             n++;
         }
@@ -104,10 +114,13 @@ internal static class DiffCommand
     /// What encoding the lenient data again gives, as the vectors' reencode check sees it:
     /// <c>identical</c>, <c>equivalent</c> (decodes, leniently, to the same data with no warnings or
     /// errors), <c>refused</c>, <c>fails</c> (it wrote something that does not), or <c>none</c> (nothing
-    /// was decoded).
+    /// was decoded). <paramref name="written"/> is the information field it wrote, and
+    /// <paramref name="writtenDestination"/> the Mic-E destination it computed.
     /// </summary>
-    private static string Reencode(AprsPacket? packet)
+    private static string Reencode(AprsPacket? packet, out byte[]? written, out AprsAddress? writtenDestination)
     {
+        written = null;
+        writtenDestination = null;
         if (packet is null || packet.Data is AprsUnrecognizedData)
         {
             return "none";
@@ -122,6 +135,7 @@ internal static class DiffCommand
                 AprsPacket created = AprsPacket.CreateMicE(packet.Source, mic, packet.Path);
                 info = created.Information.ToArray();
                 destination = created.Destination;
+                writtenDestination = destination;
             }
             else
             {
@@ -133,6 +147,7 @@ internal static class DiffCommand
             return "refused";
         }
 
+        written = info;
         byte[] original = packet.Information.ToArray();
         int end = original.Length;
         while (end > 0 && original[end - 1] is (byte)'\r' or (byte)'\n')
