@@ -319,8 +319,9 @@ internal static class TelemetryCodec
         {
             decimal? v = r.Analog[i];
 
-            // "MIC may or may not be followed by a comma" (APRS12c §13); the spec's example has none.
-            if (i > 0 || r.Sequence != "MIC")
+            // "MIC may or may not be followed by a comma" (APRS12c §13); the spec's example has none,
+            // but an empty first value needs it, or the second would be read in its place.
+            if (i > 0 || r.Sequence != "MIC" || (sent is not null ? sent[0].Length == 0 : v is null))
             {
                 w.Char(',');
             }

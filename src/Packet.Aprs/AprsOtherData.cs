@@ -320,6 +320,12 @@ public sealed record AprsUserDefinedData : AprsData
             throw new ArgumentException("user ID and packet type are single bytes (U+0000-U+00FF)");
         }
 
+        // A trailing line break is a tolerated defect a decoder strips, not data.
+        if ((Data.Count > 0 ? Data[^1] : (byte)PacketType) is (byte)'\r' or (byte)'\n')
+        {
+            throw new ArgumentException("user-defined data that ends with a carriage return or line feed would read back without it", nameof(Data));
+        }
+
         writer.Char('{').Char(UserId).Char(PacketType).Bytes(Data.ToArray());
     }
 }

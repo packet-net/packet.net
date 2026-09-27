@@ -38,6 +38,11 @@ public abstract record AprsData
             CommentCodec.VerifyReadsBack(positioned, info, problem);
         }
 
+        if (this is AprsMessage message)
+        {
+            MessageCodec.VerifyReadsBack(message, info);
+        }
+
         return info;
     }
 

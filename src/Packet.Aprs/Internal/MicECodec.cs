@@ -463,6 +463,11 @@ internal static class MicECodec
         }
 
         string lat = PositionCodec.FormatCoordinate(Math.Abs(r.Position.Latitude), 2, r.Dao).Replace(".", "", StringComparison.Ordinal);
+        if (r.Position.Ambiguity > 0 && lat.StartsWith("90", StringComparison.Ordinal))
+        {
+            throw new ArgumentOutOfRangeException(nameof(r), "an ambiguous latitude of 90 degrees is centred past the pole, which a decoder rejects");
+        }
+
         (int[] bits, bool custom) = MessageBits(r.Message);
         int lonDegrees = int.Parse(PositionCodec.FormatCoordinate(Math.Abs(r.Position.Longitude), 3, r.Dao)[..3], System.Globalization.CultureInfo.InvariantCulture);
         bool[] flags =
@@ -535,11 +540,22 @@ internal static class MicECodec
             _ => deg - 100,
         };
 
+        if (deg >= 180)
+        {
+            // Degrees 180-189 would be written as 100-109 are, so 180 itself has no Mic-E form (APRS12c ch. 10).
+            throw new ArgumentOutOfRangeException(nameof(r), "a Mic-E longitude is under 180 degrees east or west (APRS12c ch. 10)");
+        }
+
         int speed = r.SpeedKnots is { } s ? (int)Math.Round(s) : 0;
         int course = r.CourseDegrees ?? 0;
         if (speed is < 0 or > 799 || course is < 0 or > 360)
         {
             throw new ArgumentOutOfRangeException(nameof(r), "Mic-E speed must be 0-799 knots and course 0-360");
+        }
+
+        if (r.CourseDegrees == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(r), "a Mic-E course of 0 reads back as no course; north is 360");
         }
 
         // The printable encoding schemes: speeds under 200 knots use SP + 80, except 190-199, where
@@ -586,6 +602,25 @@ internal static class MicECodec
         else if (r.DeviceSuffix.Length > 0)
         {
             throw new ArgumentException("a Mic-E device suffix needs a type code", nameof(r));
+        }
+
+        if (r.DeviceSuffix.Length > 0)
+        {
+            // A decoder matches only the suffixes the device database lists for the type code; any
+            // other is comment text. Whether the text before it joins a longer suffix is checked
+            // by decoding the finished field.
+            IEnumerable<string> known = r.TypeCode switch
+            {
+                '`' or '\'' => AprsDeviceIdentification.MicESuffixes,
+                '>' or ']' => AprsDeviceIdentification.MicELegacySuffixes(r.TypeCode.Value),
+                _ => [],
+            };
+            if (!known.Contains(r.DeviceSuffix, StringComparer.Ordinal))
+            {
+                throw new ArgumentException($"'{r.DeviceSuffix}' is not a Mic-E device suffix for the type code '{r.TypeCode}' (aprs-deviceid), so it would read back as comment text", nameof(r));
+            }
+
+            w.CommentCheck ??= "the Mic-E status text would read back with a different device suffix";
         }
 
         // Mic-E carries altitude in whole metres (xxx}); an altitude that is not a whole number of

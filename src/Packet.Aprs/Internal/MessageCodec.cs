@@ -437,6 +437,23 @@ internal static class MessageCodec
         }
     }
 
+    /// <summary>
+    /// A message-format report must read back as the same kind of report, cleanly: a text message
+    /// addressed <c>BLN1</c> would be a bulletin, and one whose text is <c>?WX</c> a directed query
+    /// (vectors README, Messages and queries). Decodes the finished field to find out.
+    /// </summary>
+    internal static void VerifyReadsBack(AprsMessage sent, byte[] info)
+    {
+        AprsPacket back = AprsPacket.Decode(AprsAddress.Parse("N0CALL"), AprsAddress.Parse("APZ001"), [], info);
+        if (back.Data.GetType() != sent.GetType() || back.HasWarnings || back.HasErrors)
+        {
+            string problem = back.Data.GetType() != sent.GetType()
+                ? $"would read back as {back.Data.GetType().Name}"
+                : $"would read back with {string.Join(", ", back.Diagnostics.Where(d => d.Severity != AprsDiagnosticSeverity.Info).Select(d => d.Code))}";
+            throw new ArgumentException($"this {sent.GetType().Name} (addressee '{sent.Addressee}') {problem}", nameof(sent));
+        }
+    }
+
     public static void ValidateText(string text, string paramName)
     {
         ArgumentNullException.ThrowIfNull(text, paramName);

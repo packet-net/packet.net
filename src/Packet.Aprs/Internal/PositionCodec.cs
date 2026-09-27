@@ -627,6 +627,13 @@ internal static class PositionCodec
     {
         d.Position.Validate(nameof(d.Position));
         d.Symbol.Validate(nameof(d.Symbol));
+        if (d.Symbol.IsWeatherStation && d.Weather is null)
+        {
+            // A report with the weather station symbol is weather even with no fields (vectors
+            // README, Weather), so without them it would read back as incomplete weather.
+            throw new ArgumentException("the weather station symbol (_) makes the report a weather report; set Weather (APRS12c ch. 12)", nameof(d.Weather));
+        }
+
         if (d.IsCompressed)
         {
             WriteCompressed(w, d);
@@ -685,6 +692,13 @@ internal static class PositionCodec
     {
         string lat = FormatCoordinate(Math.Abs(position.Latitude), 2, dao) + (double.IsNegative(position.Latitude) ? "S" : "N");
         string lon = FormatCoordinate(Math.Abs(position.Longitude), 3, dao) + (double.IsNegative(position.Longitude) ? "W" : "E");
+        if (position.Ambiguity > 0 && (lat.StartsWith("90", StringComparison.Ordinal) || lon.StartsWith("180", StringComparison.Ordinal)))
+        {
+            // A decoder reports the centre of the blanked box, which from 90 or 180 degrees lies past
+            // the pole or the date line, and rejects it (vectors README, Positions).
+            throw new ArgumentOutOfRangeException(nameof(position), "an ambiguous position at 90 degrees latitude or 180 degrees longitude is centred past it, which a decoder rejects");
+        }
+
         return (Blank(lat, position.Ambiguity), Blank(lon, position.Ambiguity));
 
         static string Blank(string coordinate, int ambiguity)
@@ -877,6 +891,12 @@ internal static class PositionCodec
         }
         else if (courseSpeed)
         {
+            if (d.Symbol is { Table: '\\', Code: 'l' } && d.CourseDegrees is not null && d.SpeedKnots is not null)
+            {
+                // After the area symbol, ddd/ddd reads as an area object (APRS12c ch. 11).
+                throw new ArgumentException("a course and speed after the area symbol (\\l) would read back as an area object (APRS12c ch. 11)", nameof(d.CourseDegrees));
+            }
+
             WriteCourseSpeed(w, d.CourseDegrees, d.SpeedKnots);
             if (d.DfBearing is { } bearing)
             {
