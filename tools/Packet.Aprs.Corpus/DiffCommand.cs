@@ -227,10 +227,27 @@ internal static class DiffCommand
     private static JsonObject EncodeRecord(long n, JsonObject input)
     {
         var o = new JsonObject { ["n"] = n };
+        JsonObject neutral = input["data"]!.AsObject();
+
+        // A third-party packet's inner packet is built, and so encoded, as it is read: its data is
+        // read first on its own, so that the encoder refusing it is told apart from data that
+        // cannot be held.
+        bool thirdParty = neutral["packet"]?["data"] is JsonObject && (string?)neutral["type"] == "third-party";
         AprsData data;
         try
         {
-            data = NeutralReader.Data(input["data"]!.AsObject());
+            if (thirdParty)
+            {
+                _ = NeutralReader.Data(neutral["packet"]!["data"]!.AsObject());
+            }
+
+            data = NeutralReader.Data(neutral);
+        }
+        catch (Exception ex) when (thirdParty && ex is ArgumentException and not ArgumentNullException)
+        {
+            o["result"] = "refused";
+            o["reason"] = $"the inner packet: {ex.Message}";
+            return o;
         }
 #pragma warning disable CA1031 // any failure to read the data is reported for that line alone
         catch (Exception ex)
