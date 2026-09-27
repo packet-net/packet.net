@@ -153,11 +153,13 @@ internal static class FrequencyCodec
     }
 
     /// <summary>
-    /// Writes the frequency and then the comment. The usual separating space is left out when the
-    /// comment starts with something that would otherwise be read as another tone/offset/range
-    /// field (e.g. <c>-500 ...</c>), so the pair reads back exactly as given.
+    /// Writes the frequency and its fields, then whatever <paramref name="between"/> writes (a
+    /// position comment's braces and <c>/A=</c> altitude, which a decoder lifts out before it reads
+    /// the frequency), then the comment. The usual separating space is left out when the comment
+    /// starts with something that would otherwise be read as another tone/offset/range field
+    /// (e.g. <c>-500 ...</c>), so the pair reads back exactly as given.
     /// </summary>
-    public static void WriteWithComment(InfoWriter w, AprsVoiceFrequency f, string comment)
+    public static void WriteWithComment(InfoWriter w, AprsVoiceFrequency f, string comment, Action<InfoWriter>? between = null)
     {
         // The decoder drops one leading space or slash of the comment as a delimiter.
         if (comment.Length > 0 && comment[0] is ' ' or '/')
@@ -175,18 +177,23 @@ internal static class FrequencyCodec
                 continue;
             }
 
-            byte[] candidate = [.. alone.Written, .. (separator && comment.Length > 0 ? " "u8.ToArray() : []), .. text];
+            byte[] tail = [.. (separator && comment.Length > 0 ? " "u8.ToArray() : []), .. text];
+            byte[] candidate = [.. alone.Written, .. tail];
             if (TryRead(candidate, out AprsVoiceFrequency? back, out int consumed) && back == f
                 && consumed + (separator && comment.Length > 0 ? 1 : 0) == alone.Length + (separator && comment.Length > 0 ? 1 : 0))
             {
-                w.Bytes(candidate);
+                w.Bytes(alone.Written);
+                between?.Invoke(w);
+                w.Bytes(tail);
                 return;
             }
         }
 
         // The comment starts with text that could read as more of the frequency specification (a
         // range, say). A '/' delimiter ends the specification; decoding the finished field confirms it.
-        w.Bytes([.. alone.Written, .. " /"u8, .. text]);
+        w.Bytes(alone.Written);
+        between?.Invoke(w);
+        w.Bytes([.. " /"u8, .. text]);
         w.CommentCheck ??= "the comment starts with text that would be read as part of the frequency specification";
     }
 

@@ -542,9 +542,10 @@ internal static class MicECodec
             throw new ArgumentOutOfRangeException(nameof(r), "Mic-E speed must be 0-799 knots and course 0-360");
         }
 
-        // The printable encoding schemes: speeds under 200 knots use SP + 80, and DC always adds 4 to
-        // the course hundreds, so only the SE byte can be a control character (APRS12c §10).
-        int sp = speed < 200 ? (speed / 10) + 80 : speed / 10;
+        // The printable encoding schemes: speeds under 200 knots use SP + 80, except 190-199, where
+        // that would be DEL and the table's other character is '/' (vectors ruling E5), and DC always
+        // adds 4 to the course hundreds, so only the SE byte can be a control character (APRS12c §10).
+        int sp = speed < 190 ? (speed / 10) + 80 : speed / 10;
         int dc = ((speed % 10) * 10) + (course / 100) + 4;
         int se = course % 100;
 
@@ -651,6 +652,14 @@ internal static class MicECodec
 
         if (r.Frequency is { } freq)
         {
+            // Straight after a PHG, RNG or DFS the frequency follows a '/', as in a position
+            // comment; a PHGR already ends in one (vectors interpretations.md, "Where a voice
+            // frequency goes").
+            if (!altitudeAsFeet && (r.Phg is { BeaconsPerHour: null } || r.RadioRangeMiles is not null || r.DfSignalStrength is not null))
+            {
+                w.Char('/');
+            }
+
             FrequencyCodec.WriteWithComment(w, freq, r.Comment);
         }
 
@@ -662,9 +671,10 @@ internal static class MicECodec
         // "The Mic-E status text must not start with ` , ' or 0x1d, otherwise it will be confused
         // with [now obsolete] telemetry data" (APRS12c ch. 10). A comment that would start it with a
         // type code character or 0x1D goes after a '/' delimiter, which the decoder drops
-        // (interpretations.md, "Delimiters at the start of free text").
+        // (interpretations.md, "Delimiters at the start of free text"). After Rev 0 telemetry a
+        // 0x1D is text, since the telemetry is only read at the start (vectors ruling E6).
         bool readsAsTypeCode = commentFirst && r.TypeCode is null && r.MaidenheadLocator is null && r.AltitudeFeet is null
-            && commentBytes.Length > 0 && commentBytes[0] is (byte)'`' or (byte)'\'' or (byte)'>' or (byte)']' or 0x1d;
+            && commentBytes.Length > 0 && (commentBytes[0] is (byte)'`' or (byte)'\'' or (byte)'>' or (byte)']' || (commentBytes[0] == 0x1d && r.LegacyTelemetry is null));
         if (r.Frequency is null && (CommentCodec.NeedsDelimiter(r.Comment, extensionJustWritten ? r.Phg : null) || readsAsLocator || readsAsTypeCode))
         {
             w.Char('/');

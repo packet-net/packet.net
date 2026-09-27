@@ -414,20 +414,25 @@ internal static class CommentCodec
 
     // ---------------------------------------------------------------- encoding
 
-    /// <summary>Writes altitude, frequency, free text, braces, telemetry and DAO in canonical order.</summary>
+    /// <summary>
+    /// Writes the comment of a position, object or item report after its data extension, in the
+    /// one order the vectors' Encoding rule names (interpretations.md, "Where a voice frequency
+    /// goes"): the voice frequency and its fields, the signpost or corridor braces, the <c>/A=</c>
+    /// altitude, the free text (after a space when a frequency comes before it), base-91 telemetry
+    /// and the <c>!DAO!</c>. The frequency is in the first 10 bytes, where radios read it
+    /// (APRS12c ch. 18), and the braces come before any the text holds, so they are the first
+    /// well-formed ones a decoder finds.
+    /// </summary>
     public static void Write(InfoWriter w, AprsPositionedData d, bool altitudeInCs)
     {
         CheckComment(w, d);
-        if (d.AltitudeFeet is { } alt && !altitudeInCs)
-        {
-            WriteAltitude(w, alt);
-        }
-
+        bool altitude = d.AltitudeFeet is not null && !altitudeInCs;
+        bool braces = d.SignpostText is not null || d.AreaObject is { CorridorWidthMiles: not null };
         if (d.Frequency is { } freq)
         {
-            // Straight after a 7-byte extension, separate the frequency with '/' as the spec's first
-            // form does ("$PHGphgd/FFF.FFFMHz", APRS12c §18); a PHGR extension already ends in '/'.
-            bool afterExtension = !d.IsCompressed && d.AltitudeFeet is null && d.Weather is null
+            // Straight after a 7-byte extension the frequency follows a '/', the first form the
+            // spec lists ("$PHGphgd/FFF.FFFMHz", APRS12c §18); a PHGR extension already ends in '/'.
+            bool afterExtension = !d.IsCompressed && d.Weather is null
                 && (d.CourseDegrees is not null || d.SpeedKnots is not null || d.RadioRangeMiles is not null
                     || d.DfSignalStrength is not null || d.AreaObject is not null || d.Phg is { BeaconsPerHour: null });
             if (afterExtension)
@@ -435,25 +440,19 @@ internal static class CommentCodec
                 w.Char('/');
             }
 
-            FrequencyCodec.WriteWithComment(w, freq, d.Comment);
+            FrequencyCodec.WriteWithComment(w, freq, d.Comment, w => WriteBracesAndAltitude(w, d, altitude));
         }
-
-        // The signpost or corridor is the first well-formed braces in the comment, so when the
-        // comment holds braces of its own they go first; the finished field is then decoded to
-        // confirm it reads back (CheckComment has set the check for those braces).
-        bool bracesFirst = d.Frequency is null && (d.SignpostText is not null || d.AreaObject is { CorridorWidthMiles: not null })
-            && d.Comment.Contains('{', StringComparison.Ordinal);
-        if (bracesFirst)
+        else
         {
-            WriteBraces(w, d);
-        }
+            WriteBracesAndAltitude(w, d, altitude);
 
-        if (d.Frequency is null)
-        {
-            bool extensionJustWritten = !bracesFirst && !d.IsCompressed && d.AltitudeFeet is null
+            // A delimiter only where the text would not read back as itself without one: it starts
+            // with a space or '/', or straight after the symbol or extension it would read as an
+            // extension (interpretations.md, "Delimiters at the start of free text").
+            bool extensionJustWritten = !braces && !altitude && !d.IsCompressed
                 && (d.CourseDegrees is not null || d.SpeedKnots is not null || d.RadioRangeMiles is not null || d.DfSignalStrength is not null
                     || d.AreaObject is not null || d.DfBearing is not null || d.Storm is not null || d.Phg is not null);
-            bool nothingBefore = d.AltitudeFeet is null && !extensionJustWritten && !bracesFirst;
+            bool nothingBefore = !braces && !altitude && !extensionJustWritten;
             if (NeedsDelimiter(d.Comment, extensionJustWritten ? d.Phg : null) || (nothingBefore && !d.IsCompressed && LooksLikeExtension(d.Comment, d)))
             {
                 w.Char('/');
@@ -462,12 +461,16 @@ internal static class CommentCodec
             w.Utf8(d.Comment);
         }
 
-        if (!bracesFirst)
-        {
-            WriteBraces(w, d);
-        }
-
         WriteTrailer(w, d, includeWeatherSoftware: false);
+    }
+
+    private static void WriteBracesAndAltitude(InfoWriter w, AprsPositionedData d, bool altitude)
+    {
+        WriteBraces(w, d);
+        if (altitude)
+        {
+            WriteAltitude(w, d.AltitudeFeet!.Value);
+        }
     }
 
     /// <summary>The end of a report: weather software/unit (weather reports), telemetry, DAO.</summary>
