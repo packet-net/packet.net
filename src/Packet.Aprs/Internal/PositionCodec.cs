@@ -729,10 +729,25 @@ internal static class PositionCodec
         }
 
         var type = d.CompressionType;
-        if (type?.Source != AprsNmeaSource.Gga && d.Weather is { } wx && d.Symbol.IsWeatherStation && (wx.WindDirectionDegrees is not null || wx.WindSpeedMph is not null))
+        bool windInCs = d.Weather is { } weather && d.Symbol.IsWeatherStation && (weather.WindDirectionDegrees is not null || weather.WindSpeedMph is not null);
+        if (windInCs && (type?.Source == AprsNmeaSource.Gga || d.CourseDegrees is not null || d.SpeedKnots is not null || d.RadioRangeMiles is not null))
         {
-            int c = (int)Math.Round((wx.WindDirectionDegrees ?? 0) / 4.0) % 90;
-            int s = SpeedCode(Units.MphToKnots(wx.WindSpeedMph ?? 0));
+            // One pair of cs bytes carries wind, course/speed, a range or a GGA altitude, never
+            // two of them (APRS12c ch. 9); writing one would drop the other.
+            throw new ArgumentException("a compressed weather position carries its wind in the cs bytes, so it cannot also carry course/speed, a range or a GGA altitude (APRS12c ch. 9)");
+        }
+
+        if (windInCs && d.Weather is { } wx)
+        {
+            // The cs bytes carry a direction and a speed together, with no way to say either is
+            // unknown, so wind with only one of them known is refused rather than written as 0.
+            if (wx.WindDirectionDegrees is null || wx.WindSpeedMph is null)
+            {
+                throw new ArgumentException("the cs bytes of a compressed weather position carry wind direction and speed together; one without the other cannot be written (APRS12c ch. 9)", nameof(d.Weather));
+            }
+
+            int c = (int)Math.Round(wx.WindDirectionDegrees.Value / 4.0) % 90;
+            int s = SpeedCode(Units.MphToKnots(wx.WindSpeedMph.Value));
             w.Byte((byte)(c + 33)).Byte((byte)(s + 33));
             WriteType(w, type ?? AprsCompressionType.Default);
         }

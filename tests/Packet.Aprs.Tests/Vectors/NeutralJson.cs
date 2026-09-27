@@ -131,7 +131,10 @@ internal static class NeutralJson
                 o["capabilities"] = Array(c.Capabilities.Select(cap => (JsonNode?)(cap.Value is null ? new JsonArray(cap.Token) : new JsonArray(cap.Token, cap.Value))));
                 break;
             case AprsThirdPartyTraffic tp:
+                // A q-construct is read only in the outer header: a third-party packet's inner
+                // packet has only its source, destination, path, data and diagnostics.
                 JsonObject inner = Header(tp.Packet);
+                inner.Remove("q_construct");
                 inner["data"] = Data(tp.Packet.Data);
                 Put(inner, "diagnostics", tp.Packet.Diagnostics.Count == 0 ? null : Diagnostics(tp.Packet.Diagnostics));
                 o["packet"] = inner;

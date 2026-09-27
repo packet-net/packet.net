@@ -28,6 +28,18 @@ public class EncodingTests : AprsSpec
     }
 
     [Fact]
+    public void A_compressed_wind_direction_without_a_speed_is_refused()
+    {
+        // The cs bytes carry direction and speed together and cannot say either is unknown, so
+        // writing this wind would turn the unknown speed into 0 (the mirror of the vectors case
+        // weather/compressed-wind-speed-without-a-direction).
+        GivenInformationField("!/5L!!<*e7_ sT156/...g000t066");
+        WhenDecoded();
+        WhenEncodingIsAttempted(Packet.Data);
+        ThenEncodingFailed();
+    }
+
+    [Fact]
     public void A_mic_e_comment_that_would_end_an_altitude_is_refused()
     {
         // Written after the /A= altitude, the comment's "4} would read back as the Mic-E altitude 0"4}.

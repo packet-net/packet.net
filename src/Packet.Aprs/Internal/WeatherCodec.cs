@@ -214,14 +214,31 @@ internal static class WeatherCodec
         int avail = info.Length - pos - 1;
         bool exactOk = avail >= width && TryValue(info.Slice(pos + 1, width), letter, snow, out value);
         bool followedByDigit = avail > width && Text.IsDigit(info[pos + 1 + width]);
-        if (exactOk && !followedByDigit)
+
+        // Snowfall keeps its width of three characters: a digit after s1.5 could as well be a
+        // stray character as a fourth figure, so it is left as text (vectors interpretations.md,
+        // "Which weather field a letter is").
+        if (exactOk && (!followedByDigit || snow))
         {
             return FieldResult.Field;
         }
 
-        // Variable width: a run of digits (with a leading '-' for temperature) or of dots.
+        // Variable width: a run of digits (with a leading '-' for temperature) or of dots. For
+        // snowfall only a run of dots may be shorter, and a value that holds a digit (.5) is a
+        // number, not a run of dots.
         int run = 0;
         bool dots = avail > 0 && info[pos + 1] == (byte)'.';
+        if (snow && dots)
+        {
+            int after = pos + 1;
+            while (after < info.Length && info[after] == (byte)'.')
+            {
+                after++;
+            }
+
+            dots = after >= info.Length || !Text.IsDigit(info[after]);
+        }
+
         bool minus = letter == 't' && avail > 0 && info[pos + 1] == (byte)'-';
         int i = pos + 1 + (minus ? 1 : 0);
         while (i < info.Length && (dots ? info[i] == (byte)'.' : Text.IsDigit(info[i])))
