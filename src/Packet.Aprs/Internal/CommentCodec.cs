@@ -324,26 +324,34 @@ internal static class CommentCodec
         ReadOnlySpan<byte> s = bytes;
         foreach (string tagText in (string[])["PHG", "RNG", "DFS"])
         {
+            // The first well-formed one: a malformed PHG12 is comment text and does not stop the
+            // search (vectors interpretations.md, "A late data extension is the first well-formed one").
             ReadOnlySpan<byte> tag = System.Text.Encoding.ASCII.GetBytes(tagText);
-            int at = s.IndexOf(tag);
-            if (at < 0 || at + 7 > s.Length)
+            int at = -1;
+            for (int from = 0; at < 0 && from + 7 <= s.Length;)
+            {
+                int found = s[from..].IndexOf(tag);
+                if (found < 0 || from + found + 7 > s.Length)
+                {
+                    break;
+                }
+
+                ReadOnlySpan<byte> candidate = s.Slice(from + found, 7);
+                bool wellFormed = tag[0] == (byte)'R'
+                    ? Text.AllDigits(candidate[3..])
+                    : Text.IsDigit(candidate[3]) && Text.IsDigit(candidate[5]) && Text.IsDigit(candidate[6]) && candidate[4] is >= (byte)'0' and <= (byte)'~';
+                at = wellFormed ? from + found : -1;
+                from += found + 1;
+            }
+
+            if (at < 0)
             {
                 continue;
             }
 
             ReadOnlySpan<byte> ext = s.Slice(at, 7);
-            if (!Text.IsDigit(ext[3]) || !Text.IsDigit(ext[5]) || !Text.IsDigit(ext[6]) || ext[4] is < (byte)'0' or > (byte)'~')
-            {
-                continue;
-            }
-
             if (tag[0] == (byte)'R')
             {
-                if (!Text.AllDigits(ext[3..]))
-                {
-                    continue;
-                }
-
                 f.RadioRangeMiles = Text.ParseDigits(ext[3..]);
             }
             else if (tag[0] == (byte)'D')
@@ -589,9 +597,12 @@ internal static class CommentCodec
         bool endsWithSuffix = r.DeviceSuffix.Length == 0 && r.Telemetry is null && r.Dao is null && r.TypeCode is { } t
             && (t is '`' or '\'' ? AprsDeviceIdentification.MicESuffixes : t is '>' or ']' ? AprsDeviceIdentification.MicELegacySuffixes(t) : [])
                 .Any(s => comment.EndsWith(s, StringComparison.Ordinal));
+        // A '}' can end a Mic-E altitude (xxx}) with bytes written before it, which a decoder finds
+        // anywhere in the status text when none comes first.
+        bool mayFormAltitude = comment.Contains('}', StringComparison.Ordinal);
         if (probe.Dao is not null || probe.Telemetry is not null || probe.AltitudeFeet is not null || probe.Frequency is not null
             || probe.Phg != r.Phg || probe.RadioRangeMiles != r.RadioRangeMiles || probe.DfSignalStrength != r.DfSignalStrength
-            || startsWithAltitude || startsWithExtension || endsWithSuffix || comment.Contains('\xFF', StringComparison.Ordinal))
+            || startsWithAltitude || startsWithExtension || endsWithSuffix || mayFormAltitude || comment.Contains('\xFF', StringComparison.Ordinal))
         {
             w.CommentCheck = "Mic-E status text contains something that decodes as a structured element (altitude, extension, !DAO!, |telemetry|, frequency or device suffix); set the property instead";
         }

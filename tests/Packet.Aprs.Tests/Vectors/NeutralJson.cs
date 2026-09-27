@@ -111,8 +111,9 @@ internal static class NeutralJson
                 Put(o, "course_degrees", n.CourseDegrees);
                 Put(o, "speed_knots", n.SpeedKnots);
                 Put(o, "altitude_m", n.AltitudeMetres);
-                Put(o, "time", n.Time?.ToString("HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
+                Put(o, "time", n.TimeText is { } time ? NmeaTime(time) : n.Time?.ToString("HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
                 Put(o, "waypoint", n.WaypointName);
+                Put(o, "comment", n.Comment);
                 break;
             case AprsMaidenheadBeacon mb:
                 o["locator"] = mb.Locator;
@@ -363,6 +364,13 @@ internal static class NeutralJson
         Put(o, "extra", w.AdditionalFields.Count == 0 ? null
             : Array(w.AdditionalFields.Select(f => (JsonNode?)new JsonObject { ["letter"] = f.Letter.ToString(), ["value"] = f.Value })));
         return o;
+    }
+
+    /// <summary>An NMEA time field as sent (<c>hhmmss.sss</c>) as <c>HH:MM:SS</c> and the fraction as sent, less trailing zeros.</summary>
+    private static string NmeaTime(string field)
+    {
+        string fraction = field.Length > 7 ? field[7..].TrimEnd('0') : "";
+        return $"{field[..2]}:{field[2..4]}:{field[4..6]}{(fraction.Length > 0 ? "." + fraction : "")}";
     }
 
     /// <summary>Digital channels as on air: B1 first, '1' for on.</summary>

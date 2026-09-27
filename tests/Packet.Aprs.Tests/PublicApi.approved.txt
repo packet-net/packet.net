@@ -446,6 +446,7 @@ namespace Packet.Aprs
             "your compiler.", true)]
         public AprsNmeaReport() { }
         public double? AltitudeMetres { get; init; }
+        public string Comment { get; init; }
         public double? CourseDegrees { get; init; }
         public override char DataTypeIdentifier { get; }
         public bool? FixValid { get; init; }
@@ -456,6 +457,7 @@ namespace Packet.Aprs
         public string SentenceType { get; }
         public double? SpeedKnots { get; init; }
         public System.TimeOnly? Time { get; init; }
+        public string? TimeText { get; init; }
         public string? WaypointName { get; init; }
     }
     public enum AprsNmeaSource
@@ -716,7 +718,7 @@ namespace Packet.Aprs
         public Packet.Aprs.AprsStatusBuilder Status(string text = "") { }
         public Packet.Aprs.AprsTelemetryBuilder Telemetry(int sequence) { }
         public Packet.Aprs.AprsDataBuilder TelemetryBits(byte bits, string projectTitle = "") { }
-        public Packet.Aprs.AprsDataBuilder TelemetryCoefficients(params decimal[] coefficients) { }
+        public Packet.Aprs.AprsDataBuilder TelemetryCoefficients(params double[] coefficients) { }
         public Packet.Aprs.AprsDataBuilder TelemetryNames(params string[] names) { }
         public Packet.Aprs.AprsDataBuilder TelemetryUnits(params string[] units) { }
         public Packet.Aprs.AprsStation To(string destination) { }
@@ -986,8 +988,8 @@ namespace Packet.Aprs
             "your compiler.", true)]
         public AprsTelemetryCoefficients() { }
         [System.Runtime.CompilerServices.RequiredMember]
-        public System.Collections.Generic.IReadOnlyList<decimal> Coefficients { get; init; }
-        public decimal Scale(int channel, decimal raw) { }
+        public System.Collections.Generic.IReadOnlyList<double> Coefficients { get; init; }
+        public double Scale(int channel, decimal raw) { }
     }
     [System.Runtime.CompilerServices.RequiredMember]
     public sealed class AprsTelemetryParameterNames : Packet.Aprs.AprsMessage, System.IEquatable<Packet.Aprs.AprsTelemetryParameterNames>

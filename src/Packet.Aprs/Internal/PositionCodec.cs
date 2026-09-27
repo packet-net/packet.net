@@ -48,6 +48,26 @@ internal static class PositionCodec
         return false;
     }
 
+    /// <summary>
+    /// Whether a position itself decodes at <paramref name="pos"/>: the latitude, symbol table,
+    /// longitude and symbol code, or the 13 bytes of a compressed position, under the options in
+    /// force, and not anything after it (vectors interpretations.md, "A packet is read in order").
+    /// </summary>
+    public static bool PositionDecodesAt(ReadOnlySpan<byte> info, int pos, DecodeContext ctx)
+    {
+        var probe = new DecodeContext(ctx.Options) { Depth = ctx.Depth };
+        if (pos >= info.Length)
+        {
+            return false;
+        }
+
+        byte first = info[pos];
+        return Text.IsDigit(first)
+            ? TryReadUncompressed(info, pos, probe, new PositionedFields())
+            : (first is (byte)'/' or (byte)'\\' || Text.IsUpper(first) || first is >= (byte)'a' and <= (byte)'j')
+                && TryReadCompressed(info, pos, probe, new PositionedFields(), out _);
+    }
+
     // ---------------------------------------------------------------- uncompressed
 
     private static bool TryReadUncompressed(ReadOnlySpan<byte> info, int pos, DecodeContext ctx, PositionedFields fields)
@@ -104,16 +124,17 @@ internal static class PositionCodec
             return false;
         }
 
-        if (!TryHemisphere(s[7], (byte)'N', (byte)'S', offset + 7, ctx, out bool negative))
-        {
-            return false;
-        }
-
+        // The digits and their range are read before the hemisphere letter (vectors interpretations.md, "A packet is read in order").
         int degrees = Text.ParseDigits(s[..2]);
         latitude = degrees + (minutes / 60);
         if (latitude > 90)
         {
             ctx.Error(AprsDiagnosticCode.InvalidLatitude, $"latitude {Text.Latin1(s)} is beyond 90 degrees", offset);
+            return false;
+        }
+
+        if (!TryHemisphere(s[7], (byte)'N', (byte)'S', offset + 7, ctx, out bool negative))
+        {
             return false;
         }
 
@@ -160,15 +181,15 @@ internal static class PositionCodec
         }
 
         minutes += AmbiguityCentre(ambiguity);
-        if (!TryHemisphere(s[8], (byte)'E', (byte)'W', offset + 8, ctx, out bool negative))
-        {
-            return false;
-        }
-
         longitude = Text.ParseDigits(s[..3]) + (minutes / 60);
         if (longitude > 180)
         {
             ctx.Error(AprsDiagnosticCode.InvalidLongitude, $"longitude {Text.Latin1(s)} is beyond 180 degrees", offset);
+            return false;
+        }
+
+        if (!TryHemisphere(s[8], (byte)'E', (byte)'W', offset + 8, ctx, out bool negative))
+        {
             return false;
         }
 
@@ -387,7 +408,7 @@ internal static class PositionCodec
                     fields.CompressionType ??= AprsCompressionType.Default;
                 }
             }
-            else if (!csIsWind && info.Length >= pos + 4 && info[pos] == (byte)'c')
+            else if (!csIsWind && WeatherCodec.WindComesAsFields(info, pos, ctx))
             {
                 // Others leave the cs bytes blank and send positionless-style c/s wind fields.
                 if (!ctx.Tolerate(
@@ -427,7 +448,7 @@ internal static class PositionCodec
         {
             var weather = new AprsWeather();
             if (!WeatherCodec.TryReadWind(info, ref pos, ctx, ref weather, out bool windAsFields) ||
-                !WeatherCodec.TryReadFields(info, ref pos, ctx, ref weather, positionless: false, windAsFields))
+                !WeatherCodec.TryReadFields(info, ref pos, ctx, ref weather, positionless: false, windAsFields, windMustBeComplete: true))
             {
                 return false;
             }
@@ -738,14 +759,24 @@ internal static class PositionCodec
         }
         else if (d.RadioRangeMiles is { } range)
         {
-            int s = range <= 2 ? 0 : (int)Math.Round(Math.Log(range / 2) / Math.Log(1.08));
-            if (s > 90)
+            // 2 x 1.08^s miles (APRS12c ch. 9): a range is rounded to the nearest step, but one
+            // outside the format is refused, not moved to its edge (vectors interpretations.md,
+            // "Re-encoding into compressed bytes rounds").
+            int s = range < 2 ? -1 : (int)Math.Round(Math.Log(range / 2) / Math.Log(1.08));
+            if (s is < 0 or > 90)
             {
-                throw new ArgumentOutOfRangeException(nameof(d.RadioRangeMiles), "range too large for compressed form");
+                throw new ArgumentOutOfRangeException(nameof(d.RadioRangeMiles), "a compressed range is 2 to 2 x 1.08^90 miles (APRS12c ch. 9)");
             }
 
             w.Char('{').Byte((byte)(s + 33));
             WriteType(w, type ?? AprsCompressionType.Default);
+        }
+        else if (type is not null)
+        {
+            // Blank cs bytes carry no T byte, so the compression type would be lost (vectors
+            // interpretations.md, "Re-encoding into compressed bytes rounds": a value the cs bytes
+            // cannot hold is refused).
+            throw new ArgumentException("a compression type needs cs data to carry it: course/speed, range, a GGA altitude or wind (APRS12c ch. 9)", nameof(d.CompressionType));
         }
         else
         {

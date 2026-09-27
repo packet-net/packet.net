@@ -220,7 +220,10 @@ public sealed record AprsNwsBulletin : AprsMessage
             throw new ArgumentException("an NWS bulletin is addressed NWS- or NWS_ (APRS12c ch. 14)", nameof(Addressee));
         }
 
+        // No length limit, unlike other bulletins (APRS12c ch. 14), but no '{' either: it would read
+        // back as brace-in-message-text.
         Internal.Text.RequireNoLineBreaks(Text, nameof(Text));
+        MessageCodec.RequireNoBrace(Text, nameof(Text));
         writer.Utf8(Text);
         WriteMessageId(writer);
     }
@@ -233,10 +236,11 @@ public sealed record AprsNwsBulletin : AprsMessage
 public sealed record AprsDirectedQuery : AprsMessage
 {
     /// <summary>The query type: <c>APRSD</c>, <c>APRSH</c>, <c>APRSM</c>, <c>APRSO</c>, <c>APRSP</c>,
-    /// <c>APRSS</c>, <c>APRST</c> or <c>PING?</c>. Unrecognised types should be ignored by the recipient.</summary>
+    /// <c>APRSS</c>, <c>APRST</c> or <c>PING?</c>, or any other upper-case letters, which the
+    /// recipient should ignore.</summary>
     public required string QueryType { get; init; }
 
-    /// <summary>The station asked about, for <c>APRSH</c>; otherwise null.</summary>
+    /// <summary>The station asked about (1-9 letters, digits or <c>-</c>), for <c>APRSH</c>; otherwise null.</summary>
     public string? Target { get; init; }
 
     /// <summary>The query types APRS12c §15 defines for directed queries.</summary>
@@ -249,20 +253,24 @@ public sealed record AprsDirectedQuery : AprsMessage
             throw new ArgumentException("a directed query never has a message ID (APRS12c ch. 15)", nameof(MessageId));
         }
 
-        if (QueryType.Length == 0 || QueryType.Any(c => c is < '!' or > '~' or '{' || char.IsAsciiLetterLower(c)))
+        bool known = KnownTypes.Contains(QueryType);
+        if (!known && !QueryCodec.IsQueryType(QueryType))
         {
-            throw new ArgumentException("query type is upper case printable ASCII (APRS12c ch. 15)", nameof(QueryType));
+            throw new ArgumentException("a query type is upper-case letters (APRS12c ch. 15)", nameof(QueryType));
         }
 
         writer.Char('?').Ascii(QueryType);
         if (Target is not null)
         {
-            if (Target.Length is < 1 or > 9 || Target.Any(c => c is < '!' or > '~'))
+            if (!MessageCodec.IsCallsign(Target))
             {
-                throw new ArgumentException("query target is 1-9 printable characters", nameof(Target));
+                throw new ArgumentException("a query target is one callsign: 1-9 letters, digits or -", nameof(Target));
             }
 
-            writer.Ascii(Target);
+            // A defined type is followed straight by its target, APRSH's padded to 9 characters
+            // ("APRSH: callsigns must be padded to 9 characters", APRS12c's 1.2 notes). Any other
+            // type has no fixed length, so one space separates it from the target.
+            writer.Ascii(!known ? " " + Target : QueryType == "APRSH" ? Target.PadRight(9) : Target);
         }
     }
 }

@@ -122,11 +122,29 @@ public class DerivedValueTests : AprsSpec
     }
 
     [Fact]
+    public void An_nmea_time_keeps_every_digit_sent()
+    {
+        GivenInformationField("$GPGLL,2554.459,N,08020.187,W,154027.1234567890,A");
+        WhenDecoded();
+        var nmea = ThenDataIs<AprsNmeaReport>();
+        nmea.TimeText.Should().Be("154027.1234567890");
+        nmea.Time.Should().Be(new TimeOnly(15, 40, 27).Add(TimeSpan.FromTicks(1234567)), "TimeOnly holds 100 ns");
+    }
+
+    [Fact]
+    public void A_proprietary_nmea_sentence_type_is_its_whole_address()
+    {
+        GivenInformationField("$PMGNWPL,4228.1000,N,07120.0000,W,0000000,M,WPT01,comment,a");
+        WhenDecoded();
+        ThenDataIs<AprsNmeaReport>().SentenceType.Should().Be("PMGNWPL");
+    }
+
+    [Fact]
     public void Telemetry_equations_scale_199_to_1034_8()
     {
         GivenInformationField(":N0QBF-11 :EQNS.0,5.2,0,0,.53,-32,3,4.39,49,-32,3,18,1,2,3"); // APRS12c ch. 13
         WhenDecoded();
-        ThenDataIs<AprsTelemetryCoefficients>().Scale(1, 199).Should().Be(1034.8m);
+        ThenDataIs<AprsTelemetryCoefficients>().Scale(1, 199).Should().BeApproximately(1034.8, 1e-9);
     }
 
     [Theory]

@@ -6,9 +6,10 @@ namespace Packet.Aprs.Internal;
 internal static class WeatherCodec
 {
     /// <summary>
-    /// Reads the wind DIR/SPD extension that starts an uncompressed complete weather report. Returns
-    /// <paramref name="windAsFields"/> true when the sender used positionless-style <c>c</c>/<c>s</c>
-    /// fields instead (tolerated), so the field reader should take them.
+    /// Decides the wind where the DIR/SPD extension of an uncompressed complete weather report
+    /// belongs, before any field is read (vectors README, The order of checks): the extension
+    /// itself; wind sent as <c>c</c>/<c>s</c> fields instead (tolerated), in which case
+    /// <paramref name="windAsFields"/> tells the field reader to take them; or no wind at all.
     /// </summary>
     public static bool TryReadWind(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, out bool windAsFields)
     {
@@ -18,7 +19,7 @@ internal static class WeatherCodec
             return TryReadWindExtension(info, ref pos, ctx, ref weather);
         }
 
-        if (info.Length >= pos + 4 && info[pos] == (byte)'c')
+        if (WindComesAsFields(info, pos, ctx))
         {
             windAsFields = ctx.Tolerate(
                 ctx.Options.AllowWindFieldsInPositionWeather,
@@ -33,6 +34,19 @@ internal static class WeatherCodec
             AprsDiagnosticCode.IncompleteWeather,
             "weather report has no wind direction/speed extension (APRS12c ch. 12)",
             pos);
+    }
+
+    /// <summary>
+    /// Whether the field run at <paramref name="pos"/> carries a wind direction: a <c>c</c> with a
+    /// value after it, wherever it comes before the run ends (vectors interpretations.md, "Which
+    /// weather field a letter is"). Judged on the fields alone, whatever the options, so that
+    /// lenient and strict decoding agree on what the report is.
+    /// </summary>
+    public static bool WindComesAsFields(ReadOnlySpan<byte> info, int pos, DecodeContext ctx)
+    {
+        var probe = new DecodeContext(AprsParseOptions.Lenient) { Depth = ctx.Depth };
+        var weather = new AprsWeather();
+        return TryReadRun(info, ref pos, probe, ref weather, windAsFields: true, out bool direction, out _) && direction;
     }
 
     /// <summary>Reads a 7-byte <c>DDD/SSS</c> wind extension at <paramref name="pos"/>.</summary>
@@ -57,34 +71,79 @@ internal static class WeatherCodec
     }
 
     /// <summary>
-    /// Reads letter-plus-value weather fields. With <paramref name="windAsFields"/>, <c>c</c>
-    /// (direction) and the first <c>s</c> (speed) are wind, as in a positionless report; any later
-    /// <c>s</c>, and every <c>s</c> otherwise, is snowfall. Stops at the first thing that is not a field.
+    /// Reads letter-plus-value weather fields and checks the report has the ones it must. With
+    /// <paramref name="windAsFields"/> (always for a positionless report) the wind comes as fields:
+    /// <c>c</c> is the wind direction and <c>s</c> the wind speed until each is read, wherever they
+    /// come, and a later <c>s</c> is snowfall. Otherwise the wind is already known (or missing), so
+    /// <c>c</c> ends the fields and <c>s</c> is snowfall. With <paramref name="windMustBeComplete"/>
+    /// a wind sent as fields needs both <c>c</c> and <c>s</c> (APRS12c ch. 12: the report "must
+    /// include at least ... wind direction, wind speed, gust and temperature").
     /// </summary>
-    public static bool TryReadFields(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, bool positionless, bool windAsFields = false)
+    public static bool TryReadFields(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, bool positionless, bool windAsFields = false, bool windMustBeComplete = false)
     {
         int start = pos;
-        var seen = new HashSet<char>();
+        if (!TryReadRun(info, ref pos, ctx, ref weather, positionless || windAsFields, out bool direction, out bool speed, out HashSet<char> seen))
+        {
+            return false;
+        }
+
+        if (positionless)
+        {
+            return seen.Contains('c') && seen.Contains('s') && seen.Contains('g') && seen.Contains('t')
+                || ctx.Tolerate(ctx.Options.AllowIncompleteWeather, AprsDiagnosticCode.IncompleteWeather, "positionless weather report must start with c, s, g and t fields (APRS12c ch. 12)", start);
+        }
+
+        if (windAsFields && windMustBeComplete && !(direction && speed) && !ctx.Tolerate(
+                ctx.Options.AllowIncompleteWeather,
+                AprsDiagnosticCode.IncompleteWeather,
+                "wind sent as fields needs both the direction (c) and the speed (s) (APRS12c ch. 12)",
+                start))
+        {
+            return false;
+        }
+
+        return seen.Contains('g') && seen.Contains('t')
+            || ctx.Tolerate(ctx.Options.AllowIncompleteWeather, AprsDiagnosticCode.IncompleteWeather, "weather report must include gust (g) and temperature (t) fields (APRS12c ch. 12)", start);
+    }
+
+    private static bool TryReadRun(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, bool windAsFields, out bool direction, out bool speed) =>
+        TryReadRun(info, ref pos, ctx, ref weather, windAsFields, out direction, out speed, out _);
+
+    /// <summary>
+    /// The fields are one contiguous run, which ends at the first thing that is not a field, at a
+    /// defined field already read (<c>L</c> and <c>l</c> are one field, luminosity), and at <c>c</c>
+    /// once the wind is known. Extra fields are kept as a list, so a repeated extra letter does not
+    /// end it (vectors interpretations.md, "Which weather field a letter is").
+    /// </summary>
+    private static bool TryReadRun(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, bool windAsFields, out bool direction, out bool speed, out HashSet<char> seen)
+    {
+        seen = [];
+        direction = false;
+        speed = false;
         var additional = new List<AprsWeatherField>();
-        bool windRead = !(positionless || windAsFields);
 
         decimal? fieldValue = null;
         int fieldLength = 0;
         while (pos < info.Length)
         {
             char letter = (char)info[pos];
-            bool snow = letter == 's' && windRead;
+            bool snow = letter == 's' && (!windAsFields || speed);
+            char key = letter switch
+            {
+                'l' => 'L',
+                's' when snow => 'S',
+                _ => letter,
+            };
             int width = letter switch
             {
-                'c' when !windRead => 3,
-                's' => 3,
-                'g' or 't' or 'r' or 'p' or 'P' or 'L' or 'l' or '#' => 3,
+                'c' when windAsFields => 3,
+                's' or 'g' or 't' or 'r' or 'p' or 'P' or 'L' or 'l' or '#' => 3,
                 'h' => 2,
                 'b' => 5,
                 _ => 0,
             };
 
-            FieldResult result = width > 0 && !seen.Contains(snow ? 'S' : letter)
+            FieldResult result = width > 0 && !seen.Contains(key)
                 ? TryFieldValue(info, pos, width, letter, snow, ctx, out fieldValue, out fieldLength)
                 : FieldResult.NotAField;
             if (result == FieldResult.Abort)
@@ -94,17 +153,14 @@ internal static class WeatherCodec
 
             if (result == FieldResult.Field)
             {
-                seen.Add(snow ? 'S' : letter);
+                seen.Add(key);
                 if (!Assign(ref weather, letter, snow, fieldValue, pos, ctx))
                 {
                     return false;
                 }
 
-                if (letter == 's' && !snow)
-                {
-                    windRead = true;
-                }
-
+                direction |= letter == 'c';
+                speed |= letter == 's' && !snow;
                 pos += 1 + fieldLength;
                 continue;
             }
@@ -132,20 +188,6 @@ internal static class WeatherCodec
         if (additional.Count > 0)
         {
             weather = weather with { AdditionalFields = additional };
-        }
-
-        bool complete = positionless
-            ? seen.Contains('c') && seen.Contains('s') && seen.Contains('g') && seen.Contains('t')
-            : seen.Contains('g') && seen.Contains('t');
-        if (!complete && !ctx.Tolerate(
-                ctx.Options.AllowIncompleteWeather,
-                AprsDiagnosticCode.IncompleteWeather,
-                positionless
-                    ? "positionless weather report must start with c, s, g and t fields (APRS12c ch. 12)"
-                    : "weather report must include gust (g) and temperature (t) fields (APRS12c ch. 12)",
-                start))
-        {
-            return false;
         }
 
         return true;

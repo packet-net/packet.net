@@ -60,7 +60,7 @@ AX.25 UI frame ───┘                                                     
 
 Position, object, item and Mic-E share a base, `AprsPositionedData`, carrying `Position`, `Symbol`, and everything that can ride in the data extension or comment. That covers course/speed, PHG (+PHGR), RNG, DFS, area object, DF bearing/NRQ, altitude, DAO, base-91 comment telemetry, voice frequency, weather, storm data, and signpost / corridor braces. `Comment` is whatever free text is left once those are extracted.
 
-Values are held in the units APRS uses on air, with the unit in the property name (`SpeedKnots`, `AltitudeFeet`, `TemperatureFahrenheit`). Telemetry values are `decimal`, so their scale survives a round trip.
+Values are held in the units APRS uses on air, with the unit in the property name (`SpeedKnots`, `AltitudeFeet`, `TemperatureFahrenheit`). Telemetry values are `decimal`, so their scale survives a round trip. Equation coefficients are `double`, since a coefficient may carry an exponent (`10E60`), and a decoded one is written back in the form it was sent.
 
 ## Round trips
 

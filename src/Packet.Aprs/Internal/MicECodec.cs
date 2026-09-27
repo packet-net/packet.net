@@ -19,6 +19,13 @@ internal static class MicECodec
 
     public static AprsData? Decode(ReadOnlySpan<byte> info, AprsAddress destination, DecodeContext ctx)
     {
+        // The info describes the data type identifier, the first byte read, so it is given whatever follows.
+        byte dti = info[0];
+        if (dti is 0x1c or 0x1d)
+        {
+            ctx.Info(AprsDiagnosticCode.ObsoleteFormat, "Mic-E data type 0x1C/0x1D is from Rev 0 beta units and obsolete (APRS12c ch. 10)", 0);
+        }
+
         if (!TryDecodeDestination(destination, ctx, out Destination dest))
         {
             return null;
@@ -28,12 +35,6 @@ internal static class MicECodec
         {
             ctx.Error(AprsDiagnosticCode.InvalidMicEInformation, "Mic-E information field is shorter than 9 bytes (APRS12c ch. 10)", 0);
             return null;
-        }
-
-        byte dti = info[0];
-        if (dti is 0x1c or 0x1d)
-        {
-            ctx.Info(AprsDiagnosticCode.ObsoleteFormat, "Mic-E data type 0x1C/0x1D is from Rev 0 beta units and obsolete (APRS12c ch. 10)", 0);
         }
 
         int d = info[1] - 28;
@@ -199,25 +200,10 @@ internal static class MicECodec
         report = report with { TypeCode = typeCode, DeviceSuffix = suffix };
 
         // Altitude: xxx} straight after the type code, metres relative to 10 km below sea level.
-        int altitudeAt = IsAltitudeAt(text, 0) ? 0 : -1;
-        if (altitudeAt < 0 && ctx.Options.AllowMicEAltitudeAnywhere)
+        bool altitudeFirst = IsAltitudeAt(text, 0);
+        if (altitudeFirst)
         {
-            for (int i = 1; i + 4 <= text.Count; i++)
-            {
-                if (IsAltitudeAt(text, i))
-                {
-                    altitudeAt = i;
-                    ctx.Warn(AprsDiagnosticCode.MicEAltitudeNotFirst, "Mic-E altitude xxx} found after other status text; it should come first (APRS12c ch. 10)", offset + i);
-                    break;
-                }
-            }
-        }
-
-        if (altitudeAt >= 0)
-        {
-            int metres = ((text[altitudeAt] - 33) * 91 * 91) + ((text[altitudeAt + 1] - 33) * 91) + (text[altitudeAt + 2] - 33) - 10000;
-            fields.AltitudeFeet = metres * Units.FeetPerMetre;
-            text.RemoveRange(altitudeAt, 4);
+            ReadAltitude(text, 0, fields);
         }
 
         // A Maidenhead locator with the /G grid symbol, then a space before any text (APRS12c §10).
@@ -259,7 +245,30 @@ internal static class MicECodec
             }
         }
 
+        // An altitude later in the text (tolerated) is looked for only once what comes first has
+        // been lifted: bytes belong to the element that reaches them first, so 0PH} inside
+        // PHG3330PH} is not an altitude (vectors interpretations.md, "A packet is read in order").
+        if (!altitudeFirst && ctx.Options.AllowMicEAltitudeAnywhere)
+        {
+            for (int i = 0; i + 4 <= text.Count; i++)
+            {
+                if (IsAltitudeAt(text, i))
+                {
+                    ctx.Warn(AprsDiagnosticCode.MicEAltitudeNotFirst, "Mic-E altitude xxx} found after other status text; it should come first (APRS12c ch. 10)", offset + i);
+                    ReadAltitude(text, i, fields);
+                    break;
+                }
+            }
+        }
+
         return CommentCodec.TryExtract(text, offset, ctx, fields, frequencyAtStart: true) && CommentCodec.TryFinish(text, offset, ctx, fields);
+    }
+
+    private static void ReadAltitude(List<byte> text, int at, PositionedFields fields)
+    {
+        int metres = ((text[at] - 33) * 91 * 91) + ((text[at + 1] - 33) * 91) + (text[at + 2] - 33) - 10000;
+        fields.AltitudeFeet = metres * Units.FeetPerMetre;
+        text.RemoveRange(at, 4);
     }
 
     /// <summary>6 or 4 when the text starts with a locator of that length followed by the grid
@@ -649,7 +658,15 @@ internal static class MicECodec
         bool commentFirst = r.Frequency is null && !altitudeAsFeet && r.Phg is null && r.RadioRangeMiles is null && r.DfSignalStrength is null;
         byte[] commentBytes = System.Text.Encoding.UTF8.GetBytes(r.Comment);
         bool readsAsLocator = commentFirst && r.MaidenheadLocator is null && LocatorLengthAt(commentBytes) > 0;
-        if (r.Frequency is null && (CommentCodec.NeedsDelimiter(r.Comment, extensionJustWritten ? r.Phg : null) || readsAsLocator))
+
+        // "The Mic-E status text must not start with ` , ' or 0x1d, otherwise it will be confused
+        // with [now obsolete] telemetry data" (APRS12c ch. 10). A comment that would be read back as
+        // a type code, or as Rev 0 telemetry (0x1D and five bytes), goes after a '/' delimiter,
+        // which the decoder drops (interpretations.md, "Delimiters at the start of free text").
+        bool readsAsTypeCode = commentFirst && r.TypeCode is null && r.MaidenheadLocator is null && r.AltitudeFeet is null
+            && commentBytes.Length > 0
+            && (commentBytes[0] is (byte)'`' or (byte)'\'' or (byte)'>' or (byte)']' || (commentBytes[0] == 0x1d && commentBytes.Length >= 6));
+        if (r.Frequency is null && (CommentCodec.NeedsDelimiter(r.Comment, extensionJustWritten ? r.Phg : null) || readsAsLocator || readsAsTypeCode))
         {
             w.Char('/');
         }

@@ -189,7 +189,7 @@ public class BuilderTests
         Sent(wx.Telemetry(7).Analog(1.5m).Build()).Should().Be("M0LTE-11>APZ001:T#007,1.5,,,,,00000000");
         Sent(wx.TelemetryNames("Battery", "Temp").Build()).Should().Be("M0LTE-11>APZ001::M0LTE-11 :PARM.Battery,Temp");
         Sent(wx.TelemetryUnits("V", "degC").Build()).Should().Be("M0LTE-11>APZ001::M0LTE-11 :UNIT.V,degC");
-        Sent(wx.TelemetryCoefficients(0, 0.075m, 0, 0, 0.5m, -40).Build()).Should().Be("M0LTE-11>APZ001::M0LTE-11 :EQNS.0,0.075,0,0,0.5,-40");
+        Sent(wx.TelemetryCoefficients(0, 0.075, 0, 0, 0.5, -40).Build()).Should().Be("M0LTE-11>APZ001::M0LTE-11 :EQNS.0,0.075,0,0,0.5,-40");
         Sent(wx.TelemetryBits(0xFF, "Garden station").Build()).Should().Be("M0LTE-11>APZ001::M0LTE-11 :BITS.11111111,Garden station");
     }
 

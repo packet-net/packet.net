@@ -236,7 +236,8 @@ internal static class TelemetryCodec
             {
                 analog.Add(null);
             }
-            else if (decimal.TryParse(Text.Latin1(field), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal v))
+            else if (Text.IsTelemetryNumber(Text.Latin1(field))
+                && decimal.TryParse(Text.Latin1(field), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal v))
             {
                 analog.Add(v);
             }
