@@ -6,6 +6,7 @@
 
 **As of:** 2026-09-26
 **Current phase:** Phases 0-5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete - mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 - `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) - see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces); Phase 7's channel-aware in-app self-update is shipped for the two channels that remain - the apt repo is maintainer-owned and out of scope, and the self-contained installer + distribution feed were withdrawn 2026-08-05, leaving a `.deb` and a `.tar.gz` as the whole of what pdn distributes ([`docs/node-self-update-design.md`](node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-09-27 - **Packet.Aprs: Mic-E Rev 0 binary telemetry is written back** - read once 0xFF padding is removed, and re-encoded as received rather than refused, as the other obsolete formats are; a ruling the five implementations now share (aprs-vectors); no API change, ships with the next lib release, no TS leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-26 - **RELEASE: lib-v0.42.0 (Packet.Aprs builder, named symbols, Rust-comparison fixes)** - NuGet 0.42.0 of all 14 library packages, only Packet.Aprs changed since lib-v0.41.0; no node or downstream app release; the sibling Rust and Python implementations are named `pdn-aprs`, and the Rust crate is on crates.io as 0.1.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-26 - **Packet.Aprs: three edge cases settled with the Rust implementation** - an NWS bulletin is addressed `NWS-` or `NWS_` (not anything starting NWS), a capabilities report with no capabilities is `InvalidCapabilities` and refused on encoding, and the vectors runner writes NMEA time fractions without trailing zeros; none occur in captured traffic; no API change, ships with the next lib release, no TS leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-26 - **Packet.Aprs: a fluent builder** - `Aprs.From("M0LTE-9").Via("WIDE1-1").Position(51.45, -0.98).Symbol(AprsSymbol.Car).Speed(36).Build()` and the same for objects, items, Mic-E, weather, messages, acks, bulletins, status and telemetry, so an application builds any packet without assembling records; additive API, ships with the next lib release, no TS leg](#17-amendment-log)
@@ -1398,6 +1399,14 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-09-27 - Packet.Aprs: Mic-E Rev 0 binary telemetry is written back
+
+Checking candidate cases through all five APRS implementations (C#, Rust, Python, TypeScript and now C, packet-net/aprs-c) found them split three ways on the obsolete Mic-E binary telemetry (0x1D and five bytes after the symbol), which no captured packet uses. The ruling, recorded in aprs-vectors' `interpretations.md` ("Mic-E Rev 0 binary telemetry") with five cases, and followed here:
+
+- **Read after the padding.** It is looked for once any 0xFF Kenwood padding is removed, so a 0xFF among the five bytes leaves too few and it all stays in the status text. It was looked for before.
+- **Written back.** `AprsMicEReport.LegacyTelemetry` is encoded as received, as the other obsolete formats this library decodes are (raw NMEA, positionless weather). It was refused as decode-only. A value of 255 is refused, since it would be removed as padding on the way back in.
+- **Release impact.** No API change; ships with the next library release. No TS leg.
 
 ### 2026-09-26 - RELEASE: lib-v0.42.0 (Packet.Aprs builder, named symbols, Rust-comparison fixes)
 

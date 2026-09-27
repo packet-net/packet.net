@@ -161,13 +161,6 @@ internal static class MicECodec
             return true;
         }
 
-        if (text[0] == 0x1d && text.Count >= 6)
-        {
-            ctx.Info(AprsDiagnosticCode.ObsoleteFormat, "obsolete Mic-E binary telemetry (APRS12c ch. 10)", offset);
-            report = report with { LegacyTelemetry = text.GetRange(1, 5).Select(b => (int)b).ToArray() };
-            text.RemoveRange(0, 6);
-        }
-
         if (text.Contains(0xFF))
         {
             if (!ctx.Tolerate(ctx.Options.AllowKenwoodFfPadding, AprsDiagnosticCode.KenwoodFfPadding, "0xFF padding removed from Mic-E status text (UAP 5.10)", offset))
@@ -176,6 +169,14 @@ internal static class MicECodec
             }
 
             text.RemoveAll(b => b == 0xFF);
+        }
+
+        // Rev 0 binary telemetry, looked for once the 0xFF padding is gone (vectors interpretations.md).
+        if (text.Count >= 6 && text[0] == 0x1d)
+        {
+            ctx.Info(AprsDiagnosticCode.ObsoleteFormat, "obsolete Mic-E binary telemetry (APRS12c ch. 10)", offset);
+            report = report with { LegacyTelemetry = text.GetRange(1, 5).Select(b => (int)b).ToArray() };
+            text.RemoveRange(0, 6);
         }
 
         char? typeCode = null;
@@ -550,7 +551,17 @@ internal static class MicECodec
 
         if (r.LegacyTelemetry is { } legacy)
         {
-            throw new ArgumentException("obsolete Mic-E binary telemetry is decode-only", nameof(r));
+            // A 255 would be taken for Kenwood 0xFF padding and removed on the way back in.
+            if (legacy.Count != 5 || legacy.Any(v => v is < 0 or > 254))
+            {
+                throw new ArgumentException("obsolete Mic-E binary telemetry is 5 values, each 0-254", nameof(r));
+            }
+
+            w.Byte(0x1d);
+            foreach (int v in legacy)
+            {
+                w.Byte((byte)v);
+            }
         }
 
         if (r.TypeCode is { } type)
