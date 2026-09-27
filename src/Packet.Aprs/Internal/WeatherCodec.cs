@@ -373,7 +373,8 @@ internal static class WeatherCodec
 
     public static void WriteFields(InfoWriter w, AprsWeather weather, bool positionless)
     {
-        weather.Validate(nameof(weather));
+        // A position report's wind is written before the fields (the extension, or the cs bytes).
+        weather.Validate(nameof(weather), windInFields: positionless);
         int start = w.Length;
         if (positionless)
         {
@@ -404,15 +405,8 @@ internal static class WeatherCodec
 
         if (weather.SnowfallLast24HoursInches is { } snow)
         {
-            string text = snow == decimal.Truncate(snow)
-                ? ((int)snow).ToString("000", CultureInfo.InvariantCulture)
-                : snow.ToString(CultureInfo.InvariantCulture).TrimStart('0');
-            if (text.Length > 3)
-            {
-                text = snow.ToString(CultureInfo.InvariantCulture)[..3];
-            }
-
-            w.Char('s').Ascii(text.PadLeft(3, '0'));
+            w.Char('s').Ascii(Snowfall(snow) ?? throw new ArgumentOutOfRangeException(
+                nameof(weather), snow, "snowfall is written in three characters: a whole number of inches (002), hundredths under an inch (.50) or tenths under ten (2.5)"));
         }
 
         Field(w, '#', weather.RainRawCounter, 3);
@@ -442,6 +436,35 @@ internal static class WeatherCodec
     }
 
     private static int? Hundredths(double? inches) => inches is { } i ? (int)Math.Round(i * 100) : null;
+
+    /// <summary>
+    /// Snowfall's three characters, exactly (vectors README, Encoding): a whole number is three
+    /// digits (<c>002</c>), a number under 1 is <c>.</c> and two digits (0.5 as <c>.50</c>), and any
+    /// other is a digit, <c>.</c> and a digit (2.5); null when they cannot hold it (12.5, 0.125).
+    /// </summary>
+    private static string? Snowfall(decimal inches)
+    {
+        if (inches < 0)
+        {
+            return null;
+        }
+
+        if (inches == decimal.Truncate(inches))
+        {
+            return inches <= 999 ? ((int)inches).ToString("000", CultureInfo.InvariantCulture) : null;
+        }
+
+        if (inches < 1)
+        {
+            decimal hundredths = inches * 100;
+            return hundredths == decimal.Truncate(hundredths) ? "." + ((int)hundredths).ToString("00", CultureInfo.InvariantCulture) : null;
+        }
+
+        decimal tenths = inches * 10;
+        return inches < 10 && tenths == decimal.Truncate(tenths)
+            ? ((int)inches).ToString(CultureInfo.InvariantCulture) + "." + ((int)tenths % 10).ToString(CultureInfo.InvariantCulture)
+            : null;
+    }
 
     private static void Field(InfoWriter w, char letter, int? value, int width, bool always = false)
     {

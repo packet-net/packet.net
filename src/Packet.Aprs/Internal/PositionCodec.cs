@@ -669,7 +669,7 @@ internal static class PositionCodec
             return false;
         }
 
-        long cs = (long)Math.Round(Math.Log(alt) / Math.Log(1.002));
+        long cs = (long)Math.Round(Math.Log(alt) / Math.Log(1.002), MidpointRounding.AwayFromZero);
         return Math.Abs(Math.Pow(1.002, cs) - alt) <= 1e-9 * alt;
     }
 
@@ -746,7 +746,14 @@ internal static class PositionCodec
                 throw new ArgumentException("the cs bytes of a compressed weather position carry wind direction and speed together; one without the other cannot be written (APRS12c ch. 9)", nameof(d.Weather));
             }
 
-            int c = (int)Math.Round(wx.WindDirectionDegrees.Value / 4.0) % 90;
+            if (wx.WindDirectionDegrees is < 0 or > 360)
+            {
+                throw new ArgumentOutOfRangeException(nameof(d.Weather), wx.WindDirectionDegrees, "a wind direction is 0-360 degrees");
+            }
+
+            // Rounded to the nearest 4 degrees, halves away from zero; 360 is written as north,
+            // c = 0 (vectors ruling E9).
+            int c = (int)Math.Round(wx.WindDirectionDegrees.Value / 4.0, MidpointRounding.AwayFromZero) % 90;
             int s = SpeedCode(Units.MphToKnots(wx.WindSpeedMph.Value));
             w.Byte((byte)(c + 33)).Byte((byte)(s + 33));
             WriteType(w, type ?? AprsCompressionType.Default);
@@ -758,7 +765,7 @@ internal static class PositionCodec
                 throw new ArgumentException("with a GGA compression type the cs bytes carry altitude, so course/speed and range cannot also be sent");
             }
 
-            long cs = alt <= 1 ? 0 : (long)Math.Round(Math.Log(alt) / Math.Log(1.002));
+            long cs = alt <= 1 ? 0 : (long)Math.Round(Math.Log(alt) / Math.Log(1.002), MidpointRounding.AwayFromZero);
             if (cs > (91 * 91) - 1)
             {
                 throw new ArgumentOutOfRangeException(nameof(d.AltitudeFeet), "altitude too high for compressed form");
@@ -783,7 +790,9 @@ internal static class PositionCodec
                 throw new ArgumentOutOfRangeException(nameof(d.CourseDegrees), "a compressed course/speed needs a course 1-360; compressed form has no 'unknown' course (APRS12c ch. 9)");
             }
 
-            w.Byte((byte)(((int)Math.Round(course / 4.0) % 90) + 33)).Byte((byte)(SpeedCode(d.SpeedKnots ?? 0) + 33));
+            // Rounded to the nearest 4 degrees, halves away from zero; a course that rounds to 360
+            // is north, c = 0 (vectors ruling E9).
+            w.Byte((byte)(((int)Math.Round(course / 4.0, MidpointRounding.AwayFromZero) % 90) + 33)).Byte((byte)(SpeedCode(d.SpeedKnots ?? 0) + 33));
             WriteType(w, type ?? AprsCompressionType.Default);
         }
         else if (d.RadioRangeMiles is { } range)
@@ -791,7 +800,7 @@ internal static class PositionCodec
             // 2 x 1.08^s miles (APRS12c ch. 9): a range is rounded to the nearest step, but one
             // outside the format is refused, not moved to its edge (vectors interpretations.md,
             // "Re-encoding into compressed bytes rounds").
-            int s = range < 2 ? -1 : (int)Math.Round(Math.Log(range / 2) / Math.Log(1.08));
+            int s = range < 2 ? -1 : (int)Math.Round(Math.Log(range / 2) / Math.Log(1.08), MidpointRounding.AwayFromZero);
             if (s is < 0 or > 90)
             {
                 throw new ArgumentOutOfRangeException(nameof(d.RadioRangeMiles), "a compressed range is 2 to 2 x 1.08^90 miles (APRS12c ch. 9)");
@@ -816,9 +825,19 @@ internal static class PositionCodec
 
     private static void WriteType(InfoWriter w, AprsCompressionType type) => w.Byte((byte)(type.Bits + 33));
 
+    /// <summary>
+    /// The s byte's value for a speed of 1.08^s - 1 knots, rounded to the nearest step, halves away
+    /// from zero (vectors ruling E9). Every s from 0 to 90 (<c>!</c> to <c>{</c>) is a speed
+    /// (APRS12c ch. 9 limits only the course byte, vectors ruling E10).
+    /// </summary>
     private static int SpeedCode(double knots)
     {
-        int s = knots <= 0 ? 0 : (int)Math.Round(Math.Log(knots + 1) / Math.Log(1.08));
+        if (knots < 0 || double.IsNaN(knots))
+        {
+            throw new ArgumentOutOfRangeException(nameof(knots), knots, "a speed is not negative");
+        }
+
+        int s = knots == 0 ? 0 : (int)Math.Round(Math.Log(knots + 1) / Math.Log(1.08), MidpointRounding.AwayFromZero);
         return s > 90 ? throw new ArgumentOutOfRangeException(nameof(knots), "speed too high for compressed form") : s;
     }
 

@@ -61,9 +61,14 @@ public sealed record AprsWeather
     /// <summary>The 2-4 character weather unit type after the software type, e.g. <c>RSW</c>, <c>Dvs</c>, <c>U2k</c>.</summary>
     public string? UnitType { get; init; }
 
-    internal void Validate(string paramName)
+    /// <summary>
+    /// Checks each value fits the field it is written in. <paramref name="windInFields"/> is false
+    /// when the wind goes elsewhere: a compressed position's cs bytes hold wind faster than a
+    /// three-digit field can (up to 1.08^90 - 1 knots, APRS12c ch. 9), and are checked as they are written.
+    /// </summary>
+    internal void Validate(string paramName, bool windInFields = true)
     {
-        if (WindDirectionDegrees is < 0 or > 360 || WindSpeedMph is < 0 or > 999 || WindGustMph is < 0 or > 999
+        if ((windInFields && (WindDirectionDegrees is < 0 or > 360 || WindSpeedMph is < 0 or > 999)) || WindGustMph is < 0 or > 999
             || TemperatureFahrenheit is < -99 or > 999 || HumidityPercent is < 1 or > 100
             || PressureMillibars is < 0 or > 9999.9 || LuminosityWattsPerSquareMetre is < 0 or > 1999
             || RainLastHourInches is < 0 or > 9.99 || RainLast24HoursInches is < 0 or > 9.99 || RainSinceMidnightInches is < 0 or > 9.99
