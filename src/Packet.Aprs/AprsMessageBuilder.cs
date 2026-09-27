@@ -150,12 +150,19 @@ public sealed class AprsTelemetryBuilder : AprsBuilder
     public AprsTelemetryBuilder Analog(params decimal[] values)
     {
         ArgumentNullException.ThrowIfNull(values);
+        return Analog([.. values.Select(v => (decimal?)v)]);
+    }
+
+    /// <summary>Up to 5 analog values, A1 first; a null one, and any not given, are sent empty.</summary>
+    public AprsTelemetryBuilder Analog(params decimal?[] values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
         if (values.Length > 5)
         {
             throw new ArgumentException("a telemetry report carries at most 5 analog values (APRS12c ch. 13)", nameof(values));
         }
 
-        analog = [.. values.Select(v => (decimal?)v), .. Enumerable.Repeat<decimal?>(null, 5 - values.Length)];
+        analog = [.. values, .. Enumerable.Repeat<decimal?>(null, 5 - values.Length)];
         return this;
     }
 

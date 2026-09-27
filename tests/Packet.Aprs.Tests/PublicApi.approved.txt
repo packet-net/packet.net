@@ -977,6 +977,7 @@ namespace Packet.Aprs
     public sealed class AprsTelemetryBuilder : Packet.Aprs.AprsBuilder
     {
         public Packet.Aprs.AprsTelemetryBuilder Analog(params decimal[] values) { }
+        public Packet.Aprs.AprsTelemetryBuilder Analog(params decimal?[] values) { }
         public Packet.Aprs.AprsTelemetryBuilder Comment(string text) { }
         public Packet.Aprs.AprsTelemetryBuilder Digital(byte bits) { }
         public Packet.Aprs.AprsTelemetryBuilder Digital(string bits) { }
