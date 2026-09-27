@@ -660,12 +660,11 @@ internal static class MicECodec
         bool readsAsLocator = commentFirst && r.MaidenheadLocator is null && LocatorLengthAt(commentBytes) > 0;
 
         // "The Mic-E status text must not start with ` , ' or 0x1d, otherwise it will be confused
-        // with [now obsolete] telemetry data" (APRS12c ch. 10). A comment that would be read back as
-        // a type code, or as Rev 0 telemetry (0x1D and five bytes), goes after a '/' delimiter,
-        // which the decoder drops (interpretations.md, "Delimiters at the start of free text").
+        // with [now obsolete] telemetry data" (APRS12c ch. 10). A comment that would start it with a
+        // type code character or 0x1D goes after a '/' delimiter, which the decoder drops
+        // (interpretations.md, "Delimiters at the start of free text").
         bool readsAsTypeCode = commentFirst && r.TypeCode is null && r.MaidenheadLocator is null && r.AltitudeFeet is null
-            && commentBytes.Length > 0
-            && (commentBytes[0] is (byte)'`' or (byte)'\'' or (byte)'>' or (byte)']' || (commentBytes[0] == 0x1d && commentBytes.Length >= 6));
+            && commentBytes.Length > 0 && commentBytes[0] is (byte)'`' or (byte)'\'' or (byte)'>' or (byte)']' or 0x1d;
         if (r.Frequency is null && (CommentCodec.NeedsDelimiter(r.Comment, extensionJustWritten ? r.Phg : null) || readsAsLocator || readsAsTypeCode))
         {
             w.Char('/');

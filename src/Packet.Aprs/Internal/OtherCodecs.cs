@@ -96,7 +96,7 @@ internal static class NmeaCodec
             }
         }
 
-        return address.Length == 5 || (address.Length > 4 && address[0] == (byte)'P');
+        return address.Length == 5 || (address.Length >= 4 && address[0] == (byte)'P');
     }
 
     public static AprsData? Decode(ReadOnlySpan<byte> info, DecodeContext ctx)

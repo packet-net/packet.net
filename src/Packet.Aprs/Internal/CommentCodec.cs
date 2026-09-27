@@ -25,12 +25,8 @@ internal static class CommentCodec
             return true;
         }
 
-        if (IsSoftwareAndUnit(tail))
-        {
-            f.Weather = f.Weather! with { SoftwareType = (char)tail[0], UnitType = Text.Latin1(tail[1..]) };
-            return true;
-        }
-
+        // Base-91 telemetry and a !DAO! are lifted out first; what is left may be the software
+        // type and unit (vectors README, Weather).
         var comment = new List<byte>(tail.ToArray());
         if (!TryExtractTrailer(comment, pos, ctx, f))
         {
@@ -39,6 +35,13 @@ internal static class CommentCodec
 
         if (comment.Count == 0)
         {
+            return true;
+        }
+
+        byte[] rest = [.. comment];
+        if (IsSoftwareAndUnit(rest))
+        {
+            f.Weather = f.Weather! with { SoftwareType = (char)rest[0], UnitType = Text.Latin1(rest.AsSpan(1)) };
             return true;
         }
 

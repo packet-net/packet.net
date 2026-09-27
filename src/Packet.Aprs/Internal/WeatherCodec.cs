@@ -46,7 +46,7 @@ internal static class WeatherCodec
     {
         var probe = new DecodeContext(AprsParseOptions.Lenient) { Depth = ctx.Depth };
         var weather = new AprsWeather();
-        return TryReadRun(info, ref pos, probe, ref weather, windAsFields: true, out bool direction, out _) && direction;
+        return TryReadRun(info, ref pos, probe, ref weather, windAsFields: true, positionless: false, out bool direction, out _, out _) && direction;
     }
 
     /// <summary>Reads a 7-byte <c>DDD/SSS</c> wind extension at <paramref name="pos"/>.</summary>
@@ -73,16 +73,18 @@ internal static class WeatherCodec
     /// <summary>
     /// Reads letter-plus-value weather fields and checks the report has the ones it must. With
     /// <paramref name="windAsFields"/> (always for a positionless report) the wind comes as fields:
-    /// <c>c</c> is the wind direction and <c>s</c> the wind speed until each is read, wherever they
-    /// come, and a later <c>s</c> is snowfall. Otherwise the wind is already known (or missing), so
-    /// <c>c</c> ends the fields and <c>s</c> is snowfall. With <paramref name="windMustBeComplete"/>
+    /// <c>c</c> is the wind direction until it is read, wherever it comes, and <c>s</c> the wind
+    /// speed until it is read, then snowfall. A positionless report's wind is fields from the
+    /// start; a position, object or item report's only once a <c>c</c> has been read, so an
+    /// <c>s</c> before any <c>c</c> there is snowfall. Otherwise the wind is already known (or
+    /// missing), so <c>c</c> ends the fields and <c>s</c> is snowfall. With <paramref name="windMustBeComplete"/>
     /// a wind sent as fields needs both <c>c</c> and <c>s</c> (APRS12c ch. 12: the report "must
     /// include at least ... wind direction, wind speed, gust and temperature").
     /// </summary>
     public static bool TryReadFields(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, bool positionless, bool windAsFields = false, bool windMustBeComplete = false)
     {
         int start = pos;
-        if (!TryReadRun(info, ref pos, ctx, ref weather, positionless || windAsFields, out bool direction, out bool speed, out HashSet<char> seen))
+        if (!TryReadRun(info, ref pos, ctx, ref weather, positionless || windAsFields, positionless, out bool direction, out bool speed, out HashSet<char> seen))
         {
             return false;
         }
@@ -106,16 +108,13 @@ internal static class WeatherCodec
             || ctx.Tolerate(ctx.Options.AllowIncompleteWeather, AprsDiagnosticCode.IncompleteWeather, "weather report must include gust (g) and temperature (t) fields (APRS12c ch. 12)", start);
     }
 
-    private static bool TryReadRun(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, bool windAsFields, out bool direction, out bool speed) =>
-        TryReadRun(info, ref pos, ctx, ref weather, windAsFields, out direction, out speed, out _);
-
     /// <summary>
     /// The fields are one contiguous run, which ends at the first thing that is not a field, at a
     /// defined field already read (<c>L</c> and <c>l</c> are one field, luminosity), and at <c>c</c>
     /// once the wind is known. Extra fields are kept as a list, so a repeated extra letter does not
     /// end it (vectors interpretations.md, "Which weather field a letter is").
     /// </summary>
-    private static bool TryReadRun(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, bool windAsFields, out bool direction, out bool speed, out HashSet<char> seen)
+    private static bool TryReadRun(ReadOnlySpan<byte> info, ref int pos, DecodeContext ctx, ref AprsWeather weather, bool windAsFields, bool positionless, out bool direction, out bool speed, out HashSet<char> seen)
     {
         seen = [];
         direction = false;
@@ -127,7 +126,7 @@ internal static class WeatherCodec
         while (pos < info.Length)
         {
             char letter = (char)info[pos];
-            bool snow = letter == 's' && (!windAsFields || speed);
+            bool snow = letter == 's' && (!windAsFields || speed || !(positionless || direction));
             char key = letter switch
             {
                 'l' => 'L',
@@ -358,6 +357,7 @@ internal static class WeatherCodec
     public static void WriteFields(InfoWriter w, AprsWeather weather, bool positionless)
     {
         weather.Validate(nameof(weather));
+        int start = w.Length;
         if (positionless)
         {
             Field(w, 'c', weather.WindDirectionDegrees, 3, always: true);
@@ -406,7 +406,21 @@ internal static class WeatherCodec
 
         if (weather.SoftwareType is { } sw)
         {
+            int fieldsEnd = w.Length;
             w.Char(sw).Ascii(weather.UnitType ?? "");
+
+            // Written after the fields, the software type and unit must read back as themselves:
+            // the field run has to end where they start, and what follows be a letter then a
+            // 2-4 character unit (h89b1 would read back as humidity and pressure).
+            byte[] written = w.Written[start..].ToArray();
+            int pos = 0;
+            var probe = new DecodeContext(AprsParseOptions.Lenient);
+            var back = new AprsWeather();
+            if (!TryReadRun(written, ref pos, probe, ref back, positionless, positionless, out _, out _, out _)
+                || pos != fieldsEnd - start || !CommentCodec.IsSoftwareAndUnit(written.AsSpan(pos)))
+            {
+                throw new ArgumentException($"the software type and unit '{sw}{weather.UnitType}' would read back as weather fields or comment text (APRS12c ch. 12)", nameof(weather));
+            }
         }
     }
 

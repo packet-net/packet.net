@@ -491,10 +491,20 @@ internal static class PositionCodec
 
             fields.CourseDegrees = course;
             fields.SpeedKnots = speed;
-            if (fields.Symbol is { Table: '/', Code: '\\' } && info.Length >= pos + 8 && TryReadBearing(info.Slice(pos, 8), out AprsDfBearing bearing))
+            if (fields.Symbol is { Table: '/', Code: '\\' } && info.Length >= pos + 8 && IsBearing(info.Slice(pos, 8)))
             {
-                fields.DfBearing = bearing;
+                // A bearing is degrees, so one over 360 is out of range and the whole /BRG/NRQ is
+                // dropped, as an out-of-range course is (vectors README, Positions).
+                int bearingAt = pos;
                 pos += 8;
+                if (TryReadBearing(info.Slice(bearingAt, 8), out AprsDfBearing bearing))
+                {
+                    fields.DfBearing = bearing;
+                }
+                else if (!ctx.Tolerate(ctx.Options.AllowOutOfRangeValues, AprsDiagnosticCode.OutOfRangeValue, "DF bearing is over 360 degrees; ignored", bearingAt + 1))
+                {
+                    return false;
+                }
             }
             else if (fields.Symbol.Code == '@' && StormCodec.TryRead(info, ref pos, out AprsStorm? storm))
             {
@@ -562,10 +572,14 @@ internal static class PositionCodec
         return true;
     }
 
+    /// <summary><c>/BRG/NRQ</c>: a slash, three digits, a slash and three digits (APRS12c ch. 7).</summary>
+    private static bool IsBearing(ReadOnlySpan<byte> s) =>
+        s[0] == (byte)'/' && s[4] == (byte)'/' && Text.AllDigits(s.Slice(1, 3)) && Text.AllDigits(s.Slice(5, 3));
+
     private static bool TryReadBearing(ReadOnlySpan<byte> s, out AprsDfBearing bearing)
     {
         bearing = default;
-        if (s[0] != (byte)'/' || s[4] != (byte)'/' || !Text.AllDigits(s.Slice(1, 3)) || !Text.AllDigits(s.Slice(5, 3)))
+        if (!IsBearing(s))
         {
             return false;
         }
