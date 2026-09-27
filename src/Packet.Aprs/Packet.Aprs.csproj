@@ -23,6 +23,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Packet.Aprs.Tests" />
+    <!-- The corpus tool compiles the vectors' neutral-form reader from the test project, which
+         builds out-of-range timestamps as the decoder keeps them. -->
+    <InternalsVisibleTo Include="aprs-corpus" />
   </ItemGroup>
 
 </Project>

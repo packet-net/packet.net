@@ -30,7 +30,11 @@ static int Usage()
                     from-samples <samples.txt> <cases.json> [source]  Add curated samples as observed cases.
                     refresh <cases.json>...  Work out observed cases again after an intended change.
           diff      lines <corpus-dir> <lines.hex.gz>  The capture as one hex line per packet, for any implementation.
-                    dump <lines.hex.gz> <out.jsonl.gz>  Decode each line into the vectors' neutral form (aprs-vectors tools/compare.py).
+                    dump <lines.hex.gz> <out.jsonl.gz>  Decode each line into the vectors' neutral form, with the bytes
+                              re-encoding writes and the API view (aprs-vectors tools/compare.py).
+                    encode <data.jsonl.gz> <out.jsonl.gz>  Encode neutral data (aprs-vectors tools/generate.py).
+                    build <recipes.jsonl.gz> <out.jsonl.gz>  Build each recipe (tools/generate.py --recipes).
+                    --limit <n>  Only the first n input lines (dump, encode, build).
         """);
     return 2;
 }
