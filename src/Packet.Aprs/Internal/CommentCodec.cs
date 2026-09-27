@@ -287,10 +287,23 @@ internal static class CommentCodec
             return;
         }
 
-        int open = c.IndexOf((byte)'{');
-        int close = open < 0 ? -1 : c.IndexOf((byte)'}', open);
+        // The overlay is "specified by enclosing the 1-3 characters in braces" (APRS12c ch. 11): the
+        // first { whose next brace is a } with 1-3 characters between them, wherever it is, so a
+        // { that encloses nothing ({5Wm{55}) stays in the comment.
+        int open = -1;
+        int close = -1;
+        for (int i = c.IndexOf((byte)'{'); i >= 0 && open < 0; i = c.IndexOf((byte)'{', i + 1))
+        {
+            int next = c.FindIndex(i + 1, b => b is (byte)'{' or (byte)'}');
+            if (next >= 0 && c[next] == (byte)'}' && next - i - 1 is >= 1 and <= 3)
+            {
+                open = i;
+                close = next;
+            }
+        }
+
         int length = close - open - 1;
-        if (open < 0 || close < 0 || length is < 1 or > 3)
+        if (open < 0)
         {
             return;
         }
