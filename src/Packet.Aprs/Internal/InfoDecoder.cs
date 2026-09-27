@@ -124,8 +124,8 @@ internal static class PositionReportCodec
     {
         foreach (int pos in (int[])[1, 8])
         {
-            var probe = new DecodeContext(ctx.Options) { Depth = ctx.Depth };
-            if (pos >= info.Length || !PositionCodec.TryReadBody(info, pos, probe, out PositionedFields fields))
+            // Judged on the position itself, not on anything after it (vectors README, Timestamps that are not there).
+            if (!PositionCodec.PositionDecodesAt(info, pos, ctx))
             {
                 continue;
             }
@@ -141,7 +141,11 @@ internal static class PositionReportCodec
                 return null;
             }
 
-            ctx.Diagnostics.AddRange(probe.Diagnostics);
+            if (!PositionCodec.TryReadBody(info, pos, ctx, out PositionedFields fields))
+            {
+                return null;
+            }
+
             return fields.ApplyTo(new AprsPositionReport
             {
                 Position = fields.Position,

@@ -25,12 +25,8 @@ internal static class CommentCodec
             return true;
         }
 
-        if (IsSoftwareAndUnit(tail))
-        {
-            f.Weather = f.Weather! with { SoftwareType = (char)tail[0], UnitType = Text.Latin1(tail[1..]) };
-            return true;
-        }
-
+        // Base-91 telemetry and a !DAO! are lifted out first; what is left may be the software
+        // type and unit (vectors README, Weather).
         var comment = new List<byte>(tail.ToArray());
         if (!TryExtractTrailer(comment, pos, ctx, f))
         {
@@ -39,6 +35,13 @@ internal static class CommentCodec
 
         if (comment.Count == 0)
         {
+            return true;
+        }
+
+        byte[] rest = [.. comment];
+        if (IsSoftwareAndUnit(rest))
+        {
+            f.Weather = f.Weather! with { SoftwareType = (char)rest[0], UnitType = Text.Latin1(rest.AsSpan(1)) };
             return true;
         }
 
@@ -284,29 +287,36 @@ internal static class CommentCodec
             return;
         }
 
-        int open = c.IndexOf((byte)'{');
-        int close = open < 0 ? -1 : c.IndexOf((byte)'}', open);
-        int length = close - open - 1;
-        if (open < 0 || close < 0 || length is < 1 or > 3)
+        // The overlay is "specified by enclosing the 1-3 characters in braces" (APRS12c ch. 11): the
+        // first well-formed braces wherever they are, a {, 1-3 characters that are not braces and
+        // a }, holding printable ASCII for a signpost or digits for a corridor. Braces that do not
+        // qualify are comment text and do not stop the search, as a malformed data extension does
+        // not (vectors README, Comments).
+        for (int open = c.IndexOf((byte)'{'); open >= 0; open = c.IndexOf((byte)'{', open + 1))
         {
+            int close = c.FindIndex(open + 1, b => b is (byte)'{' or (byte)'}');
+            if (close < 0 || c[close] != (byte)'}' || close - open - 1 is < 1 or > 3)
+            {
+                continue;
+            }
+
+            byte[] inner = c.GetRange(open + 1, close - open - 1).ToArray();
+            if (signpost && inner.All(Text.IsPrintableAscii))
+            {
+                f.SignpostText = Text.Latin1(inner);
+            }
+            else if (corridor && Text.AllDigits(inner))
+            {
+                f.AreaObject = f.AreaObject!.Value with { CorridorWidthMiles = Text.ParseDigits(inner) };
+            }
+            else
+            {
+                continue;
+            }
+
+            c.RemoveRange(open, close - open + 1);
             return;
         }
-
-        byte[] inner = c.GetRange(open + 1, length).ToArray();
-        if (signpost && inner.All(Text.IsPrintableAscii))
-        {
-            f.SignpostText = Text.Latin1(inner);
-        }
-        else if (corridor && Text.AllDigits(inner))
-        {
-            f.AreaObject = f.AreaObject!.Value with { CorridorWidthMiles = Text.ParseDigits(inner) };
-        }
-        else
-        {
-            return;
-        }
-
-        c.RemoveRange(open, close - open + 1);
     }
 
     /// <summary>
@@ -324,26 +334,34 @@ internal static class CommentCodec
         ReadOnlySpan<byte> s = bytes;
         foreach (string tagText in (string[])["PHG", "RNG", "DFS"])
         {
+            // The first well-formed one: a malformed PHG12 is comment text and does not stop the
+            // search (vectors interpretations.md, "A late data extension is the first well-formed one").
             ReadOnlySpan<byte> tag = System.Text.Encoding.ASCII.GetBytes(tagText);
-            int at = s.IndexOf(tag);
-            if (at < 0 || at + 7 > s.Length)
+            int at = -1;
+            for (int from = 0; at < 0 && from + 7 <= s.Length;)
+            {
+                int found = s[from..].IndexOf(tag);
+                if (found < 0 || from + found + 7 > s.Length)
+                {
+                    break;
+                }
+
+                ReadOnlySpan<byte> candidate = s.Slice(from + found, 7);
+                bool wellFormed = tag[0] == (byte)'R'
+                    ? Text.AllDigits(candidate[3..])
+                    : Text.IsDigit(candidate[3]) && Text.IsDigit(candidate[5]) && Text.IsDigit(candidate[6]) && candidate[4] is >= (byte)'0' and <= (byte)'~';
+                at = wellFormed ? from + found : -1;
+                from += found + 1;
+            }
+
+            if (at < 0)
             {
                 continue;
             }
 
             ReadOnlySpan<byte> ext = s.Slice(at, 7);
-            if (!Text.IsDigit(ext[3]) || !Text.IsDigit(ext[5]) || !Text.IsDigit(ext[6]) || ext[4] is < (byte)'0' or > (byte)'~')
-            {
-                continue;
-            }
-
             if (tag[0] == (byte)'R')
             {
-                if (!Text.AllDigits(ext[3..]))
-                {
-                    continue;
-                }
-
                 f.RadioRangeMiles = Text.ParseDigits(ext[3..]);
             }
             else if (tag[0] == (byte)'D')
@@ -420,12 +438,22 @@ internal static class CommentCodec
             FrequencyCodec.WriteWithComment(w, freq, d.Comment);
         }
 
+        // The signpost or corridor is the first well-formed braces in the comment, so when the
+        // comment holds braces of its own they go first; the finished field is then decoded to
+        // confirm it reads back (CheckComment has set the check for those braces).
+        bool bracesFirst = d.Frequency is null && (d.SignpostText is not null || d.AreaObject is { CorridorWidthMiles: not null })
+            && d.Comment.Contains('{', StringComparison.Ordinal);
+        if (bracesFirst)
+        {
+            WriteBraces(w, d);
+        }
+
         if (d.Frequency is null)
         {
-            bool extensionJustWritten = !d.IsCompressed && d.AltitudeFeet is null
+            bool extensionJustWritten = !bracesFirst && !d.IsCompressed && d.AltitudeFeet is null
                 && (d.CourseDegrees is not null || d.SpeedKnots is not null || d.RadioRangeMiles is not null || d.DfSignalStrength is not null
                     || d.AreaObject is not null || d.DfBearing is not null || d.Storm is not null || d.Phg is not null);
-            bool nothingBefore = d.AltitudeFeet is null && !extensionJustWritten;
+            bool nothingBefore = d.AltitudeFeet is null && !extensionJustWritten && !bracesFirst;
             if (NeedsDelimiter(d.Comment, extensionJustWritten ? d.Phg : null) || (nothingBefore && !d.IsCompressed && LooksLikeExtension(d.Comment, d)))
             {
                 w.Char('/');
@@ -434,7 +462,11 @@ internal static class CommentCodec
             w.Utf8(d.Comment);
         }
 
-        WriteBraces(w, d);
+        if (!bracesFirst)
+        {
+            WriteBraces(w, d);
+        }
+
         WriteTrailer(w, d, includeWeatherSoftware: false);
     }
 
@@ -564,7 +596,7 @@ internal static class CommentCodec
         && (back.Telemetry is null) == (sent.Telemetry is null)
         && (back.RadioRangeMiles is null) == (sent.RadioRangeMiles is null)
         && (back.DfSignalStrength is null) == (sent.DfSignalStrength is null)
-        && (back.AreaObject is null) == (sent.AreaObject is null)
+        && back.AreaObject == sent.AreaObject
         && (sent is not AprsMicEReport m
             || (back is AprsMicEReport bm && bm.TypeCode == m.TypeCode && bm.DeviceSuffix == m.DeviceSuffix && bm.MaidenheadLocator == m.MaidenheadLocator));
 
@@ -589,9 +621,12 @@ internal static class CommentCodec
         bool endsWithSuffix = r.DeviceSuffix.Length == 0 && r.Telemetry is null && r.Dao is null && r.TypeCode is { } t
             && (t is '`' or '\'' ? AprsDeviceIdentification.MicESuffixes : t is '>' or ']' ? AprsDeviceIdentification.MicELegacySuffixes(t) : [])
                 .Any(s => comment.EndsWith(s, StringComparison.Ordinal));
+        // A '}' can end a Mic-E altitude (xxx}) with bytes written before it, which a decoder finds
+        // anywhere in the status text when none comes first.
+        bool mayFormAltitude = comment.Contains('}', StringComparison.Ordinal);
         if (probe.Dao is not null || probe.Telemetry is not null || probe.AltitudeFeet is not null || probe.Frequency is not null
             || probe.Phg != r.Phg || probe.RadioRangeMiles != r.RadioRangeMiles || probe.DfSignalStrength != r.DfSignalStrength
-            || startsWithAltitude || startsWithExtension || endsWithSuffix || comment.Contains('\xFF', StringComparison.Ordinal))
+            || startsWithAltitude || startsWithExtension || endsWithSuffix || mayFormAltitude || comment.Contains('\xFF', StringComparison.Ordinal))
         {
             w.CommentCheck = "Mic-E status text contains something that decodes as a structured element (altitude, extension, !DAO!, |telemetry|, frequency or device suffix); set the property instead";
         }

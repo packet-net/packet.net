@@ -11,8 +11,10 @@ namespace Packet.Aprs;
 /// On RF an address is an AX.25 address: 1 to 6 upper-case letters and digits, plus an optional
 /// numeric SSID 1 to 15 (APRS12c §3, UAP §1.1). On APRS-IS the TNC2 text form is looser: names
 /// from internet-only stations, servers and q-constructs (<c>WHO-IS</c>, <c>T2SPAIN</c>,
-/// <c>qAC</c>) are legal there (APRS12c §17, UAP §4). This type holds the address exactly as
-/// written, so it round-trips, and reports through <see cref="IsAx25"/> whether it would be
+/// <c>qAC</c>) are legal there (APRS12c §17, UAP §4), as 1 to 9 letters, digits or <c>-</c>, which
+/// is what a TNC2 header is decoded with (the source inside a third-party packet may be any 1 to 9
+/// printable characters other than <c>&gt;</c> and <c>:</c>). This type holds the address exactly
+/// as written, so it round-trips, and reports through <see cref="IsAx25"/> whether it would be
 /// valid on air.
 /// </para>
 /// <para>
@@ -22,8 +24,8 @@ namespace Packet.Aprs;
 /// </remarks>
 public readonly record struct AprsAddress
 {
-    /// <summary>The longest address accepted in TNC2 text. APRS-IS allows 9; this leaves headroom
-    /// for real-world oddities without admitting arbitrary junk.</summary>
+    /// <summary>The longest address <see cref="Parse"/> accepts. A TNC2 header is decoded with
+    /// APRS-IS addresses, which are at most 9 characters.</summary>
     public const int MaxLength = 16;
 
     private AprsAddress(string value) => Value = value;

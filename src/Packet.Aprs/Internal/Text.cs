@@ -90,6 +90,20 @@ internal static class Text
         return n;
     }
 
+    /// <summary>
+    /// A telemetry value: an optional <c>-</c>, then digits with an optional decimal point, with at
+    /// least one digit, and nothing else (APRS12c ch. 13; vectors interpretations.md, "Numbers in
+    /// telemetry"). No <c>+</c>, no spaces, no NUL.
+    /// </summary>
+    public static bool IsTelemetryNumber(ReadOnlySpan<char> s)
+    {
+        ReadOnlySpan<char> digits = s.StartsWith('-') ? s[1..] : s;
+        int dot = digits.IndexOf('.');
+        ReadOnlySpan<char> whole = dot < 0 ? digits : digits[..dot];
+        ReadOnlySpan<char> fraction = dot < 0 ? [] : digits[(dot + 1)..];
+        return whole.Length + fraction.Length > 0 && !whole.ContainsAnyExceptInRange('0', '9') && !fraction.ContainsAnyExceptInRange('0', '9');
+    }
+
     /// <summary>For encoders: rejects text containing CR or LF, which would end the packet on
     /// APRS-IS (APRS12c §5 Comment Field).</summary>
     public static void RequireNoLineBreaks(string text, string paramName)

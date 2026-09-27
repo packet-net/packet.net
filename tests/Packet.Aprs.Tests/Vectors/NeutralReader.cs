@@ -57,7 +57,7 @@ internal static class NeutralReader
             "nws-bulletin" => Only(d, new AprsNwsBulletin { Addressee = Str(d, "addressee"), Text = OptStr(d, "text") ?? "", MessageId = OptStr(d, "message_id") }, "addressee", "text", "message_id"),
             "telemetry-names" => Only(d, new AprsTelemetryParameterNames { Addressee = Str(d, "addressee"), Names = Strings(d["names"]), MessageId = OptStr(d, "message_id") }, "addressee", "names", "message_id"),
             "telemetry-units" => Only(d, new AprsTelemetryUnits { Addressee = Str(d, "addressee"), Units = Strings(d["units"]), MessageId = OptStr(d, "message_id") }, "addressee", "units", "message_id"),
-            "telemetry-coefficients" => Only(d, new AprsTelemetryCoefficients { Addressee = Str(d, "addressee"), Coefficients = [.. (d["coefficients"] as JsonArray ?? []).Select(v => (decimal)v!)], MessageId = OptStr(d, "message_id") }, "addressee", "coefficients", "message_id"),
+            "telemetry-coefficients" => Only(d, new AprsTelemetryCoefficients { Addressee = Str(d, "addressee"), Coefficients = [.. (d["coefficients"] as JsonArray ?? []).Select(v => (double)v!)], MessageId = OptStr(d, "message_id") }, "addressee", "coefficients", "message_id"),
             "telemetry-bits" => Only(d, new AprsTelemetryBitSense { Addressee = Str(d, "addressee"), Bits = Bits(Str(d, "bits")), ProjectTitle = OptStr(d, "project") ?? "", MessageId = OptStr(d, "message_id") }, "addressee", "bits", "project", "message_id"),
             "directed-query" => Only(d, new AprsDirectedQuery { Addressee = Str(d, "addressee"), QueryType = Str(d, "query_type"), Target = OptStr(d, "target"), MessageId = OptStr(d, "message_id") }, "addressee", "query_type", "target", "message_id"),
             "status" => Only(d, new AprsStatusReport
@@ -85,9 +85,11 @@ internal static class NeutralReader
                 CourseDegrees = (double?)d["course_degrees"],
                 SpeedKnots = (double?)d["speed_knots"],
                 AltitudeMetres = (double?)d["altitude_m"],
-                Time = OptStr(d, "time") is { } t ? TimeOnly.ParseExact(t, "HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture) : null,
+                Time = OptStr(d, "time") is { } t ? TimeOnly.ParseExact(t.Length > 16 ? t[..16] : t, "HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture) : null,
+                TimeText = OptStr(d, "time") is { } text ? text.Replace(":", "", StringComparison.Ordinal) : null,
                 WaypointName = OptStr(d, "waypoint"),
-            }, "sentence", "has_checksum", "latitude", "longitude", "fix", "course_degrees", "speed_knots", "altitude_m", "time", "waypoint"),
+                Comment = OptStr(d, "comment") ?? "",
+            }, "sentence", "has_checksum", "latitude", "longitude", "fix", "course_degrees", "speed_knots", "altitude_m", "time", "waypoint", "comment"),
             "maidenhead-beacon" => Only(d, new AprsMaidenheadBeacon { Locator = Str(d, "locator"), Comment = OptStr(d, "comment") ?? "" }, "locator", "comment"),
             "query" => Only(d, new AprsGeneralQuery
             {

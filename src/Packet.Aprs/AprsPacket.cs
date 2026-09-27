@@ -30,7 +30,8 @@ public sealed class AprsPacket : IEquatable<AprsPacket>
         IReadOnlyList<AprsPathEntry> path,
         byte[] information,
         AprsData data,
-        IReadOnlyList<AprsDiagnostic> diagnostics)
+        IReadOnlyList<AprsDiagnostic> diagnostics,
+        bool readQConstruct = true)
     {
         Source = source;
         Destination = destination;
@@ -38,7 +39,7 @@ public sealed class AprsPacket : IEquatable<AprsPacket>
         this.information = information;
         Data = data;
         Diagnostics = diagnostics;
-        QConstruct = AprsQConstruct.Find(path);
+        QConstruct = readQConstruct ? AprsQConstruct.Find(path) : null;
     }
 
     /// <summary>The station that originated the packet.</summary>
@@ -68,7 +69,8 @@ public sealed class AprsPacket : IEquatable<AprsPacket>
     /// <summary>True if the packet decoded but only because tolerances allowed deviations from the spec.</summary>
     public bool HasWarnings => Diagnostics.Any(d => d.Severity == AprsDiagnosticSeverity.Warning);
 
-    /// <summary>The APRS-IS q-construct in the path, if any.</summary>
+    /// <summary>The APRS-IS q-construct in the path, if any. It is read only in the outer header:
+    /// the packet inside a third-party packet has none, and its path is kept as sent.</summary>
     public AprsQConstruct? QConstruct { get; }
 
     // ------------------------------------------------------------------ decoding
@@ -166,7 +168,7 @@ public sealed class AprsPacket : IEquatable<AprsPacket>
     internal static AprsPacket Build(Tnc2Codec.Header header, ReadOnlySpan<byte> information, DecodeContext ctx)
     {
         AprsData data = InfoDecoder.Decode(information, header.Destination, ctx);
-        return new AprsPacket(header.Source, header.Destination, header.Path, information.ToArray(), data, ctx.Diagnostics);
+        return new AprsPacket(header.Source, header.Destination, header.Path, information.ToArray(), data, ctx.Diagnostics, readQConstruct: ctx.Depth == 0);
     }
 
     // ------------------------------------------------------------------ building

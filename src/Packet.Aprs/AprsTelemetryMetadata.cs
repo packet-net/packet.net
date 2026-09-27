@@ -33,20 +33,25 @@ public sealed record AprsTelemetryUnits : AprsMessage
 /// </summary>
 public sealed record AprsTelemetryCoefficients : AprsMessage
 {
-    /// <summary>Up to 15 values in the order a1, b1, c1, a2, b2, c2 ... a5, b5, c5. The list may stop early.</summary>
-    public required IReadOnlyList<decimal> Coefficients { get; init => field = EquatableList<decimal>.Of(value); }
+    /// <summary>
+    /// Up to 15 values in the order a1, b1, c1, a2, b2, c2 ... a5, b5, c5. The list may stop early.
+    /// Each is a finite floating-point number (an exponent is allowed, <c>10E60</c>); a decoded
+    /// report writes each back in the form it was sent.
+    /// </summary>
+    public required IReadOnlyList<double> Coefficients { get; init => field = EquatableList<double>.Of(value); }
 
-    /// <summary>Applies channel <paramref name="channel"/>'s (1-5) coefficients to a raw value; a
-    /// missing coefficient counts as a=0, b=1, c=0.</summary>
-    public decimal Scale(int channel, decimal raw)
+    /// <summary>Applies channel <paramref name="channel"/>'s (1-5) coefficients to a raw value, as a
+    /// telemetry report carries it; a missing coefficient counts as a=0, b=1, c=0.</summary>
+    public double Scale(int channel, decimal raw)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(channel, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(channel, 5);
         int i = (channel - 1) * 3;
-        decimal a = i < Coefficients.Count ? Coefficients[i] : 0;
-        decimal b = i + 1 < Coefficients.Count ? Coefficients[i + 1] : 1;
-        decimal c = i + 2 < Coefficients.Count ? Coefficients[i + 2] : 0;
-        return (a * raw * raw) + (b * raw) + c;
+        double a = i < Coefficients.Count ? Coefficients[i] : 0;
+        double b = i + 1 < Coefficients.Count ? Coefficients[i + 1] : 1;
+        double c = i + 2 < Coefficients.Count ? Coefficients[i + 2] : 0;
+        double v = (double)raw;
+        return (a * v * v) + (b * v) + c;
     }
 
     private protected override void EncodeText(InfoWriter writer)
@@ -56,7 +61,13 @@ public sealed record AprsTelemetryCoefficients : AprsMessage
             throw new ArgumentException("EQNS carries 1 to 15 coefficients", nameof(Coefficients));
         }
 
-        MessageCodec.WriteList(writer, "EQNS.", Coefficients.Select(c => c.ToString(CultureInfo.InvariantCulture)).ToList(), this);
+        if (Coefficients.Any(c => !double.IsFinite(c)))
+        {
+            throw new ArgumentException("an EQNS coefficient is a finite number", nameof(Coefficients));
+        }
+
+        IReadOnlyList<string>? sent = (Coefficients as EquatableList<double>)?.Text;
+        MessageCodec.WriteList(writer, "EQNS.", sent ?? Coefficients.Select(c => c.ToString("R", CultureInfo.InvariantCulture)).ToList(), this);
     }
 }
 
@@ -75,6 +86,7 @@ public sealed record AprsTelemetryBitSense : AprsMessage
     private protected override void EncodeText(InfoWriter writer)
     {
         Internal.Text.RequireNoLineBreaks(ProjectTitle, nameof(ProjectTitle));
+        MessageCodec.RequireNoBrace(ProjectTitle, nameof(ProjectTitle));
         if (ProjectTitle.EnumerateRunes().Count() > 23)
         {
             throw new ArgumentException("the telemetry project title is limited to 23 characters (APRS12c ch. 13)", nameof(ProjectTitle));

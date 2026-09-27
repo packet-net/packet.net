@@ -60,11 +60,25 @@ public sealed record AprsRawWeatherReport : AprsData
 /// </summary>
 public sealed record AprsNmeaReport : AprsData
 {
-    /// <summary>The sentence without the leading <c>$</c>, including any <c>*hh</c> checksum.</summary>
+    /// <summary>
+    /// The sentence without the leading <c>$</c>, up to and including any <c>*hh</c> checksum:
+    /// an address field (<c>GPRMC</c>, or <c>P</c> and a manufacturer's code), then comma-separated
+    /// fields in printable ASCII.
+    /// </summary>
     public required string Sentence { get; init; }
 
-    /// <summary>The talker and sentence type, e.g. <c>GPRMC</c>.</summary>
-    public string SentenceType => Sentence.Length >= 5 ? Sentence[..5] : Sentence;
+    /// <summary>
+    /// Text after the sentence's checksum, as sent (TinyTrack and FreeTrak add a comment there, as
+    /// any APRS packet may carry one, APRS12c ch. 5); empty when there is none. A comment needs a
+    /// checksum before it, which is where the sentence ends.
+    /// </summary>
+    public string Comment { get; init; } = "";
+
+    /// <summary>
+    /// The address field: the talker and sentence formatter, e.g. <c>GPRMC</c>, or <c>P</c> and a
+    /// manufacturer's code for a proprietary sentence, e.g. <c>PMGNWPL</c>.
+    /// </summary>
+    public string SentenceType => Sentence.IndexOfAny([',', '*']) is var end and >= 0 ? Sentence[..end] : Sentence;
 
     /// <summary>
     /// True when the sentence ends with a <c>*hh</c> checksum. A decoded sentence's checksum always
@@ -87,8 +101,14 @@ public sealed record AprsNmeaReport : AprsData
     /// <summary>Altitude above mean sea level in metres (GGA).</summary>
     public double? AltitudeMetres { get; init; }
 
-    /// <summary>The UTC time of the fix (GGA, RMC, GLL).</summary>
+    /// <summary>The UTC time of the fix (GGA, RMC, GLL), to the 100 ns <see cref="TimeOnly"/> holds; <see cref="TimeText"/> has every digit sent.</summary>
     public TimeOnly? Time { get; init; }
+
+    /// <summary>
+    /// The time field exactly as sent, <c>hhmmss</c> and any fraction of a second (e.g.
+    /// <c>154027.1234567890</c>), when it is a valid time; null otherwise.
+    /// </summary>
+    public string? TimeText { get; init; }
 
     /// <summary>The waypoint name (WPL).</summary>
     public string? WaypointName { get; init; }
@@ -98,9 +118,10 @@ public sealed record AprsNmeaReport : AprsData
 
     internal override void Encode(InfoWriter writer)
     {
-        if (Sentence.Length < 5 || Sentence.Any(c => c is < ' ' or > '~'))
+        byte[] sentence = System.Text.Encoding.Latin1.GetBytes(Sentence);
+        if (Sentence.Any(c => c > 0xFF) || Internal.NmeaCodec.SentenceLength(sentence) != sentence.Length)
         {
-            throw new ArgumentException("an NMEA sentence is printable ASCII", nameof(Sentence));
+            throw new ArgumentException("an NMEA sentence is an address field (5 upper-case letters or digits, or P and 3 or more) and comma-separated fields in printable ASCII, ending at any *hh checksum", nameof(Sentence));
         }
 
         if (Internal.NmeaCodec.TryReadChecksum(Sentence, out _, out byte expected, out byte sum) && sum != expected)
@@ -108,7 +129,13 @@ public sealed record AprsNmeaReport : AprsData
             throw new ArgumentException($"the NMEA checksum is {expected:X2} but the sentence sums to {sum:X2}", nameof(Sentence));
         }
 
-        writer.Char('$').Ascii(Sentence);
+        Internal.Text.RequireNoLineBreaks(Comment, nameof(Comment));
+        if (Comment.Length > 0 && !HasChecksum)
+        {
+            throw new ArgumentException("a comment after an NMEA sentence needs the sentence's *hh checksum before it, or it would read back as part of the sentence", nameof(Comment));
+        }
+
+        writer.Char('$').Ascii(Sentence).Utf8(Comment);
     }
 }
 
@@ -191,9 +218,12 @@ public sealed record AprsStationCapabilities : AprsData
         for (int i = 0; i < Capabilities.Count; i++)
         {
             AprsCapability c = Capabilities[i];
-            if (c.Token.Length == 0 || c.Token.Any(ch => ch is <= ' ' or '\x7F' or ',' or '=') || (c.Value is { } v && v.Any(ch => ch is < ' ' or '\x7F' or ',')))
+            // Anything else would not read back the same (vectors interpretations.md, "Station
+            // capabilities: items, tokens and values"): spaces around a value are padding.
+            if (c.Token.Length == 0 || c.Token.Any(ch => ch is <= ' ' or '\x7F' or ',' or '=')
+                || (c.Value is { } v && (v.Any(ch => ch is < ' ' or '\x7F' or ',') || v.StartsWith(' ') || v.EndsWith(' '))))
             {
-                throw new ArgumentException("capability tokens and values are text without ',' or control characters (and tokens without '=' or spaces)", nameof(Capabilities));
+                throw new ArgumentException("capability tokens and values are text without ',' or control characters, tokens without '=' or spaces, and values that do not start or end with a space", nameof(Capabilities));
             }
 
             if (i > 0)
@@ -227,7 +257,16 @@ public sealed record AprsThirdPartyTraffic : AprsData
     /// <inheritdoc/>
     public override char DataTypeIdentifier => '}';
 
-    internal override void Encode(InfoWriter writer) => writer.Char('}').Bytes(Packet.ToTnc2());
+    internal override void Encode(InfoWriter writer)
+    {
+        byte[] inner = Packet.ToTnc2();
+        if (!ThirdPartyCodec.CanWrite(Packet, inner))
+        {
+            throw new ArgumentException("the inner packet's header is not one a strict decoder reads (source 1-9 printable ASCII characters other than > and :, destination and path 1-9 letters, digits or -), or a defect in it was tolerated when it was decoded (APRS12c ch. 17)", nameof(Packet));
+        }
+
+        writer.Char('}').Bytes(inner);
+    }
 }
 
 /// <summary>
@@ -236,10 +275,10 @@ public sealed record AprsThirdPartyTraffic : AprsData
 /// </summary>
 public sealed record AprsUserDefinedData : AprsData
 {
-    /// <summary>The user ID, e.g. <c>Q</c>; <c>{</c> means experimental.</summary>
+    /// <summary>The user ID, e.g. <c>Q</c>; <c>{</c> means experimental. Any byte (U+0000-U+00FF): APRS12c ch. 19 only recommends printable ASCII.</summary>
     public required char UserId { get; init; }
 
-    /// <summary>The user-defined packet type.</summary>
+    /// <summary>The user-defined packet type. Any byte (U+0000-U+00FF), as for <see cref="UserId"/>.</summary>
     public required char PacketType { get; init; }
 
     /// <summary>The rest of the information field, as sent.</summary>
@@ -253,9 +292,11 @@ public sealed record AprsUserDefinedData : AprsData
 
     internal override void Encode(InfoWriter writer)
     {
-        if (UserId is < ' ' or > '~' || PacketType is < ' ' or > '~')
+        // "There is no restriction on the nature of user-defined data" (APRS12c ch. 19), header
+        // included, so any byte is written back as it came.
+        if (UserId > '\xFF' || PacketType > '\xFF')
         {
-            throw new ArgumentException("user ID and packet type are printable ASCII");
+            throw new ArgumentException("user ID and packet type are single bytes (U+0000-U+00FF)");
         }
 
         writer.Char('{').Char(UserId).Char(PacketType).Bytes(Data.ToArray());

@@ -169,10 +169,15 @@ internal static class ObjectCodec
         }
     }
 
+    /// <summary>
+    /// Seven bytes shaped like a timestamp, then a position. The position is judged on itself, not
+    /// on anything after it, so a defect later in the report does not change what these seven
+    /// bytes are (vectors interpretations.md, "A packet is read in order").
+    /// </summary>
     private static bool PositionFollowsGarbledTimestamp(ReadOnlySpan<byte> info, int pos, DecodeContext ctx) =>
         info.Length > pos + 7
         && (Text.AllDigits(info.Slice(pos, 6)) || info[pos + 6] is (byte)'z' or (byte)'/' or (byte)'h')
-        && PositionCodec.TryReadBody(info, pos + 7, new DecodeContext(ctx.Options) { Depth = ctx.Depth }, out _);
+        && PositionCodec.PositionDecodesAt(info, pos + 7, ctx);
 
     private static bool IsTimestampAt(ReadOnlySpan<byte> info, int pos) =>
         Text.AllDigits(info.Slice(pos, 6)) && info[pos + 6] is (byte)'z' or (byte)'/' or (byte)'h';

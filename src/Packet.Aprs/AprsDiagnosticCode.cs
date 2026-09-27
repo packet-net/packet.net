@@ -52,7 +52,7 @@ public enum AprsDiagnosticCode
     /// <summary>A reserved data type identifier with no defined format (APRS12c §5).</summary>
     ReservedDataType = 24,
 
-    /// <summary>A format the spec marks obsolete or not recommended, e.g. raw NMEA or raw weather.</summary>
+    /// <summary>A format the spec marks obsolete or not recommended, e.g. raw NMEA, raw weather, or the Rev 0 Mic-E data type identifiers 0x1C and 0x1D.</summary>
     ObsoleteFormat = 25,
 
     /// <summary>A value in a well-formed field is out of range and was dropped.</summary>
@@ -123,7 +123,7 @@ public enum AprsDiagnosticCode
     /// <summary>The Mic-E information field is malformed (APRS12c §10).</summary>
     InvalidMicEInformation = 101,
 
-    /// <summary>Kenwood TM-D710 0xFF padding was removed (UAP §5.10).</summary>
+    /// <summary>Kenwood TM-D710 0xFF padding was removed from Mic-E status text, after the destination and the nine fixed bytes decoded (UAP §5.10).</summary>
     KenwoodFfPadding = 102,
 
     /// <summary>A Mic-E report without a device type prefix (UAP §5.4).</summary>
@@ -157,16 +157,16 @@ public enum AprsDiagnosticCode
     /// <summary>A Maidenhead locator is malformed.</summary>
     InvalidLocator = 142,
 
-    /// <summary>An NMEA sentence is malformed.</summary>
+    /// <summary>The text after <c>$</c> is not an NMEA 0183 sentence: not printable ASCII, no valid address field, or a reserved character in a field.</summary>
     InvalidNmea = 143,
 
     /// <summary>An NMEA sentence's checksum does not match, so the sentence is corrupt and is not decoded.</summary>
     NmeaChecksumMismatch = 144,
 
-    /// <summary>A third-party header is malformed (APRS12c §17).</summary>
+    /// <summary>A third-party header is malformed, or (strict) its inner header has a defect a lenient decoder tolerates (APRS12c §17).</summary>
     InvalidThirdParty = 145,
 
-    /// <summary>A general query is malformed (APRS12c §15).</summary>
+    /// <summary>A general query is malformed, or its footprint is out of range (APRS12c §15).</summary>
     InvalidGeneralQuery = 146,
 
     /// <summary>A station capabilities report is malformed (APRS12c §15).</summary>
@@ -175,7 +175,7 @@ public enum AprsDiagnosticCode
     /// <summary>A user-defined packet is shorter than its 3-byte header (APRS12c §19).</summary>
     InvalidUserDefined = 148,
 
-    /// <summary>An Agrelo DF report is malformed.</summary>
+    /// <summary>An Agrelo DF report is not exactly <c>%</c>, a bearing of 000 to 360, <c>/</c> and a quality digit.</summary>
     InvalidAgreloDf = 149,
 
     /// <summary>A grid-locator status report lacks the mandatory space before its text (UAP §5.17).</summary>
@@ -202,7 +202,7 @@ public enum AprsDiagnosticCode
     /// <summary>A Mic-E altitude after other status text instead of first (APRS12c §10).</summary>
     MicEAltitudeNotFirst = 157,
 
-    /// <summary>Message text contains a <c>{</c> that does not start a valid message ID (APRS12c §14).</summary>
+    /// <summary>Message, bulletin or telemetry metadata text contains a <c>{</c> that does not start a valid message ID, including the reply-ack form on a bulletin or metadata (APRS12c §14).</summary>
     BraceInMessageText = 158,
 
     /// <summary>A message addressee contains a space or <c>:</c> (APRS12c §14).</summary>
@@ -211,6 +211,6 @@ public enum AprsDiagnosticCode
     /// <summary>A bulletin addressee has a group name after a letter, e.g. <c>BLNCNET</c>; group bulletins use a digit (APRS12c §14).</summary>
     LetterGroupBulletin = 160,
 
-    /// <summary>A <c>&lt;</c> station capabilities packet holds free text rather than TOKEN / TOKEN=VALUE items (APRS12c §15).</summary>
+    /// <summary>A <c>&lt;</c> station capabilities packet holds free text rather than TOKEN / TOKEN=VALUE items: a token that is empty or holds a space or a control character, or a value that holds a control character (APRS12c §15).</summary>
     FreeTextCapabilities = 161,
 }

@@ -7,8 +7,12 @@ internal static class Tnc2Codec
 {
     public readonly record struct Header(AprsAddress Source, AprsAddress Destination, IReadOnlyList<AprsPathEntry> Path);
 
-    /// <summary>Splits a line at the first colon and parses the header. False if the header is unusable.</summary>
-    public static bool TrySplit(ReadOnlySpan<byte> line, DecodeContext ctx, out Header header, out int infoStart)
+    /// <summary>
+    /// Splits a line at the first colon and parses the header. False if the header is unusable.
+    /// With <paramref name="thirdParty"/>, the header is the one inside a third-party packet, whose
+    /// source may be any 1-9 printable ASCII characters other than <c>&gt;</c> and <c>:</c> (APRS12c ch. 17).
+    /// </summary>
+    public static bool TrySplit(ReadOnlySpan<byte> line, DecodeContext ctx, out Header header, out int infoStart, bool thirdParty = false)
     {
         header = default;
         infoStart = -1;
@@ -19,7 +23,7 @@ internal static class Tnc2Codec
             return false;
         }
 
-        if (!TryParseHeader(line[..colon], ctx, out header))
+        if (!TryParseHeader(line[..colon], ctx, out header, thirdParty))
         {
             return false;
         }
@@ -28,7 +32,7 @@ internal static class Tnc2Codec
         return true;
     }
 
-    public static bool TryParseHeader(ReadOnlySpan<byte> h, DecodeContext ctx, out Header header)
+    public static bool TryParseHeader(ReadOnlySpan<byte> h, DecodeContext ctx, out Header header, bool thirdParty = false)
     {
         header = default;
         int gt = h.IndexOf((byte)'>');
@@ -38,7 +42,20 @@ internal static class Tnc2Codec
             return false;
         }
 
-        if (!TryAddress(h[..gt], "source", ctx, out AprsAddress source))
+        AprsAddress source;
+        if (thirdParty)
+        {
+            // "It can contain 1 to 9 printable ASCII characters, other than '>'" (APRS12c ch. 17); a
+            // ':' would have ended the header.
+            if (gt > 9 || h[..gt].IndexOfAnyExceptInRange((byte)0x20, (byte)0x7E) >= 0)
+            {
+                ctx.Error(AprsDiagnosticCode.InvalidAddress, $"third-party source '{Encoding.Latin1.GetString(h[..gt])}' is not 1-9 printable ASCII characters (APRS12c ch. 17)");
+                return false;
+            }
+
+            source = AprsAddress.CreateUnchecked(Encoding.Latin1.GetString(h[..gt]));
+        }
+        else if (!TryAddress(h[..gt], "source", ctx, out source))
         {
             return false;
         }
@@ -112,17 +129,21 @@ internal static class Tnc2Codec
         return true;
     }
 
+    /// <summary>On APRS-IS an address is 1-9 letters, digits or <c>-</c> (vectors README, Addresses and path).</summary>
     private static bool TryAddress(ReadOnlySpan<byte> bytes, string role, DecodeContext ctx, out AprsAddress address)
     {
         string text = Encoding.Latin1.GetString(bytes);
-        if (AprsAddress.TryParse(text, out address))
+        if (IsAprsIsAddress(text) && AprsAddress.TryParse(text, out address))
         {
             return true;
         }
 
-        ctx.Error(AprsDiagnosticCode.InvalidAddress, $"{role} address '{text}' is not a valid address");
+        address = default;
+        ctx.Error(AprsDiagnosticCode.InvalidAddress, $"{role} address '{text}' is not an address (1-9 letters, digits or -)");
         return false;
     }
+
+    internal static bool IsAprsIsAddress(string text) => text.Length is >= 1 and <= 9 && text.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
 
     public static byte[] Format(AprsAddress source, AprsAddress destination, IReadOnlyList<AprsPathEntry> path, ReadOnlySpan<byte> information)
     {

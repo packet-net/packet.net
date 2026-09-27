@@ -236,17 +236,20 @@ internal static class MessageCodec
 
             case 'E':
             {
-                // "The list may stop at any field" (APRS12c §13): trailing empty entries are the list stopping.
-                var values = new List<decimal>();
-                foreach (string part in s.TrimEnd(' ').TrimEnd(',').Split(','))
+                // "The list may stop at any field" (APRS12c §13): trailing commas and spaces are the list stopping.
+                var values = new List<double>();
+                var written = new List<string>();
+                foreach (string part in s.TrimEnd(' ', ',').Split(','))
                 {
-                    if (!decimal.TryParse(part.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out decimal v))
+                    string number = part.Trim(' ');
+                    if (!TryCoefficient(number, out double v))
                     {
-                        ctx.Info(AprsDiagnosticCode.InvalidTelemetryMetadata, $"EQNS value '{part}' is not a number; decoded as a plain message", offset + 5);
+                        ctx.Info(AprsDiagnosticCode.InvalidTelemetryMetadata, $"EQNS value '{part}' is not a finite number; decoded as a plain message", offset + 5);
                         return false;
                     }
 
                     values.Add(v);
+                    written.Add(CanonicalCoefficient(number));
                 }
 
                 if (values.Count > MaxCoefficients)
@@ -255,7 +258,7 @@ internal static class MessageCodec
                     return false;
                 }
 
-                candidate = new AprsTelemetryCoefficients { Addressee = addressee, Coefficients = values, MessageId = id };
+                candidate = new AprsTelemetryCoefficients { Addressee = addressee, Coefficients = EquatableList<double>.WithText(values, written), MessageId = id };
                 break;
             }
 
@@ -292,6 +295,44 @@ internal static class MessageCodec
         return true;
     }
 
+    /// <summary>
+    /// A directed query: <c>?</c>, a query type of upper-case letters (or <c>PING?</c>), then
+    /// optionally the one callsign the query is about (APRS12c ch. 15). A type the spec defines is
+    /// followed straight by its target; any other type needs a space before one. One space between
+    /// the type and the target is a separator and spaces after the target are padding (APRSH's
+    /// target is padded to 9 characters). Anything else after the type is not a target, so the text
+    /// is a plain message (vectors interpretations.md, "A directed query's target is one callsign").
+    /// </summary>
+    /// <summary>
+    /// An EQNS coefficient: a telemetry number (an optional <c>-</c>, digits and an optional decimal
+    /// point) with an optional exponent (<c>e</c> or <c>E</c>, an optional sign, digits), which is a
+    /// finite floating-point number (vectors interpretations.md, "Numbers in telemetry").
+    /// </summary>
+    private static bool TryCoefficient(string s, out double value)
+    {
+        value = 0;
+        int e = s.IndexOfAny(['e', 'E']);
+        ReadOnlySpan<char> exponent = e < 0 ? [] : s.AsSpan(e + 1);
+        if (exponent.StartsWith("-") || exponent.StartsWith("+"))
+        {
+            exponent = exponent[1..];
+        }
+
+        return Text.IsTelemetryNumber(e < 0 ? s : s.AsSpan(0, e))
+            && (e < 0 || (exponent.Length > 0 && !exponent.ContainsAnyExceptInRange('0', '9')))
+            && double.TryParse(s, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out value)
+            && double.IsFinite(value);
+    }
+
+    /// <summary>
+    /// How a decoded coefficient is written back: as a decimal would write it when it fits one
+    /// (<c>.53</c> as <c>0.53</c>, <c>0.0</c> kept), otherwise as sent (<c>10E60</c>).
+    /// </summary>
+    private static string CanonicalCoefficient(string s) =>
+        s.IndexOfAny(['e', 'E']) < 0 && decimal.TryParse(s, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal d)
+            ? d.ToString(CultureInfo.InvariantCulture)
+            : s;
+
     private static bool TryDirectedQuery(string addressee, ReadOnlySpan<byte> text, int offset, DecodeContext ctx, out AprsDirectedQuery? query)
     {
         query = null;
@@ -302,50 +343,59 @@ internal static class MessageCodec
             return false;
         }
 
-        foreach (string type in AprsDirectedQuery.KnownTypes)
+        string? type = null;
+        foreach (string known in AprsDirectedQuery.KnownTypes)
         {
-            if (s.StartsWith(type, StringComparison.Ordinal))
+            if (s.StartsWith(known, StringComparison.Ordinal))
             {
-                string target = s[type.Length..].Trim();
-                if (target.Length > 9 || target.Any(c => c is < '!' or > '~'))
-                {
-                    ctx.Info(AprsDiagnosticCode.InvalidQuery, "a query target is one callsign of up to 9 characters; decoded as a plain message", offset);
-                    return false;
-                }
-
-                query = new AprsDirectedQuery { Addressee = addressee, QueryType = type, Target = target.Length > 0 ? target : null };
-                return true;
+                type = known;
+                break;
             }
 
-            if (s.StartsWith(type, StringComparison.OrdinalIgnoreCase))
+            if (s.StartsWith(known, StringComparison.OrdinalIgnoreCase))
             {
                 ctx.Info(AprsDiagnosticCode.InvalidQuery, "query types must be upper case; decoded as a plain message (UAP 5.18)", offset);
                 return false;
             }
         }
 
-        // An unrecognised upper-case type is still a query (the recipient should ignore it).
-        int end = 0;
-        while (end < s.Length && s[end] is >= 'A' and <= 'Z' or >= '0' and <= '9')
+        if (type is null)
         {
-            end++;
+            // A type the spec does not define is still a query (the recipient ignores it), but only
+            // when it is upper-case letters ended by a space or the end of the text.
+            int end = 0;
+            while (end < s.Length && char.IsAsciiLetterUpper(s[end]))
+            {
+                end++;
+            }
+
+            if (end == 0 || (end < s.Length && s[end] != ' '))
+            {
+                return false;
+            }
+
+            type = s[..end];
         }
 
-        if (end == 0 || (end < s.Length && s[end] != ' '))
+        string rest = s[type.Length..];
+        if (rest.StartsWith(' '))
         {
+            rest = rest[1..];
+        }
+
+        string target = rest.TrimEnd(' ');
+        if (target.Length > 0 && !IsCallsign(target))
+        {
+            ctx.Info(AprsDiagnosticCode.InvalidQuery, "a query target is one callsign (1-9 letters, digits or -); decoded as a plain message", offset);
             return false;
         }
 
-        string rest = s[end..].Trim();
-        if (rest.Length > 9 || rest.Any(c => c is < '!' or > '~'))
-        {
-            ctx.Info(AprsDiagnosticCode.InvalidQuery, "a query target is one callsign of up to 9 characters; decoded as a plain message", offset);
-            return false;
-        }
-
-        query = new AprsDirectedQuery { Addressee = addressee, QueryType = s[..end], Target = rest.Length > 0 ? rest : null };
+        query = new AprsDirectedQuery { Addressee = addressee, QueryType = type, Target = target.Length > 0 ? target : null };
         return true;
     }
+
+    /// <summary>A callsign as an APRS-IS address is one: 1-9 letters, digits or <c>-</c>.</summary>
+    internal static bool IsCallsign(string s) => s.Length is >= 1 and <= 9 && s.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
 
     /// <summary>An NWS bulletin is addressed <c>NWS-</c> (APRS12c ch. 14) or <c>NWS_</c> (aprs-is.net/wx);
     /// <c>NWSBOT</c> is an ordinary addressee (vectors <c>interpretations.md</c>).</summary>
@@ -400,14 +450,24 @@ internal static class MessageCodec
     {
         ArgumentNullException.ThrowIfNull(text, paramName);
         Text.RequireNoLineBreaks(text, paramName);
-        if (text.Contains('{', StringComparison.Ordinal))
-        {
-            throw new ArgumentException("message text must not contain '{', which starts the message ID (APRS12c ch. 14)", paramName);
-        }
+        RequireNoBrace(text, paramName);
 
         if (text.Length > MaxTextLength)
         {
             throw new ArgumentException($"message text is limited to {MaxTextLength} characters (APRS12c ch. 14)", paramName);
+        }
+    }
+
+    /// <summary>
+    /// For encoders: message-form text (a message, bulletin, NWS bulletin, telemetry names or units,
+    /// a project title) must not contain <c>{</c>, which starts the message ID (APRS12c ch. 14); it
+    /// would read back as <see cref="AprsDiagnosticCode.BraceInMessageText"/>.
+    /// </summary>
+    public static void RequireNoBrace(string text, string paramName)
+    {
+        if (text.Contains('{', StringComparison.Ordinal))
+        {
+            throw new ArgumentException("message text must not contain '{', which starts the message ID (APRS12c ch. 14)", paramName);
         }
     }
 

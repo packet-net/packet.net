@@ -170,6 +170,11 @@ public class AprsVectorTests
             return; // nothing to build: undecoded data cannot be encoded
         }
 
+        if (packet.Data is AprsThirdPartyTraffic { Packet.Diagnostics.Count: > 0 })
+        {
+            return; // an inner packet's diagnostics come from decoding it: data built from the neutral form has none
+        }
+
         JsonObject written = JsonNode.Parse(NeutralJson.Data(packet.Data).ToJsonString())!.AsObject();
         JsonObject readBack = NeutralJson.Data(NeutralReader.Data(written));
         Pass(c, JsonMatch.Differences(written, readBack).Select(d => "read back: " + d).ToList());

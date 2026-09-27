@@ -146,7 +146,7 @@ public sealed class AprsStation
 
     /// <summary>The scaling for this station's analog telemetry channels: a, b and c for each in
     /// turn, giving a x v^2 + b x v + c (<c>EQNS.</c>, APRS12c §13).</summary>
-    public AprsDataBuilder TelemetryCoefficients(params decimal[] coefficients) =>
+    public AprsDataBuilder TelemetryCoefficients(params double[] coefficients) =>
         Data(new AprsTelemetryCoefficients { Addressee = Source.Value, Coefficients = coefficients });
 
     /// <summary>Which state of each digital channel matches its label (bit 0 is B1), and the project
