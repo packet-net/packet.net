@@ -679,6 +679,8 @@ namespace Packet.Aprs
         public decimal Latitude { get; init; }
         public decimal Longitude { get; init; }
         public int RadiusMiles { get; init; }
+        public bool Equals(Packet.Aprs.AprsQueryFootprint other) { }
+        public override int GetHashCode() { }
     }
     public enum AprsRawWeatherFormat
     {

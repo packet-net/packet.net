@@ -55,7 +55,8 @@ public readonly record struct AprsBeamHeading(char HeadingCode, char PowerCode)
 /// <remarks>
 /// APRS 1.2 widened values from 000-255 to 000-999, and notes that variable-width and decimal
 /// values (<c>45.7</c>, <c>-7.3</c>) are common and should be accepted; they are decoded in all
-/// modes. Values are <see cref="decimal"/> so their written form survives a round trip.
+/// modes. A decoded report writes each value back as it was sent (<c>073</c>, <c>2</c>, <c>.53</c>);
+/// one built in code writes a whole number from 0 to 999 as three digits, the spec's form.
 /// </remarks>
 public sealed record AprsTelemetryReport : AprsData
 {

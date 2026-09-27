@@ -249,7 +249,7 @@ internal static class MessageCodec
                     }
 
                     values.Add(v);
-                    written.Add(CanonicalCoefficient(number));
+                    written.Add(number);
                 }
 
                 if (values.Count > MaxCoefficients)
@@ -323,15 +323,6 @@ internal static class MessageCodec
             && double.TryParse(s, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out value)
             && double.IsFinite(value);
     }
-
-    /// <summary>
-    /// How a decoded coefficient is written back: as a decimal would write it when it fits one
-    /// (<c>.53</c> as <c>0.53</c>, <c>0.0</c> kept), otherwise as sent (<c>10E60</c>).
-    /// </summary>
-    private static string CanonicalCoefficient(string s) =>
-        s.IndexOfAny(['e', 'E']) < 0 && decimal.TryParse(s, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal d)
-            ? d.ToString(CultureInfo.InvariantCulture)
-            : s;
 
     private static bool TryDirectedQuery(string addressee, ReadOnlySpan<byte> text, int offset, DecodeContext ctx, out AprsDirectedQuery? query)
     {

@@ -319,7 +319,8 @@ internal static class QueryCodec
                 return null;
             }
 
-            footprint = new AprsQueryFootprint(lat, lon, int.Parse(parts[2], CultureInfo.InvariantCulture));
+            // Each coordinate keeps its text as sent, so it re-encodes identical (vectors ruling E1).
+            footprint = new AprsQueryFootprint(lat, lon, int.Parse(parts[2], CultureInfo.InvariantCulture)) { LatitudeText = parts[0], LongitudeText = parts[1] };
         }
 
         return new AprsGeneralQuery { QueryType = type, Footprint = footprint };
@@ -360,11 +361,14 @@ internal static class QueryCodec
                 throw new ArgumentOutOfRangeException(nameof(q), "footprint latitude, longitude or radius out of range");
             }
 
-            // Positive coordinates carry a leading space in place of the sign (APRS12c §15).
-            w.Ascii(Signed(f.Latitude)).Char(',').Ascii(Signed(f.Longitude)).Char(',').Digits(f.RadiusMiles, 4);
+            // A decoded coordinate is written as sent, a number being free-form (vectors ruling E1);
+            // one built in code carries a leading space in place of a plus sign (APRS12c §15).
+            w.Ascii(Written(f.LatitudeText, f.Latitude)).Char(',').Ascii(Written(f.LongitudeText, f.Longitude)).Char(',').Digits(f.RadiusMiles, 4);
         }
 
-        static string Signed(decimal v) => v < 0 ? v.ToString(CultureInfo.InvariantCulture) : " " + v.ToString(CultureInfo.InvariantCulture);
+        static string Written(string? sent, decimal v) =>
+            sent is not null && Coordinate(sent, 180) == v ? sent
+                : v < 0 ? v.ToString(CultureInfo.InvariantCulture) : " " + v.ToString(CultureInfo.InvariantCulture);
     }
 }
 

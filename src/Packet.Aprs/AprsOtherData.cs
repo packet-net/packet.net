@@ -166,10 +166,31 @@ public sealed record AprsMaidenheadBeacon : AprsData
 }
 
 /// <summary>The target area of a general query: floating-point degrees and a radius in miles (APRS12c §15).</summary>
+/// <remarks>
+/// A decoded footprint is written back with its coordinates as sent (<c>-.1715</c>, <c>34.0</c>,
+/// with or without the leading space before a positive value); one built in code gets the spec's
+/// form, a leading space in place of a plus sign. How a coordinate was written is not part of
+/// equality.
+/// </remarks>
 /// <param name="Latitude">Degrees, positive north.</param>
 /// <param name="Longitude">Degrees, positive east.</param>
 /// <param name="RadiusMiles">Radius, 0-9999 whole miles.</param>
-public readonly record struct AprsQueryFootprint(decimal Latitude, decimal Longitude, int RadiusMiles);
+public readonly record struct AprsQueryFootprint(decimal Latitude, decimal Longitude, int RadiusMiles)
+{
+    /// <summary>The latitude's text as received, when decoded; null for one built in code.</summary>
+    internal string? LatitudeText { get; init; }
+
+    /// <summary>The longitude's text as received, when decoded; null for one built in code.</summary>
+    internal string? LongitudeText { get; init; }
+
+    /// <summary>The same place and radius, however the coordinates were written.</summary>
+    /// <param name="other">The footprint to compare with.</param>
+    public bool Equals(AprsQueryFootprint other) =>
+        Latitude == other.Latitude && Longitude == other.Longitude && RadiusMiles == other.RadiusMiles;
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine(Latitude, Longitude, RadiusMiles);
+}
 
 /// <summary>
 /// A general query to all stations, data type <c>?</c>: <c>?APRS?</c>, <c>?IGATE?</c> or

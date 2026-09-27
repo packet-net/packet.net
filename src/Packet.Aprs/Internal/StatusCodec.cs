@@ -223,6 +223,7 @@ internal static class TelemetryCodec
         }
 
         var analog = new List<decimal?>(5);
+        var sent = new List<string>(5);
         while (analog.Count < 5)
         {
             int end = pos;
@@ -232,6 +233,7 @@ internal static class TelemetryCodec
             }
 
             ReadOnlySpan<byte> field = info[pos..end];
+            sent.Add(Text.Latin1(field));
             if (field.Length == 0)
             {
                 analog.Add(null);
@@ -292,7 +294,9 @@ internal static class TelemetryCodec
             return null;
         }
 
-        return new AprsTelemetryReport { Sequence = sequence, Analog = analog, Digital = digital, Comment = comment };
+        // Each value keeps its text as sent (073, 190.0, .53), so it re-encodes identical (vectors
+        // README, "Numbers as sent").
+        return new AprsTelemetryReport { Sequence = sequence, Analog = EquatableList<decimal?>.WithText(analog, sent), Digital = digital, Comment = comment };
     }
 
     public static void Write(InfoWriter w, AprsTelemetryReport r)
@@ -308,6 +312,7 @@ internal static class TelemetryCodec
         }
 
         Text.RequireNoLineBreaks(r.Comment, nameof(r.Comment));
+        IReadOnlyList<string>? sent = (r.Analog as EquatableList<decimal?>)?.Text;
         w.Ascii("T#");
         w.Ascii(r.Sequence);
         for (int i = 0; i < r.Analog.Count; i++)
@@ -320,8 +325,14 @@ internal static class TelemetryCodec
                 w.Char(',');
             }
 
-            if (v is { } value)
+            if (sent is not null)
             {
+                // A decoded value is written as sent: a number is free-form (vectors ruling E1).
+                w.Ascii(sent[i]);
+            }
+            else if (v is { } value)
+            {
+                // Built in code: a whole number 0-999 in the spec's three digits (APRS12c ch. 13).
                 bool canonical = value == decimal.Truncate(value) && value is >= 0 and <= 999 && value.Scale == 0;
                 w.Ascii(canonical ? ((int)value).ToString("000", CultureInfo.InvariantCulture) : value.ToString(CultureInfo.InvariantCulture));
             }
