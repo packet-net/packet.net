@@ -50,6 +50,13 @@ public class AprsVectorTests
         Pass(c, CheckStrict(c, packet, headerDiagnostics), $"with only {flag.Name} off");
     }
 
+    /// <summary>
+    /// Encoding the lenient data again. The bytes are binding: <c>identical</c> gives the input's
+    /// information field, and <c>equivalent</c> and <c>rounded</c> give <c>canonical_info</c> byte
+    /// for byte, the one form the vectors' Encoding rule names. <c>equivalent</c> bytes must also
+    /// decode, leniently and cleanly, to the same data; <c>rounded</c> ones differ from it by a
+    /// value the compressed cs bytes hold only in steps, so their data is not compared.
+    /// </summary>
     [Theory]
     [MemberData(nameof(ReencodeCases))]
     public void Reencoding(string id)
@@ -58,9 +65,19 @@ public class AprsVectorTests
         AprsPacket packet = VectorCases.Decode(Input(c), AprsParseOptions.Lenient, out _)!;
         string expected = (string)c["reencode"]!;
         byte[] info;
+        AprsAddress destination = packet.Destination;
         try
         {
-            info = packet.Data is AprsMicEReport mic ? AprsPacket.CreateMicE(packet.Source, mic, packet.Path).Information.ToArray() : packet.Data.ToInformationField();
+            if (packet.Data is AprsMicEReport mic)
+            {
+                AprsPacket created = AprsPacket.CreateMicE(packet.Source, mic, packet.Path);
+                info = created.Information.ToArray();
+                destination = created.Destination;
+            }
+            else
+            {
+                info = packet.Data.ToInformationField();
+            }
         }
         catch (ArgumentException ex)
         {
@@ -87,25 +104,26 @@ public class AprsVectorTests
                     differences.Add($"reencode: expected the input back, got {Show(info)}");
                 }
 
-                if (packet.Data is AprsMicEReport m && AprsPacket.CreateMicE(packet.Source, m).Destination != packet.Destination)
+                if (packet.Data is AprsMicEReport && destination != packet.Destination)
                 {
-                    differences.Add($"reencode: expected the Mic-E destination {packet.Destination} back, got {AprsPacket.CreateMicE(packet.Source, m).Destination}");
+                    differences.Add($"reencode: expected the Mic-E destination {packet.Destination} back, got {destination}");
                 }
 
                 break;
             case "equivalent":
-                AprsPacket again = AprsPacket.Decode(packet.Source, packet.Destination, packet.Path, info);
+                // Decoded under the destination the encoder computed (Mic-E carries half its
+                // position there), so a defect in the original header is not counted against it.
+                AprsPacket again = AprsPacket.Decode(packet.Source, destination, packet.Path, info);
                 differences.AddRange(JsonMatch.Differences(NeutralJson.Data(packet.Data), NeutralJson.Data(again.Data)).Select(d => "reencode: " + d));
                 if (again.HasErrors || again.HasWarnings)
                 {
                     differences.Add($"reencode: {Show(info)} decodes with {string.Join(", ", again.Diagnostics.Select(d => NeutralJson.Diagnostic(d.Severity, d.Code)))}");
                 }
 
-                if (c["canonical_info"] is { } canonical && (string)canonical! != System.Text.Encoding.UTF8.GetString(info))
-                {
-                    differences.Add($"canonical_info: expected {canonical.ToJsonString()}, wrote {Show(info)}");
-                }
-
+                differences.AddRange(Canonical(c, info));
+                break;
+            case "rounded":
+                differences.AddRange(Canonical(c, info));
                 break;
             default:
                 differences.Add($"reencode: unknown expectation '{expected}'");
@@ -113,6 +131,18 @@ public class AprsVectorTests
         }
 
         Pass(c, differences);
+    }
+
+    /// <summary>The bytes written against the case's <c>canonical_info</c>, byte for byte (its UTF-8).</summary>
+    private static IEnumerable<string> Canonical(JsonObject c, byte[] info)
+    {
+        if (c["canonical_info"] is not { } canonical)
+        {
+            return [$"canonical_info: missing, and a '{(string)c["reencode"]!}' case gives the bytes to write (wrote {Show(info)})"];
+        }
+
+        return System.Text.Encoding.UTF8.GetBytes((string)canonical!).AsSpan().SequenceEqual(info) ? []
+            : [$"canonical_info: expected {canonical.ToJsonString()}, wrote {Show(info)}"];
     }
 
     [Theory]
@@ -144,7 +174,7 @@ public class AprsVectorTests
         }
         else
         {
-            if (System.Text.Encoding.UTF8.GetString(info) != (string)expect["info"]!)
+            if (!System.Text.Encoding.UTF8.GetBytes((string)expect["info"]!).AsSpan().SequenceEqual(info))
             {
                 differences.Add($"encode: expected {expect["info"]!.ToJsonString()}, wrote {Show(info)}");
             }
