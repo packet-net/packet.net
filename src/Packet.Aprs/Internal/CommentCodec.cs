@@ -438,12 +438,22 @@ internal static class CommentCodec
             FrequencyCodec.WriteWithComment(w, freq, d.Comment);
         }
 
+        // The signpost or corridor is the first well-formed braces in the comment, so when the
+        // comment holds braces of its own they go first; the finished field is then decoded to
+        // confirm it reads back (CheckComment has set the check for those braces).
+        bool bracesFirst = d.Frequency is null && (d.SignpostText is not null || d.AreaObject is { CorridorWidthMiles: not null })
+            && d.Comment.Contains('{', StringComparison.Ordinal);
+        if (bracesFirst)
+        {
+            WriteBraces(w, d);
+        }
+
         if (d.Frequency is null)
         {
-            bool extensionJustWritten = !d.IsCompressed && d.AltitudeFeet is null
+            bool extensionJustWritten = !bracesFirst && !d.IsCompressed && d.AltitudeFeet is null
                 && (d.CourseDegrees is not null || d.SpeedKnots is not null || d.RadioRangeMiles is not null || d.DfSignalStrength is not null
                     || d.AreaObject is not null || d.DfBearing is not null || d.Storm is not null || d.Phg is not null);
-            bool nothingBefore = d.AltitudeFeet is null && !extensionJustWritten;
+            bool nothingBefore = d.AltitudeFeet is null && !extensionJustWritten && !bracesFirst;
             if (NeedsDelimiter(d.Comment, extensionJustWritten ? d.Phg : null) || (nothingBefore && !d.IsCompressed && LooksLikeExtension(d.Comment, d)))
             {
                 w.Char('/');
@@ -452,7 +462,11 @@ internal static class CommentCodec
             w.Utf8(d.Comment);
         }
 
-        WriteBraces(w, d);
+        if (!bracesFirst)
+        {
+            WriteBraces(w, d);
+        }
+
         WriteTrailer(w, d, includeWeatherSoftware: false);
     }
 
@@ -582,7 +596,7 @@ internal static class CommentCodec
         && (back.Telemetry is null) == (sent.Telemetry is null)
         && (back.RadioRangeMiles is null) == (sent.RadioRangeMiles is null)
         && (back.DfSignalStrength is null) == (sent.DfSignalStrength is null)
-        && (back.AreaObject is null) == (sent.AreaObject is null)
+        && back.AreaObject == sent.AreaObject
         && (sent is not AprsMicEReport m
             || (back is AprsMicEReport bm && bm.TypeCode == m.TypeCode && bm.DeviceSuffix == m.DeviceSuffix && bm.MaidenheadLocator == m.MaidenheadLocator));
 
