@@ -2,7 +2,7 @@
 
 How a packet.net change reaches the world. This is the **release cascade**: a single substantive merge to `main` fans out into NuGet packages, `.deb`s, downstream app releases, and (when the TS library moved) an npm publish + a static-site redeploy. It is tag-driven and mostly automated, but the *order* and the *downstream fan-out* are easy to forget - hence this doc.
 
-> **TL;DR** - on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the `Packet.*` pins in `packet-net/axcall` and `packet-net/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump the pins in `packet-net/pdn-web`. Finally, record the whole arc in `docs/plan.md` §17.
+> **TL;DR** - on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the `Packet.*` pins in `packet-net/pdn-ax25-tools` and `packet-net/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump the pins in `packet-net/pdn-web`. Finally, record the whole arc in `docs/plan.md` §17.
 
 ## When to release
 
@@ -135,14 +135,14 @@ The CCDI radio driver followed it out on 2026-09-05; see step 0a below.
 
 The lab (`root@pdn-lab`, M9YYY) is usually running a dev `.deb` from [`scripts/deploy-node.sh`](../scripts/deploy-node.sh) (version `0.1.0+dev<stamp>`). It already has the released *code* (deploy-node ships the same build), so a redeploy is optional; do it only to align versions or pick up the release artifact shape. `deploy-node.sh` keeps the box's edited `/etc/packetnet/packetnet.yaml`.
 
-## Step 3 - downstream .NET consumers (`axcall`, `packet-term-tui`)
+## Step 3 - downstream .NET consumers (`pdn-ax25-tools`, `packet-term-tui`)
 
 Two public app repos pin the `Packet.*` NuGet packages:
 
-- [`packet-net/axcall`](https://github.com/packet-net/axcall)
+- [`packet-net/pdn-ax25-tools`](https://github.com/packet-net/pdn-ax25-tools) (axcall, axinetd, axlisten, axsocks, axtun; renamed from `axcall`)
 - [`packet-net/packet-term-tui`](https://github.com/packet-net/packet-term-tui)
 
-For each: open a PR bumping its `Packet.*` pins in `Directory.Packages.props` to the new version (axcall pins five packages, the TUI four), **build + test locally against the freshly-published NuGet first** (so an indexing lag or a packaging slip is caught before merge), merge on green, then tag `v0.x.y` - their `release.yml` builds the six-platform binaries; verify the assets attached. Do this only after Step 1's NuGet indexing has settled.
+For each: open a PR bumping its `Packet.*` pins in `Directory.Packages.props` to the new version (pdn-ax25-tools pins seven packages, the TUI four), **build + test locally against the freshly-published NuGet first** (so an indexing lag or a packaging slip is caught before merge), merge on green, then tag `v0.x.y` - their `release.yml` builds the six-platform binaries; verify the assets attached. Do this only after Step 1's NuGet indexing has settled.
 
 ## Step 4 - the TS leg (only when `ax25-ts` changed)
 
@@ -159,7 +159,7 @@ Add a `docs/plan.md` §17 amendment-log entry capturing the whole arc: the `lib-
 
 ## Repo visibility
 
-`packet-net/packet.net` is **public** (it was private originally; #413 tracks flushing out stale "repo is private" assumptions - this line was one of them), as are `packet-net/ax25-ts`, `packet-net/axcall`, `packet-net/packet-term-tui`, and `packet-net/pdn-web` - release notes, issues, and CI logs are all world-readable; mind what they say.
+`packet-net/packet.net` is **public** (it was private originally; #413 tracks flushing out stale "repo is private" assumptions - this line was one of them), as are `packet-net/ax25-ts`, `packet-net/pdn-ax25-tools`, `packet-net/packet-term-tui`, and `packet-net/pdn-web` - release notes, issues, and CI logs are all world-readable; mind what they say.
 
 ## Release notes
 
@@ -182,7 +182,7 @@ Releases cut before this existed were rewritten in place by [`scripts/backfill-r
 | `node-v<semver>` | `publish-node.yml` | amd64/arm64/armhf `.deb`s + `.tar.gz` archives + `SHA256SUMS` on a GitHub Release, under version-free asset names (`packetnet_<arch>.deb`) so `/releases/latest/download/` is a permanent URL |
 | `node-v<semver>` (same tag) | `publish-docker.yml` | multi-arch (amd64+arm64) `ghcr.io/packet-net/packet.net:<semver>` + `:latest` |
 | `headend-v<semver>` | `publish-headend.yml` | arm64/arm v7/amd64 `.deb`s + static Go binaries on a GitHub Release |
-| `packet-net/axcall` `v*` | its `release.yml` | six-platform app binaries |
+| `packet-net/pdn-ax25-tools` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/packet-term-tui` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/ax25-ts` `v*` | its `publish.yml` | npm package |
 | push to `packet-net/pdn-web` `main` | OARC + GitHub Pages auto-deploy | packet-term.m0lte.uk, soundmodem-web |
