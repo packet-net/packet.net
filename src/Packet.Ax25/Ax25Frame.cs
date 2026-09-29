@@ -182,6 +182,13 @@ public sealed partial class Ax25Frame
     /// </summary>
     public bool IsResponse => !Destination.CrhBit && Source.CrhBit;
 
+    /// <summary>
+    /// Copy of this frame whose source SSID octet carries the modulo-128 marker
+    /// (reserved bits <c>01</c>) so a monitor can tell the control field is two octets (#859).
+    /// </summary>
+    public Ax25Frame WithExtendedLinkMark()
+        => new(Destination, Source with { ExtendedLinkMark = true }, Digipeaters, Control, ControlExtension, Pid, Info);
+
     private Ax25Frame(
         Ax25Address destination,
         Ax25Address source,
