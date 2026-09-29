@@ -115,6 +115,35 @@ public sealed class Ax25ListenerPeerCallDuringXidTests
         session.Context.IsExtended.Should().Be(ours.FrameType == Ax25FrameType.Sabme, "the link is at the version our frame set");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_peer_call_at_the_other_version_is_re_established_when_the_peer_also_answers_the_XID(bool extended)
+    {
+        // The peer answers our probe after its call, echoing our command. Our XID merge compares
+        // the answer with our CURRENT settings, which the peer's frame has just set, so it can
+        // only lower the modulus. On a mod-8 dial a SABME made our end mod-128, and the answer
+        // (our mod-8 offer) takes it back to mod-8, the dial's version, while the peer opened at
+        // mod-128: the ends agree only if the peer's responder moved its own modulus on a link
+        // it was already opening, which not every stack does. So the version the peer's call
+        // set is what decides, and the dial re-establishes, as main always did. (On a v2.2 dial
+        // a SABM leaves our end at mod-8 whatever the answer says, the mirror case.)
+        var (listener, modem, dial, xid) = await DialIntoProbeAsync(extended);
+        await using var _ = listener;
+
+        modem.InjectInbound(Call(sabme: !extended));
+        modem.InjectInbound(XidAnswer(xid));
+
+        await ListenerTestSupport.WaitFor(() => Sent(modem).Any(IsEstablish), TimeSpan.FromSeconds(10),
+            "the dial sends its own SABM(E) once the probe is over");
+        var ours = Sent(modem).Single(IsEstablish);
+        modem.InjectInbound(Ax25Frame.Ua(Local, Peer, finalBit: true));
+
+        var session = await dial.WithTimeout(TimeSpan.FromSeconds(10));
+        session.CurrentState.Should().Be("Connected");
+        session.Context.IsExtended.Should().Be(ours.FrameType == Ax25FrameType.Sabme, "the link is at the version our frame set");
+    }
+
     [Fact]
     public async Task The_returned_link_carries_data_both_ways()
     {

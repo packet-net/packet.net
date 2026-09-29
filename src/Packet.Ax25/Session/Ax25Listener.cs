@@ -584,8 +584,30 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // probe; a dial on it re-establishes it below, as it always has.
             bool upBeforeProbe = IsLinkUp(cached.Session.SettledState);
 
+            // The version the peer's own call set, taken when it brought the link up: figc4.1
+            // runs Set Version for the SABM or SABME before it raises DL-CONNECT indication, so
+            // at that signal the context holds the peer's version and nothing else yet. The
+            // probe's XID answer can move the context's modulus afterwards, so the context
+            // after the probe cannot tell us what the peer opened at. 0 = no call, 8 or 128.
+            int peerCallModulus = 0;
+            void OnPeerCall(object? _, DataLinkSignal sig)
+            {
+                if (sig is DataLinkConnectIndication)
+                {
+                    Volatile.Write(ref peerCallModulus, cached.Session.Context.IsExtended ? 128 : 8);
+                }
+            }
+
             LogPreConnectXid(portName, local.ToString(), remote.ToString());
-            await NegotiateParametersBeforeConnectAsync(cached, extended, ct).ConfigureAwait(false);
+            cached.Session.DataLinkSignalEmitted += OnPeerCall;
+            try
+            {
+                await NegotiateParametersBeforeConnectAsync(cached, extended, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                cached.Session.DataLinkSignalEmitted -= OnPeerCall;
+            }
             LogXidOutcome(portName, local.ToString(), remote.ToString(),
                 cached.Session.Context.ParametersNegotiated ? "confirmed" : "no response",
                 cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N");
@@ -599,14 +621,20 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // unrecoverable error. So the dial returns the link as it is; nothing the SDL does
             // changes, the dial just does not ask for a reset nobody needs.
             //
-            // Only while the link is at the version this dial offered in its XID command, after
-            // whatever that exchange settled. Then the two ends agree about the link: the peer
-            // merged our offer with its own and answered the result, and we merged that answer
-            // with ours. At any other version (a SABM answering a v2.2 dial, or a SABME a mod-8
-            // one) they are not certain to agree, so the dial re-establishes below, as it always
-            // has, and both ends take the version from our frame.
+            // Only when both ends are sure to agree about the link, though, because the probe's
+            // XID exchange can finish after the link is up and so apply to a live link. That
+            // needs the peer to have opened at the version this dial offered in its XID command
+            // (its SABME for a v2.2 dial, its SABM for a mod-8 one), and the link to still be at
+            // that version after whatever the exchange settled: the peer merged our offer with
+            // its own and answered the result, and we merged that answer with ours. A peer that
+            // opened at the other version has a link whose modulus our answer can move at our
+            // end, and a responder need not move its own on a link it is already opening, so
+            // there the dial re-establishes below, as it always has, and both ends take the
+            // version from our frame.
+            int offeredModulus = extended ? 128 : 8;
             if (!upBeforeProbe
                 && IsLinkUp(cached.Session.SettledState)
+                && Volatile.Read(ref peerCallModulus) == offeredModulus
                 && cached.Session.Context.IsExtended == extended)
             {
                 LogConnectedByPeerDuringXid(portName, local.ToString(), remote.ToString(),
