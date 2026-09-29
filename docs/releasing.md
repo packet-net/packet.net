@@ -2,7 +2,7 @@
 
 How a packet.net change reaches the world. This is the **release cascade**: a single substantive merge to `main` fans out into NuGet packages, `.deb`s, downstream app releases, and (when the TS library moved) an npm publish + a static-site redeploy. It is tag-driven and mostly automated, but the *order* and the *downstream fan-out* are easy to forget - hence this doc.
 
-> **TL;DR** - on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the `Packet.*` pins in `packet-net/axcall` and `packet-net/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump `packet-net/packet-term-web`'s pin. Finally, record the whole arc in `docs/plan.md` §17.
+> **TL;DR** - on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the `Packet.*` pins in `packet-net/axcall` and `packet-net/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump the pins in `packet-net/pdn-web`. Finally, record the whole arc in `docs/plan.md` §17.
 
 ## When to release
 
@@ -149,7 +149,7 @@ For each: open a PR bumping its `Packet.*` pins in `Directory.Packages.props` to
 [`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts) mirrors this repo's behaviour and is parity-CI-enforced (see [CLAUDE.md](../CLAUDE.md) → "ax25-ts parity"). It only needs a release when *it* changed this cycle - e.g. a new named-flag parity leg landed there alongside a flag here. If so:
 
 1. ax25-ts release PR: promote its `CHANGELOG` `[Unreleased]` → versioned, `npm pkg set version <semver>`, merge, tag `v<semver>` → its `publish.yml` → npm.
-2. Bump [`packet-net/packet-term-web`](https://github.com/packet-net/packet-term-web)'s esm.sh pin in `index.html` (~line 423). That repo has **no CI and branch protection**, so the pin-bump merge needs `--admin`; pushing to `main` auto-deploys to packet-term.m0lte.uk via OARC object storage (see the OARC publish notes - self-hosted-runner image gotchas apply).
+2. Bump the `@packet-net/ax25` esm.sh pins in [`packet-net/pdn-web`](https://github.com/packet-net/pdn-web) (formerly `packet-term-web`, which now redirects there): `packet-term-web/index.html` (~line 423) and `soundmodem-web/index.html`, plus the `@packet-net/ax25` dev dependency of soundmodem-web's page probe. Per that repo's CLAUDE.md, run the probe (`npm test` in `soundmodem-web/`) and check packet-term-web loads before merging. Merging to `main` deploys both: packet-term-web to packet-term.m0lte.uk via OARC object storage (see the OARC publish notes - self-hosted-runner image gotchas apply) and soundmodem-web to GitHub Pages. This once needed `--admin`; on 2026-09-29 a plain merge went through.
 
 If `ax25-ts` did **not** change this cycle, skip Step 4 entirely.
 
@@ -159,7 +159,7 @@ Add a `docs/plan.md` §17 amendment-log entry capturing the whole arc: the `lib-
 
 ## Repo visibility
 
-`packet-net/packet.net` is **public** (it was private originally; #413 tracks flushing out stale "repo is private" assumptions - this line was one of them), as are `packet-net/ax25-ts`, `packet-net/axcall`, `packet-net/packet-term-tui`, and `packet-net/packet-term-web` - release notes, issues, and CI logs are all world-readable; mind what they say.
+`packet-net/packet.net` is **public** (it was private originally; #413 tracks flushing out stale "repo is private" assumptions - this line was one of them), as are `packet-net/ax25-ts`, `packet-net/axcall`, `packet-net/packet-term-tui`, and `packet-net/pdn-web` - release notes, issues, and CI logs are all world-readable; mind what they say.
 
 ## Release notes
 
@@ -185,4 +185,4 @@ Releases cut before this existed were rewritten in place by [`scripts/backfill-r
 | `packet-net/axcall` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/packet-term-tui` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/ax25-ts` `v*` | its `publish.yml` | npm package |
-| push to `packet-net/packet-term-web` `main` | OARC auto-deploy | packet-term.m0lte.uk |
+| push to `packet-net/pdn-web` `main` | OARC + GitHub Pages auto-deploy | packet-term.m0lte.uk, soundmodem-web |
