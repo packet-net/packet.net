@@ -205,7 +205,7 @@ internal static class DataLinkSmokeHarness
             // t17, figc4.5 t11 / t13 / t14) are declared transitions this harness
             // drives directly; by default the runtime pre-empts them on an up link
             // (#874, #856).
-            Quirks = Ax25SessionQuirks.Default with { UnexpectedUaIgnored = false, RepeatedConnectSabmReacknowledged = false },
+            Quirks = Ax25SessionQuirks.Default with { Ax25Spec114UnexpectedUaIgnored = false, Ax25Spec50RepeatedConnectSabmReacknowledged = false },
         };
         // Start from the runtime defaults (so timer-state / counter atoms have
         // sensible bindings) then override with the atoms named by this page.

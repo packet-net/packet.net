@@ -20,7 +20,7 @@ namespace Packet.Node.Tests.Integration;
 /// the crossing is lost on the air, so node A connects while node B is still waiting, and A's
 /// client, told <c>"crossed":true</c>, sends at once. B's retried SABM(E) then reached a
 /// connected A, which reset the link (figc4.4) and threw that data away. With
-/// <c>RepeatedConnectSabmReacknowledged</c> A answers the retry with UA again and the data gets
+/// <c>Ax25Spec50RepeatedConnectSabmReacknowledged</c> A answers the retry with UA again and the data gets
 /// through.
 /// </summary>
 [Trait("Category", "Node")]

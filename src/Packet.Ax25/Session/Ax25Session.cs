@@ -70,12 +70,12 @@ public sealed class Ax25Session
     // PreClampRetryCountOnT1Expiry.
     private bool vaAdvancedSinceT1Expiry;
 
-    // RepeatedConnectUaIgnored (#842): the encoded UA that took this link to Connected, kept
+    // Ax25Spec114RepeatedConnectUaIgnored (#842): the encoded UA that took this link to Connected, kept
     // only while it is still the last frame the peer sent. A byte-identical UA arriving next
     // is a second delivery of it, not the figure's unexpected UA. See IsRepeatedConnectUa.
     private byte[]? connectingUa;
 
-    // UnexpectedUaIgnored (#874): the last UA dropped on the up link, kept until the peer shows
+    // Ax25Spec114UnexpectedUaIgnored (#874): the last UA dropped on the up link, kept until the peer shows
     // it carried on (an in-sequence I frame) or the link leaves the connected states. If the
     // peer's next I frame instead restarts at N(S) = 0 while V(r) is not 0, the peer reset on
     // the SABM(E) that UA answered, and this UA was the figure's unexpected UA after all: it is
@@ -88,7 +88,7 @@ public sealed class Ax25Session
     // already delivered, a restarted sequence brings new ones.
     private byte[]? lastFrameZero;
 
-    // RepeatedConnectSabmReacknowledged (#856): true once this session has answered a SABM(E)
+    // Ax25Spec50RepeatedConnectSabmReacknowledged (#856): true once this session has answered a SABM(E)
     // from the peer (figc4.1 accepting its call, figc4.2 / figc4.6 answering it while our own
     // dial waited, or the figure's reset on one), until the peer sends anything that moves a
     // sequence variable (an I or S frame), or this end re-establishes the link itself. A
@@ -624,7 +624,7 @@ public sealed class Ax25Session
     }
 
     /// <summary>
-    /// <see cref="Ax25SessionQuirks.UnexpectedUaIgnored"/>: true when <paramref name="evt"/> is a UA
+    /// <see cref="Ax25SessionQuirks.Ax25Spec114UnexpectedUaIgnored"/>: true when <paramref name="evt"/> is a UA
     /// received while the link is up, which is then dropped before the figure can read it as the
     /// §6.5 unexpected UA (figc4.4 <c>t17_ua_received_*</c>, figc4.5 <c>t11_ua_received</c>) and
     /// reset the link. With no SABM(E) or DISC of ours outstanding, it can only be a late or
@@ -632,7 +632,7 @@ public sealed class Ax25Session
     /// are left as they are: a UA closes neither.
     /// </summary>
     private bool IsUaOnUpLink(Ax25Event evt) =>
-        Context.Quirks.UnexpectedUaIgnored
+        Context.Quirks.Ax25Spec114UnexpectedUaIgnored
         && evt is UaReceived
         && CurrentState is "Connected" or "TimerRecovery";
 
@@ -683,7 +683,7 @@ public sealed class Ax25Session
         evt is IFrameReceived i && i.Frame.Ns != 0 && i.Frame.Ns == Context.VR;
 
     /// <summary>
-    /// <see cref="Ax25SessionQuirks.RepeatedConnectUaIgnored"/>: true when <paramref name="evt"/>
+    /// <see cref="Ax25SessionQuirks.Ax25Spec114RepeatedConnectUaIgnored"/>: true when <paramref name="evt"/>
     /// is a second delivery of the UA that just connected this link, which is then dropped
     /// before the figure can read it as an unexpected UA (figc4.4 <c>t17_ua_received_*</c>) and
     /// reset the link. Any other frame from the peer ends the window, so only the frame straight
@@ -697,7 +697,7 @@ public sealed class Ax25Session
         }
 
         if (evt is UaReceived repeat
-            && Context.Quirks.RepeatedConnectUaIgnored
+            && Context.Quirks.Ax25Spec114RepeatedConnectUaIgnored
             && string.Equals(CurrentState, "Connected", StringComparison.Ordinal)
             && repeat.Frame.ToBytes().AsSpan().SequenceEqual(connecting))
         {
@@ -724,7 +724,7 @@ public sealed class Ax25Session
         {
             connectingUa = null;
         }
-        else if (Context.Quirks.RepeatedConnectUaIgnored
+        else if (Context.Quirks.Ax25Spec114RepeatedConnectUaIgnored
             && evt is UaReceived connecting
             && stateBefore is "AwaitingConnection" or "AwaitingV22Connection")
         {
@@ -733,7 +733,7 @@ public sealed class Ax25Session
     }
 
     /// <summary>
-    /// <see cref="Ax25SessionQuirks.RepeatedConnectSabmReacknowledged"/>: true when
+    /// <see cref="Ax25SessionQuirks.Ax25Spec50RepeatedConnectSabmReacknowledged"/>: true when
     /// <paramref name="evt"/> is a SABM(E) of the link's modulo arriving on the connected link
     /// from a peer whose SABM(E) this session has answered, while the peer has sent nothing since
     /// that moved a sequence variable. The peer is still waiting for that UA and has retried; the
@@ -750,7 +750,7 @@ public sealed class Ax25Session
     /// </summary>
     private bool IsRepeatedConnectSabm(Ax25Event evt)
     {
-        if (!Context.Quirks.RepeatedConnectSabmReacknowledged
+        if (!Context.Quirks.Ax25Spec50RepeatedConnectSabmReacknowledged
             || !peerCallAnswered
             || CurrentState is not ("Connected" or "TimerRecovery"))
         {
@@ -803,7 +803,7 @@ public sealed class Ax25Session
     /// </summary>
     private void NotePeerCall(Ax25Event evt, string stateBefore)
     {
-        if (!Context.Quirks.RepeatedConnectSabmReacknowledged
+        if (!Context.Quirks.Ax25Spec50RepeatedConnectSabmReacknowledged
             || CurrentState is not ("AwaitingConnection" or "AwaitingV22Connection" or "Connected" or "TimerRecovery"))
         {
             peerCallAnswered = false;

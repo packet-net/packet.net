@@ -7,7 +7,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// #842, <see cref="Ax25SessionQuirks.RepeatedConnectUaIgnored"/>: the UA that answers a dial,
+/// #842, <see cref="Ax25SessionQuirks.Ax25Spec114RepeatedConnectUaIgnored"/>: the UA that answers a dial,
 /// delivered twice. LinBPQ with two AXIP <c>MAP</c> lines for one address sends every frame
 /// once per line, so the dialler sees UA, UA. The first connects the link; figc4.4 then reads
 /// the second, in the connected state, as an unexpected UA (§6.5: "a TNC initiates a reset
@@ -97,10 +97,10 @@ public sealed class Ax25ListenerRepeatedConnectUaTests
         listener.ActiveSessions.Single().CurrentState.Should().Be("AwaitingConnection");
     }
 
-    // #874, Ax25SessionQuirks.UnexpectedUaIgnored: on a link that is up, every UA is a late or
+    // #874, Ax25SessionQuirks.Ax25Spec114UnexpectedUaIgnored: on a link that is up, every UA is a late or
     // repeated answer to the SABM(E) that set it up, whatever came before it. The narrow #842
     // window is only what is left when that quirk is off.
-    private static readonly Ax25SessionQuirks NarrowOnly = Ax25SessionQuirks.Default with { UnexpectedUaIgnored = false };
+    private static readonly Ax25SessionQuirks NarrowOnly = Ax25SessionQuirks.Default with { Ax25Spec114UnexpectedUaIgnored = false };
 
     [Fact]
     public async Task A_UA_after_other_traffic_from_the_peer_is_dropped_too()

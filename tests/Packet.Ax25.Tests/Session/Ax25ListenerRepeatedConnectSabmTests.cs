@@ -175,7 +175,7 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
         // StrictlyFaithful a mod-128 dial does not route through AwaitingV22Connection
         // (Ax25Spec44), so the crossing itself goes differently.
         var (onA, _, signalsOnA, receivedOnB, _, _, cleanup) = await CrossWithALostUaAsync(
-            Ax25SessionQuirks.Default with { RepeatedConnectSabmReacknowledged = false }, extended);
+            Ax25SessionQuirks.Default with { Ax25Spec50RepeatedConnectSabmReacknowledged = false }, extended);
         await using var _ = cleanup;
 
         await WaitFor(() => { lock (signalsOnA) { return signalsOnA.Any(s => s is DataLinkConnectIndication); } },

@@ -28,10 +28,12 @@ namespace Packet.Ax25.Session;
 /// <para>
 /// (1) <b>Figure-defect quirks</b> - name the flag <c>Ax25Spec&lt;issue&gt;…</c>
 /// after the <c>packethacking/ax25spec</c> issue it works around (so it is
-/// greppable and removable once the spec is fixed), default it to the corrected
-/// behaviour, document the spec prose + the de-facto implementation evidence, and
-/// open a packet.net tracking issue to delete it when ax25sdl ships a figure
-/// carrying the upstream resolution.
+/// greppable and removable once the spec is fixed), mark it with
+/// <see cref="Ax25SpecIssueAttribute"/> carrying the same number (the reference in
+/// the code, checked by a test so name, attribute and docs cannot drift), default it
+/// to the corrected behaviour, document the spec prose + the de-facto implementation
+/// evidence, and open a packet.net tracking issue to delete it when ax25sdl ships a
+/// figure carrying the upstream resolution.
 /// </para>
 /// <para>
 /// (2) <b>De-facto-interop quirks</b> - where the spec text is genuinely ambiguous
@@ -41,6 +43,13 @@ namespace Packet.Ax25.Session;
 /// after what they do (e.g. <see cref="SegmentFirstCarriesL3Pid"/>). Default them
 /// on (interoperate out of the box) and turn them off under
 /// <see cref="StrictlyFaithful"/> (reproduce the figure-literal reading).
+/// </para>
+/// <para>
+/// A deviation that the figures draw correctly but that loses data on the air (the
+/// crossed-dial quirks) is filed against the spec as a proposal for the next revision
+/// and named after that issue like a figure-defect quirk, so that every departure from
+/// the figures is on record and greppable, with a packet.net issue to remove it once
+/// the revision lands.
 /// </para>
 /// </remarks>
 public sealed record Ax25SessionQuirks
@@ -130,7 +139,7 @@ public sealed record Ax25SessionQuirks
     public bool SrejCommandIgnored { get; init; } = true;
 
     /// <summary>
-    /// <b>De-facto-interop quirk (not a figure defect; the deviation is on record as packethacking/ax25spec#114).</b> Drop a
+    /// <b>Deviation quirk, named after packethacking/ax25spec#114 (the narrow case of <see cref="Ax25Spec114UnexpectedUaIgnored"/>; remove both when v2.3 adjudicates it, packet-net/packet.net#880).</b> Drop a
     /// repeated copy of the UA that just connected the link, rather than reading it as an
     /// unexpected UA and resetting. Default <c>true</c>.
     /// </summary>
@@ -153,7 +162,7 @@ public sealed record Ax25SessionQuirks
     /// Connected, and no other frame from the peer has arrived since. Any number of copies are
     /// dropped. Anything else still runs the figure: a UA that differs (F=0, say), or one that
     /// follows other traffic from the peer. Since #874 that is the narrow case only:
-    /// <see cref="UnexpectedUaIgnored"/>, on by default, drops every UA on an up link and watches
+    /// <see cref="Ax25Spec114UnexpectedUaIgnored"/>, on by default, drops every UA on an up link and watches
     /// for the peer's sequence restarting instead; this quirk is what is left with that one off.
     /// </para>
     /// <para>
@@ -165,10 +174,11 @@ public sealed record Ax25SessionQuirks
     /// resets the link as drawn.
     /// </para>
     /// </remarks>
-    public bool RepeatedConnectUaIgnored { get; init; } = true;
+    [Ax25SpecIssue(114, RemovalTrackedIn = 880)]
+    public bool Ax25Spec114RepeatedConnectUaIgnored { get; init; } = true;
 
     /// <summary>
-    /// <b>De-facto-interop quirk (not a figure defect; the deviation is on record as packethacking/ax25spec#114, and the figc4.5 modulus omission it uncovered as #115).</b> Drop every UA
+    /// <b>Deviation quirk, named after packethacking/ax25spec#114 (the figc4.5 modulus omission it uncovered is #115; remove when v2.3 adjudicates it, packet-net/packet.net#880).</b> Drop every UA
     /// received while the link is up (Connected or Timer Recovery), rather than reading it as
     /// the §6.5 unexpected UA and resetting the link. Default <c>true</c>.
     /// </summary>
@@ -193,7 +203,7 @@ public sealed record Ax25SessionQuirks
     /// no signal to layer 3, timers and sequence variables as they were. This is what LinBPQ
     /// does (<c>L2Code.c</c> <c>SDUFRM</c>: "DISCARD - PROBABLY REPEAT OF ACK OF SABM") and what
     /// the Linux kernel does (<c>ax25_std_in.c</c> <c>ax25_std_state3_machine</c> has no UA case);
-    /// direwolf and rax25 follow the figure. It subsumes <see cref="RepeatedConnectUaIgnored"/>,
+    /// direwolf and rax25 follow the figure. It subsumes <see cref="Ax25Spec114RepeatedConnectUaIgnored"/>,
     /// which stays for the narrow case on its own.
     /// </para>
     /// <para>
@@ -208,13 +218,14 @@ public sealed record Ax25SessionQuirks
     /// a retransmission and is left to the figure as such, and an in-sequence frame past 0 shows
     /// the peer carried on, which forgets the UA. When <c>false</c>
     /// (<see cref="StrictlyFaithful"/>), every UA on an up link resets it as drawn, unless
-    /// <see cref="RepeatedConnectUaIgnored"/> absorbs it.
+    /// <see cref="Ax25Spec114RepeatedConnectUaIgnored"/> absorbs it.
     /// </para>
     /// </remarks>
-    public bool UnexpectedUaIgnored { get; init; } = true;
+    [Ax25SpecIssue(114, RemovalTrackedIn = 880)]
+    public bool Ax25Spec114UnexpectedUaIgnored { get; init; } = true;
 
     /// <summary>
-    /// <b>De-facto-interop quirk (not a figure defect; the deviation is on record as packethacking/ax25spec#50).</b> Answer a
+    /// <b>Deviation quirk, named after packethacking/ax25spec#50 (remove when v2.3 adjudicates it, packet-net/packet.net#881).</b> Answer a
     /// repeat of the peer's connecting SABM or SABME with UA again, rather than reading it as
     /// the §6.5 reset and discarding what this end has queued. Default <c>true</c>.
     /// </summary>
@@ -261,7 +272,8 @@ public sealed record Ax25SessionQuirks
     /// <c>false</c> (<see cref="StrictlyFaithful"/>), the repeat resets the link as drawn.
     /// </para>
     /// </remarks>
-    public bool RepeatedConnectSabmReacknowledged { get; init; } = true;
+    [Ax25SpecIssue(50, RemovalTrackedIn = 881)]
+    public bool Ax25Spec50RepeatedConnectSabmReacknowledged { get; init; } = true;
 
     /// <summary>
     /// Work around <c>packethacking/ax25spec#41</c>: figc4.7 <c>Select_T1_Value</c>
@@ -289,6 +301,7 @@ public sealed record Ax25SessionQuirks
     /// once ax25sdl ships a figc4.7 carrying the Karn guard. Implemented in
     /// packet-net/packet.net#241 ← packethacking/ax25spec#41.
     /// </remarks>
+    [Ax25SpecIssue(41)]
     public bool Ax25Spec41KarnSrtSampling { get; init; } = true;
 
     /// <summary>
@@ -314,6 +327,7 @@ public sealed record Ax25SessionQuirks
     /// Delete once ax25sdl ships a figc4.4 requesting the gap. Implemented in
     /// packet-net/packet.net#246 ← packethacking/ax25spec#42.
     /// </remarks>
+    [Ax25SpecIssue(42)]
     public bool Ax25Spec42SrejTargetsGap { get; init; } = true;
 
     /// <summary>
@@ -341,6 +355,7 @@ public sealed record Ax25SessionQuirks
     /// with the branches corrected. Implemented in packet-net/packet.net ←
     /// packethacking/ax25spec#43 (packet-net/ax25sdl#60, faithful figure).
     /// </remarks>
+    [Ax25SpecIssue(43)]
     public bool Ax25Spec43DlFlowOffEntersBusy { get; init; } = true;
 
     /// <summary>
@@ -392,6 +407,7 @@ public sealed record Ax25SessionQuirks
     /// Delete once ax25sdl ships a figc4.2 carrying the version branch.
     /// </para>
     /// </remarks>
+    [Ax25SpecIssue(44)]
     public bool Ax25Spec44Mod128ConnectRoutesToV22 { get; init; } = true;
 
     /// <summary>
@@ -418,6 +434,7 @@ public sealed record Ax25SessionQuirks
     /// <see cref="Ax25Spec44Mod128ConnectRoutesToV22"/> makes figc4.6 reachable by an
     /// initiator. Delete once ax25sdl ships a figc4.6 t14 with the actions reordered.
     /// </remarks>
+    [Ax25SpecIssue(45)]
     public bool Ax25Spec45FrmrFallbackReestablishesV20 { get; init; } = true;
 
     /// <summary>
@@ -471,6 +488,7 @@ public sealed record Ax25SessionQuirks
     /// resolution (tracked upstream at <c>packethacking/ax25spec#48</c>).
     /// </para>
     /// </remarks>
+    [Ax25SpecIssue(48)]
     public bool Ax25Spec48DmRejectionDegradesToV20 { get; init; } = true;
 
     /// <summary>
@@ -505,6 +523,7 @@ public sealed record Ax25SessionQuirks
     /// (packethacking/ax25spec#47). The figc4.4 (Connected) handler is already correct, so no
     /// quirk is needed there.
     /// </remarks>
+    [Ax25SpecIssue(47)]
     public bool Ax25Spec47TimerRecoveryDrainAdvancesVR { get; init; } = true;
 
     /// <summary>
@@ -552,6 +571,7 @@ public sealed record Ax25SessionQuirks
     /// resolves #9 and ax25sdl ships figures carrying the reset.
     /// </para>
     /// </remarks>
+    [Ax25SpecIssue(9)]
     public bool Ax25Spec9AckProgressResetsRc { get; init; } = true;
 
     /// <summary>
@@ -585,6 +605,7 @@ public sealed record Ax25SessionQuirks
     /// conformance study only. Tighten or remove once ax25spec#13 resolves how
     /// the spec should bound <c>k</c>.
     /// </remarks>
+    [Ax25SpecIssue(13)]
     public bool Ax25Spec13ClampSrejWindowToHalfModulus { get; init; } = true;
 
     /// <summary>
@@ -598,13 +619,22 @@ public sealed record Ax25SessionQuirks
     /// known defects. For strict conformance testing against the published
     /// figures, not for on-air use.
     /// </summary>
+    /// <summary>Every quirk named after a <c>packethacking/ax25spec</c> issue, with its
+    /// issue: the machine-readable record of the deviations this runtime makes, for the
+    /// audit and parity tooling. Read from <see cref="Ax25SpecIssueAttribute"/>.</summary>
+    public static IReadOnlyDictionary<string, Ax25SpecIssueAttribute> SpecIssues { get; } =
+        typeof(Ax25SessionQuirks).GetProperties()
+            .Select(p => (p.Name, Attr: (Ax25SpecIssueAttribute?)Attribute.GetCustomAttribute(p, typeof(Ax25SpecIssueAttribute))))
+            .Where(x => x.Attr is not null)
+            .ToDictionary(x => x.Name, x => x.Attr!, StringComparer.Ordinal);
+
     public static Ax25SessionQuirks StrictlyFaithful { get; } = new()
     {
         SegmentFirstCarriesL3Pid = false,
         SrejCommandIgnored = false,
-        RepeatedConnectUaIgnored = false,
-        UnexpectedUaIgnored = false,
-        RepeatedConnectSabmReacknowledged = false,
+        Ax25Spec114RepeatedConnectUaIgnored = false,
+        Ax25Spec114UnexpectedUaIgnored = false,
+        Ax25Spec50RepeatedConnectSabmReacknowledged = false,
         Ax25Spec41KarnSrtSampling = false,
         Ax25Spec42SrejTargetsGap = false,
         Ax25Spec43DlFlowOffEntersBusy = false,

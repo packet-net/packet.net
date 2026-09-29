@@ -89,9 +89,9 @@ public class CrossedDialExplorationTests
     /// which also changes how a mod-128 dial routes.</summary>
     private static readonly Ax25SessionQuirks FigurePeer = Ax25SessionQuirks.Default with
     {
-        UnexpectedUaIgnored = false,
-        RepeatedConnectUaIgnored = false,
-        RepeatedConnectSabmReacknowledged = false,
+        Ax25Spec114UnexpectedUaIgnored = false,
+        Ax25Spec114RepeatedConnectUaIgnored = false,
+        Ax25Spec50RepeatedConnectSabmReacknowledged = false,
     };
 
     public static IEnumerable<object[]> MixedConfigs()
@@ -177,7 +177,7 @@ public class CrossedDialExplorationTests
         // Why the quirks exist: the figures as drawn reset the link in most orderings in
         // which one T1 fires before the crossing completes, with no frame lost at all.
         var cfg = new CrossedDialExplorer.Config(Extended: false, Probe: false,
-            Quirks: Ax25SessionQuirks.Default with { UnexpectedUaIgnored = false, RepeatedConnectSabmReacknowledged = false });
+            Quirks: Ax25SessionQuirks.Default with { Ax25Spec114UnexpectedUaIgnored = false, Ax25Spec50RepeatedConnectSabmReacknowledged = false });
         var outcomes = CrossedDialExplorer.Exhaustive(cfg, depth: 6, maxRuns: 2000);
         output.WriteLine(CrossedDialExplorer.Report(outcomes));
 
