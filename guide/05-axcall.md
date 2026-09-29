@@ -136,7 +136,7 @@ session.PostEvent(new DlDisconnectRequest());
 
 ## Tool #3 - `axcall`, end to end
 
-The real `axcall` ([`axcall/src/Axcall`](https://github.com/packet-net/axcall))
+The real `axcall` ([`pdn-ax25-tools/src/Axcall`](https://github.com/packet-net/pdn-ax25-tools))
 takes a port argument that can be a serial device (`/dev/ttyUSB0:57600`), a TCP
 endpoint (`10.45.0.66:8001`), or a name from its ports file, and resolves it to
 `KissSerialModem.Open(device, baud)` or `KissTcpClient.ConnectAsync(host, port)`.
