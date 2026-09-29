@@ -108,7 +108,7 @@ A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyF
 
 ### A repeated UA after the connect - duplicate delivery (`RepeatedConnectUaIgnored`)
 
-A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyFaithful`. It drops a second delivery of the UA that just connected a dial, rather than reading it as an unexpected UA and resetting the link (packet-net/packet.net#842). Not a figure defect: figc4.4 matches the prose.
+A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyFaithful`. It drops a second delivery of the UA that just connected a dial, rather than reading it as an unexpected UA and resetting the link (packet-net/packet.net#842). Not a figure defect: figc4.4 matches the prose; the deviation is on record for v2.3 as packethacking/ax25spec#114.
 
 | Knob | Spec / figure model | De-facto (default-on) behaviour | Evidence | Default | Off restores |
 |---|---|---|---|---|---|
@@ -118,7 +118,7 @@ A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyF
 
 ### A UA on a link that is up (`UnexpectedUaIgnored`)
 
-A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyFaithful`. It drops every UA received while the link is Connected or in Timer Recovery, rather than reading it as the §6.5 unexpected UA and resetting the link (packet-net/packet.net#874). It subsumes `RepeatedConnectUaIgnored`, which stays for the narrow case on its own. Not a figure defect: figc4.4 and figc4.5 match the prose.
+A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyFaithful`. It drops every UA received while the link is Connected or in Timer Recovery, rather than reading it as the §6.5 unexpected UA and resetting the link (packet-net/packet.net#874). It subsumes `RepeatedConnectUaIgnored`, which stays for the narrow case on its own. Not a figure defect: figc4.4 and figc4.5 match the prose; the deviation is on record for v2.3 as packethacking/ax25spec#114, and the figc4.5 modulus omission the same work uncovered as packethacking/ax25spec#115.
 
 | Knob | Spec / figure model | De-facto (default-on) behaviour | Evidence | Default | Off restores |
 |---|---|---|---|---|---|
@@ -126,7 +126,7 @@ A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyF
 
 ### A repeated SABM(E) after the connect - a lost UA (`RepeatedConnectSabmReacknowledged`)
 
-A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyFaithful`. It answers a retry of the peer's connecting SABM(E) with UA again, rather than reading it as the §6.5 reset and discarding what this end has queued (packet-net/packet.net#856). Not a figure defect: figc4.4 / figc4.5 match §6.3.3.
+A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyFaithful`. It answers a retry of the peer's connecting SABM(E) with UA again, rather than reading it as the §6.5 reset and discarding what this end has queued (packet-net/packet.net#856). Not a figure defect: figc4.4 / figc4.5 match §6.3.3. The deviation is on record for v2.3 as packethacking/ax25spec#50 (the rule as implemented is in the comment there).
 
 | Knob | Spec / figure model | De-facto (default-on) behaviour | Evidence | Default | Off restores |
 |---|---|---|---|---|---|

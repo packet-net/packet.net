@@ -130,7 +130,7 @@ public sealed record Ax25SessionQuirks
     public bool SrejCommandIgnored { get; init; } = true;
 
     /// <summary>
-    /// <b>De-facto-interop quirk (not a figure defect - no ax25spec issue).</b> Drop a
+    /// <b>De-facto-interop quirk (not a figure defect; the deviation is on record as packethacking/ax25spec#114).</b> Drop a
     /// repeated copy of the UA that just connected the link, rather than reading it as an
     /// unexpected UA and resetting. Default <c>true</c>.
     /// </summary>
@@ -168,7 +168,7 @@ public sealed record Ax25SessionQuirks
     public bool RepeatedConnectUaIgnored { get; init; } = true;
 
     /// <summary>
-    /// <b>De-facto-interop quirk (not a figure defect - no ax25spec issue).</b> Drop every UA
+    /// <b>De-facto-interop quirk (not a figure defect; the deviation is on record as packethacking/ax25spec#114, and the figc4.5 modulus omission it uncovered as #115).</b> Drop every UA
     /// received while the link is up (Connected or Timer Recovery), rather than reading it as
     /// the §6.5 unexpected UA and resetting the link. Default <c>true</c>.
     /// </summary>
@@ -214,7 +214,7 @@ public sealed record Ax25SessionQuirks
     public bool UnexpectedUaIgnored { get; init; } = true;
 
     /// <summary>
-    /// <b>De-facto-interop quirk (not a figure defect - no ax25spec issue).</b> Answer a
+    /// <b>De-facto-interop quirk (not a figure defect; the deviation is on record as packethacking/ax25spec#50).</b> Answer a
     /// repeat of the peer's connecting SABM or SABME with UA again, rather than reading it as
     /// the §6.5 reset and discarding what this end has queued. Default <c>true</c>.
     /// </summary>
