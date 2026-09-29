@@ -16,7 +16,7 @@ public interface IRhpGateway
     /// </summary>
     /// <param name="portLabel">The port: its operator-defined id (e.g. <c>"vhf-2m"</c>), matched
     /// case-insensitively, or failing that its number in configuration order counting from 1
-    /// (<c>"1"</c> = the first configured port), RHPv2's own form. Null resolves a locally-registered app
+    /// (<c>"1"</c> = the first configured port), the numeric form RHPv2 clients send. Null resolves a locally-registered app
     /// (loopback) or errors - it does NOT silently default to the first port for an RF dial.</param>
     /// <param name="local">The client-requested local (originating) callsign, or null for the
     /// node's own. R-2 requires this to be the node callsign (see the named limitation).</param>

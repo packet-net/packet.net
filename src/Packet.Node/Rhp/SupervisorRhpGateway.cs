@@ -19,8 +19,8 @@ namespace Packet.Node.Rhp;
 /// <remarks>
 /// A port label is the operator-defined <see cref="PortConfig.Id"/> (e.g. <c>"vhf-2m"</c>,
 /// <c>"hf-40m"</c>), matched case-insensitively, or failing that the port's number in
-/// configuration order counting from 1 (<c>"1"</c> = the first <c>ports:</c> entry), which is
-/// how RHPv2 itself and XRouter-convention clients such as DAPPS name a port (#841). An id
+/// configuration order counting from 1 (<c>"1"</c> = the first <c>ports:</c> entry), the
+/// numeric form RHPv2 and XRouter-convention clients such as DAPPS send (#841). An id
 /// match wins, so a port whose id is a number is always that port. For outbound opens, null resolves a
 /// locally-registered app (loopback) or errors - it does not silently default to the first
 /// port. R-2 limitation (named in <c>docs/rhp2-server.md</c>): <c>local</c> must be the
@@ -242,9 +242,9 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         return new CompositeUnsubscriber(subscriptions);
     }
 
-    // A port is named by its id or by its number. The number is RHPv2's own form: PWP-0222's
-    // OPEN example sends "port": 2, and XRouter, DAPPS and every rhp2lib client count ports from
-    // 1. pdn numbers them in configuration order, the same numbers PORTS and "C <n>" use
+    // A port is named by its id or by its number. RHPv2 names ports by number (PWP-0222's
+    // OPEN example sends "port": 2), and XRouter-convention clients such as DAPPS count them
+    // from 1. pdn numbers them in configuration order, the same numbers PORTS and "C <n>" use
     // (operating/10-your-ports-in-order.md). The id is pdn's addition, which pdn-bbs sends
     // (#668). An id match wins, so a port whose id is itself a number is always that port.
     private static string ResolvePortId(string? portLabel, IReadOnlyList<PortConfig> ports)

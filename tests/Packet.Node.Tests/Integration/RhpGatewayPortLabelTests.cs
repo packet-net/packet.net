@@ -84,7 +84,7 @@ public sealed class RhpGatewayPortLabelTests
     [Fact]
     public async Task A_port_number_dials_the_port_in_that_position()
     {
-        // DAPPS's exact open: its bearer port 1, from an app callsign.
+        // DAPPS's form of open: a port number, from an app callsign.
         await using var node = await StartAsync("alpha", "bravo");
 
         await using var conn = await node.Gateway.OpenAx25StreamAsync(portLabel: "2", local: AppCall.ToString(), remote: Target.ToString());
