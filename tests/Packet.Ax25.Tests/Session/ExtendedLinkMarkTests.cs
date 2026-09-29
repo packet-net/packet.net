@@ -1,5 +1,6 @@
 using Packet.Ax25.Session;
 using Packet.Core;
+using AwesomeAssertions;
 using Xunit;
 
 namespace Packet.Ax25.Tests.Session;
@@ -26,8 +27,8 @@ public class ExtendedLinkMarkTests
     {
         foreach (var b in Frames(Ctx(extended)))
         {
-            Assert.Equal(expected, b[13] & 0x60);
-            Assert.Equal(0x60, b[6] & 0x60); // destination stays 11
+            (b[13] & 0x60).Should().Be(expected);
+            (b[6] & 0x60).Should().Be(0x60); // destination stays 11
         }
     }
 }

@@ -1414,7 +1414,7 @@ What changed, why, where to look for details.
 
 ### 2026-09-29 - modulo-128 sessions mark the source SSID reserved bits `01` (#859)
 
-Every frame a modulo-128 session emits now carries `01` (0x20 set, 0x40 clear) in the *source* SSID octet's reserved bits, the Linux kernel stack's convention (`ax25_addr_build()`), so `axlisten`-style monitors can tell the control field is two octets. Modulo-8 sessions and destination/repeater slots stay `11`. `Ax25Address.ExtendedLinkMark` (init-only, write-only) + `Ax25Frame.WithExtendedLinkMark()`, applied in `FrameSpecExtensions`. No named flag (follows the session modulus); the receive-side hint (#859 item 2) is not done and #696's "R bits not carried" stands. Test: `ExtendedLinkMarkTests`. Not built locally (no .NET SDK in this session) - CI to confirm.
+Every frame a modulo-128 session emits now carries `01` (0x20 set, 0x40 clear) in the *source* SSID octet's reserved bits, the Linux kernel stack's convention (`ax25_addr_build()`), so `axlisten`-style monitors can tell the control field is two octets. Modulo-8 sessions and destination/repeater slots stay `11`. `Ax25Address.ExtendedLinkMark` (init-only, write-only) + `Ax25Frame.WithExtendedLinkMark()`, applied in `FrameSpecExtensions`. No named flag (follows the session modulus); the receive-side hint (#859 item 2) is not done and #696's "R bits not carried" stands. Test: `ExtendedLinkMarkTests`.
 
 ### 2026-09-29 - RELEASE: lib-v0.47.0 + node-v0.58.0 (graceful close, #850)
 
