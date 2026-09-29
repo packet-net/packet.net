@@ -70,6 +70,11 @@ public sealed class Ax25Session
     // PreClampRetryCountOnT1Expiry.
     private bool vaAdvancedSinceT1Expiry;
 
+    // RepeatedConnectUaIgnored (#842): the encoded UA that took this link to Connected, kept
+    // only while it is still the last frame the peer sent. A byte-identical UA arriving next
+    // is a second delivery of it, not the figure's unexpected UA. See IsRepeatedConnectUa.
+    private byte[]? connectingUa;
+
     /// <summary>The session's mutable per-connection state.</summary>
     public Ax25SessionContext Context { get; }
 
@@ -418,6 +423,11 @@ public sealed class Ax25Session
             vaAdvancedSinceT1Expiry = false;
         }
 
+        if (IsRepeatedConnectUa(evt))
+        {
+            return;
+        }
+
         // Expose the trigger to frame-aware guard bindings + the
         // dispatcher's TransitionContext. Cleared in the finally so
         // a thrown action doesn't leave stale state on the session.
@@ -511,6 +521,8 @@ public sealed class Ax25Session
                 vaAdvancedSinceT1Expiry = true;
             }
 
+            NoteConnectingUa(evt, stateBefore);
+
             // Transition committed (state advanced, timers kept) - notify
             // observers. Raised here rather than inside the try so a throwing
             // observer can't trip the timer-rollback path.
@@ -521,6 +533,59 @@ public sealed class Ax25Session
             CurrentTrigger = null;
         }
     }
+
+    /// <summary>
+    /// <see cref="Ax25SessionQuirks.RepeatedConnectUaIgnored"/>: true when <paramref name="evt"/>
+    /// is a second delivery of the UA that just connected this link, which is then dropped
+    /// before the figure can read it as an unexpected UA (figc4.4 <c>t17_ua_received_*</c>) and
+    /// reset the link. Any other frame from the peer ends the window, so only the frame straight
+    /// after the connecting UA, and further identical copies of it, can be dropped.
+    /// </summary>
+    private bool IsRepeatedConnectUa(Ax25Event evt)
+    {
+        if (connectingUa is not { } connecting || !IsFrameFromPeer(evt))
+        {
+            return false;
+        }
+
+        if (evt is UaReceived repeat
+            && Context.Quirks.RepeatedConnectUaIgnored
+            && string.Equals(CurrentState, "Connected", StringComparison.Ordinal)
+            && repeat.Frame.ToBytes().AsSpan().SequenceEqual(connecting))
+        {
+            return true;
+        }
+
+        connectingUa = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Keep the UA that took a dial from AwaitingConnection or AwaitingV22Connection to
+    /// Connected (for <see cref="IsRepeatedConnectUa"/>), and forget it once the link leaves
+    /// Connected by any route.
+    /// </summary>
+    private void NoteConnectingUa(Ax25Event evt, string stateBefore)
+    {
+        if (!string.Equals(CurrentState, "Connected", StringComparison.Ordinal))
+        {
+            connectingUa = null;
+        }
+        else if (Context.Quirks.RepeatedConnectUaIgnored
+            && evt is UaReceived connecting
+            && stateBefore is "AwaitingConnection" or "AwaitingV22Connection")
+        {
+            connectingUa = connecting.Frame.ToBytes();
+        }
+    }
+
+    // The events the classifier and the listener make from a frame the peer sent, as opposed to
+    // upper-layer primitives, timers and the session's own internal events.
+    private static bool IsFrameFromPeer(Ax25Event evt) => evt is IFrameReceived or RrReceived or RnrReceived
+        or RejReceived or SrejReceived or UiReceived or SabmReceived or SabmeReceived or DiscReceived
+        or UaReceived or DmReceived or FrmrReceived or XidReceived or TestReceived or IOrSCommandReceived
+        or AllOtherCommands or AllOtherPrimitivesFromLowerLayer or ControlFieldError
+        or InfoNotPermittedInFrame or UOrSFrameLengthError;
 
     /// <summary>
     /// figc4.6 DM-no-degrade gap (<see cref="Ax25SessionQuirks.Ax25Spec48DmRejectionDegradesToV20"/>):
