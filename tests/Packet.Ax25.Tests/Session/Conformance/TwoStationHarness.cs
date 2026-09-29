@@ -166,6 +166,16 @@ public sealed class TwoStationHarness
                 return;
             }
 
+            // A scheduled channel takes the frame into flight instead of delivering
+            // it; the scenario decides later whether, when and how often it lands
+            // (see CrossedDialExplorer). Drop and Duplicate are the scenario's to
+            // apply in that mode.
+            if (link.Schedule is { } schedule)
+            {
+                schedule(new InFlightFrame(local, parsed, () => DeliverToPeer(parsed)));
+                return;
+            }
+
             DeliverToPeer(parsed);
             if (link.ShouldDuplicate(parsed))
             {
@@ -597,7 +607,18 @@ public sealed class TwoStationHarness
         public Func<Ax25Frame, bool>? Duplicate { get; set; }
 
         public bool ShouldDuplicate(Ax25Frame f) => Duplicate?.Invoke(f) == true;
+
+        /// <summary>When set, every frame that passes the address filter is handed
+        /// here as an <see cref="InFlightFrame"/> instead of being delivered. The
+        /// scenario calls <see cref="InFlightFrame.Deliver"/> when it decides the
+        /// frame lands (once, twice, or never). While set, <see cref="Drop"/> and
+        /// <see cref="Duplicate"/> are not consulted.</summary>
+        public Action<InFlightFrame>? Schedule { get; set; }
     }
+
+    /// <summary>A frame a station has transmitted that the scheduled channel has
+    /// not yet delivered: who sent it, what it is, and how to land it at the peer.</summary>
+    public sealed record InFlightFrame(Callsign From, Ax25Frame Frame, Action Deliver);
 
     public sealed class Endpoint
     {

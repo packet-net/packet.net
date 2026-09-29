@@ -201,6 +201,10 @@ internal static class DataLinkSmokeHarness
         {
             Local = new Callsign("M0LTE", 0),
             Remote = new Callsign("G7XYZ", 7),
+            // The figure's connected-state UA arms (figc4.4 t17, figc4.5 t11) are
+            // declared transitions this harness drives directly; by default the
+            // runtime drops a UA on an up link before dispatch (#874).
+            Quirks = Ax25SessionQuirks.Default with { UnexpectedUaIgnored = false },
         };
         // Start from the runtime defaults (so timer-state / counter atoms have
         // sensible bindings) then override with the atoms named by this page.

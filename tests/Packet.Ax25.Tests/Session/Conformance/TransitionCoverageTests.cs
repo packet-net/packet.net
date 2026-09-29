@@ -204,10 +204,22 @@ public class TransitionCoverageTests
         // Coverage measurement only - correctness is asserted by the dedicated
         // conformance suites, so suspend the per-step oracle (injection scenarios
         // post frames outside the submitted/delivered model).
-        TwoStationHarness New(bool srej = false, int k = 4, bool extended = false, int n2 = 12,
-            bool segmenter = false, int? n1 = null)
+        // The battery measures which figure arms fire. Two crossing quirks pre-empt
+        // arms on an up link before dispatch (a UA: figc4.4 t17 / figc4.5 t11, #874;
+        // a SABM(E) while the peer has been quiet: t14 / t15 and figc4.5 t13 / t14,
+        // #856), so the battery runs with them off; their own behaviour is pinned by
+        // the crossed-dial tests.
+        var figureArmsReachable = Ax25SessionQuirks.Default with
         {
-            var h = TwoStationHarness.Build(srej: srej, k: k, extended: extended, n2: n2, segmenter: segmenter, n1: n1);
+            UnexpectedUaIgnored = false,
+            RepeatedConnectSabmReacknowledged = false,
+        };
+
+        TwoStationHarness New(bool srej = false, int k = 4, bool extended = false, int n2 = 12,
+            bool segmenter = false, int? n1 = null, Ax25SessionQuirks? quirks = null)
+        {
+            var h = TwoStationHarness.Build(srej: srej, k: k, extended: extended, n2: n2, segmenter: segmenter, n1: n1,
+                quirks: quirks ?? figureArmsReachable);
             h.CheckAfterEachStep = false;
             return h;
         }

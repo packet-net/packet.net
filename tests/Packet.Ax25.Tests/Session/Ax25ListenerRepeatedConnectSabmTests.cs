@@ -329,9 +329,11 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
     }
 
     [Fact]
-    public async Task A_different_SABM_still_resets_the_link()
+    public async Task A_SABME_with_P_0_on_a_quiet_link_is_answered_again_too()
     {
-        // Byte for byte: a SABM(E) that differs from the one we answered (here P=0) is not a repeat.
+        // The window is about the peer's silence, not the frame's bytes: any SABME of the
+        // link's modulus while the peer has moved no sequence variable is it still setting the
+        // link up. P=0 gets UA F=0, and the banner stays queued.
         var modem = new LoopbackModem();
         await using var listener = Station(modem, CallA, Ax25SessionQuirks.Default);
         await listener.StartAsync();
@@ -347,8 +349,39 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
         listener.SendData(session, "banner\r"u8.ToArray());
         modem.InjectInbound(Ax25Frame.Sabme(CallA, CallB, pollBit: false));
 
+        await WaitFor(() => Sent(modem).Count(f => f.FrameType == Ax25FrameType.Ua) == 2, TimeSpan.FromSeconds(5),
+            "the second SABME is answered");
+        Sent(modem).Last(f => f.FrameType == Ax25FrameType.Ua).PollFinal.Should().BeFalse("F := P");
+        session.Context.VS.Should().Be((byte)1, "the banner is still outstanding");
+        lock (signals)
+        {
+            signals.Where(s => s is DataLinkConnectIndication or DataLinkErrorIndication).Should().BeEmpty();
+        }
+    }
+
+    [Fact]
+    public async Task A_SABM_of_the_other_modulus_still_resets_the_link()
+    {
+        // A SABM on a mod-128 link is not a retry of the SABME that set it up: the peer wants a
+        // different link, and the figure's reset (with Set Version) is what gives it one.
+        var modem = new LoopbackModem();
+        await using var listener = Station(modem, CallA, Ax25SessionQuirks.Default);
+        await listener.StartAsync();
+        Ax25Session? accepted = null;
+        listener.SessionAccepted += (_, e) => Volatile.Write(ref accepted, e.Session);
+
+        modem.InjectInbound(Ax25Frame.Sabme(CallA, CallB));
+        await WaitFor(() => Volatile.Read(ref accepted) is not null, TimeSpan.FromSeconds(5), "the call is accepted");
+        var session = Volatile.Read(ref accepted)!;
+        var signals = new List<DataLinkSignal>();
+        session.DataLinkSignalEmitted += (_, s) => { lock (signals) { signals.Add(s); } };
+
+        listener.SendData(session, "banner\r"u8.ToArray());
+        modem.InjectInbound(Ax25Frame.Sabm(CallA, CallB));
+
         await WaitFor(() => { lock (signals) { return signals.Any(s => s is DataLinkConnectIndication); } },
-            TimeSpan.FromSeconds(5), "a different SABME resets the link");
+            TimeSpan.FromSeconds(5), "a SABM on a mod-128 link resets it");
+        session.Context.IsExtended.Should().BeFalse("the link is now mod-8, as the peer asked");
     }
 
     [Fact]
