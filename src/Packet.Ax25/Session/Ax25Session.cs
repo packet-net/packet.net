@@ -72,6 +72,25 @@ public sealed class Ax25Session
     public string CurrentState { get; private set; }
 
     /// <summary>
+    /// <see cref="CurrentState"/> as it stands once any dispatch in progress has finished,
+    /// signals and deferred events included. <see cref="CurrentState"/> moves on before a
+    /// transition's actions run, so a reader on another thread can see the next state while
+    /// that transition is still raising its signals; this waits them out instead
+    /// (packet.net#844: a dial must not arm while a release is still raising its
+    /// DL-DISCONNECT). Not for use from inside a signal handler of this session.
+    /// </summary>
+    internal string SettledState
+    {
+        get
+        {
+            lock (dispatchGate)
+            {
+                return CurrentState;
+            }
+        }
+    }
+
+    /// <summary>
     /// The event currently being dispatched. Non-null only during
     /// guard evaluation and action execution; <c>null</c> outside of
     /// <see cref="PostEvent"/>. Frame-aware bindings read this to

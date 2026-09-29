@@ -494,30 +494,34 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     }
 
     // Waits while the session is in AwaitingRelease, which the SDL itself bounds: the DISC is
-    // answered (UA or DM) or T1 runs out N2 times and the link is declared gone. The budget is
-    // a backstop at twice the dial's own, since each DISC retry's T1 grows by 250 ms (figc4.7
-    // Select_T1_Value). If the release somehow outlasts it, the dial fails having sent
-    // nothing, so a failed dial never leaves a link behind.
+    // answered (UA or DM) or T1 runs out N2 times and the link is declared gone. The state is
+    // read settled (under the session's dispatch lock): CurrentState says Disconnected before
+    // the release's last transition has raised its DL-DISCONNECT, and a dial that armed in
+    // that gap would take the release's teardown as its own refusal. The budget is a backstop:
+    // each DISC retry's T1 is RC x 250 ms + 2 x SRT (figc4.7 Select_T1_Value), so it allows
+    // twice the SRT part and all of the 250 ms steps. If the release somehow outlasts it, the
+    // dial fails having sent nothing, so a failed dial never leaves a link behind.
     private async Task WaitForReleaseAsync(CachedSession cached, Callsign remote, Callsign local, CancellationToken ct)
     {
-        if (cached.Session.CurrentState != "AwaitingRelease")
+        if (cached.Session.SettledState != "AwaitingRelease")
         {
             return;
         }
 
         LogConnectWaitsForRelease(portName, local.ToString(), remote.ToString());
+        int n2 = cached.Session.Context.N2;
         var budget = TimeSpan.FromMilliseconds(
-            2 * (cached.Session.Context.N2 + 1) * cached.Session.Context.T1V.TotalMilliseconds);
+            (n2 + 1) * ((2 * cached.Session.Context.T1V.TotalMilliseconds) + (125 * n2)));
         using var budgetCts = new CancellationTokenSource(budget, timeProvider);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, budgetCts.Token);
-        while (cached.Session.CurrentState == "AwaitingRelease" && !cts.IsCancellationRequested)
+        while (cached.Session.SettledState == "AwaitingRelease" && !cts.IsCancellationRequested)
         {
             try { await Task.Delay(25, cts.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
         }
 
         ct.ThrowIfCancellationRequested();
-        if (cached.Session.CurrentState == "AwaitingRelease")
+        if (cached.Session.SettledState == "AwaitingRelease")
         {
             throw new TimeoutException(
                 $"outbound connect to {remote} gave up after {budget.TotalSeconds:F1}s waiting for the previous link to it to finish disconnecting.");
