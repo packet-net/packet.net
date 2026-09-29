@@ -35,7 +35,8 @@ public sealed class CrossedDialExplorer
         int N2 = 10,
         Ax25SessionQuirks? Quirks = null,
         Ax25SessionQuirks? QuirksB = null,
-        bool SendAfterReset = false)
+        bool SendAfterReset = false,
+        bool DialOnLiveLink = false)
     {
         /// <summary>B's quirks: <see cref="QuirksB"/> if set, else the same as A's, so a sweep can
         /// pit this runtime against a peer that follows the figures as drawn.</summary>
@@ -43,7 +44,7 @@ public sealed class CrossedDialExplorer
 
         public override string ToString() =>
             $"{(Extended ? "mod128" : "mod8")}{(Probe ? "+probe" : "")} data={DataA}/{DataB} drops<={DropBudget} dups<={DupBudget}"
-            + (QuirksB is null ? "" : " (B on its own quirks)") + (SendAfterReset ? " +sendAfterReset" : "");
+            + (QuirksB is null ? "" : " (B on its own quirks)") + (SendAfterReset ? " +sendAfterReset" : "") + (DialOnLiveLink ? " +dialOnLiveLink" : "");
     }
 
     public enum Choice
@@ -131,8 +132,8 @@ public sealed class CrossedDialExplorer
                 q.Enqueue(f);
                 Log($"{Dir(f.From)} tx  {Describe(f.Frame)}");
             };
-            l3A = new L3(h.A, cfg.DataA, cfg.Probe, cfg.SendAfterReset, this);
-            l3B = new L3(h.B, cfg.DataB, cfg.Probe, cfg.SendAfterReset, this);
+            l3A = new L3(h.A, cfg.DataA, cfg.Probe, cfg.SendAfterReset, cfg.DialOnLiveLink, this);
+            l3B = new L3(h.B, cfg.DataB, cfg.Probe, cfg.SendAfterReset, cfg.DialOnLiveLink, this);
 
             // Both dial. A first, then B; the scheduled channel makes the order of
             // what follows the scenario's choice, so this is not a bias.
@@ -512,18 +513,20 @@ public sealed class CrossedDialExplorer
             private readonly int data;
             private readonly bool probe;
             private readonly bool sendAfterReset;
+            private readonly bool dialOnLiveLink;
             private readonly Run run;
             private int signalCursor;
             private int mdlCursor;
             private bool dataSubmitted;
             private int sent;
 
-            public L3(TwoStationHarness.Endpoint endpoint, int data, bool probe, bool sendAfterReset, Run run)
+            public L3(TwoStationHarness.Endpoint endpoint, int data, bool probe, bool sendAfterReset, bool dialOnLiveLink, Run run)
             {
                 Endpoint = endpoint;
                 this.data = data;
                 this.probe = probe;
                 this.sendAfterReset = sendAfterReset;
+                this.dialOnLiveLink = dialOnLiveLink;
                 this.run = run;
             }
 
@@ -553,7 +556,7 @@ public sealed class CrossedDialExplorer
             private void Dial()
             {
                 Dialled = true;
-                if (Endpoint.State is "Connected" or "TimerRecovery")
+                if (Endpoint.State is "Connected" or "TimerRecovery" && !dialOnLiveLink)
                 {
                     // The peer's call brought the link up during our probe. A dial
                     // on a live link would re-establish it (figc4.4 / figc4.5
@@ -564,7 +567,10 @@ public sealed class CrossedDialExplorer
                     return;
                 }
 
-                run.Log($"--- {Endpoint.Name}: DL-CONNECT request");
+                // With DialOnLiveLink, the node's race (packet.net#862): the peer's call
+                // brought the link up between the probe ending and the dial posting, and the
+                // DL-CONNECT request lands on the live link (figc4.4 t07 re-establishes it).
+                run.Log($"--- {Endpoint.Name}: DL-CONNECT request" + (Endpoint.State is "Connected" or "TimerRecovery" ? " on the live link" : ""));
                 Endpoint.Session.PostEvent(new DlConnectRequest());
             }
 

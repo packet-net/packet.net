@@ -794,8 +794,12 @@ public sealed class Ax25Session
     /// since that moved a sequence variable (for <see cref="IsRepeatedConnectSabm"/>). Set by a
     /// SABM(E) the figure answered with UA: one that took the link from Disconnected to Connected,
     /// one that crossed our own dial in AwaitingConnection or AwaitingV22Connection, or one that
-    /// reset a connected link. Cleared by any I or S frame from the peer, by this end
-    /// re-establishing the link itself, and by leaving the connecting and connected states.
+    /// reset a connected link. Cleared by any I or S frame from the peer, and by leaving the
+    /// connecting and connected states. This end re-establishing the link itself (a DL-CONNECT
+    /// request on a link the peer's call had just brought up, packet-net/packet.net#862) does not
+    /// clear it: that puts this end at zero too, so the peer's retry is still safe to answer, and
+    /// the figure's reset on it would discard what this end queued on the new link with nothing
+    /// said to its owner (seen on a simulated AFSK channel).
     /// </summary>
     private void NotePeerCall(Ax25Event evt, string stateBefore)
     {
@@ -819,11 +823,6 @@ public sealed class Ax25Session
             // (t13 / t14 _yes) keep the sequence variables, and re-acknowledging a retry from
             // there would leave this end's V(r) ahead of a peer at zero.
             peerCallAnswered = Context.VS == 0 && Context.VA == 0 && Context.VR == 0;
-        }
-        else if (stateBefore is "Connected" or "TimerRecovery"
-            && CurrentState is "AwaitingConnection" or "AwaitingV22Connection")
-        {
-            peerCallAnswered = false;
         }
         else if (evt is IFrameReceived or RrReceived or RnrReceived or RejReceived or SrejReceived or IOrSCommandReceived)
         {

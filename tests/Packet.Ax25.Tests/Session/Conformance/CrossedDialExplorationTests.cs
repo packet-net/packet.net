@@ -145,6 +145,32 @@ public class CrossedDialExplorationTests
     private static double Lossy(List<CrossedDialExplorer.Outcome> outcomes) =>
         outcomes.Count(o => o.Violations.Any(v => v.StartsWith("data:", StringComparison.Ordinal))) / (double)outcomes.Count;
 
+    public static IEnumerable<object[]> DialOnLiveLinkConfigs()
+    {
+        foreach (var extended in new[] { false, true })
+        {
+            yield return new object[] { new CrossedDialExplorer.Config(extended, Probe: true, DialOnLiveLink: true) };
+            yield return new object[] { new CrossedDialExplorer.Config(extended, Probe: true, DropBudget: 1, DialOnLiveLink: true) };
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(DialOnLiveLinkConfigs))]
+    public void A_dial_that_lands_on_a_link_the_peer_just_brought_up_loses_nothing_unreported(CrossedDialExplorer.Config cfg)
+    {
+        // The node's race, packet.net#862: the peer's call brings the link up between the probe
+        // ending and the dial posting, and the DL-CONNECT request re-establishes the live link.
+        // That reset is this end's own doing and its owner hears of it (a second DL-CONNECT
+        // confirm). What must not follow is the peer's retry SABM(E), arriving after the new
+        // link came up, resetting it again with the owner's data queued and nobody told; a
+        // simulated AFSK round did exactly that when the repeated-SABM window did not survive
+        // this end's own re-establishment.
+        var outcomes = Sweep(cfg);
+        output.WriteLine(CrossedDialExplorer.Report(outcomes));
+        var bad = outcomes.Where(o => o.Violations.Any(v => !v.StartsWith("liveness (known", StringComparison.Ordinal))).ToList();
+        bad.Should().BeEmpty(bad.Count > 0 ? "every payload is delivered or its sender told, e.g.\n" + bad[0].Describe() : "");
+    }
+
     [Fact]
     public void With_the_crossing_quirks_off_the_figure_resets_on_a_lossless_crossing()
     {
