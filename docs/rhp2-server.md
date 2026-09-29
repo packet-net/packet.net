@@ -71,6 +71,16 @@ Anything found later that doesn't fit these tables goes **in these tables** - ne
 
 An earlier pdn draft carried a nullable `pid` field on the dgram `send`/`sendto` DTOs as a provisional stand-in; **that field was removed** when `custom` shipped (R-7) - matching the spec's message shapes exactly (no `pid` field anywhere), so the wire is portable to any RHPv2 host.
 
+## Extensions - keys pdn adds that neither the spec nor XRouter has
+
+An extension is an optional key pdn puts on a message only when it has something to say, so a message without it is byte for byte what it was before the extension existed. There is no negotiation: a client reads the key when it is there and treats its absence as "unknown", never as the opposite. XRouter never sends one, and a client that does not know one skips it (pdn's codec and rhp2lib-net's both ignore unknown keys).
+
+| # | Message | Key | pdn sends | Why |
+|---|---|---|---|---|
+| E1 | successful `openReply` to a `stream` open | `"crossed": true` | only ever `true`, and only when this dial's call crossed the peer's call to us: the peer's SABM or SABME to our calling callsign arrived on that port during the dial (while our SABM(E) awaited its UA, or during the pre-connect XID probe), or the link between the two callsigns was already up when the dial started. Never `false`, never on a failed open. Example: `{"type":"openReply","id":7,"handle":104,"errCode":0,"errText":"Ok","crossed":true}`; pdn writes the key after every other one. | The dial claims the peer until it returns, so the peer's own call never becomes an `accept`, and a crossed call reaches the client as a plain successful open. A client that waits for the far end's prompt before speaking (DAPPS) then waits out its prompt timeout, because the far end is waiting too. With E1 it can start at once. It exists only because of D4: the reply goes after the dial has resolved, so pdn knows by then. |
+
+A wrong `true` costs a client little if its protocol is symmetric; a crossing that pdn misses (the peer's SABM(E) arriving after our UA, say) is still seen by the peer's end, which was dialling when it answered us. E1 is pdn's first key of its own, against the no-new-fields line D10 and R-7 hold for datagrams: it adds to the wire and changes nothing XRouter sends. If XRouter ever gives `crossed` a meaning of its own, pdn renames E1. Grammar: `? crossed: true` on `open-reply` in `spec/rhp2.cddl`, with a vector.
+
 ## Spec omissions and permissiveness (PWP-0222 vs the live wire)
 
 A field-by-field comparison of PWP-0222 (June 2023) against the live XRouter wire and pdn's grammar (`spec/rhp2.cddl`) surfaced two further categories beyond the wire-fidelity and named-deviation tables above. These are annotated in the CDDL with IDs (SO-*, P-*) for cross-reference.

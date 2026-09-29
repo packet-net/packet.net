@@ -57,6 +57,12 @@
 ;   D8   open.local: spec says mandatory, XRouter requires it (errCode 6
 ;        without it); pdn accepts absent and defaults to the node callsign.
 ;
+; EXTENSIONS (keys pdn adds that neither the spec nor XRouter has - see E1 in
+; docs/rhp2-server.md's Extensions table):
+;   E1   openReply.crossed: present, and only ever true, on a successful
+;        stream open whose call crossed the peer's call to us. Absent means
+;        "unknown", not "did not cross".
+;
 ; Framing (not in this grammar): 2-byte big-endian length prefix + UTF-8 JSON.
 ; Zero-length frames are legal. The grammar defines the JSON payload only.
 ;
@@ -141,6 +147,7 @@ open-reply = {
   ? handle: uint,          ; present on success; absent on parameter errors
   errCode: err-code,
   ? errText: tstr,
+  ? crossed: true,         ; E1: pdn only, on a successful stream open whose call crossed the peer's; never false
 }
 
 ; ─── Socket / Bind / Listen (the BSD-style passive path) ─────────────────────

@@ -7,6 +7,7 @@
   {"type":"open","id":3,"pfam":"ax25","mode":"dgram"},
   {"type":"openReply","id":2,"handle":100,"errCode":0,"errText":"Ok"},
   {"type":"openReply","id":3,"errCode":15,"errText":"No Route"},
+  {"type":"openReply","id":7,"handle":104,"errCode":0,"errText":"Ok","crossed":true},
 
   {"type":"socket","id":4,"pfam":"ax25","mode":"stream"},
   {"type":"socket","id":5,"pfam":"ax25","mode":"dgram"},

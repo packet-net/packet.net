@@ -204,6 +204,21 @@ public class CddlWireConformanceTests
         ValidateAgainstGrammar(ToJson(new OpenReplyMessage { Id = 2, ErrCode = 15, ErrText = "No Route" }));
 
     [SkippableFact]
+    public void OpenReply_crossed_validates() =>
+        ValidateAgainstGrammar(ToJson(new OpenReplyMessage { Id = 7, Handle = 104, ErrCode = 0, ErrText = "Ok", Crossed = true }));
+
+    [SkippableFact]
+    public void OpenReply_crossed_false_is_not_on_the_wire()
+    {
+        // Extension E1 is present only when true; the grammar says so, and "false" is refused.
+        RequireCddl();
+
+        var (exitCode, stderr) = RunCddl("""{"type":"openReply","id":7,"handle":104,"errCode":0,"errText":"Ok","crossed":false}""");
+
+        exitCode.Should().NotBe(0, $"crossed is only ever true.\nCDDL output:\n{stderr}");
+    }
+
+    [SkippableFact]
     public void SocketReply_validates() =>
         ValidateAgainstGrammar(ToJson(new SocketReplyMessage { Id = 4, Handle = 101, ErrCode = 0, ErrText = "Ok" }));
 

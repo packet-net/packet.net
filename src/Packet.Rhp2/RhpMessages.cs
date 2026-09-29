@@ -116,6 +116,20 @@ public sealed class OpenReplyMessage : RhpMessage
     /// <summary>Human-readable result text.</summary>
     [JsonPropertyName("errText")]
     public string? ErrText { get; set; }
+
+    /// <summary>
+    /// pdn extension E1 (<c>docs/rhp2-server.md</c> § Extensions): <c>true</c> on a successful
+    /// stream open whose call crossed the peer's call to us, meaning the peer's SABM or SABME
+    /// to our calling callsign arrived during the dial, or the link was already up when the
+    /// dial started. Only ever emitted as <c>true</c>: every other <c>openReply</c> leaves it
+    /// null, so the key is absent and the reply is byte for byte what it was before E1.
+    /// XRouter never sends it; a reader treats absence as "unknown", not "did not cross".
+    /// Ordered after every other key, so a crossed reply is the plain reply with this one key
+    /// appended.
+    /// </summary>
+    [JsonPropertyName("crossed")]
+    [JsonPropertyOrder(1)]
+    public bool? Crossed { get; set; }
 }
 
 /// <summary>Create an unbound socket (<c>socket</c>).</summary>
