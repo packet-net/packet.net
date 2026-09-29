@@ -76,6 +76,12 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
             var local = localOverride ?? listener.MyCall;
             var link = linkPolicy?.Invoke();
 
+            // A previous link to this peer from this callsign may still be delivering the tail of
+            // a session its owner closed (packet.net#850). Dialling on top of it would empty its
+            // queue (a DL-CONNECT request in Connected does) and the pending DISC could then end
+            // the new link, so let it finish first. The old link's own T1/N2 bounds the wait.
+            await Ax25GracefulClose.WaitForPendingAsync(listener, local, target, cancellationToken).ConfigureAwait(false);
+
             // No cache AND nothing declared ⇒ today's exact call: the no-extended-arg overload
             // follows the listener's PreferExtendedConnect + PreConnectXidNegotiatesSrej defaults,
             // and we record nothing. Preserves every existing connector unchanged.

@@ -1656,6 +1656,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         telemetry?.DetachPort(id);
         beacons?.DetachPort(id);
+        // A link still delivering the tail of a closed app or console session is cut short
+        // while the listener can still carry its DISC (packet.net#850).
+        Ax25GracefulClose.DisconnectAllNow(running.Listener);
         await running.DisposeAsync().ConfigureAwait(false);
         LogPortDown(id);
         SettleAfterTeardown(id, reason);
@@ -1709,6 +1712,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
             telemetry?.DetachPort(p.Id);
             beacons?.DetachPort(p.Id);
+            Ax25GracefulClose.DisconnectAllNow(p.Listener);   // see TearDownAsync
             await p.DisposeAsync().ConfigureAwait(false);
             SettleAfterTeardown(p.Id, reason == TeardownReason.Shutdown ? TeardownReason.Shutdown : TeardownReason.Restart);
         }
@@ -1961,29 +1965,37 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         _ = Task.Run(async () =>
         {
             var connection = new Ax25NodeConnection(listener, session);
-            await using (connection.ConfigureAwait(false))
+            try
             {
-                try
+                // Wrap the same-port AX.25 connector with NET/ROM routing (when
+                // enabled) so `connect <alias>` reaches a distant node; the
+                // dialling user is this inbound peer.
+                var routed = WrapWithNetRom(connector, session.Context.Remote);
+                var env = new NodeConsoleEnvironment(
+                    config, routed, netRom, sysopContext, applicationHost, CreateConnectRouter(routed), capabilityCache,
+                    heard: null, portHealth: this);
+                var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
+                await service.RunAsync(connection, lifecycle.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var peer = session.Context.Remote.ToString();
+                LogConsoleFaulted(ex, peer);
+            }
+            finally
+            {
+                // The console ending on its own (BYE, an app returning) is an ordinary close: the
+                // link stays up until the user has everything the console sent, then DISC
+                // (packet.net#850). A node shutting down disconnects at once instead.
+                if (lifecycle.IsCancellationRequested)
                 {
-                    // Wrap the same-port AX.25 connector with NET/ROM routing (when
-                    // enabled) so `connect <alias>` reaches a distant node; the
-                    // dialling user is this inbound peer.
-                    var routed = WrapWithNetRom(connector, session.Context.Remote);
-                    var env = new NodeConsoleEnvironment(
-                        config, routed, netRom, sysopContext, applicationHost, CreateConnectRouter(routed), capabilityCache,
-                        heard: null, portHealth: this);
-                    var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
-                    await service.RunAsync(connection, lifecycle.Token).ConfigureAwait(false);
+                    await connection.AbortAsync().ConfigureAwait(false);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                else
                 {
-                    var peer = session.Context.Remote.ToString();
-                    LogConsoleFaulted(ex, peer);
+                    await connection.DisposeAsync().ConfigureAwait(false);
                 }
-                finally
-                {
-                    consoleSessions.TryRemove(session, out _);
-                }
+                consoleSessions.TryRemove(session, out _);
             }
         }, CancellationToken.None);
     }

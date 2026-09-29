@@ -34,6 +34,9 @@ public sealed class Ax25NodeConnection : INodeConnection
 
     private int disposed;
 
+    // The pending drain-then-DISC started by DisposeAsync, so AbortAsync can cut it short.
+    private Ax25GracefulClose? closing;
+
     public Ax25NodeConnection(Ax25Listener listener, Ax25Session session)
     {
         this.listener = listener ?? throw new ArgumentNullException(nameof(listener));
@@ -148,24 +151,25 @@ public sealed class Ax25NodeConnection : INodeConnection
         inbound.Writer.TryComplete();
     }
 
-    /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    /// Close the connection the way an app or the console expects: stop taking writes, end the
+    /// local side at once (<see cref="Completion"/> completes, reads return EOF), and leave the
+    /// link up until everything already written has been acknowledged by the peer, then send
+    /// DISC (packet.net#850, see <see cref="Ax25GracefulClose"/>). Returns without waiting for
+    /// the peer, so a caller never blocks on a slow or dead link; the link's own T1/N2 retry
+    /// limit ends it if the peer has gone.
+    /// </summary>
+    public ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref disposed, 1) != 0)
         {
-            return;
+            return ValueTask.CompletedTask;
         }
         session.DataLinkSignalEmitted -= OnSignal;
 
-        // If still connected, ask the link to disconnect cleanly. The session's
-        // disconnect confirm will fire Complete via the (now-removed) handler? No
-        // - we unsubscribed, so complete locally.
         try
         {
-            if (session.CurrentState is "Connected" or "TimerRecovery" or "AwaitingConnection" or "AwaitingV22Connection")
-            {
-                session.PostEvent(new DlDisconnectRequest());
-            }
+            Volatile.Write(ref closing, Ax25GracefulClose.Begin(session));
         }
         catch
         {
@@ -173,6 +177,33 @@ public sealed class Ax25NodeConnection : INodeConnection
         }
 
         Complete();
-        await Task.CompletedTask.ConfigureAwait(false);
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Disconnect at once, discarding anything still queued or unacknowledged: a sysop kill and
+    /// node shutdown. Also cuts short a graceful close already under way on this connection.
+    /// </summary>
+    public ValueTask AbortAsync()
+    {
+        try
+        {
+            if (Interlocked.Exchange(ref disposed, 1) == 0)
+            {
+                session.DataLinkSignalEmitted -= OnSignal;
+                Ax25GracefulClose.DisconnectNow(session);
+            }
+            else
+            {
+                Volatile.Read(ref closing)?.Abort();
+            }
+        }
+        catch
+        {
+            // Best-effort teardown; never throw from a close.
+        }
+
+        Complete();
+        return ValueTask.CompletedTask;
     }
 }

@@ -119,6 +119,37 @@ public sealed class RhpServerTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Client_close_is_the_ordinary_close_that_lets_the_tail_drain()
+    {
+        // packet.net#850: an app's close disposes the connection, which keeps the link up until
+        // what the app sent is acknowledged. Only server shutdown uses the at-once abort.
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await OpenAsync(client);
+
+        await client.SendAsync(new SendMessage { Id = 3, Handle = handle, Data = "73, bye\r" });
+        (await client.ExpectAsync<SendReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.Ok);
+        await client.SendAsync(new CloseMessage { Id = 4, Handle = handle });
+
+        (await client.ExpectAsync<CloseReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.Ok);
+        await gateway.Connection.DisposedTask.WaitAsync(Timeout);
+        gateway.Connection.Aborted.Should().BeFalse("a client close is not a kill");
+    }
+
+    [Fact]
+    public async Task Server_shutdown_disconnects_open_links_at_once()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        _ = await OpenAsync(client);
+
+        await server.DisposeAsync();
+
+        await gateway.Connection.DisposedTask.WaitAsync(Timeout);
+        gateway.Connection.Aborted.Should().BeTrue("shutdown does not wait for queued data");
+    }
+
+    [Fact]
     public async Task Client_close_tears_down_the_session_and_replies_ok()
     {
         var (server, gateway) = await StartServerAsync();
@@ -942,6 +973,16 @@ public sealed class RhpServerTests : IAsyncDisposable
             Drop();
             disposed.TrySetResult();
             return ValueTask.CompletedTask;
+        }
+
+        /// <summary>True if the server closed this connection with <see cref="AbortAsync"/> (the
+        /// disconnect-at-once close) rather than the ordinary deliver-then-disconnect dispose.</summary>
+        public bool Aborted { get; private set; }
+
+        public ValueTask AbortAsync()
+        {
+            Aborted = true;
+            return DisposeAsync();
         }
     }
 

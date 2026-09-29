@@ -95,6 +95,19 @@ A field-by-field comparison of PWP-0222 (June 2023) against the live XRouter wir
 
 These are recorded in `spec/rhp2.cddl`'s header and inline. They are **not** pdn inventions - they reflect what the live XRouter actually accepts. The grammar encodes the permissive wire, not the stricter spec text.
 
+## Closing a stream handle
+
+A `close` on a connected stream handle ends the handle at once and the link to the peer only once the peer has everything already sent on it (packet.net#850). In detail:
+
+- The `closeReply` (`errCode 0`) comes straight back, and the handle is gone from then on: a later `send` or `close` on it is `errCode 3`, and no further `recv` or server `close` push is sent for it. This is unchanged.
+- The AX.25 link stays up until every I-frame already queued for that handle has been sent and acknowledged, then pdn sends DISC. Nothing the app sent before its `close` is thrown away, so an app can `send` its last line and `close` straight after, with no guessed delay. Data the peer sends in the meantime is acknowledged and discarded.
+- There is no extra timer. If the peer has gone, the link's own retry limit (T1 running out N2 times) ends it; a peer that is busy (RNR) is waited for until it clears or goes.
+- A new `open` to the same peer from the same callsign waits for that link to finish first, so it neither loses the old tail nor gets its own link ended by the old close.
+- Dropping the RHP TCP connection closes its handles the same way.
+- Shutting the RHP server down (node shutdown, or an `rhp:` config change that restarts the listener) disconnects its links at once, as does a sysop disconnecting a session. Those discard anything still queued.
+
+This matches what LinBPQ does for a host-initiated disconnect (its DISCPENDING flag). PWP-0222 does not say either way.
+
 ## Configuration
 
 ```yaml

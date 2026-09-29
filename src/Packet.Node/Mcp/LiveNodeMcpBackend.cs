@@ -204,6 +204,8 @@ public sealed class LiveNodeMcpBackend(
         {
             var listener = host.Supervisor?.GetPort(portId)?.Listener;
             var session = listener?.ActiveSessions.FirstOrDefault(s => s.Context.Remote.ToString() == peer);
+            // A sysop kill: immediate, discarding anything still queued (packet.net#850 keeps the
+            // deliver-then-disconnect wait for app and console closes only).
             session?.PostEvent(new DlDisconnectRequest());
             return Task.FromResult(session is not null);
         }, ct).ConfigureAwait(false);

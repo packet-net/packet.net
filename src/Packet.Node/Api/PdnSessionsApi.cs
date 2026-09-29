@@ -237,9 +237,10 @@ public static class PdnSessionsApi
 
         // Disconnect a session: find it by {id} (portId:peer). If the manager owns it (an
         // adopted connect-out), close it through the manager - that stops the read pump,
-        // disposes the connection (posts DISC), and completes any open SSE subscribers. Else
+        // disconnects the connection (DISC now), and completes any open SSE subscribers. Else
         // fall back to posting DL-DISCONNECT on a live AX.25 session under the gate. Absent in
-        // both → 404, else 204.
+        // both → 404, else 204. Either way it is a sysop kill and immediate: anything still
+        // queued is discarded, not delivered first as an app's close does (packet.net#850).
         v1.MapDelete("/sessions/{id}", async (string id, HttpContext ctx, NodeHostedService host, SysopConsoleManager console, IConfigProvider config, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
             if (IsForeignConsoleId(id, ctx, config))

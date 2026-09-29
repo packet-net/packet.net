@@ -85,8 +85,28 @@ public sealed class NetRomNodeConnection : INodeConnection
         inbound.Writer.TryComplete();
     }
 
-    /// <inheritdoc/>
-    public ValueTask DisposeAsync()
+    /// <summary>
+    /// The ordinary close (the relay finished, the console or an app ended the session): stop
+    /// taking writes, end the local side at once, and close the circuit once everything already
+    /// written has been acknowledged by the far end (<see cref="NetRomCircuit.DisconnectWhenDrained"/>,
+    /// packet.net#850). Does not wait for the far end.
+    /// </summary>
+    public ValueTask DisposeAsync() => Close(immediate: false);
+
+    /// <summary>Close the circuit at once, abandoning anything not yet acknowledged: a sysop
+    /// kill and shutdown.</summary>
+    public ValueTask AbortAsync()
+    {
+        if (Volatile.Read(ref disposed) != 0)
+        {
+            // Already closing gracefully: cut the wait short.
+            circuit.Disconnect();
+            return ValueTask.CompletedTask;
+        }
+        return Close(immediate: true);
+    }
+
+    private ValueTask Close(bool immediate)
     {
         if (Interlocked.Exchange(ref disposed, 1) != 0)
         {
@@ -94,9 +114,14 @@ public sealed class NetRomNodeConnection : INodeConnection
         }
         circuit.DataReceived -= OnData;
         circuit.Closed -= OnClosed;
-        // Tear the circuit down if it is still up (the relay finished / the inbound
-        // side dropped).
-        circuit.Disconnect();
+        if (immediate)
+        {
+            circuit.Disconnect();
+        }
+        else
+        {
+            circuit.DisconnectWhenDrained();
+        }
         Complete();
         return ValueTask.CompletedTask;
     }

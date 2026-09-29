@@ -82,7 +82,9 @@ internal sealed class HostSysopOperations : ISysopOperations
             {
                 return Task.FromResult(SysopActionResult.Failure($"No active session {sessionId}."));
             }
-            // Request an orderly disconnect - the same event the web Sessions API posts.
+            // Request an orderly disconnect - the same event the web Sessions API posts. A sysop
+            // kill is immediate: the DL-DISCONNECT request discards anything still queued, unlike
+            // an app's close, which waits for it to be acknowledged (packet.net#850).
             session.PostEvent(new DlDisconnectRequest());
             return Task.FromResult(SysopActionResult.Success($"Disconnecting {sessionId}."));
         }, ct);

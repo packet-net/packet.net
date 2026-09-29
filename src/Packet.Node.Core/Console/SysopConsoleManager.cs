@@ -182,8 +182,9 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
         }
     }
 
-    /// <summary>Close a managed session: stop its pump and dispose the connection (which
-    /// posts the DISC). No-op if not managed.</summary>
+    /// <summary>Close a managed session: stop its pump and disconnect it at once (DISC now,
+    /// anything still queued is discarded, as a sysop disconnect is meant to be). No-op if not
+    /// managed.</summary>
     public async ValueTask CloseAsync(string id)
     {
         if (sessions.TryRemove(id, out var session))
@@ -395,7 +396,10 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
             await cts.CancelAsync().ConfigureAwait(false);
             try
             {
-                await Connection.DisposeAsync().ConfigureAwait(false);   // posts the DISC
+                // Every way a managed session ends is the sysop's disconnect, the peer already
+                // gone, or shutdown, so the link goes at once rather than waiting for data still
+                // queued to be acknowledged (packet.net#850 keeps that wait for app closes).
+                await Connection.AbortAsync().ConfigureAwait(false);   // posts the DISC now
             }
             catch
             {
