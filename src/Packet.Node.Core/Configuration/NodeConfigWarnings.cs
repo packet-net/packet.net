@@ -82,4 +82,31 @@ public static class NodeConfigWarnings
                 "clamp to 7 outstanding I-frames.")
             .ToArray();
     }
+
+    /// <summary>
+    /// Ports whose id is itself a port number, but not their own position in configuration
+    /// order. An RHPv2 client names a port by id or by number (#841), and an id match wins, so
+    /// on <c>[id "2", id "1"]</c> an app asking for port 1 gets the second entry. Legal, and the
+    /// usual reason is the old workaround of naming a port <c>1</c> for DAPPS, but worth saying
+    /// on the boot log because it disagrees with <c>PORTS</c> and <c>C &lt;n&gt;</c>.
+    /// </summary>
+    public static IReadOnlyList<string> NumericIdsOutOfPosition(NodeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        var warnings = new List<string>();
+        for (int i = 0; i < config.Ports.Count; i++)
+        {
+            var id = config.Ports[i].Id;
+            if (int.TryParse(id, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number)
+                && number >= 1 && number <= config.Ports.Count && number != i + 1)
+            {
+                warnings.Add(
+                    $"port '{id}' is port {i + 1} in configuration order, but its id is the number {number}: " +
+                    $"an RHPv2 app asking for port {number} gets this port, not port {number} in PORTS and C <n>. " +
+                    $"Give it a name that is not a number, or move it to position {number}.");
+            }
+        }
+        return warnings;
+    }
 }

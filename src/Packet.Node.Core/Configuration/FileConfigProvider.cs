@@ -267,7 +267,8 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
         foreach (var warning in warnings
             .Concat(NodeConfigWarnings.DuplicateMqttInstances(config))
             .Concat(NodeConfigWarnings.WideWindowSeeds(config))
-            .Concat(NodeConfigWarnings.DuplicateEndpoints(config)))
+            .Concat(NodeConfigWarnings.DuplicateEndpoints(config))
+            .Concat(NodeConfigWarnings.NumericIdsOutOfPosition(config)))
         {
             LogConfigWarning(warning);
         }

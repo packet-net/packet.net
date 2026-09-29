@@ -94,6 +94,35 @@ public sealed class RhpUiDatagramIntegrationTests
         dg.Info.ToArray().Should().Equal("!beacon"u8.ToArray());
     }
 
+    [Fact]
+    public async Task A_datagram_socket_takes_the_port_number_and_hears_with_the_port_id()
+    {
+        // #841: DAPPS's dgram socket binds and sends with "port":"1". Both reach the first port,
+        // and what it hears is labelled with the port's id, which the gateway reads back too.
+        var bus = new SharedRadioBus();
+        var (host, config) = await StartedHostAsync(bus);
+        using var _ = host;
+
+        await using var remote = new BareStation(bus.Attach(), RemoteCall);
+        await remote.StartAsync();
+
+        var gateway = new SupervisorRhpGateway(host, config);
+        var heard = new TaskCompletionSource<UiDatagram>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var subscription = gateway.RegisterUiListener(portLabel: "1", dg =>
+        {
+            heard.TrySetResult(dg);
+            return Task.CompletedTask;
+        });
+
+        await gateway.SendUiAsync(portLabel: "1", local: AppCall.ToString(), remote: "READY", "ready"u8.ToArray(), pid: 0xF0);
+        var sent = await remote.WaitForUiAsync(TimeSpan.FromSeconds(10));
+        sent.Destination.Callsign.Should().Be(new Callsign("READY", 0));
+
+        await remote.SendUiAsync(new Callsign("APRS", 0), "!beacon"u8.ToArray(), pid: 0xF0);
+        var dg = await heard.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        dg.PortLabel.Should().Be("p1");
+    }
+
     // A bare Ax25Listener endpoint on the bus: sends UI frames and captures received ones, for
     // the opposite end of a UI exchange with the node under test. Received UI frames are buffered
     // in a channel so a caller that waits after the frame arrives still observes it (no race).
