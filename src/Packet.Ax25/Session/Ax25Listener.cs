@@ -580,11 +580,40 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
         if (preConnectXidNegotiatesSrej)
         {
+            // A link already up when the dial starts is not the peer calling during the
+            // probe; a dial on it re-establishes it below, as it always has.
+            bool upBeforeProbe = IsLinkUp(cached.Session.SettledState);
+
             LogPreConnectXid(portName, local.ToString(), remote.ToString());
             await NegotiateParametersBeforeConnectAsync(cached, extended, ct).ConfigureAwait(false);
             LogXidOutcome(portName, local.ToString(), remote.ToString(),
                 cached.Session.Context.ParametersNegotiated ? "confirmed" : "no response",
                 cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N");
+
+            // The peer called us while we were probing: its SABM(E) reached this session in
+            // Disconnected, and figc4.1 answered UA, raised DL-CONNECT indication and entered
+            // Connected. That is the link this dial was for, set up by the peer's call instead
+            // of ours - the outcome §6.3.6.2 gives two stations whose SABM(E)s cross. Posting
+            // DL-CONNECT request now would send our SABM(E) into it, and the peer, connected,
+            // would take that as the §6.5 resetting procedure (§6.3.3), which §6.5 keeps for an
+            // unrecoverable error. So the dial returns the link as it is; nothing the SDL does
+            // changes, the dial just does not ask for a reset nobody needs.
+            //
+            // Only while the link is at the version this dial offered in its XID command, after
+            // whatever that exchange settled. Then the two ends agree about the link: the peer
+            // merged our offer with its own and answered the result, and we merged that answer
+            // with ours. At any other version (a SABM answering a v2.2 dial, or a SABME a mod-8
+            // one) they are not certain to agree, so the dial re-establishes below, as it always
+            // has, and both ends take the version from our frame.
+            if (!upBeforeProbe
+                && IsLinkUp(cached.Session.SettledState)
+                && cached.Session.Context.IsExtended == extended)
+            {
+                LogConnectedByPeerDuringXid(portName, local.ToString(), remote.ToString(),
+                    extended ? "v2.2/mod-128" : "v2.0/mod-8");
+                RaiseSessionAccepted(cached.Session);
+                return cached.Session;
+            }
         }
 
         cached.Session.PostEvent(new DlConnectRequest());
@@ -754,6 +783,10 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // Honour an explicit caller cancel; a budget expiry just proceeds to SABM.
         ct.ThrowIfCancellationRequested();
     }
+
+    // Whether a session's state is an established link: Connected, or Connected and
+    // recovering a lost acknowledgement (TimerRecovery).
+    private static bool IsLinkUp(string state) => state is "Connected" or "TimerRecovery";
 
     /// <summary>
     /// Send an upper-layer (Layer-3) payload over an established session,
@@ -2129,6 +2162,9 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     [LoggerMessage(EventId = 5208, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} waits for the previous link to finish disconnecting")]
     private partial void LogConnectWaitsForRelease(string port, string local, string remote);
+
+    [LoggerMessage(EventId = 5209, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} <-> {Remote} ({Version}) by the peer's own call during the pre-connect XID; not re-dialling")]
+    private partial void LogConnectedByPeerDuringXid(string port, string local, string remote, string version);
 
     [LoggerMessage(EventId = 5210, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} -> {Local}: {FrameType} received - accepting connection")]
     private partial void LogInboundAccept(string port, string peer, string local, string frameType);
