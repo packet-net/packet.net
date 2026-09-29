@@ -1,3 +1,4 @@
+using System.Globalization;
 using Packet.Ax25;
 using Packet.Ax25.Session;
 using Packet.Core;
@@ -16,8 +17,11 @@ namespace Packet.Node.Rhp;
 /// (PWP-0222 codes) so the wire loop stays mechanical.
 /// </summary>
 /// <remarks>
-/// Port labels are the operator-defined <see cref="PortConfig.Id"/> (e.g. <c>"vhf-2m"</c>,
-/// <c>"hf-40m"</c>), matched case-insensitively. For outbound opens, null resolves a
+/// A port label is the operator-defined <see cref="PortConfig.Id"/> (e.g. <c>"vhf-2m"</c>,
+/// <c>"hf-40m"</c>), matched case-insensitively, or failing that the port's number in
+/// configuration order counting from 1 (<c>"1"</c> = the first <c>ports:</c> entry), the
+/// numeric form RHPv2 and XRouter-convention clients such as DAPPS send (#841). An id
+/// match wins, so a port whose id is a number is always that port. For outbound opens, null resolves a
 /// locally-registered app (loopback) or errors - it does not silently default to the first
 /// port. R-2 limitation (named in <c>docs/rhp2-server.md</c>): <c>local</c> must be the
 /// node's own callsign - originating from an arbitrary app callsign needs the R-3
@@ -238,6 +242,11 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         return new CompositeUnsubscriber(subscriptions);
     }
 
+    // A port is named by its id or by its number. RHPv2 names ports by number (PWP-0222's
+    // OPEN example sends "port": 2), and XRouter-convention clients such as DAPPS count them
+    // from 1. pdn numbers them in configuration order, the same numbers PORTS and "C <n>" use
+    // (operating/10-your-ports-in-order.md). The id is pdn's addition, which pdn-bbs sends
+    // (#668). An id match wins, so a port whose id is itself a number is always that port.
     private static string ResolvePortId(string? portLabel, IReadOnlyList<PortConfig> ports)
     {
         if (string.IsNullOrWhiteSpace(portLabel))
@@ -251,7 +260,13 @@ public sealed class SupervisorRhpGateway : IRhpGateway
                 return ports[i].Id;
             }
         }
-        throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' ({PortList(ports)}).");
+        if (int.TryParse(portLabel, NumberStyles.None, CultureInfo.InvariantCulture, out var number)
+            && number >= 1 && number <= ports.Count)
+        {
+            return ports[number - 1].Id;
+        }
+        throw new RhpGatewayException(RhpErrorCode.NoSuchPort,
+            $"No such port '{portLabel}' (a port id, {PortList(ports)}, or a number from 1 to {ports.Count}).");
     }
 
     private static string PortList(IReadOnlyList<PortConfig> ports) =>
