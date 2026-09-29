@@ -97,6 +97,12 @@ public sealed class NetRomCircuit
     private bool controlTimerArmed;
     private int controlRetries;
 
+    // DisconnectWhenDrained is waiting for the send queue to empty and every Information message
+    // to be acknowledged before it sends the Disconnect Request (LinBPQ's DISCPENDING). While it
+    // waits on a choked peer with nothing in flight, the control timer (otherwise idle in
+    // Connected) bounds the wait; see Tick.
+    private bool disconnectPending;
+
     // The end user the circuit is on behalf of (carried in the Connect Request).
     private Callsign connectUser;
 
@@ -245,6 +251,46 @@ public sealed class NetRomCircuit
     // ─── Disconnect ─────────────────────────────────────────────────────
 
     /// <summary>
+    /// Close the circuit once everything already handed to <see cref="Send"/> has been delivered:
+    /// the send queue empty and every Information message acknowledged, then the Disconnect
+    /// Request goes out as <see cref="Disconnect"/> sends it. This is what an application's close
+    /// wants; <see cref="Disconnect"/> sends the request at once and abandons anything still
+    /// queued or unacknowledged (packet.net#850, LinBPQ's DISCPENDING: "send DISC when all data
+    /// acked").
+    /// </summary>
+    /// <remarks>
+    /// No timer of its own: a peer that has gone stops acknowledging, and the Information retry
+    /// limit (<see cref="NetRomCircuitOptions.MaxRetries"/>) closes the circuit with
+    /// <see cref="NetRomCircuitCloseReason.Timeout"/>. A choked peer with nothing in flight gives
+    /// no such signal, so after <see cref="NetRomCircuitOptions.RetransmitTimeout"/> the wait
+    /// treats the choke as stale and sends anyway, as LinBPQ does when its L4 timer expires on a
+    /// choked circuit; a peer that is still there acknowledges (choked again if it must) and the
+    /// wait goes on, one that is not runs out of retries. Received data is still acknowledged
+    /// meanwhile. If the circuit is not connected this is <see cref="Disconnect"/>. A later
+    /// <see cref="Disconnect"/> cuts the wait short.
+    /// </remarks>
+    public void DisconnectWhenDrained()
+    {
+        try
+        {
+            lock (gate)
+            {
+                if (state == NetRomCircuitState.Connected)
+                {
+                    disconnectPending = true;
+                    MaybeFinishDrain();
+                    return;
+                }
+            }
+            Disconnect();
+        }
+        finally
+        {
+            FlushSends();
+        }
+    }
+
+    /// <summary>
     /// Tear the circuit down: send a Disconnect Request and arm its retransmit
     /// timer. If not connected, closes locally at once. Idempotent.
     /// </summary>
@@ -266,10 +312,7 @@ public sealed class NetRomCircuit
                         Close(NetRomCircuitCloseReason.Normal);
                         return;
                     case NetRomCircuitState.Connected:
-                        state = NetRomCircuitState.Disconnecting;
-                        controlRetries = 0;
-                        SendDisconnectRequest();
-                        ArmControlTimer();
+                        BeginDisconnect();
                         return;
                 }
             }
@@ -318,6 +361,8 @@ public sealed class NetRomCircuit
                     // Unknown opcode - ignore.
                     break;
             }
+
+            MaybeFinishDrain();
         }
         FlushSends();
     }
@@ -382,6 +427,19 @@ public sealed class NetRomCircuit
             lock (gate)
             {
                 var now = time.GetUtcNow();
+
+                // A drain waiting on a choked peer with nothing in flight (the control timer's only
+                // use in Connected): treat the choke as stale and send, as LinBPQ's L4TIMEOUT does
+                // ("CANCEL CHOKE"). The Information retries then bound the wait.
+                if (controlTimerArmed && now >= controlDeadline && state == NetRomCircuitState.Connected)
+                {
+                    controlTimerArmed = false;
+                    if (disconnectPending && peerChoked && unacked.Count == 0)
+                    {
+                        peerChoked = false;
+                        PumpSendQueue();
+                    }
+                }
 
                 // Control (connect/disconnect) retransmit.
                 if (controlTimerArmed && now >= controlDeadline)
@@ -828,6 +886,46 @@ public sealed class NetRomCircuit
 
     // ─── Window + ack mechanics (caller holds the lock) ─────────────────
 
+    private void BeginDisconnect()
+    {
+        disconnectPending = false;
+        state = NetRomCircuitState.Disconnecting;
+        controlRetries = 0;
+        SendDisconnectRequest();
+        ArmControlTimer();
+    }
+
+    // DisconnectWhenDrained's check, run after anything that can move the send side: once the
+    // queue is empty and nothing is unacknowledged, the Disconnect Request goes out. Waiting on a
+    // choked peer with nothing in flight arms the control timer (see Tick); anything else in
+    // flight is bounded by its own retries, so the timer is dropped.
+    private void MaybeFinishDrain()
+    {
+        if (!disconnectPending || state != NetRomCircuitState.Connected)
+        {
+            return;
+        }
+
+        if (sendQueue.Count == 0 && unacked.Count == 0)
+        {
+            controlTimerArmed = false;
+            BeginDisconnect();
+            return;
+        }
+
+        if (peerChoked && unacked.Count == 0)
+        {
+            if (!controlTimerArmed)
+            {
+                ArmControlTimer();
+            }
+        }
+        else
+        {
+            controlTimerArmed = false;
+        }
+    }
+
     private void PumpSendQueue()
     {
         if (state != NetRomCircuitState.Connected || peerChoked)
@@ -952,6 +1050,7 @@ public sealed class NetRomCircuit
         }
         state = NetRomCircuitState.Disconnected;
         controlTimerArmed = false;
+        disconnectPending = false;
         unacked.Clear();
         sendQueue.Clear();
         reassembly.Clear();

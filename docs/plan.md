@@ -1411,6 +1411,18 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-29 - node: closing a session delivers what the app wrote before disconnecting (#850)
+
+When an app or the console closed a connected session, pdn posted a DL-DISCONNECT request at once, and per the v2.2 SDL that empties the I-frame queue and sends DISC. So the last thing an app wrote (a BBS's "73, bye", the end of a forwarding exchange) was thrown away if it was still queued or unacknowledged, and apps worked round it with guessed delays (the LinBPQ mail server under pdn waited 10 s before closing).
+
+- **Fix, in the node layer.** The engine is unchanged. `Ax25NodeConnection.DisposeAsync` now ends the local side at once (Completion, EOF, no more writes) and hands the link to `Ax25GracefulClose`, which posts the DL-DISCONNECT request only when the queue is empty and every I-frame is acknowledged, checked on each committed transition of the session. This is LinBPQ's DISCPENDING ("SEND DISC WHEN ALL DATA ACKED", `L4Code.c`). No timer for the wait itself: a peer that has gone is ended by T1 running out N2 times, and a link already ending by another route (peer DISC, sysop kill) or taken over by a new dial (DL-CONNECT confirm) needs nothing more. A busy peer (RNR) is alive, so the link never gives up on it: it gets the budget the link would give a silent peer (N2 retries of T1 with Select T1's backoff) and, if still busy after that, the DISC goes anyway (Tom's call, matching the NET/ROM choke probe below; no setting). A close that lands while the link is being reset (Awaiting Connection after an FRMR or unexpected UA, where a DL-DISCONNECT request does nothing) waits for the reset and then applies; a sysop kill or abort in that window does too, which also fixes that window for kills made before this change. A peer that starts the link over with a SABM(E) during the drain is handed to a fresh console or app accept, as a SABM from Disconnected would be, instead of being DISCed; if that accept declines (the peer is claimed by an outbound dial on the port, or the session already has an owner), the close sends DISC rather than leave a link nobody holds. A sysop kill that lands while a link is still being dialled is carried out when the dial connects. The busy-peer budget runs on the listener's clock (the port supervisor passes its `TimeProvider` to the connection and the connector), never the wall clock. The only library addition is a read-only `Ax25Session.AllSentDataAcknowledged`, taken under the dispatch lock so the check never sees a half-done transition.
+- **Where it applies.** Console and local-session apps (the console ending), RHP `close` and an RHP client dropping its TCP connection, and the console's relay legs. A new dial to the same peer from the same callsign (`Ax25OutboundConnector`, so console `C`, `POST /sessions`, RHP `open`) waits for a pending close first, so it neither loses the old tail nor gets its link ended by the old close; the busy-peer budget bounds that wait.
+- **Still immediate.** `INodeConnection.AbortAsync` (default: `DisposeAsync`) is the old close. It is used for sysop kills (`DELETE /sessions/{id}`, including a managed connect-out, and the console sysop `KICK`; the MCP `disconnect_session` and the sessions API fallback still post the DL-DISCONNECT request directly) and for shutdown: the RHP server stopping (every handle teardown is immediate once it is stopping, since its cancelled pumps race its own sweep), the port supervisor's console loops once the node is stopping, and port teardown, which sends the DISC for any close still pending on the port before the listener goes. Nothing awaits the drain, so no close or shutdown can hang on it.
+- **NET/ROM too.** `NetRomNodeConnection.DisposeAsync` used `NetRomCircuit.Disconnect`, which abandons queued and unacknowledged Information the same way. New `NetRomCircuit.DisconnectWhenDrained` sends the Disconnect Request only once the send queue is empty and everything is acknowledged; the Information retry limit ends a dead peer, and a choked peer with nothing in flight is probed after the retransmit timeout (LinBPQ's L4TIMEOUT "CANCEL CHOKE") so a peer that vanished while choked cannot hold the close for ever. `AbortAsync` and `CircuitManager.Dispose` still disconnect at once.
+- **RHP wire.** Unchanged: `closeReply` straight away, handle gone. `docs/rhp2-server.md` gains "Closing a stream handle" describing what the link does after.
+- **Evidence.** `Ax25NodeConnectionGracefulCloseTests` (two listeners over a wire that can hold or drop frames): the whole tail reaches the peer before DISC on a slow link, on a lossy one, from Timer Recovery and behind a busy peer; a vanished peer ends via N2 with no DISC; abort, abort-after-dispose and port teardown send DISC at once; a re-dial waits and its new link survives; a peer busy past the budget gets DISC and a redial behind it then connects; a close or abort during a reset applies once it settles; a peer restart during the drain goes to a fresh owner (and, with no owner to hand to or a declined hand-off, ends with DISC); a kill during a dial applies once it connects. The busy-budget test runs on a fake clock. Seven of the first ten fail with the old close, and each of the reset, restart and busy-budget tests fails with its fix disabled. `NetRomCircuitDrainTests` and `NetRomNodeConnectionCloseTests` for L4, `Ax25SessionAllSentDataAcknowledgedTests`, and two `RhpServerTests` (close disposes, shutdown aborts).
+- **Release impact.** `Packet.Ax25` (new read-only property) and `Packet.NetRom` (new method) for the next `lib-v*`; the behaviour ships with the next `node-v*`. No named flag and no listener surface change, so no ax25-ts parity gate.
+
 ### 2026-09-29 - RELEASE: lib-v0.46.0 + node-v0.57.0 (crossed calls: RHPv2 E1 and the XID-probe dial)
 
 Tagged `lib-v0.46.0` and `node-v0.57.0` on `e6d39646` (main), with `ci`, `interop` (parity guard included), `fuzz`, `live-smoke` and `plan-check` all green on that merge commit. The release carries the two crossed-call changes, entries below: #853 (RHPv2 extension E1, `"crossed":true` on an `openReply`, in `Packet.Rhp2` and the node) and #854 (a dial returns the link the peer's own call brought up during its XID probe, in `Packet.Ax25`).
@@ -3980,7 +3992,6 @@ Gave the split-station head-end daemon (`headend/`, landed Stage 2) its own **re
 - **Docs**: [`docs/releasing.md`](releasing.md) gains a **Step 2b** (tag the head-end → binaries) and a Quick-reference row (`headend-v<semver>` → `publish-headend.yml` → arm64/arm v7/amd64 static binaries on a GitHub Release).
 - **Verified locally** (can't run the workflow without pushing a tag): `make arm64 arm amd64` produces three statically-linked binaries (`file`: x86-64 / ARM EABI5 / ARM aarch64, all "statically linked", stripped); `make check` green (gofmt + vet + `go test ./...` ok); the asset-staging + `SHA256SUMS` steps simulated clean; workflow YAML parses. **No .NET / no ax25-ts parity surface** touched (CI/interop parity check unaffected). No `headend-v*` tag pushed — that's the orchestrator's release step.
 
-
 ### 2026-07-05 — Split-station RF head-end arc **COMPLETE** (Stage 4b: operator guide + head-end `bindAddr`)
 
 Landed **Stage 4b** and with it the whole **split-station RF head-end arc is complete** — the
@@ -4044,7 +4055,6 @@ feature that landed in the same window, not a head-end stage.)
 **No .NET, no ax25-ts parity surface** — docs + a Go-only config addition (the radio-side seams were
 never on the parity check, and no parse flag / listener change is involved).
 
-
 ### 2026-07-05 — Split-station RF head-end arc, Stage 4a: the head-end discover→offer→adopt web UI
 
 Landed **Stage 4a** — the operator-facing "plug into any port and go" surface — of the split-station
@@ -4083,7 +4093,6 @@ unaffected).
 
 Follow-up **Stage 4b** (separate): the operator guide ("plug into any port and go") should screenshot
 the auto one-click adopt, the ambiguous picker, the conflict card, and the free-vs-in-use device list.
-
 
 ### 2026-07-05 — Split-station RF head-end arc, Stage 3b: mDNS discovery + reach-through identify + adopt
 
@@ -5413,28 +5422,23 @@ Shape: two planes. **Packet plane**, two seams *by purpose* — a pdn-native **l
 
 Validating cast: **WALL** (local session + tiny store, no network — the floor), **Chat** (local + BPQ-compatible inter-node linking), **BBS** (everything), **DAPPS** (network + admin UI). Slicing: (1) `INodeApplication` + registry + WALL packet-side → (2) external local-session wire + WALL as the worked example → (3) app-gateway → (4) `Packet.Rhp2.Server` validated against rhp2lib's mock/XRouter conformance suite → (5) BBS/Chat/DAPPS. WALL is the first build — shipped reference app **and** the worked example future docs are written around. Open questions (RHPv2 family coverage, conformance-oracle reuse, BPQ-chat wire-compat scope, spec-vs-wire deltas) tracked in the doc. Doc-only entry; the first code slice (WALL) follows.
 
-
 ### 2026-06-10 — ax25-ts parity restored to lib-v0.7.0 + a cross-repo drift guard (CI-enforced on both sides)
 
 Tom: "ax25-ts should be at parity with pdn, what's missing?" — audited and found the heavyweight machinery in sync (all 8 session quirks, XID parse options, mod-128 + segmentation + MDL, LM-SEIZE grant, the #231 no-renumber fix) but the parse-options/listener surface behind: no `allowCommandFrameAsResponse` (#142) or `allowEmptyCallsignBase` flags (STRICT_PARSE couldn't reject either), no peer presets, the TEST/axping responder missing (a TS node answered an axping with a **DM** — live on-air divergence), and no listener-level parseOptions/quirks (#366's library half). **Parity restored** in ax25-ts#55: both flags (optional, absent = lenient — no consumer breaks), `BPQ_PARSE`/`XROUTER_PARSE`/`DIREWOLF_PARSE`, the TEST intercept (command → echoing response with F mirroring P; response absorbed) + `test()` factory + `sendTest()` initiator, and `Ax25ListenerOptions.parseOptions`/`quirks` used at the decode sites + session build. 13 paired tests; 1179 green. Stale ax25-ts#5 (retransmit renumbering) closed — already fixed there.
 
 Tom: "devise and implement a method to ensure it doesn't drift." — **the parity drift guard**: ax25-ts `scripts/parity-check.mjs` extracts the named-flag / preset / listener-surface inventories from both repos (regex over a shallow sparse source clone — no build; Pascal↔camel + small alias maps like `SendUiAsync`→`sendUi`, `T1V`→`t1Ms`) and exits 1 on any gap not recorded as a *reviewed exception with a reason* in `scripts/parity-exceptions.json` (one starter: `UpdateSessionParameters`, the node-host live-reseed). Wired twice so drift fails CI on whichever side introduces it: a `parity` job in ax25-ts's ci.yml (vs packet.net main; needs a `PACKETNET_READ_TOKEN` fine-grained read PAT since this repo is private — warns-and-skips until the secret is added) and a step in this repo's interop.yml (vs the PR head + ax25-ts main — credential-free since ax25-ts is public, so this copy is always armed). Verified to pass on the current trees and to fail on a simulated new C# flag. CLAUDE.md (both repos) now documents the rule: a new named flag ships with its TS leg or a reviewed exception.
 
-
 ### 2026-06-10 — Release ledger: lib-v0.7.0 + node-v0.6.0 + the downstream cascade
 
 The #366 merge triggered the release arc (every tag on green main; the merge commit's ci needed two reruns past the known runner-contention flakes — AXUDP node-to-node once, the console Bye-timeout once, both 5/5 locally — before tagging). **`lib-v0.7.0`** (the six NuGet packages): carries #366's listener `ParseOptions`/`Quirks`, the #142 strict response-SABM guard, and the §4.3.4.2 TEST/axping responder (#347/#348). **`node-v0.6.0`** (.debs amd64/arm64/armhf + SHA256SUMS, non-draft): the whole arc since 0.5.3 — web control panel + auth parts 1–4 (HTTPS, JWT+refresh+lockout, passkeys, over-RF sysop TOTP), ID beacons, monitor history, sysop console, axping, per-port compat profiles. **Leaf cascade**: axcall + packet-term-tui `Packet.*` pins 0.5.1 → 0.7.0 (PRs axcall#9 / packet-term-tui#14, both green against the new libs — additive API, no break) → both released **v0.2.9** (six-platform binaries, verified non-draft with assets). No `@packet-net/ax25` leg in *this* arc (no TS change in the window); the parity work above ships as ax25-ts 0.12.0 separately.
-
 
 ### 2026-06-10 — #366: per-port AX.25 compatibility profile — Ax25ParseOptions presets + session quirks reach the node config
 
 Closes the gap the #142 work exposed: the leniency/quirk knobs existed in the library but the node host pinned every port to `Ax25ParseOptions.Lenient` (hardcoded at `Ax25Listener`'s parse sites) and `Ax25SessionQuirks.Default`, so nothing the strict/pragmatic audit documents was operator-reachable. Now `PortConfig` gains a **`compat:`** block — a preset name (`strict` | `lenient` | `bpq` | `xrouter` | `direwolf`), optional per-flag overrides (`allowEmptyCallsignBase` / `allowInfoOnSupervisoryFrames` / `allowCommandFrameAsResponse`, explicit-wins on top of the preset, mirroring how channel profiles overlay timers), and a `quirks:` selector (`default` | `strictly-faithful`). `Ax25CompatPresets` is the single name→preset authority the validator and `PortSupervisor` share, so a name validation accepted can never fail at bring-up. Library side: `Ax25ListenerOptions`/`Ax25SessionParameters` gain `ParseOptions` + `Quirks` and the listener actually uses them — the inbound pump parses every frame under the configured options (a rejected frame is dropped before trace/dispatch, so a Strict port is deaf to it end-to-end), the mod-128 re-parse uses the same options, and `BuildSession` seeds `ctx.Quirks`; the TX-trace parse stays deliberately Lenient (it renders our own strict-built frames for the monitor). A compat-only edit is a **hot** reconcile class (`ReconcilePlan.CompatChanged` → the same `UpdateSessionParameters` live reseed as the timer params): parse options apply from the next inbound frame, quirks seed the next-built session, existing sessions untouched. Web UI: a per-port "AX.25 compatibility" preset dropdown in the Ports editor (audit rationale as field help; YAML-set flag overrides/quirks carried through untouched, with a "customised" badge). Defaults preserve behaviour exactly (absent compat = lenient + default). Paired tests at the listener (Strict drops a response-SABM entirely — no session, no reply, no trace; Lenient connects on the same bytes; quirks seeding; live reseed gates the very next frame) + validator/planner/preview/round-trip coverage and a supervisor integration test (compat reseed preserves listener identity). Audit doc gains a "node surface" note. Closes #366.
 
-
 ### 2026-06-10 — #142: reject a C=Response SABM under Strict (the sweep's one code item)
 
 The correctness sweep's only genuine library change. The classifier mapped `0x2F`/`0x6F` → SabmReceived/SabmeReceived from the control octet alone, so a SABM/SABME (or DISC) whose **address C-bits mark it a response** — malformed per §4.3.3.1 / §6.1.2, where SABM/SABME/DISC are *always* commands — was accepted and could open a session. Following the repo's "pragmatism is a named flag" discipline rather than a silent tightening: new **`Ax25ParseOptions.AllowCommandFrameAsResponse`** (default `true` = lenient, preserving current behaviour) which **`Strict` sets false**; `Ax25Frame.TryParse` then drops a command-only U-frame (SABM/SABME/DISC) that isn't `IsCommand` (`Destination.CrhBit && !Source.CrhBit`) at decode. The **default stays lenient on purpose**: a legacy AX.25 v1.x peer predates the v2.0 command/response C-bit encoding, so rejecting by default would break v1.x interop — exactly the "justified leniency" the audit doc wants. Added: the strict/pragmatic-audit row, a paired test (`Ax25FrameOptionsTests.Strict_Rejects_Sabm_With_Response_Cbits_Lenient_Accepts` + a well-formed-command control), and an updated note on the listener edge test (the listener keeps the lenient default for v1.x interop; strict is opt-in). 892 Ax25 + 42 Core tests green; warnings-as-errors clean. Closes #142.
-
 
 ### 2026-06-10 — Correctness sweep: tracker reconciliation + roadmap true-up
 
@@ -5453,13 +5457,11 @@ Stepping back after the auth arc, a correctness review of the open AX.25/runtime
 
 No code changed in this entry beyond closing issues + this doc; the sweep's one code item (#142) is tracked separately.
 
-
 ### 2026-06-10 — Fix: passkey login showed the wrong identity (empty username → "node")
 
 Found in live use on the lab (`pdn.m0lte.uk` on an iPhone): signing in with a passkey logged the panel in with an empty username — the user menu fell back to a "node" placeholder and the admin-gated Users nav disappeared, even though the JWT was correct (scope admin, `sub`=the real user). Root cause: the SPA set the session username from the **login form input**, which a password login has but a **passwordless / discoverable passkey assertion leaves blank** (the identity only emerges from the signed credential at the server). So `auth.login(..., username.trim(), ...)` passed `""`.
 
 Fix — make the server authoritative: the node already resolves the account at every token-issue point, so `PdnAuthApi.LoginResponse` now carries `Username`, populated on `/auth/login`, `/auth/refresh` (from the rotated token's user), and the passkey `/auth/webauthn/assert/complete` (the credential's owner). The SPA's `LoginResult` gains `username`, and `login.tsx` uses `res.username` on BOTH the password and passkey paths instead of the typed box. Mock `mockTokens` carries it too. +2 assertions (login + refresh responses include the username). Behavioural fix to the shipped passkey flow; no new endpoints. Live-verified on the lab (passkey sign-in now shows the real user + keeps admin nav).
-
 
 ### 2026-06-10 — Auth part 4/4: over-RF sysop TOTP — the verification gate (SYSOP elevation + privileged commands)
 
@@ -5475,7 +5477,6 @@ The verification half of the final "nail auth" part, on top of the `TotpService`
 
 **Verified.** `dotnet build -c Release` clean under warnings-as-errors (only pre-existing `tools/*.Spike` warnings); **548** Node tests green (+19: 9 `SysopElevationTests` end-to-end over the real `SqliteUserStore` + `TotpService` + a recording fake `ISysopOperations` — valid-code elevates + privileged command runs, replay rejected with the counter persisted, unelevated/expired/under-scoped denied, wrong code + unknown callsign generic-fail, auth-off unavailable, telnet user+code form; 10 parser tests incl. the bare-`S` ambiguity guard). The end-to-end live-on-the-lab check (enrol a TOTP via the web UI, connect over the net-sim RF path, `SYSOP <code>` → run a privileged command, confirm a replay is rejected) is the deploy step.
 
-
 ### 2026-06-10 — Auth part 4/4: over-RF sysop TOTP — the enrolment / identity half (store + endpoints + web UI)
 
 Last of the four "nail auth" parts (TLS · refresh tokens · passkeys · **over-RF sysop TOTP**). This entry covers the **enrolment / identity half only** — provisioning, inspecting, and removing the rolling one-time code a sysop will present to elevate a session over a plain packet link (AX.25 has no authentication, so a single-use time-based code, not a static replayable password, is the right primitive — see `TotpService`'s remarks). The **verification half** — the console `SYSOP` command, the per-session elevation state, and the privileged-command gate — is a separate, security-critical piece tracked on its own; nothing in the `Console` namespace changed here. The `TotpService` RFC-6238 core (HMAC-SHA1, single-use replay guard, RFC-vector tests) was committed as the foundation ahead of this; this part builds the store/endpoint/UI around it.
@@ -5489,7 +5490,6 @@ Last of the four "nail auth" parts (TLS · refresh tokens · passkeys · **over-
 **Web (`users.tsx`, `lib/api.ts`, `lib/types.ts`).** The mock TOTP affordance is replaced with a real self-service "Over-RF sysop code (TOTP)" row on the signed-in user's OWN row (mirroring the live Passkeys row): "Enrol authenticator" → `enroll/begin`, render the `otpauth://` URI as a **QR code** (new dep **`qrcode.react`**, `QRCodeSVG`) plus the base32 secret as fallback text, a callsign input + a code input → "Confirm" → `enroll/complete`; the enrolled state (callsign + a "Remove" → `DELETE`) reflects `GET /enroll`. Other users' rows show a static self-service indicator. `api.ts` adds `totpSupported/totpState/totpEnrollBegin/totpEnrollComplete/totpRemove` + `types.ts` shapes (mirroring the webauthn ones). **Mock mode keeps building and does NOT fake the round trip** (`totpSupported()` is false in mock ⇒ a disabled/explanatory affordance — no faked begin/verify).
 
 **Verified:** `dotnet build -c Release` clean under warnings-as-errors (Core + Node + tests); **517** Node tests green (+21: 7 `TotpEnrollmentCacheTests` single-use/expiry/user-binding/supersede/prune; 7 new `SqliteUserStoreTests` add-secret round-trip via FindByUsername + FindByCallsign, callsign uniqueness rejects a second user, re-enrol-own allowed, counter persist+reopen, ClearTotp idempotent, UserSummary HasTotp/Callsign-no-secret, an OLD pre-migration db still opens + gains the columns; 7 `TotpApiTests` mirroring `WebAuthnApiTests` plumbing — begin returns secret+uri, complete with the correct generated code persists + GET reflects enrolled, wrong code 400s + does NOT persist, single-use pending secret, delete clears, gated-401-without-token, auth-off no-regression — using `TotpService.ComputeCode` against a `FakeTimeProvider` pinned via `ConfigureTestServices`). The lone full-suite failure was the known `Ax25ConsoleIntegrationTests` CPU-oversubscription timing flake (infra, not code — passes solo in 171 ms; the change touches nothing in the Console / AX.25 path). Web: `npm run build` clean (tsc + vite) + 10/10 vitest. **Handed to the gate (task D):** `IUserStore.FindByCallsign` + `TotpService.TryVerify` + `IUserStore.UpdateTotpCounter` are ready for the console SYSOP authorization gate to consume.
-
 
 ### 2026-06-09 — Auth part 3/4: WebAuthn / passkeys (localhost-first, tier-1) — register + passwordless assert + credential management
 
@@ -5510,7 +5510,6 @@ Third of the four "nail auth" parts (TLS · refresh tokens · **passkeys** · ov
 **Integration (tier-3 readiness for the lab/iPhone path).** Reviewed + integrated the sub-agent branch with two changes so the configurable knobs are not just present but *exercised* for the real-domain case the lab actually needs (`pdn.m0lte.uk` reached from a phone on the WLAN, never localhost): (1) the origin-set computation was extracted from `WebAuthnFido2Builder.ForRequest` into a public `AcceptedOrigins(cfg, request)` and locked with `WebAuthnFido2BuilderTests` (7 tests) — the load-bearing property being that **when the operator pins `allowedOrigins`, ONLY those are trusted and a request arriving with a spoofed `Host` cannot widen the set**, plus serving-origin rendering (non-default port present, default port absent), the zero-config localhost default, trailing-slash trim, and multi-origin pinning; (2) corrected a stale doc comment that still said the register group was `operate`-gated — it is deliberately `read`-gated (the floor for an authenticated user managing their own login credential), matching `Program.cs`. No behavioural change to the shipped flow; the localhost E2E remains the proof of the live ceremony.
 
 **Verified:** `dotnet build -c Release` clean under warnings-as-errors (only pre-existing `tools/*.Spike` warnings; none in `src/Packet.Node*`); **474** Node tests green (+40: credential-store add/get/get-all/update-count/owner-scoped-delete/dup-id/persist/degrade; challenge-cache single-use/expiry/user-binding/session-binding/supersede/prune/wrong-type; WebAuthn-config validator rules incl. RP-id-not-an-IP + absolute-origin pinning; the `WebAuthnFido2BuilderTests` tier split above; and `WebAuthnApiTests` plumbing — assert/begin issues distinct server challenges, assert/complete is single-use + generic-401, register/begin is gated + 409s when auth-off + reflects the principal's name, credentials list, auth-off no-regression). Web: `VITE_API_MODE=live` tsc+vite build clean + 10/10 vitest. The CDP-virtual-authenticator E2E passes (register → passwordless sign-in on localhost). Distribution tiers parked per the doc; the tier-3 real-cert/DNS lab wiring (`pdn.m0lte.uk` via Cloudflare DNS-01 into the existing `management.https` cert slot) is operational config, tracked separately.
-
 
 ### 2026-06-09 — Auth part 2/4: refresh-token rotation + reuse detection, silent access-token renewal, and login lockout
 
@@ -6034,7 +6033,6 @@ Found live on the pdn-lab net-sim lab: connected through the node to LinBPQ (`C 
 ### 2026-06-04 — Node kiss-tcp auto-reconnect: survive a TNC/softmodem bounce instead of the port silently dying (#50)
 
 Found repeatedly on the pdn-lab net-sim lab: every time net-sim (or a real TNC) bounced, the node's kiss-tcp port silently went dead and stayed dead until `systemctl restart packetnet` — `KissTcpClient.ReadFramesAsync` ends on the peer close, the `Ax25Listener` inbound pump completes, and nothing re-establishes the link. Fix: a `ReconnectingKissModem` (`Packet.Node.Core/Transports/`) wraps the kiss-tcp modem so a dropped inbound stream transparently re-dials a fresh inner with capped exponential backoff (1→30 s) and resumes; the configured KISS hardware parameters (TXDELAY etc.) are remembered and replayed on every reconnect, since a fresh connection starts at the modem's defaults. The **initial** connect stays eager in `PortSupervisor.BringUpAsync` (a first-connect failure still faults + skips the port — per-port fault isolation unchanged), and only kiss-tcp ports are wrapped; the wrapper purely adds reconnect-after-drop, and its backoff retry rides out the endpoint being briefly unavailable mid-bounce (the actual case). Sends while the link is down are dropped best-effort — AX.25 T1 retransmits the lost I-frame once back. Three unit tests (`ReconnectingKissModemTests`: reconnect-on-drop keeps delivering, KISS-param replay, send-while-down-doesn't-throw); verified on the box — bounced net-sim and the node logged `dropped; reconnecting` → `reconnected` within ~1 s with no process restart (service uptime unchanged), net-sim showed `pdn.vhf` re-attach, and a connect + command round-tripped to GB7RDG afterward. ACKMODE is not supported by the wrapper (the kiss-tcp client doesn't implement it). Follow-up left open: the initial-connect path could also retry (so a port whose endpoint is down *at node start* self-heals too) — deferred to keep this change additive and fault isolation intact.
-
 
 ### 2026-06-04 — Node half-duplex QSO stall: honour per-port `t1Ms` through the SDL establishment path, combine banner+prompt (#292)
 
@@ -6661,7 +6659,6 @@ Fifth step of the 5-repo split. `ts-spec/` (the local copy of the `ax25sdl` npm 
 **Verification.** `cd web/ax25 && npm run typecheck && npm test` — 103/103 unit tests green against npm-sourced ax25sdl@0.1.1. The integration tests (LinBPQ/netsim) weren't run locally; CI's `interop` workflow will exercise them.
 
 **What's still pending.** `web/ax25` itself still lives in `packet-net/packet.net`. It moves to `packet-net/ax25-ts` once the npm publish path from `packet-net/ax25sdl` is unblocked (so that the next iteration of `@packet-net/ax25` can depend on a fresh `ax25sdl`).
-
 
 ### 2026-05-17 — drop SDL codegen + spec sources from packet.net (extracted to packet-net/ax25sdl)
 
@@ -7357,7 +7354,6 @@ Three coordinated fixes:
    hides the cause. Same fix pattern should be applied to any future
    integration test that uses a Task.Run pump.
 
-
 ### 2026-05-15 — codegen: four new emitters (Rust, C, JSON, Python)
 
 The IR refactor now powers **seven** language backends. Each emitter
@@ -7423,8 +7419,6 @@ across four runtimes — every transition's id/on/next/guard/actions
 encoded once in `*.sdl.yaml`, asserted independently by seven
 language toolchains.
 
-
-
 ### 2026-05-15 — ci: sweep workflow annotations (bump action pins, disable empty Go cache)
 
 PR #113's CI run carried persistent warnings on every job —
@@ -7452,7 +7446,6 @@ The `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` env var stays as a
 belt-and-braces safeguard — once every pinned action ships native
 Node 24, it's a no-op, but it catches any future action regression
 back to Node 20 without us needing to remember.
-
 
 ### 2026-05-15 — codegen CLI: CommandLineParser + opt-in-by-presence
 
@@ -7494,7 +7487,6 @@ The `Packet.Sdl.CodeGen.Tests` harness was updated to use
 `--csharp --csharp-out ... --csharp-tests ...` since its sandbox tests
 only need the C# backend.
 
-
 ### 2026-05-15 — ci: split sdl-codegen-discipline into 3 parallel jobs + Node 24 opt-in
 
 Now that the self-hosted box runs 4 GitHub Actions runners (Tom
@@ -7528,7 +7520,6 @@ Added `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` at workflow level
 in all three workflows (`ci.yml`, `interop.yml`, `plan-check.yml`) to
 silence the deprecation warning and catch Node-24 breakage early
 rather than at the forced cutover.
-
 
 ### 2026-05-15 — session: runtime wiring follow-ups (Tier 2 prep)
 

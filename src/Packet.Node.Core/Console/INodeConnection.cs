@@ -43,6 +43,15 @@ public interface INodeConnection : IAsyncDisposable
     Task Completion { get; }
 
     /// <summary>
+    /// Close at once, discarding anything not yet delivered to the peer: for a sysop kill and
+    /// node shutdown. <see cref="IAsyncDisposable.DisposeAsync"/> is the ordinary close, which
+    /// on a link-layer transport lets data already written reach the peer before the link goes
+    /// (packet.net#850). The default is that ordinary close, right for any transport whose close
+    /// already ends it immediately.
+    /// </summary>
+    ValueTask AbortAsync() => DisposeAsync();
+
+    /// <summary>
     /// True when this connection came from an outbound dial whose call crossed the peer's
     /// call to us: the peer's SABM or SABME to our calling callsign arrived during the dial,
     /// or the link was already up when the dial started. The RHPv2 server reports it on the

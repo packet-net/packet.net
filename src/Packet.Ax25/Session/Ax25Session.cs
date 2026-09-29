@@ -101,6 +101,39 @@ public sealed class Ax25Session
     }
 
     /// <summary>
+    /// True when this link has nothing left to deliver: no DL-DATA request is waiting to be
+    /// dispatched, the I-frame queue is empty, and every I-frame sent has been acknowledged
+    /// (V(A) = V(S)). Read under the dispatch lock, so it never sees a transition half-done
+    /// (an I-frame taken off the queue whose V(S) has not yet moved). An upper layer uses it
+    /// to disconnect only once everything it handed down has reached the peer, which the
+    /// DL-DISCONNECT request itself does not wait for (packet.net#850). Safe to read from a
+    /// signal or <see cref="TransitionFired"/> handler of this session.
+    /// </summary>
+    public bool AllSentDataAcknowledged
+    {
+        get
+        {
+            lock (dispatchGate)
+            {
+                if (Context.IFrameQueue.Count != 0 || Context.VA != Context.VS)
+                {
+                    return false;
+                }
+
+                foreach (var deferred in deferredEvents)
+                {
+                    if (deferred is DlDataRequest)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        }
+    }
+
+    /// <summary>
     /// The event currently being dispatched. Non-null only during
     /// guard evaluation and action execution; <c>null</c> outside of
     /// <see cref="PostEvent"/>. Frame-aware bindings read this to

@@ -42,6 +42,7 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
     // The port's declared link policy, read per dial so a hot config edit reaches the connector
     // the supervisor built at bring-up. Null ⇒ all-auto.
     private readonly Func<PortLinkConfig?>? linkPolicy;
+    private readonly TimeProvider timeProvider;
 
     public Ax25OutboundConnector(
         string portId,
@@ -49,8 +50,12 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         Func<Callsign, IDisposable>? claim = null,
         Callsign? localOverride = null,
         PeerCapabilityCache? cache = null,
-        Func<PortLinkConfig?>? linkPolicy = null)
+        Func<PortLinkConfig?>? linkPolicy = null,
+        TimeProvider? timeProvider = null)
     {
+        // The clock the connections this connector makes use for their close (packet.net#850);
+        // pass the listener's, so it and the link's own timers agree. Null means the system clock.
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         PortId = portId ?? throw new ArgumentNullException(nameof(portId));
         this.listener = listener ?? throw new ArgumentNullException(nameof(listener));
         this.claim = claim;
@@ -77,6 +82,13 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
             var local = localOverride ?? listener.MyCall;
             var link = linkPolicy?.Invoke();
 
+            // A previous link to this peer from this callsign may still be delivering the tail of
+            // a session its owner closed (packet.net#850). Dialling on top of it would empty its
+            // queue (a DL-CONNECT request in Connected does) and the pending DISC could then end
+            // the new link, so let it finish first; its frames must not count towards the watch
+            // below either. The old link's own T1/N2, and the busy-peer budget, bound the wait.
+            await Ax25GracefulClose.WaitForPendingAsync(listener, local, target, cancellationToken).ConfigureAwait(false);
+
             // Watch the port's frame trace for the whole dial, on every path below. Two questions:
             // did the dialled peer say ANYTHING to us (the silent-SABME degrade), and did it CALL
             // us (a crossed call, reported on the connection). The claim above makes the
@@ -100,7 +112,7 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                 // costs only what every crossing costs without E1 (the client's prompt wait).
                 bool upAlready = LinkIsUp(local, target);
                 Ax25NodeConnection Connected(Ax25Session s)
-                    => new(listener, s) { Crossed = upAlready || crossing.PeerCalledUs };
+                    => new(listener, s, timeProvider) { Crossed = upAlready || crossing.PeerCalledUs };
 
                 // No cache AND nothing declared => today's exact call: the no-extended-arg overload
                 // follows the listener's PreferExtendedConnect + PreConnectXidNegotiatesSrej defaults,

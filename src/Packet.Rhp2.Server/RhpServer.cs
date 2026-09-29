@@ -1082,8 +1082,14 @@ public sealed partial class RhpServer : IAsyncDisposable
 
     // Remove + dispose a handle. notifyOwner pushes the server-initiated close (the peer/link
     // ended it); a client-requested close gets its closeReply from the dispatch path instead.
-    private async Task TearDownHandleAsync(RhpHandle handle, bool notifyOwner)
+    // Disposing is the ordinary close: the handle is gone at once, but the link stays up until
+    // the peer has acknowledged what the app already sent, then disconnects (packet.net#850,
+    // docs/rhp2-server.md "Closing a stream handle"). `immediate` is for server shutdown, which
+    // disconnects at once instead. Once the server is stopping every teardown is immediate: the
+    // cancelled pumps and client loops race DisposeAsync's own sweep for the same handles.
+    private async Task TearDownHandleAsync(RhpHandle handle, bool notifyOwner, bool immediate = false)
     {
+        immediate |= Volatile.Read(ref disposed) != 0;
         if (handle.MarkClosed())
         {
             return;   // already torn down
@@ -1096,7 +1102,14 @@ public sealed partial class RhpServer : IAsyncDisposable
         {
             try
             {
-                await conn.DisposeAsync().ConfigureAwait(false);
+                if (immediate)
+                {
+                    await conn.AbortAsync().ConfigureAwait(false);
+                }
+                else
+                {
+                    await conn.DisposeAsync().ConfigureAwait(false);
+                }
             }
             catch
             {
@@ -1246,7 +1259,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         foreach (var handle in handles.Values)
         {
-            await TearDownHandleAsync(handle, notifyOwner: false).ConfigureAwait(false);
+            await TearDownHandleAsync(handle, notifyOwner: false, immediate: true).ConfigureAwait(false);
         }
         foreach (var client in clients.Keys)
         {
