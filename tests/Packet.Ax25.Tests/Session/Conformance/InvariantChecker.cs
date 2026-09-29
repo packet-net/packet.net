@@ -24,13 +24,20 @@ public static class InvariantChecker
 
     public static void CheckSafety(TwoStationHarness h)
     {
+        CheckStateAndSequenceSanity(h);
+        // A delivers what B submitted; B delivers what A submitted.
+        CheckReliableDelivery(receiver: h.A, sender: h.B);
+        CheckReliableDelivery(receiver: h.B, sender: h.A);
+    }
+
+    /// <summary>The state and window invariants alone, for a scenario with its own delivery
+    /// model (the crossed-dial explorer, whose layer 3 may send again after a reset).</summary>
+    public static void CheckStateAndSequenceSanity(TwoStationHarness h)
+    {
         CheckDefinedState(h.A);
         CheckDefinedState(h.B);
         CheckSequenceSanity(h.A);
         CheckSequenceSanity(h.B);
-        // A delivers what B submitted; B delivers what A submitted.
-        CheckReliableDelivery(receiver: h.A, sender: h.B);
-        CheckReliableDelivery(receiver: h.B, sender: h.A);
     }
 
     private static void CheckDefinedState(TwoStationHarness.Endpoint e)

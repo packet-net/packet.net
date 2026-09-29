@@ -72,9 +72,10 @@ public sealed class TwoStationHarness
         bool srej = false, int k = 4, int t1Ms = DefaultT1Ms, int n2 = DefaultN2, int t2Ms = 40,
         bool extended = false, Ax25SessionQuirks? quirks = null,
         XidParameters? xidOfferA = null, XidParameters? xidOfferB = null,
-        bool segmenter = false, int? n1 = null)
+        bool segmenter = false, int? n1 = null, Ax25SessionQuirks? quirksB = null)
     {
         var q = quirks ?? Ax25SessionQuirks.Default;
+        var qB = quirksB ?? q;
         var nodeA = new Callsign("M0LTEA", 1);
         var nodeB = new Callsign("M0LTEB", 2);
         var time = new FakeTimeProvider();
@@ -82,7 +83,7 @@ public sealed class TwoStationHarness
         var t1v = TimeSpan.FromMilliseconds(t1Ms);
 
         var a = BuildEndpoint(nodeA, nodeB, time, link, srej, k, t1Ms, n2, t2Ms, extended, q, xidOfferA, segmenter, n1, out var aPeer);
-        var b = BuildEndpoint(nodeB, nodeA, time, link, srej, k, t1Ms, n2, t2Ms, extended, q, xidOfferB, segmenter, n1, out var bPeer);
+        var b = BuildEndpoint(nodeB, nodeA, time, link, srej, k, t1Ms, n2, t2Ms, extended, qB, xidOfferB, segmenter, n1, out var bPeer);
         aPeer.Target = b.Inbound; bPeer.Target = a.Inbound;
         aPeer.RxLog = b.ReceivedFromPeer; bPeer.RxLog = a.ReceivedFromPeer;
         // When A sends, the frame is delivered to B's wiring; route XID/FRMR to

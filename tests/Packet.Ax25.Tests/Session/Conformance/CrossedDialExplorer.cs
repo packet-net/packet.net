@@ -33,10 +33,17 @@ public sealed class CrossedDialExplorer
         int DupBudget = 0,
         int T1Ms = TwoStationHarness.DefaultT1Ms,
         int N2 = 10,
-        Ax25SessionQuirks? Quirks = null)
+        Ax25SessionQuirks? Quirks = null,
+        Ax25SessionQuirks? QuirksB = null,
+        bool SendAfterReset = false)
     {
+        /// <summary>B's quirks: <see cref="QuirksB"/> if set, else the same as A's, so a sweep can
+        /// pit this runtime against a peer that follows the figures as drawn.</summary>
+        public Ax25SessionQuirks? EffectiveQuirksB => QuirksB ?? Quirks;
+
         public override string ToString() =>
-            $"{(Extended ? "mod128" : "mod8")}{(Probe ? "+probe" : "")} data={DataA}/{DataB} drops<={DropBudget} dups<={DupBudget}";
+            $"{(Extended ? "mod128" : "mod8")}{(Probe ? "+probe" : "")} data={DataA}/{DataB} drops<={DropBudget} dups<={DupBudget}"
+            + (QuirksB is null ? "" : " (B on its own quirks)") + (SendAfterReset ? " +sendAfterReset" : "");
     }
 
     public enum Choice
@@ -61,6 +68,9 @@ public sealed class CrossedDialExplorer
         string StateA,
         string StateB)
     {
+        /// <summary>The harness the run ended on, for a test that wants to look at an end.</summary>
+        public TwoStationHarness Harness { get; init; } = null!;
+
         public bool Ok => Violations.Count == 0;
 
         public string Describe()
@@ -110,17 +120,19 @@ public sealed class CrossedDialExplorer
             dropsLeft = cfg.DropBudget;
             dupsLeft = cfg.DupBudget;
             h = TwoStationHarness.Build(
-                extended: cfg.Extended, t1Ms: cfg.T1Ms, n2: cfg.N2, quirks: cfg.Quirks,
+                extended: cfg.Extended, t1Ms: cfg.T1Ms, n2: cfg.N2, quirks: cfg.Quirks, quirksB: cfg.EffectiveQuirksB,
                 srej: false, k: 4);
             h.CheckAfterEachStep = false;
+            h.A.Session.TransitionFired += (_, t) => CountReset("A", t);
+            h.B.Session.TransitionFired += (_, t) => CountReset("B", t);
             h.Link.Schedule = f =>
             {
                 var q = f.From.Equals(h.A.Context.Local) ? ab : ba;
                 q.Enqueue(f);
                 Log($"{Dir(f.From)} tx  {Describe(f.Frame)}");
             };
-            l3A = new L3(h.A, cfg.DataA, cfg.Probe, this);
-            l3B = new L3(h.B, cfg.DataB, cfg.Probe, this);
+            l3A = new L3(h.A, cfg.DataA, cfg.Probe, cfg.SendAfterReset, this);
+            l3B = new L3(h.B, cfg.DataB, cfg.Probe, cfg.SendAfterReset, this);
 
             // Both dial. A first, then B; the scheduled channel makes the order of
             // what follows the scenario's choice, so this is not a bias.
@@ -132,6 +144,25 @@ public sealed class CrossedDialExplorer
         public TwoStationHarness Harness => h;
         public IReadOnlyList<string> Trace => trace;
         public bool Dead => dead;
+
+        /// <summary>Resets seen on the wire, from the figure arms that run them: a SABM(E)
+        /// received on an up link (figc4.4 t14 / t15, figc4.5 t13 / t14, either branch), and
+        /// any arm that takes an up link back to establishment (a UA or FRMR received, an N(R)
+        /// error, a DL-CONNECT request). Counted here rather than from DL-CONNECT signals, which
+        /// the V(s) = V(a) branches do not raise.</summary>
+        public int ResetsOnTheWire { get; private set; }
+
+        private void CountReset(string owner, Packet.Ax25.Sdl.TransitionSpec t)
+        {
+            bool up = t.From is "Connected" or "TimerRecovery";
+            bool peerSabm = up && t.Id.Contains("sabm", StringComparison.Ordinal);
+            bool reestablish = up && t.Next is "AwaitingConnection" or "AwaitingV22Connection";
+            if (peerSabm || reestablish)
+            {
+                ResetsOnTheWire++;
+                Log($"--- {owner}: reset ({t.From} {t.Id})");
+            }
+        }
 
         /// <summary>The choices open at this point.</summary>
         public IEnumerable<Choice> Available()
@@ -178,6 +209,19 @@ public sealed class CrossedDialExplorer
         }
 
         public bool Quiescent => ab.Count == 0 && ba.Count == 0 && NextTimer() is null;
+
+        /// <summary>Apply <paramref name="c"/> if it is open at this point; false if it is not
+        /// (a prefix replayed under other quirks may reach a different tree).</summary>
+        public bool TryApply(Choice c)
+        {
+            if (!Available().Contains(c))
+            {
+                return false;
+            }
+
+            Apply(c);
+            return true;
+        }
 
         public void Apply(Choice c)
         {
@@ -281,7 +325,12 @@ public sealed class CrossedDialExplorer
 
             try
             {
-                InvariantChecker.CheckSafety(h);
+                // Not InvariantChecker.CheckSafety: its delivery check wants an exact prefix,
+                // and a layer 3 that sends again after a reported reset (SendAfterReset)
+                // legitimately has a gap before its later payloads.
+                InvariantChecker.CheckStateAndSequenceSanity(h);
+                CheckDelivery(h.A, l3B);
+                CheckDelivery(h.B, l3A);
             }
             catch (InvariantViolationException ex)
             {
@@ -334,7 +383,7 @@ public sealed class CrossedDialExplorer
             }
 
             return new Outcome(cfg, prefix.ToArray(), trace.ToArray(), violations.ToArray(),
-                l3A.Resets + l3B.Resets, steps, h.A.State, h.B.State);
+                ResetsOnTheWire, steps, h.A.State, h.B.State) { Harness = h };
         }
 
         private void Judge()
@@ -362,6 +411,37 @@ public sealed class CrossedDialExplorer
             JudgeKnowledge(l3B);
         }
 
+        /// <summary>What <paramref name="receiver"/> delivered must be, in order, some of what
+        /// <paramref name="sender"/> submitted: nothing invented, nothing twice, nothing out of
+        /// order. Payloads are unique per station, so this is a subsequence check.</summary>
+        private static void CheckDelivery(TwoStationHarness.Endpoint receiver, L3 sender)
+        {
+            var submitted = sender.Endpoint.Submitted;
+            int next = 0;
+            foreach (var payload in receiver.Delivered)
+            {
+                int at = -1;
+                for (int i = next; i < submitted.Count; i++)
+                {
+                    if (submitted[i].AsSpan().SequenceEqual(payload))
+                    {
+                        at = i;
+                        break;
+                    }
+                }
+
+                if (at < 0)
+                {
+                    bool earlier = submitted.Take(next).Any(p => p.AsSpan().SequenceEqual(payload));
+                    throw new InvariantViolationException(earlier
+                        ? $"[{receiver.Name}] delivered [{Convert.ToHexString(payload)}] from [{sender.Endpoint.Name}] twice or out of order"
+                        : $"[{receiver.Name}] delivered [{Convert.ToHexString(payload)}] which [{sender.Endpoint.Name}] never submitted");
+                }
+
+                next = at + 1;
+            }
+        }
+
         private static bool IsH1(TwoStationHarness.Endpoint e) =>
             e.Context.VS == e.Context.VA && !e.Scheduler.IsRunning("T1");
 
@@ -369,22 +449,19 @@ public sealed class CrossedDialExplorer
         // sender was told its link broke after it queued them.
         private void JudgeDirection(L3 sender, TwoStationHarness.Endpoint receiver)
         {
-            int submitted = sender.Endpoint.Submitted.Count;
-            int delivered = receiver.Delivered.Count;
-            if (delivered == submitted)
+            var submitted = sender.Endpoint.Submitted;
+            var delivered = receiver.Delivered;
+            // Payloads queued before the last break the sender heard of may be gone; anything
+            // queued after it must arrive (ordering and duplicates are checked after every step).
+            for (int i = sender.SubmittedAtLastBreak; i < submitted.Count; i++)
             {
-                return;
-            }
-
-            if (delivered > submitted)
-            {
-                violations.Add($"data: {receiver.Name} delivered {delivered} of {submitted} from {sender.Endpoint.Name} (duplicate delivery)");
-                return;
-            }
-
-            if (!sender.BreakReportedAfterData)
-            {
-                violations.Add($"data: {receiver.Name} delivered {delivered} of {submitted} from {sender.Endpoint.Name} and {sender.Endpoint.Name}'s layer 3 was never told the link broke");
+                if (!delivered.Any(d => d.AsSpan().SequenceEqual(submitted[i])))
+                {
+                    violations.Add(sender.SubmittedAtLastBreak == 0
+                        ? $"data: {receiver.Name} never delivered [{Convert.ToHexString(submitted[i])}] from {sender.Endpoint.Name} ({delivered.Count} of {submitted.Count} arrived) and {sender.Endpoint.Name}'s layer 3 was never told the link broke"
+                        : $"data: {receiver.Name} never delivered [{Convert.ToHexString(submitted[i])}] from {sender.Endpoint.Name}, queued after the last break {sender.Endpoint.Name}'s layer 3 heard of ({delivered.Count} of {submitted.Count} arrived)");
+                    return;
+                }
             }
         }
 
@@ -434,16 +511,19 @@ public sealed class CrossedDialExplorer
         {
             private readonly int data;
             private readonly bool probe;
+            private readonly bool sendAfterReset;
             private readonly Run run;
             private int signalCursor;
             private int mdlCursor;
             private bool dataSubmitted;
+            private int sent;
 
-            public L3(TwoStationHarness.Endpoint endpoint, int data, bool probe, Run run)
+            public L3(TwoStationHarness.Endpoint endpoint, int data, bool probe, bool sendAfterReset, Run run)
             {
                 Endpoint = endpoint;
                 this.data = data;
                 this.probe = probe;
+                this.sendAfterReset = sendAfterReset;
                 this.run = run;
             }
 
@@ -452,7 +532,9 @@ public sealed class CrossedDialExplorer
             public bool BelievesConnected { get; private set; }
             public bool EverConnected { get; private set; }
             public bool DialFailed { get; private set; }
-            public bool BreakReportedAfterData { get; private set; }
+            /// <summary>How many payloads had been queued when this layer 3 last heard the link
+            /// broke (a reset or a disconnect); 0 if it never has.</summary>
+            public int SubmittedAtLastBreak { get; private set; }
             public int Resets { get; private set; }
 
             public void Start()
@@ -517,9 +599,11 @@ public sealed class CrossedDialExplorer
                                 // own dial was still counted as layer-3 initiated.)
                                 Resets++;
                                 run.Log($"--- {Endpoint.Name}: {name} on a live link (reset)");
-                                if (dataSubmitted)
+                                SubmittedAtLastBreak = Endpoint.Submitted.Count;
+                                if (sendAfterReset)
                                 {
-                                    BreakReportedAfterData = true;
+                                    // What a client does once told: send again on the new link.
+                                    Send(1);
                                 }
                             }
                             else
@@ -537,10 +621,7 @@ public sealed class CrossedDialExplorer
                             run.Log($"--- {Endpoint.Name}: {signals[signalCursor].Name}");
                             if (BelievesConnected)
                             {
-                                if (dataSubmitted)
-                                {
-                                    BreakReportedAfterData = true;
-                                }
+                                SubmittedAtLastBreak = Endpoint.Submitted.Count;
                                 BelievesConnected = false;
                             }
                             else
@@ -566,9 +647,14 @@ public sealed class CrossedDialExplorer
                 }
 
                 dataSubmitted = true;
-                for (int i = 0; i < data; i++)
+                Send(data);
+            }
+
+            private void Send(int count)
+            {
+                for (int i = 0; i < count; i++)
                 {
-                    var payload = new[] { (byte)(Endpoint.Name[^1]), (byte)(0x30 + i) };
+                    var payload = new[] { (byte)(Endpoint.Name[^1]), (byte)(0x30 + sent++) };
                     run.Log($"--- {Endpoint.Name}: DL-DATA request [{Convert.ToHexString(payload)}]");
                     Endpoint.Submitted.Add(payload);
                     Endpoint.Session.PostEvent(new DlDataRequest(payload));
@@ -633,6 +719,22 @@ public sealed class CrossedDialExplorer
         }
 
         return run;
+    }
+
+    /// <summary>Replay as far as the prefix stays open under <paramref name="cfg"/>; null if it
+    /// diverges before the end (the two configurations took different trees there).</summary>
+    public static Outcome? ReplayIfOpen(Config cfg, IEnumerable<Choice> prefix)
+    {
+        var run = new Run(cfg);
+        foreach (var c in prefix)
+        {
+            if (!run.TryApply(c))
+            {
+                return null;
+            }
+        }
+
+        return run.Finish();
     }
 
     /// <summary>Group outcomes by their first violation, keeping the shortest

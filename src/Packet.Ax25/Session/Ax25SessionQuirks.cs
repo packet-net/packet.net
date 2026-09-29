@@ -152,18 +152,17 @@ public sealed record Ax25SessionQuirks
     /// byte the UA that took this link from AwaitingConnection or AwaitingV22Connection to
     /// Connected, and no other frame from the peer has arrived since. Any number of copies are
     /// dropped. Anything else still runs the figure: a UA that differs (F=0, say), or one that
-    /// follows other traffic from the peer. That second limit matters. A peer that answered a
-    /// retried SABM after it had already sent data has really reset its sequence variables,
-    /// and the figure's reset is what brings the two ends back into step.
+    /// follows other traffic from the peer. Since #874 that is the narrow case only:
+    /// <see cref="UnexpectedUaIgnored"/>, on by default, drops every UA on an up link and watches
+    /// for the peer's sequence restarting instead; this quirk is what is left with that one off.
     /// </para>
     /// <para>
     /// LinBPQ discards every UA on a link that is up (<c>L2Code.c</c> <c>SDUFRM</c>: "DISCARD -
     /// PROBABLY REPEAT OF ACK OF SABM"), and the Linux kernel's state-3 machine
     /// (<c>ax25_std_in.c</c> <c>ax25_std_state3_machine</c>) has no UA case, so it drops them
     /// too; direwolf and rax25 follow the figure.
-    /// This quirk is deliberately narrower than LinBPQ and Linux. When <c>false</c>
-    /// (<see cref="StrictlyFaithful"/>), every UA in the connected state resets the link as
-    /// drawn.
+    /// When <c>false</c> (<see cref="StrictlyFaithful"/>), every UA in the connected state
+    /// resets the link as drawn.
     /// </para>
     /// </remarks>
     public bool RepeatedConnectUaIgnored { get; init; } = true;
@@ -195,10 +194,21 @@ public sealed record Ax25SessionQuirks
     /// does (<c>L2Code.c</c> <c>SDUFRM</c>: "DISCARD - PROBABLY REPEAT OF ACK OF SABM") and what
     /// the Linux kernel does (<c>ax25_std_in.c</c> <c>ax25_std_state3_machine</c> has no UA case);
     /// direwolf and rax25 follow the figure. It subsumes <see cref="RepeatedConnectUaIgnored"/>,
-    /// which stays for the narrow case on its own. A peer that really has reset its link shows
-    /// it by other means the figure handles: its SABM(E), or an N(R) that cannot be right.
-    /// When <c>false</c> (<see cref="StrictlyFaithful"/>), every UA on an up link resets it as
-    /// drawn, unless <see cref="RepeatedConnectUaIgnored"/> absorbs it.
+    /// which stays for the narrow case on its own.
+    /// </para>
+    /// <para>
+    /// One thing the UA can mean is kept: a peer that follows the figure resets its link on our
+    /// retry (§6.3.3), answers UA, and sends again from N(S) = 0. Dropping that UA and nothing
+    /// more would take its restarted frames for duplicates of the ones already delivered, discard
+    /// them and acknowledge them, and nobody would know (found in the review of #877; LinBPQ and
+    /// Linux have that hole). So the dropped UA is remembered, and if the peer's next I frame is
+    /// numbered 0 with new bytes while V(r) is not 0, its sequence has restarted and the UA is
+    /// dispatched then: the figure's reset runs, both ends are told, and the peer's data goes on
+    /// the new link. A frame numbered 0 with the bytes of the one already taken is a duplicate or
+    /// a retransmission and is left to the figure as such, and an in-sequence frame past 0 shows
+    /// the peer carried on, which forgets the UA. When <c>false</c>
+    /// (<see cref="StrictlyFaithful"/>), every UA on an up link resets it as drawn, unless
+    /// <see cref="RepeatedConnectUaIgnored"/> absorbs it.
     /// </para>
     /// </remarks>
     public bool UnexpectedUaIgnored { get; init; } = true;

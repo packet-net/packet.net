@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Session;
 using Packet.Core;
 using Xunit;
@@ -179,15 +180,16 @@ public sealed class Ax25ListenerRepeatedConnectUaTests
         CrossedDialWithARetryAsync(Ax25SessionQuirks quirks)
     {
         var modem = new LoopbackModem();
-        var listener = new Ax25Listener(modem, new Ax25ListenerOptions
-        {
-            MyCall = Local,
-            Quirks = quirks,
-            T1V = TimeSpan.FromMilliseconds(300),
-        });
+        var time = new FakeTimeProvider();
+        var t1 = TimeSpan.FromSeconds(1);
+        var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = Local, Quirks = quirks, T1V = t1 }, time);
         await listener.StartAsync();
 
         var dial = listener.ConnectAsync(Peer, Local, extended: true, preConnectXidNegotiatesSrej: false);
+        await ListenerTestSupport.WaitFor(() => Sent(modem).Count(IsEstablish) == 1, TimeSpan.FromSeconds(5), "the SABME is on the air");
+        // T1 runs out once, on the fake clock, so exactly one retry follows and nothing else
+        // can expire during the test.
+        time.Advance(t1 + TimeSpan.FromMilliseconds(50));
         await ListenerTestSupport.WaitFor(() => Sent(modem).Count(IsEstablish) == 2, TimeSpan.FromSeconds(5),
             "T1 runs out once and the dial sends its SABME again");
 

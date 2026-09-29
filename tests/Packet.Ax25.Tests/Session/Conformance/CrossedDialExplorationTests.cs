@@ -44,7 +44,11 @@ public class CrossedDialExplorationTests
     [MemberData(nameof(Configs))]
     public void Every_ordering_to_depth_8_connects_both_ends_and_delivers(CrossedDialExplorer.Config cfg)
     {
-        var outcomes = CrossedDialExplorer.Exhaustive(cfg, depth: 8, maxRuns: 6000);
+        // About 4,000 orderings lossless and 22,000 to 25,000 with a loss or a duplicate
+        // (the cap is well above; a capped depth-first search would only ever see prefixes
+        // starting with the first choice).
+        var outcomes = CrossedDialExplorer.Exhaustive(cfg, depth: 8, maxRuns: 40_000);
+        outcomes.Count.Should().BeLessThan(40_000, "the search must finish, not be cut by the cap");
         output.WriteLine(CrossedDialExplorer.Report(outcomes));
         AssertClean(outcomes);
     }
@@ -79,6 +83,67 @@ public class CrossedDialExplorationTests
         output.WriteLine(CrossedDialExplorer.Report(outcomes));
         AssertClean(outcomes);
     }
+
+    /// <summary>A peer that runs the figures as drawn: it resets on a repeated SABM(E) and on a
+    /// UA, as direwolf, rax25 and the Linux kernel do. Not <see cref="Ax25SessionQuirks.StrictlyFaithful"/>,
+    /// which also changes how a mod-128 dial routes.</summary>
+    private static readonly Ax25SessionQuirks FigurePeer = Ax25SessionQuirks.Default with
+    {
+        UnexpectedUaIgnored = false,
+        RepeatedConnectUaIgnored = false,
+        RepeatedConnectSabmReacknowledged = false,
+    };
+
+    public static IEnumerable<object[]> MixedConfigs()
+    {
+        foreach (var extended in new[] { false, true })
+        {
+            yield return new object[] { new CrossedDialExplorer.Config(extended, Probe: false, QuirksB: FigurePeer, SendAfterReset: true) };
+            yield return new object[] { new CrossedDialExplorer.Config(extended, Probe: false, DropBudget: 1, QuirksB: FigurePeer, SendAfterReset: true) };
+            yield return new object[] { new CrossedDialExplorer.Config(extended, Probe: true, QuirksB: FigurePeer, SendAfterReset: true) };
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(MixedConfigs))]
+    public void Against_a_peer_that_follows_the_figures_the_quirks_lose_no_more_than_the_figure(CrossedDialExplorer.Config cfg)
+    {
+        // The figure peer resets on our stale retry, and the figure's reset is lossy by nature:
+        // an acknowledgement for the old sequence still in flight is taken for the new one, and
+        // its layer 3 is never told. Two figure-faithful stations do that to each other too. What
+        // the quirks must not do is add to it: a station that dropped the peer's UA must not take
+        // the peer's restarted frames for duplicates (the review of #877 found that hole). The
+        // trees differ once the two ends behave differently, so the comparison is over the whole
+        // space: the share of orderings that lose data with the quirks on must not exceed the
+        // share with them off.
+        var withQuirks = Sweep(cfg);
+        var asFigure = Sweep(cfg with { Quirks = FigurePeer });
+
+        output.WriteLine("with the quirks on this end:");
+        output.WriteLine(CrossedDialExplorer.Report(withQuirks));
+        output.WriteLine("as the figure at both ends:");
+        output.WriteLine(CrossedDialExplorer.Report(asFigure));
+
+        double lossy = Lossy(withQuirks), figureLossy = Lossy(asFigure);
+        output.WriteLine($"lossy share: with the quirks {lossy:P2}, as the figure {figureLossy:P2}");
+        // A hair either way is the same mechanism counted on two different trees (one run in
+        // four thousand); a real hole shows as points, as the review's did.
+        lossy.Should().BeLessThanOrEqualTo(figureLossy + 0.005, "the quirks must not add silent loss against a figure-following peer");
+    }
+
+    private static List<CrossedDialExplorer.Outcome> Sweep(CrossedDialExplorer.Config cfg)
+    {
+        var outcomes = CrossedDialExplorer.Exhaustive(cfg, depth: 8, maxRuns: 40_000);
+        for (int seed = 0; seed < 300; seed++)
+        {
+            outcomes.Add(CrossedDialExplorer.RandomWalk(cfg, seed, steps: 24));
+        }
+
+        return outcomes;
+    }
+
+    private static double Lossy(List<CrossedDialExplorer.Outcome> outcomes) =>
+        outcomes.Count(o => o.Violations.Any(v => v.StartsWith("data:", StringComparison.Ordinal))) / (double)outcomes.Count;
 
     [Fact]
     public void With_the_crossing_quirks_off_the_figure_resets_on_a_lossless_crossing()
