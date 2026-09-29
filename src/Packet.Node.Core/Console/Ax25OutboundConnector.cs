@@ -102,6 +102,7 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                 crossing.Observe(e);
             }
 
+            bool upAlready = false;
             listener.FrameTraced += OnFrame;
             try
             {
@@ -110,7 +111,7 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                 // handled, so a SABM(E) traced just before the subscription and handled just
                 // after this read is seen by neither. The window is microseconds, and a miss
                 // costs only what every crossing costs without E1 (the client's prompt wait).
-                bool upAlready = LinkIsUp(local, target);
+                upAlready = LinkIsUp(local, target);
                 Ax25NodeConnection Connected(Ax25Session s)
                     => new(listener, s, timeProvider) { Crossed = upAlready || crossing.PeerCalledUs };
 
@@ -207,6 +208,17 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
 
                 return Connected(session);
             }
+            catch (Exception) when (!upAlready && crossing.PeerCalledUs)
+            {
+                // The peer called us during the dial and its call set up the link (figc4.1, on
+                // this dial's own session), but the dial failed or was cancelled before it could
+                // hand that link over. The claim made the supervisor drop the link's accept, so
+                // nobody holds it, and left up it would acknowledge the peer's I frames and
+                // deliver them to no one (#867). End it, so the peer's application sees the link
+                // go rather than its data vanish.
+                DisconnectLinkNobodyHolds(local, target);
+                throw;
+            }
             finally
             {
                 listener.FrameTraced -= OnFrame;
@@ -215,6 +227,19 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         finally
         {
             ticket?.Dispose();
+        }
+    }
+
+    private void DisconnectLinkNobodyHolds(Callsign local, Callsign remote)
+    {
+        foreach (var s in listener.ActiveSessions)
+        {
+            if (s.Context.Local.Equals(local)
+                && s.Context.Remote.Equals(remote)
+                && s.CurrentState is "Connected" or "TimerRecovery")
+            {
+                s.PostEvent(new DlDisconnectRequest());
+            }
         }
     }
 

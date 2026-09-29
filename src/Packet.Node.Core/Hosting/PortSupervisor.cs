@@ -110,7 +110,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // sent, link up) and then silently dropped on the floor by this guard - the caller got a
     // connected link and dead air until T3/DISC, with no log line. A dial holds its claim for up
     // to (N2+1)×T1V, so the window is wide.
-    private readonly Dictionary<(string PortId, Callsign Remote), int> outboundInProgress = new();
+    private readonly Dictionary<(string PortId, Callsign Local, Callsign Remote), int> outboundInProgress = new();
     private readonly object outboundGate = new();
     private readonly CancellationTokenSource lifecycle = new();
     private int disposed;
@@ -217,7 +217,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         // The claim carries THIS port (#723 item 1): an interlink dial on the backbone port must
         // not suppress the node console for the same neighbour calling in on a user port.
-        using var ticket = ClaimOutbound(portId, neighbour);
+        using var ticket = ClaimOutbound(portId, listener.MyCall, neighbour);
         return await listener
             .ConnectAsync(neighbour, listener.MyCall, plan.Extended, plan.PreConnectXid, ct)
             .ConfigureAwait(false);
@@ -319,7 +319,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         return port is null
             ? null
             : new Ax25OutboundConnector(
-                port.Id, port.Listener, r => ClaimOutbound(port.Id, r), localOverride, capabilityCache, LinkPolicyFor(port.Id),
+                port.Id, port.Listener, r => ClaimOutbound(port.Id, localOverride ?? port.Listener.MyCall, r), localOverride, capabilityCache, LinkPolicyFor(port.Id),
                 timeProvider);
     }
 
@@ -655,7 +655,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var ax25 = first is null
             ? null
             : new Ax25OutboundConnector(
-                first.Id, first.Listener, r => ClaimOutbound(first.Id, r), localOverride: null, cache: capabilityCache,
+                first.Id, first.Listener, r => ClaimOutbound(first.Id, first.Listener.MyCall, r), localOverride: null, cache: capabilityCache,
                 linkPolicy: LinkPolicyFor(first.Id), timeProvider: timeProvider);
 
         // A telnet dial-in has no callsign of its own; a NET/ROM-routed `connect`
@@ -669,23 +669,26 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         return ax25;
     }
 
-    // Mark (port, remote) as an in-flight outbound connect (refcounted); the returned ticket
-    // decrements on dispose. OnSessionAccepted skips a session whose ARRIVAL PORT and remote are
-    // both claimed, so dialling OUT never starts a node console against the dialled station -
-    // and a caller of the same callsign arriving on a DIFFERENT port still gets its console.
-    private OutboundTicket ClaimOutbound(string portId, Callsign remote)
+    // Mark (port, local, remote) as an in-flight outbound connect (refcounted); the returned
+    // ticket decrements on dispose. OnSessionAccepted skips a session whose ARRIVAL PORT, local
+    // and remote are all claimed - the dial's own session, one per (local, remote) - so dialling
+    // OUT never starts a node console against the dialled station. A caller of the same callsign
+    // arriving on a DIFFERENT port, or calling a DIFFERENT callsign of ours (the node's own while
+    // an app dials it, say), is a separate link and still reaches its console or app: skipping
+    // it left a link up that acknowledged the caller's frames with nobody attached (#867).
+    private OutboundTicket ClaimOutbound(string portId, Callsign local, Callsign remote)
     {
-        var key = (portId, remote);
+        var key = (portId, local, remote);
         lock (outboundGate)
         {
             outboundInProgress[key] = outboundInProgress.TryGetValue(key, out var n) ? n + 1 : 1;
         }
-        return new OutboundTicket(this, portId, remote);
+        return new OutboundTicket(this, portId, local, remote);
     }
 
-    private void ReleaseOutbound(string portId, Callsign remote)
+    private void ReleaseOutbound(string portId, Callsign local, Callsign remote)
     {
-        var key = (portId, remote);
+        var key = (portId, local, remote);
         lock (outboundGate)
         {
             if (outboundInProgress.TryGetValue(key, out var n))
@@ -702,22 +705,22 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
-    private bool IsOutbound(string portId, Callsign remote)
+    private bool IsOutbound(string portId, Callsign local, Callsign remote)
     {
         lock (outboundGate)
         {
-            return outboundInProgress.ContainsKey((portId, remote));
+            return outboundInProgress.ContainsKey((portId, local, remote));
         }
     }
 
-    private sealed class OutboundTicket(PortSupervisor owner, string portId, Callsign remote) : IDisposable
+    private sealed class OutboundTicket(PortSupervisor owner, string portId, Callsign local, Callsign remote) : IDisposable
     {
         private int released;
         public void Dispose()
         {
             if (Interlocked.Exchange(ref released, 1) == 0)
             {
-                owner.ReleaseOutbound(portId, remote);
+                owner.ReleaseOutbound(portId, local, remote);
             }
         }
     }
@@ -1400,7 +1403,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // null N1 leaves the context default (256) - byte-for-byte today's behaviour.
         listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
         var connector = new Ax25OutboundConnector(
-            port.Id, listener, r => ClaimOutbound(port.Id, r), localOverride: null, cache: capabilityCache,
+            port.Id, listener, r => ClaimOutbound(port.Id, listener.MyCall, r), localOverride: null, cache: capabilityCache,
             linkPolicy: LinkPolicyFor(port.Id), timeProvider: timeProvider);
         // The arrival port id is captured here rather than reverse-looked-up from the listener:
         // it is now load-bearing (the outbound claim and the app-registration lookup are both
@@ -1937,9 +1940,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // raises SessionAccepted on this listener - but it is NOT an inbound
         // caller, so we must not start a node console against it (that would spew
         // our prompt at the station we connected to). The connector claims the
-        // (port, remote) for the duration of the connect; comparing THIS port is what
-        // keeps a same-callsign caller arriving on another port from being swallowed.
-        if (IsOutbound(portId, session.Context.Remote))
+        // (port, local, remote) for the duration of the connect; comparing THIS port and
+        // THIS local is what keeps a same-callsign caller arriving on another port, or
+        // calling another callsign of ours, from being swallowed.
+        if (IsOutbound(portId, session.Context.Local, session.Context.Remote))
         {
             return false;
         }
