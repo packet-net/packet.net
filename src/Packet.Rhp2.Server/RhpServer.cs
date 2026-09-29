@@ -505,12 +505,22 @@ public sealed partial class RhpServer : IAsyncDisposable
 
             LogOpened(handle.Id, open.Remote!, client.Peer);
 
+            // Extension E1 (docs/rhp2-server.md): the call crossed the peer's call to us, so a
+            // client that would wait for the peer's prompt can start at once. Present only when
+            // true; every other openReply is byte for byte what it was.
+            bool crossed = conn.Crossed;
+            if (crossed)
+            {
+                LogOpenCrossed(handle.Id, open.Remote!);
+            }
+
             await WriteAsync(client, new OpenReplyMessage
             {
                 Id = open.Id,
                 Handle = handle.Id,
                 ErrCode = RhpErrorCode.Ok,
                 ErrText = RhpErrorCode.Text(RhpErrorCode.Ok),
+                Crossed = crossed ? true : null,
             }, ct).ConfigureAwait(false);
 
             // Shape-compatibility with the async reference: a status push announcing the link
@@ -1410,6 +1420,9 @@ public sealed partial class RhpServer : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "RHP handle {Handle} opened to {Remote} for {Peer}.")]
     private partial void LogOpened(int handle, string remote, string peer);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "RHP handle {Handle}: the call to {Remote} crossed its call to us; openReply carries crossed:true.")]
+    private partial void LogOpenCrossed(int handle, string remote);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "RHP open to {Remote} for {Peer} resolved after the client had gone; the session was discarded.")]
     private partial void LogOrphanedOpen(string remote, string peer);

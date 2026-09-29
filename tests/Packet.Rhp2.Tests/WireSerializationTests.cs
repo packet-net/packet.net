@@ -392,6 +392,37 @@ public class WireSerializationTests
         doc.RootElement.GetProperty("handle").GetInt32().Should().Be(100);
     }
 
+    // -----------------------------------------------------------------
+    //  openReply "crossed": pdn extension E1, present only when true
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public void OpenReply_without_crossed_emits_no_crossed_key()
+    {
+        // The pre-E1 bytes, key order and all (the base class's id follows the reply's own keys).
+        var json = ToJson(new OpenReplyMessage { Id = 7, Handle = 104, ErrCode = 0, ErrText = "Ok" });
+
+        json.Should().Be("""{"type":"openReply","handle":104,"errCode":0,"errText":"Ok","id":7}""");
+    }
+
+    [Fact]
+    public void OpenReply_crossed_is_the_plain_reply_with_one_key_appended()
+    {
+        var plain = ToJson(new OpenReplyMessage { Id = 7, Handle = 104, ErrCode = 0, ErrText = "Ok" });
+        var json = ToJson(new OpenReplyMessage { Id = 7, Handle = 104, ErrCode = 0, ErrText = "Ok", Crossed = true });
+
+        json.Should().Be(plain[..^1] + ""","crossed":true}""");
+    }
+
+    [Fact]
+    public void OpenReply_crossed_parses_and_its_absence_reads_as_unknown()
+    {
+        ((OpenReplyMessage)Parse("""{"type":"openReply","id":7,"handle":104,"errCode":0,"errText":"Ok","crossed":true}"""))
+            .Crossed.Should().BeTrue();
+        ((OpenReplyMessage)Parse("""{"type":"openReply","id":7,"handle":104,"errCode":0,"errText":"Ok"}"""))
+            .Crossed.Should().BeNull("an XRouter reply, or a pdn reply for a call that did not cross, has no key");
+    }
+
     [Fact]
     public void Status_notification_flags_decode_as_StatusFlags_bits()
     {
