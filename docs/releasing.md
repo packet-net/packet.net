@@ -2,7 +2,7 @@
 
 How a packet.net change reaches the world. This is the **release cascade**: a single substantive merge to `main` fans out into NuGet packages, `.deb`s, downstream app releases, and (when the TS library moved) an npm publish + a static-site redeploy. It is tag-driven and mostly automated, but the *order* and the *downstream fan-out* are easy to forget - hence this doc.
 
-> **TL;DR** - on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the `Packet.*` pins in `packet-net/pdn-ax25-tools` and `packet-net/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump the pins in `packet-net/pdn-web`. Finally, record the whole arc in `docs/plan.md` §17.
+> **TL;DR** - on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the `Packet.*` pins in `packet-net/packet-term-tui` and cut its release; `packet-net/pdn-ax25-tools` takes the new packages and releases itself within a day (or at once, from its `deps` workflow's manual trigger). If `ax25-ts` also changed, release it to npm and bump the pins in `packet-net/pdn-web`. Finally, record the whole arc in `docs/plan.md` §17.
 
 ## When to release
 
@@ -142,7 +142,9 @@ Two public app repos pin the `Packet.*` NuGet packages:
 - [`packet-net/pdn-ax25-tools`](https://github.com/packet-net/pdn-ax25-tools) (axcall, axinetd, axlisten, axsocks, axtun; renamed from `axcall`)
 - [`packet-net/packet-term-tui`](https://github.com/packet-net/packet-term-tui)
 
-For each: open a PR bumping its `Packet.*` pins in `Directory.Packages.props` to the new version (pdn-ax25-tools pins seven packages, the TUI four), **build + test locally against the freshly-published NuGet first** (so an indexing lag or a packaging slip is caught before merge), merge on green, then tag `v0.x.y` - their `release.yml` builds the six-platform binaries; verify the assets attached. Do this only after Step 1's NuGet indexing has settled.
+**pdn-ax25-tools is automatic.** Its [`deps` workflow](https://github.com/packet-net/pdn-ax25-tools/blob/main/.github/workflows/deps.yml) runs daily (05:17 UTC) and on demand. It moves every `Packet.*` and `M0LTE.*` pin (seven today) to the newest stable version on nuget.org, builds and runs the full test suite on the self-hosted runner, commits `chore(deps): bump Packet.* to <version>` straight to `main`, and then releases the next minor version through its `release.yml`, which also publishes to apt. A bump that fails its tests is not released: it is left on a `deps/packet-<version>` branch with an issue opened. So after a `lib-v*` release, either wait for the daily run or start it from the repo's Actions tab once NuGet indexing has settled, and check the release that follows has its assets. A pin bumped by hand is released by the next run too.
+
+**packet-term-tui is still by hand.** Open a PR bumping its `Packet.*` pins in `Directory.Packages.props` to the new version (it pins four), **build + test locally against the freshly-published NuGet first** (so an indexing lag or a packaging slip is caught before merge), merge on green, then tag `v0.x.y` - its `release.yml` builds the six-platform binaries; verify the assets attached. Do this only after Step 1's NuGet indexing has settled.
 
 ## Step 4 - the TS leg (only when `ax25-ts` changed)
 
@@ -182,7 +184,7 @@ Releases cut before this existed were rewritten in place by [`scripts/backfill-r
 | `node-v<semver>` | `publish-node.yml` | amd64/arm64/armhf `.deb`s + `.tar.gz` archives + `SHA256SUMS` on a GitHub Release, under version-free asset names (`packetnet_<arch>.deb`) so `/releases/latest/download/` is a permanent URL |
 | `node-v<semver>` (same tag) | `publish-docker.yml` | multi-arch (amd64+arm64) `ghcr.io/packet-net/packet.net:<semver>` + `:latest` |
 | `headend-v<semver>` | `publish-headend.yml` | arm64/arm v7/amd64 `.deb`s + static Go binaries on a GitHub Release |
-| `packet-net/pdn-ax25-tools` `v*` | its `release.yml` | six-platform app binaries |
+| `packet-net/pdn-ax25-tools` `v*` | its `release.yml`, started by its `deps` workflow | six-platform app binaries + per-program `.deb`s, mirrored to apt |
 | `packet-net/packet-term-tui` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/ax25-ts` `v*` | its `publish.yml` | npm package |
 | push to `packet-net/pdn-web` `main` | OARC + GitHub Pages auto-deploy | packet-term.m0lte.uk, soundmodem-web |
