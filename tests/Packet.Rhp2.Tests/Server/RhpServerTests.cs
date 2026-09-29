@@ -86,6 +86,63 @@ public sealed class RhpServerTests : IAsyncDisposable
         (gateway.LastPort, gateway.LastLocal, gateway.LastRemote).Should().Be(("1", "M0LTE-1", "GB7RDG"));
     }
 
+    // ── Extension E1: openReply "crossed" (docs/rhp2-server.md § Extensions) ─
+
+    [Fact]
+    public async Task An_open_that_did_not_cross_gets_the_openReply_byte_for_byte_as_before()
+    {
+        // The default: no crossed key at all, so every client (and XRouter's own shape) sees
+        // exactly the reply it always did.
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendRawAsync("""{"type":"open","id":7,"pfam":"ax25","mode":"stream","port":"1","local":"M0LTE-1","remote":"GB7RDG","flags":128}""");
+
+        var (type, json) = await client.ReadRawAsync();
+        type.Should().Be("openReply");
+        int handle = JsonHandle(json);
+        json.Should().Be($$"""{"type":"openReply","handle":{{handle}},"errCode":0,"errText":"Ok","id":7}""");
+    }
+
+    [Fact]
+    public async Task An_open_whose_call_crossed_gets_the_same_reply_with_crossed_true_appended()
+    {
+        var (server, gateway) = await StartServerAsync();
+        gateway.Connection.Crossed = true;
+        var client = await ConnectAsync(server);
+
+        await client.SendRawAsync("""{"type":"open","id":7,"pfam":"ax25","mode":"stream","port":"1","local":"M0LTE-1","remote":"GB7RDG","flags":128}""");
+
+        var (type, json) = await client.ReadRawAsync();
+        type.Should().Be("openReply");
+        int handle = JsonHandle(json);
+        json.Should().Be($$"""{"type":"openReply","handle":{{handle}},"errCode":0,"errText":"Ok","id":7,"crossed":true}""");
+
+        // The rest of the open is unchanged: the connected status push still follows.
+        var status = await client.ExpectAsync<StatusMessage>();
+        status.Handle.Should().Be(handle);
+    }
+
+    [Fact]
+    public async Task A_failed_open_never_carries_crossed()
+    {
+        var (server, gateway) = await StartServerAsync();
+        gateway.Connection.Crossed = true;
+        gateway.Fail = new RhpGatewayException(RhpErrorCode.NoRoute, "No Route");
+        var client = await ConnectAsync(server);
+
+        await client.SendRawAsync("""{"type":"open","id":7,"pfam":"ax25","mode":"stream","port":"1","remote":"GB7RDG","flags":128}""");
+
+        var (_, json) = await client.ReadRawAsync();
+        json.Should().Be("""{"type":"openReply","errCode":15,"errText":"No Route","id":7}""");
+    }
+
+    private static int JsonHandle(string json)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.GetProperty("handle").GetInt32();
+    }
+
     [Fact]
     public async Task Send_writes_decoded_bytes_to_the_session_and_replies_ok()
     {
@@ -933,6 +990,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         public string PeerId => "GB7RDG";
         public NodeTransportKind TransportKind => NodeTransportKind.Ax25;
         public Task Completion => completion.Task;
+        public bool Crossed { get; set; }
         public Task DisposedTask => disposed.Task;
 
         public void Inject(byte[] bytes) => inbound.Writer.TryWrite(bytes);

@@ -50,6 +50,15 @@ public interface INodeConnection : IAsyncDisposable
     /// already ends it immediately.
     /// </summary>
     ValueTask AbortAsync() => DisposeAsync();
+
+    /// <summary>
+    /// True when this connection came from an outbound dial whose call crossed the peer's
+    /// call to us: the peer's SABM or SABME to our calling callsign arrived during the dial,
+    /// or the link was already up when the dial started. The RHPv2 server reports it on the
+    /// <c>openReply</c> as extension E1 (<c>docs/rhp2-server.md</c>). False for everything
+    /// else, including every inbound connection and every transport with no such notion.
+    /// </summary>
+    bool Crossed => false;
 }
 
 /// <summary>The transport a <see cref="INodeConnection"/> arrived on.</summary>

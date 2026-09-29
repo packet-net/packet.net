@@ -1,3 +1,4 @@
+using Packet.Ax25;
 using Packet.Ax25.Session;
 using Packet.Core;
 using Packet.Node.Core.Capabilities;
@@ -79,40 +80,60 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
             // A previous link to this peer from this callsign may still be delivering the tail of
             // a session its owner closed (packet.net#850). Dialling on top of it would empty its
             // queue (a DL-CONNECT request in Connected does) and the pending DISC could then end
-            // the new link, so let it finish first. The old link's own T1/N2 bounds the wait.
+            // the new link, so let it finish first; its frames must not count towards the watch
+            // below either. The old link's own T1/N2, and the busy-peer budget, bound the wait.
             await Ax25GracefulClose.WaitForPendingAsync(listener, local, target, cancellationToken).ConfigureAwait(false);
 
-            // No cache AND nothing declared ⇒ today's exact call: the no-extended-arg overload
-            // follows the listener's PreferExtendedConnect + PreConnectXidNegotiatesSrej defaults,
-            // and we record nothing. Preserves every existing connector unchanged.
-            if (cache is null && (link is null || link.IsDefault))
-            {
-                var sessionNoCache = localOverride is { } lo
-                    ? await listener.ConnectAsync(target, lo, cancellationToken).ConfigureAwait(false)
-                    : await listener.ConnectAsync(target, cancellationToken).ConfigureAwait(false);
-                return new Ax25NodeConnection(listener, sessionNoCache);
-            }
-
-            var peer = target.ToString();
-
-            // The port's declared policy first, the cache second. PlanDial's miss/stale default
-            // for a user CONNECT is the optimistic SABME + (moot) no-XID; a declared v20/v22 pins
-            // it, and under `auto` a learned answer overrides it.
-            var plan = cache?.PlanDial(PortId, peer, PeerDialPolicy.UserConnect, link)
-                ?? PeerCapabilityCache.PlanWithoutCache(PeerDialPolicy.UserConnect, link);
-
-            // Did the peer say ANYTHING to us during the dial? That, not the exception type, is
-            // what separates "ignores SABME" from "refused" or "reset". The engine reports the
-            // SDL's own give-up at RC == N2 as a teardown (DL-DISCONNECT-indication), which is the
-            // very same signal a DM refusal produces, so keying off the exception alone would
-            // conflate them. A dial to a station that emitted not one frame at us is unambiguous:
-            // it is the on-air signature this whole feature exists for.
+            // Watch the port's frame trace for the whole dial, on every path below. Two questions:
+            // did the dialled peer say ANYTHING to us (the silent-SABME degrade), and did it CALL
+            // us (a crossed call, reported on the connection). The claim above makes the
+            // supervisor drop the peer's SessionAccepted while we dial, so this watch is the only
+            // place its call is seen.
             var heard = new PeerSilenceWatch(local, target);
-            void OnFrame(object? _, Ax25FrameEventArgs e) => heard.Observe(e);
+            var crossing = new CrossedCallWatch(local, target);
+            void OnFrame(object? _, Ax25FrameEventArgs e)
+            {
+                heard.Observe(e);
+                crossing.Observe(e);
+            }
 
             listener.FrameTraced += OnFrame;
             try
             {
+                // Read after subscribing, which narrows the gap between the two checks but does
+                // not close it: the trace fires on the listener's pump before the frame is
+                // handled, so a SABM(E) traced just before the subscription and handled just
+                // after this read is seen by neither. The window is microseconds, and a miss
+                // costs only what every crossing costs without E1 (the client's prompt wait).
+                bool upAlready = LinkIsUp(local, target);
+                Ax25NodeConnection Connected(Ax25Session s)
+                    => new(listener, s) { Crossed = upAlready || crossing.PeerCalledUs };
+
+                // No cache AND nothing declared => today's exact call: the no-extended-arg overload
+                // follows the listener's PreferExtendedConnect + PreConnectXidNegotiatesSrej defaults,
+                // and we record nothing. Preserves every existing connector unchanged.
+                if (cache is null && (link is null || link.IsDefault))
+                {
+                    var sessionNoCache = localOverride is { } lo
+                        ? await listener.ConnectAsync(target, lo, cancellationToken).ConfigureAwait(false)
+                        : await listener.ConnectAsync(target, cancellationToken).ConfigureAwait(false);
+                    return Connected(sessionNoCache);
+                }
+
+                var peer = target.ToString();
+
+                // The port's declared policy first, the cache second. PlanDial's miss/stale default
+                // for a user CONNECT is the optimistic SABME + (moot) no-XID; a declared v20/v22 pins
+                // it, and under `auto` a learned answer overrides it.
+                var plan = cache?.PlanDial(PortId, peer, PeerDialPolicy.UserConnect, link)
+                    ?? PeerCapabilityCache.PlanWithoutCache(PeerDialPolicy.UserConnect, link);
+
+                // Did the peer say ANYTHING to us during the dial? That, not the exception type, is
+                // what separates "ignores SABME" from "refused" or "reset". The engine reports the
+                // SDL's own give-up at RC == N2 as a teardown (DL-DISCONNECT-indication), which is the
+                // very same signal a DM refusal produces, so keying off the exception alone would
+                // conflate them. A dial to a station that emitted not one frame at us is unambiguous:
+                // it is the on-air signature this whole feature exists for.
                 Ax25Session session;
                 try
                 {
@@ -167,7 +188,7 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                         dialedExtended: false, observedIsExtended: session.Context.IsExtended,
                         dialedPreConnectXid: retryXid, observedSrejEnabled: session.Context.SrejEnabled);
 
-                    return new Ax25NodeConnection(listener, session);
+                    return Connected(session);
                 }
 
                 // Record the OUTCOME of this RETURNED dial (plan-aware: pass what we dialled +
@@ -179,7 +200,7 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                     dialedExtended: plan.Extended, observedIsExtended: session.Context.IsExtended,
                     dialedPreConnectXid: plan.PreConnectXid, observedSrejEnabled: session.Context.SrejEnabled);
 
-                return new Ax25NodeConnection(listener, session);
+                return Connected(session);
             }
             finally
             {
@@ -190,6 +211,24 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         {
             ticket?.Dispose();
         }
+    }
+
+    // Whether the (local, remote) link is up right now: established (Connected) or established
+    // and recovering a lost acknowledgement (TimerRecovery). A dial on it resets it (figc4.4
+    // DL-CONNECT request), so the far end's application is handed nothing new.
+    private bool LinkIsUp(Callsign local, Callsign remote)
+    {
+        foreach (var s in listener.ActiveSessions)
+        {
+            if (s.Context.Local.Equals(local)
+                && s.Context.Remote.Equals(remote)
+                && s.CurrentState is "Connected" or "TimerRecovery")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Whether a failed dial may degrade to v2.0 and learn the negative: only when we actually
@@ -222,6 +261,32 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                 && e.Frame.Destination.Callsign.Equals(local))
             {
                 Interlocked.Increment(ref fromPeer);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Watches the port's frame trace for the duration of one dial for the peer calling us back:
+    /// a received SABM or SABME from the dialled station to our originating callsign. Whether it
+    /// lands while our SABM(E) awaits its UA (figc4.2 answers it with UA and carries on) or during
+    /// the pre-connect XID probe (figc4.1 brings the link up under the dial), both ends were
+    /// calling each other at once, and the application that asked for this dial should know.
+    /// </summary>
+    private sealed class CrossedCallWatch(Callsign local, Callsign remote)
+    {
+        private int calls;
+
+        /// <summary>True once the dialled peer has sent a SABM or SABME to our calling callsign.</summary>
+        public bool PeerCalledUs => Volatile.Read(ref calls) != 0;
+
+        public void Observe(Ax25FrameEventArgs e)
+        {
+            if (e.Direction == FrameDirection.Received
+                && e.Frame.FrameType is Ax25FrameType.Sabm or Ax25FrameType.Sabme
+                && e.Frame.Source.Callsign.Equals(remote)
+                && e.Frame.Destination.Callsign.Equals(local))
+            {
+                Interlocked.Increment(ref calls);
             }
         }
     }

@@ -580,11 +580,68 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
         if (preConnectXidNegotiatesSrej)
         {
+            // A link already up when the dial starts is not the peer calling during the
+            // probe; a dial on it re-establishes it below, as it always has.
+            bool upBeforeProbe = IsLinkUp(cached.Session.SettledState);
+
+            // The version the peer's own call set, taken when it brought the link up: figc4.1
+            // runs Set Version for the SABM or SABME before it raises DL-CONNECT indication, so
+            // at that signal the context holds the peer's version and nothing else yet. The
+            // probe's XID answer can move the context's modulus afterwards, so the context
+            // after the probe cannot tell us what the peer opened at. 0 = no call, 8 or 128.
+            int peerCallModulus = 0;
+            void OnPeerCall(object? _, DataLinkSignal sig)
+            {
+                if (sig is DataLinkConnectIndication)
+                {
+                    Volatile.Write(ref peerCallModulus, cached.Session.Context.IsExtended ? 128 : 8);
+                }
+            }
+
             LogPreConnectXid(portName, local.ToString(), remote.ToString());
-            await NegotiateParametersBeforeConnectAsync(cached, extended, ct).ConfigureAwait(false);
+            cached.Session.DataLinkSignalEmitted += OnPeerCall;
+            try
+            {
+                await NegotiateParametersBeforeConnectAsync(cached, extended, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                cached.Session.DataLinkSignalEmitted -= OnPeerCall;
+            }
             LogXidOutcome(portName, local.ToString(), remote.ToString(),
                 cached.Session.Context.ParametersNegotiated ? "confirmed" : "no response",
                 cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N");
+
+            // The peer called us while we were probing: its SABM(E) reached this session in
+            // Disconnected, and figc4.1 answered UA, raised DL-CONNECT indication and entered
+            // Connected. That is the link this dial was for, set up by the peer's call instead
+            // of ours - the outcome §6.3.6.2 gives two stations whose SABM(E)s cross. Posting
+            // DL-CONNECT request now would send our SABM(E) into it, and the peer, connected,
+            // would take that as the §6.5 resetting procedure (§6.3.3), which §6.5 keeps for an
+            // unrecoverable error. So the dial returns the link as it is; nothing the SDL does
+            // changes, the dial just does not ask for a reset nobody needs.
+            //
+            // Only when both ends are sure to agree about the link, though, because the probe's
+            // XID exchange can finish after the link is up and so apply to a live link. That
+            // needs the peer to have opened at the version this dial offered in its XID command
+            // (its SABME for a v2.2 dial, its SABM for a mod-8 one), and the link to still be at
+            // that version after whatever the exchange settled: the peer merged our offer with
+            // its own and answered the result, and we merged that answer with ours. A peer that
+            // opened at the other version has a link whose modulus our answer can move at our
+            // end, and a responder need not move its own on a link it is already opening, so
+            // there the dial re-establishes below, as it always has, and both ends take the
+            // version from our frame.
+            int offeredModulus = extended ? 128 : 8;
+            if (!upBeforeProbe
+                && IsLinkUp(cached.Session.SettledState)
+                && Volatile.Read(ref peerCallModulus) == offeredModulus
+                && cached.Session.Context.IsExtended == extended)
+            {
+                LogConnectedByPeerDuringXid(portName, local.ToString(), remote.ToString(),
+                    extended ? "v2.2/mod-128" : "v2.0/mod-8");
+                RaiseSessionAccepted(cached.Session);
+                return cached.Session;
+            }
         }
 
         cached.Session.PostEvent(new DlConnectRequest());
@@ -754,6 +811,10 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // Honour an explicit caller cancel; a budget expiry just proceeds to SABM.
         ct.ThrowIfCancellationRequested();
     }
+
+    // Whether a session's state is an established link: Connected, or Connected and
+    // recovering a lost acknowledgement (TimerRecovery).
+    private static bool IsLinkUp(string state) => state is "Connected" or "TimerRecovery";
 
     /// <summary>
     /// Send an upper-layer (Layer-3) payload over an established session,
@@ -2129,6 +2190,9 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     [LoggerMessage(EventId = 5208, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} waits for the previous link to finish disconnecting")]
     private partial void LogConnectWaitsForRelease(string port, string local, string remote);
+
+    [LoggerMessage(EventId = 5209, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} <-> {Remote} ({Version}) by the peer's own call during the pre-connect XID; not re-dialling")]
+    private partial void LogConnectedByPeerDuringXid(string port, string local, string remote, string version);
 
     [LoggerMessage(EventId = 5210, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} -> {Local}: {FrameType} received - accepting connection")]
     private partial void LogInboundAccept(string port, string peer, string local, string frameType);

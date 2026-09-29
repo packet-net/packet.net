@@ -12,7 +12,9 @@ namespace Packet.Rhp2.Server;
 public interface IRhpGateway
 {
     /// <summary>
-    /// Open an outbound AX.25 stream (the wire's <c>open</c> with the Active flag).
+    /// Open an outbound AX.25 stream (the wire's <c>open</c> with the Active flag). The returned
+    /// connection's <see cref="INodeConnection.Crossed"/> becomes the <c>openReply</c>'s
+    /// <c>"crossed":true</c> (extension E1, <c>docs/rhp2-server.md</c>).
     /// </summary>
     /// <param name="portLabel">The port: its operator-defined id (e.g. <c>"vhf-2m"</c>), matched
     /// case-insensitively, or failing that its number in configuration order counting from 1
