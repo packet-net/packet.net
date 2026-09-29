@@ -58,8 +58,64 @@ public sealed class DialClaimLeavesNoOrphanLinkTests
     public async Task A_dial_that_fails_after_the_peer_s_call_set_up_the_link_ends_that_link()
     {
         // The peer's call brings the dial's own link up during the XID probe, then the dial is
-        // cancelled before it returns (the RHPv2 client went away, say). The accept was dropped
-        // under the claim, so the link would be left up with nobody holding it.
+        // cancelled before it returns (the RHPv2 client went away, say). The supervisor dropped
+        // the link's accept under the dial's claim, so it would be left up with nobody holding it.
+        var bus = new SharedRadioBus();
+        var config = new TestConfigProvider(new NodeConfig
+        {
+            Identity = new Identity { Callsign = NodeCall.ToString(), Alias = "TESTNODE" },
+            Ports = [new PortConfig { Id = "p1", Enabled = true, Transport = new KissTcpTransport { Host = "mem", Port = 1 } }],
+        });
+        var factory = new FakeTransportFactory().Provide("kiss-tcp:mem:1", bus.Attach());
+        using var host = new NodeHostedService(config, factory, TimeProvider.System, NullLoggerFactory.Instance);
+        await host.StartAsync(CancellationToken.None);
+        await Wait.ForAsync(() => host.Supervisor?.RunningPortIds.Contains("p1") == true, "port p1 comes up");
+        var connector = host.Supervisor!.ResolveConnector("p1", AppCall)!;
+
+        var theirs = bus.Attach();
+        var heard = Channel.CreateUnbounded<Ax25Frame>();
+        using var stop = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var f in theirs.ReceiveAsync(stop.Token))
+                {
+                    if (Ax25Frame.TryParse(f.Ax25.Span, Ax25ParseOptions.Lenient, out var frame)
+                        && frame.Source.Callsign.Equals(AppCall) && frame.Destination.Callsign.Equals(Station))
+                    {
+                        heard.Writer.TryWrite(frame);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+
+        using var dialCancel = new CancellationTokenSource();
+        var dial = connector.ConnectAsync(Station, dialCancel.Token);
+
+        // The station calls instead of answering the probe, so the dial is still probing.
+        await NextAsync(heard, f => f.FrameType == Ax25FrameType.Xid && f.IsCommand, "our dial's XID probe");
+        await theirs.SendAsync(Ax25Frame.Sabme(AppCall, Station).ToBytes());
+        await NextAsync(heard, f => f.FrameType == Ax25FrameType.Ua, "the station's call is answered, so the link is up");
+
+        await dialCancel.CancelAsync();
+        var cancelled = async () => await dial;
+        await cancelled.Should().ThrowAsync<OperationCanceledException>();
+
+        await NextAsync(heard, f => f.FrameType == Ax25FrameType.Disc, "the link nobody holds is ended, not left acknowledging data");
+        await stop.CancelAsync();
+        await host.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task A_dial_without_a_host_claim_leaves_the_peer_s_link_to_whoever_accepted_it()
+    {
+        // With no claim, nothing dropped the link's accept (SessionAccepted went to the
+        // listener's own subscribers), so a failed dial is not the link's last chance of an
+        // owner and must not end it.
         var (ours, theirs) = InMemoryRadio.CreatePair();
         await using var listener = new Ax25Listener(ours, new Ax25ListenerOptions { MyCall = NodeCall }, TimeProvider.System);
         await listener.StartAsync();
@@ -86,16 +142,16 @@ public sealed class DialClaimLeavesNoOrphanLinkTests
 
         using var dialCancel = new CancellationTokenSource();
         var dial = connector.ConnectAsync(Station, dialCancel.Token);
-
         await NextAsync(heard, f => f.FrameType == Ax25FrameType.Xid && f.IsCommand, "our dial's XID probe");
         await theirs.SendAsync(Ax25Frame.Sabme(AppCall, Station).ToBytes());
-        await NextAsync(heard, f => f.FrameType == Ax25FrameType.Ua, "the station's call is answered, so the link is up");
+        await NextAsync(heard, f => f.FrameType == Ax25FrameType.Ua, "the station's call is answered");
 
         await dialCancel.CancelAsync();
         var cancelled = async () => await dial;
         await cancelled.Should().ThrowAsync<OperationCanceledException>();
 
-        await NextAsync(heard, f => f.FrameType == Ax25FrameType.Disc, "the link nobody holds is ended, not left acknowledging data");
+        await Task.Delay(500);
+        listener.ActiveSessions.Single(s => s.Context.Local.Equals(AppCall)).CurrentState.Should().Be("Connected");
         await stop.CancelAsync();
     }
 

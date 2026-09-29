@@ -100,17 +100,19 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // The value is the owning connection's token, so an owner clears only its own entry: a late
     // clean-up from a previous owner must not remove the entry a restarted link's new owner holds.
     private readonly ConcurrentDictionary<Ax25Session, object> consoleSessions = new();
-    // Remotes a connect-OUT is dialling right now, keyed by (PORT, remote) with a refcount
+    // Links a connect-OUT is dialling right now, keyed by (PORT, local, remote) with a refcount
     // (two console sessions could dial the same call on the same port). SessionAccepted for a
-    // claimed (port, remote) is the outbound session we just opened - NOT an inbound caller - so
-    // we must not start a node console against it.
+    // claimed key is the outbound session we are opening - one session per (local, remote) - NOT
+    // an inbound caller, so we must not start a node console against it. A suppressed accept is
+    // recorded on the claim, so a dial that then fails can end the link nobody holds (#867).
     //
     // The port is IN THE KEY (#723 item 1): the claim used to be node-wide by callsign, so while
     // port A dialled G8XYZ an inbound SABM from G8XYZ on port B was accepted by the engine (UA
     // sent, link up) and then silently dropped on the floor by this guard - the caller got a
     // connected link and dead air until T3/DISC, with no log line. A dial holds its claim for up
-    // to (N2+1)×T1V, so the window is wide.
-    private readonly Dictionary<(string PortId, Callsign Local, Callsign Remote), int> outboundInProgress = new();
+    // to (N2+1)×T1V, so the window is wide. The local is in the key for the same reason (#867):
+    // a caller of another callsign of ours (the node's own while an app dials) is a separate link.
+    private readonly Dictionary<(string PortId, Callsign Local, Callsign Remote), OutboundClaimState> outboundInProgress = new();
     private readonly object outboundGate = new();
     private readonly CancellationTokenSource lifecycle = new();
     private int disposed;
@@ -218,9 +220,22 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // The claim carries THIS port (#723 item 1): an interlink dial on the backbone port must
         // not suppress the node console for the same neighbour calling in on a user port.
         using var ticket = ClaimOutbound(portId, listener.MyCall, neighbour);
-        return await listener
-            .ConnectAsync(neighbour, listener.MyCall, plan.Extended, plan.PreConnectXid, ct)
-            .ConfigureAwait(false);
+        try
+        {
+            var session = await listener
+                .ConnectAsync(neighbour, listener.MyCall, plan.Extended, plan.PreConnectXid, ct)
+                .ConfigureAwait(false);
+            ticket.MarkDelivered();
+            return session;
+        }
+        catch (Exception) when (ticket.LeavesALinkNobodyHolds)
+        {
+            // The neighbour's own call set up the link under this claim, so its accept was
+            // dropped, and the dial then failed: end the link rather than leave it up with
+            // nobody holding it (#867), as Ax25OutboundConnector does.
+            Ax25OutboundConnector.DisconnectLinkNobodyHolds(listener, listener.MyCall, neighbour);
+            throw;
+        }
     }
 
     // Run the node command service over an inbound connection (used for NET/ROM L4
@@ -681,46 +696,75 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var key = (portId, local, remote);
         lock (outboundGate)
         {
-            outboundInProgress[key] = outboundInProgress.TryGetValue(key, out var n) ? n + 1 : 1;
+            if (!outboundInProgress.TryGetValue(key, out var state))
+            {
+                state = new OutboundClaimState();
+                outboundInProgress[key] = state;
+            }
+
+            state.Count++;
+            return new OutboundTicket(this, key, state);
         }
-        return new OutboundTicket(this, portId, local, remote);
     }
 
-    private void ReleaseOutbound(string portId, Callsign local, Callsign remote)
+    private void ReleaseOutbound((string PortId, Callsign Local, Callsign Remote) key)
     {
-        var key = (portId, local, remote);
         lock (outboundGate)
         {
-            if (outboundInProgress.TryGetValue(key, out var n))
+            if (outboundInProgress.TryGetValue(key, out var state) && --state.Count <= 0)
             {
-                if (n <= 1)
-                {
-                    outboundInProgress.Remove(key);
-                }
-                else
-                {
-                    outboundInProgress[key] = n - 1;
-                }
+                outboundInProgress.Remove(key);
             }
         }
     }
 
-    private bool IsOutbound(string portId, Callsign local, Callsign remote)
+    // Whether the key is claimed; if it is, note that its accept was suppressed.
+    private bool SuppressIfOutbound(string portId, Callsign local, Callsign remote)
     {
         lock (outboundGate)
         {
-            return outboundInProgress.ContainsKey((portId, local, remote));
+            if (outboundInProgress.TryGetValue((portId, local, remote), out var state))
+            {
+                state.AcceptSuppressed = true;
+                return true;
+            }
+
+            return false;
         }
     }
 
-    private sealed class OutboundTicket(PortSupervisor owner, string portId, Callsign local, Callsign remote) : IDisposable
+    private sealed class OutboundClaimState
+    {
+        public int Count;
+        public bool AcceptSuppressed;
+        public bool Delivered;
+    }
+
+    private sealed class OutboundTicket(
+        PortSupervisor owner, (string PortId, Callsign Local, Callsign Remote) key, OutboundClaimState state) : IOutboundClaim
     {
         private int released;
+
+        // The peer's call set the link up under the claim (its accept was dropped), no dial on
+        // the key has handed the link over, and no other dial on the key is still running.
+        public bool LeavesALinkNobodyHolds
+        {
+            get { lock (owner.outboundGate) { return state.AcceptSuppressed && !state.Delivered && state.Count == 1; } }
+        }
+
+        public void MarkDelivered()
+        {
+            lock (owner.outboundGate)
+            {
+                state.Delivered = true;
+            }
+        }
+
         public void Dispose()
         {
             if (Interlocked.Exchange(ref released, 1) == 0)
             {
-                owner.ReleaseOutbound(portId, local, remote);
+                owner.ReleaseOutbound(key);
             }
         }
     }
@@ -1943,7 +1987,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // (port, local, remote) for the duration of the connect; comparing THIS port and
         // THIS local is what keeps a same-callsign caller arriving on another port, or
         // calling another callsign of ours, from being swallowed.
-        if (IsOutbound(portId, session.Context.Local, session.Context.Remote))
+        if (SuppressIfOutbound(portId, session.Context.Local, session.Context.Remote))
         {
             return false;
         }
