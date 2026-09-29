@@ -20,6 +20,7 @@ That is the whole rule. It applies to:
 |---|---|
 | `PORTS` at the node prompt | The leading number is the port's position in the config, counting from 1 |
 | `C <n> <callsign>` at the prompt | Dial out on the port with that number - a **direct** call on that radio |
+| An RHPv2 app asking for port `"<n>"` (DAPPS does) | The port with that number, unless one of your ports has that exact `id`, which wins |
 | A bare `C <callsign>` (no number) | Dial out on the **first port that is actually on the air**, in that same order |
 | The **Ports** screen in the control panel | Listed in configuration order |
 | The **Sessions** screen, `/api/v1/sessions` | Grouped by port in configuration order |
@@ -47,7 +48,7 @@ different radios. They agree now.
   then `C 1` means `hf` from the next config apply onwards. Nothing else changes:
   the ports keep their ids, their radios and their live sessions. It is purely the
   operator-facing numbering that moves - so if you have written the numbers on a
-  card by the radio, or into a connect script, re-check them after a reorder.
+  card by the radio, or into a connect script, re-check them after a reorder. The same goes for an RHPv2 app that asks for a port by number, as DAPPS does.
 - **The number is positional, not an identity.** The stable name of a port is its
   `id` (`vhf`, `hf`, `gb7rdg-link`). Everything durable - the config, the API, the
   logs, an app binding - uses the id. The number exists only because typing
