@@ -55,6 +55,14 @@ public sealed class Ax25NodeConnection : INodeConnection
     /// <inheritdoc/>
     public Task Completion => completion.Task;
 
+    /// <summary>
+    /// What to do if the peer starts the link over (a SABM or SABME) while a close is waiting
+    /// for its data to be acknowledged: the owner of an inbound link sets this to hand it on as a
+    /// fresh connect, which the listener does not do for a SABM in Connected. Unset, the close
+    /// carries on and disconnects the reset link. See <see cref="Ax25GracefulClose.Begin"/>.
+    /// </summary>
+    internal Action? PeerRestartedAfterClose { get; set; }
+
     /// <summary>The wrapped session - exposed so the AX.25 adapter source
     /// (listener wiring) can correlate, and for tests.</summary>
     public Ax25Session Session => session;
@@ -169,7 +177,7 @@ public sealed class Ax25NodeConnection : INodeConnection
 
         try
         {
-            Volatile.Write(ref closing, Ax25GracefulClose.Begin(session));
+            Volatile.Write(ref closing, Ax25GracefulClose.Begin(session, PeerRestartedAfterClose));
         }
         catch
         {

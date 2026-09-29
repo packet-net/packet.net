@@ -131,10 +131,13 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
         {
             await conn.WriteAsync(Encoding.ASCII.GetBytes(line));
         }
+        int rnrBefore = rig.Wire.PeerSent.Count(IsPollAnsweredWithRnr);
         await conn.DisposeAsync();
 
-        // Several T1 periods pass with the peer still busy: no DISC, nothing lost.
-        await Task.Delay(T1 * 4);
+        // The node polls the busy peer and it answers RNR: the close is waiting for it, not
+        // cutting it off (well inside the retry budget a busy peer gets).
+        await Wait.ForAsync(() => rig.Wire.PeerSent.Count(IsPollAnsweredWithRnr) > rnrBefore,
+            "the busy peer answers a poll with RNR");
         rig.Wire.NodeSent.Should().NotContain(f => IsDisc(f), "a busy peer is waited for, not cut off");
         rig.NodeSession.CurrentState.Should().BeOneOf("Connected", "TimerRecovery");
         rig.PeerDisconnected.Should().BeFalse();
@@ -144,6 +147,37 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
         rig.PeerReceived.Should().Equal(Tail);
         rig.PeerDisconnectedByDisc.Should().BeTrue();
         AssertDiscAfterLastIFrame(rig);
+    }
+
+    [Fact]
+    public async Task A_peer_still_busy_after_the_retry_budget_gets_DISC_and_a_redial_then_proceeds()
+    {
+        await using var rig = await Rig.ConnectAsync();
+        var connector = new Ax25OutboundConnector("p1", rig.Node);
+        var conn = new Ax25NodeConnection(rig.Node, rig.NodeSession);
+
+        rig.PeerSession!.PostEvent(new DlFlowOffRequest());   // busy, and it never clears
+        await Wait.ForAsync(() => rig.NodeSession.Context.PeerReceiverBusy, "the node hears the RNR");
+        foreach (var line in Lines)
+        {
+            await conn.WriteAsync(Encoding.ASCII.GetBytes(line));
+        }
+
+        // The budget a silent peer would get: N2 retries of T1 with its backoff.
+        var budget = Ax25GracefulClose.BusyBudget(rig.NodeSession.Context);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        await conn.DisposeAsync();
+        var redial = connector.ConnectAsync(PeerCall);
+
+        await Wait.ForAsync(() => rig.Wire.NodeSent.Exists(IsDisc), "the DISC goes once the budget is spent");
+        clock.Elapsed.Should().BeGreaterThanOrEqualTo(budget - TimeSpan.FromMilliseconds(50),
+            "the busy peer had the whole budget first");
+        rig.Wire.PeerSent.Should().Contain(f => IsPollAnsweredWithRnr(f), "the peer was still answering RNR");
+        rig.PeerReceived.Length.Should().BeLessThan(Tail.Length, "what the busy peer would not take is discarded");
+
+        // The redial waited behind the close and now goes ahead.
+        await using var second = await redial.WaitAsync(Wait.DefaultBudget);
+        rig.NodeSession.CurrentState.Should().Be("Connected");
     }
 
     [Fact]
@@ -258,9 +292,14 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
         }
         await first.DisposeAsync();
 
+        int sentBeforeDial = rig.Wire.NodeSent.Count;
         var dial = connector.ConnectAsync(PeerCall);
-        await Task.Delay(T1);
+
+        // The old link times out waiting for its (held) acks and polls: time has passed with the
+        // dial started, and it has neither completed nor sent a SABM of its own.
+        await Wait.ForAsync(() => rig.Wire.NodeSent.Skip(sentBeforeDial).Any(IsPoll), "the old link polls for its acks");
         dial.IsCompleted.Should().BeFalse("the dial waits for the old link's tail and DISC");
+        rig.Wire.NodeSent.Skip(sentBeforeDial).Should().NotContain(f => IsSabm(f), "the dial has not started");
 
         rig.Wire.HoldNodeToPeer = false;
         await using var second = await dial.WaitAsync(Wait.DefaultBudget);
@@ -271,11 +310,107 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
         // The new link stays up: the old close is finished and does not DISC it.
         await second.WriteAsync(Encoding.ASCII.GetBytes("second\r"));
         await Wait.ForAsync(() => rig.NodeSession.AllSentDataAcknowledged, "the new link carries data");
-        await Task.Delay(T1 * 2);
+        // A stale close would have posted its DISC inside the very dispatch that acknowledged the
+        // data, and AllSentDataAcknowledged is read under that dispatch's lock, so the state is
+        // already settled here.
+        rig.NodeSession.CurrentState.Should().Be("Connected", "the old close is finished and leaves the new link alone");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_close_during_a_link_reset_takes_effect_once_the_reset_settles(bool abort)
+    {
+        await using var rig = await Rig.ConnectAsync();
+        var conn = new Ax25NodeConnection(rig.Node, rig.NodeSession);
+
+        // An unexpected UA resets the link: the node sends SABM and waits in Awaiting Connection.
+        // Hold the SABM on the air so the close lands mid-reset.
+        rig.Wire.HoldNodeToPeer = true;
+        rig.Wire.InjectToNode(Ax25Frame.Ua(NodeCall, PeerCall, finalBit: false));
+        await Wait.ForAsync(() => rig.NodeSession.CurrentState is "AwaitingConnection" or "AwaitingV22Connection",
+            "the unexpected UA starts a reset");
+
+        if (abort)
+        {
+            await conn.AbortAsync();
+        }
+        else
+        {
+            await conn.DisposeAsync();
+        }
+
+        rig.Wire.HoldNodeToPeer = false;
+
+        // The peer answers the SABM, the link is Connected again, and the close then sends DISC
+        // rather than leaving a link nobody owns.
+        await Wait.ForAsync(() => rig.Wire.NodeSent.Exists(IsDisc), "the close sends DISC once the reset settles");
+        await Wait.ForAsync(() => rig.NodeSession.CurrentState == "Disconnected", "the link ends");
+    }
+
+    [Fact]
+    public async Task A_peer_restart_during_the_drain_goes_to_a_fresh_owner_not_a_DISC()
+    {
+        await using var rig = await Rig.ConnectAsync();
+        var restarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var conn = new Ax25NodeConnection(rig.Node, rig.NodeSession)
+        {
+            PeerRestartedAfterClose = () => restarted.TrySetResult(),
+        };
+
+        // None of the node's I-frames get through, so the close is still waiting...
+        rig.Wire.DropNodeToPeer = f => IsIFrame(f, out _);
+        foreach (var line in Lines)
+        {
+            await conn.WriteAsync(Encoding.ASCII.GetBytes(line));
+        }
+        await conn.DisposeAsync();
+        rig.Wire.DropNodeToPeer = null;
+
+        // ...when the peer starts the link over.
+        rig.PeerSession!.PostEvent(new DlConnectRequest());
+        await restarted.Task.WaitAsync(Wait.DefaultBudget);
+
+        // A fresh owner (a new console, in the node) takes the link, and it carries data.
+        var fresh = new Ax25NodeConnection(rig.Node, rig.NodeSession);
+        await Wait.ForAsync(() => rig.NodeSession.CurrentState == "Connected" && rig.PeerSession.CurrentState == "Connected",
+            "both ends are connected again");
+        await fresh.WriteAsync(Encoding.ASCII.GetBytes("welcome back\r"));
+        await Wait.ForAsync(() => rig.NodeSession.AllSentDataAcknowledged && rig.PeerReceived.Length > 0,
+            "the new owner's data is delivered");
+        Encoding.ASCII.GetString(rig.PeerReceived).Should().EndWith("welcome back\r");
+        rig.Wire.NodeSent.Should().NotContain(f => IsDisc(f), "the old close did not end the peer's new link");
         rig.NodeSession.CurrentState.Should().Be("Connected");
     }
 
+    [Fact]
+    public async Task Without_a_fresh_owner_a_peer_restart_during_the_drain_ends_with_DISC()
+    {
+        await using var rig = await Rig.ConnectAsync();
+        var conn = new Ax25NodeConnection(rig.Node, rig.NodeSession);   // an outbound link: no hand-on
+
+        rig.Wire.DropNodeToPeer = f => IsIFrame(f, out _);
+        foreach (var line in Lines)
+        {
+            await conn.WriteAsync(Encoding.ASCII.GetBytes(line));
+        }
+        await conn.DisposeAsync();
+        rig.Wire.DropNodeToPeer = null;
+
+        rig.PeerSession!.PostEvent(new DlConnectRequest());
+        await Wait.ForAsync(() => rig.Wire.NodeSent.Exists(IsDisc), "nobody else owns it, so the close still ends it");
+    }
+
     private static bool IsDisc(Ax25Frame f) => Ax25FrameClassifier.Classify(f) is DiscReceived;
+
+    private static bool IsSabm(Ax25Frame f) => Ax25FrameClassifier.Classify(f) is SabmReceived or SabmeReceived;
+
+    // A supervisory command with P=1: the node asking the peer for its state (T1 or T3 expiry).
+    private static bool IsPoll(Ax25Frame f) =>
+        f.IsCommand && f.PollFinal && Ax25FrameClassifier.Classify(f) is RrReceived or RnrReceived or RejReceived;
+
+    private static bool IsPollAnsweredWithRnr(Ax25Frame f) =>
+        !f.IsCommand && f.PollFinal && Ax25FrameClassifier.Classify(f) is RnrReceived;
 
     private static bool IsIFrame(Ax25Frame f, out int ns)
     {
@@ -331,7 +466,7 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
             {
                 MyCall = call,
                 T1V = T1,
-                T3 = TimeSpan.FromSeconds(1),
+                T3 = TimeSpan.FromMilliseconds(600),
                 N2 = N2,
                 K = 2,
                 PreferExtendedConnect = false,
@@ -399,6 +534,7 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
     {
         private readonly object gate = new();
         private readonly List<Ax25Frame> nodeSent = new();
+        private readonly List<Ax25Frame> peerSent = new();
         private readonly Queue<byte[]> held = new();
         private bool holdNodeToPeer;
 
@@ -431,6 +567,20 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
                 }
             }
         }
+
+        public List<Ax25Frame> PeerSent
+        {
+            get
+            {
+                lock (gate)
+                {
+                    return peerSent.ToList();
+                }
+            }
+        }
+
+        /// <summary>Put a frame on the air towards the node as if the peer had sent it.</summary>
+        public void InjectToNode(Ax25Frame frame) => NodeEnd.Deliver(frame.ToBytes());
 
         public List<Ax25Frame> NodeSent
         {
@@ -468,6 +618,7 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
                 }
                 else
                 {
+                    peerSent.Add(frame);
                     if (DropPeerToNode?.Invoke(frame) == true)
                     {
                         return;

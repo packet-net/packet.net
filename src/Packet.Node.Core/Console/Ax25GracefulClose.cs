@@ -19,13 +19,18 @@ namespace Packet.Node.Core.Console;
 /// DL-DISCONNECT request goes in.
 /// </para>
 /// <para>
-/// No timer of its own. Every step is a transition of the session, so the check runs from
+/// No timer for the wait itself. Every step is a transition of the session, so the check runs from
 /// <see cref="Ax25Session.TransitionFired"/>: an acknowledgement, a retransmission, a busy peer
 /// clearing, T1 or T3 polling. A peer that has gone is ended by the link itself when T1 has run
-/// out N2 times, which takes the session to Disconnected and ends the wait. A link that reaches
+/// out N2 times, which takes the session to Disconnected and ends the wait. A peer that stays busy
+/// (RNR) is alive, so the link never gives up on it; it gets the same budget the link would give a
+/// silent peer (the one timer here), and if still busy after it the DISC goes anyway. A link that reaches
 /// Disconnected or Awaiting Release by any other route (the peer's DISC, a sysop kill) ends it
 /// too, and so does a DL-CONNECT confirm: that is a new dial on this cached session, which now
-/// belongs to someone else.
+/// belongs to someone else. A link being reset (Awaiting Connection after an FRMR or an
+/// unexpected UA) is waited for, not disconnected, since a DL-DISCONNECT request has no effect
+/// there; a peer that starts the link over with a SABM(E) gets it handed to a fresh owner when
+/// the connection's owner provides one.
 /// </para>
 /// <para>
 /// Node shutdown and port teardown do not wait: <see cref="DisconnectAllNow"/> sends the DISC for
@@ -40,45 +45,50 @@ internal sealed class Ax25GracefulClose
     private static readonly ConditionalWeakTable<Ax25Session, Ax25GracefulClose> Pending = new();
 
     private readonly Ax25Session session;
+    private readonly Action? peerRestarted;
     private readonly TaskCompletionSource finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int done;
 
-    private Ax25GracefulClose(Ax25Session session) => this.session = session;
+    // Set by Abort: disconnect as soon as the link can take a DL-DISCONNECT request, without
+    // waiting for the data. Read on the dispatch thread, so volatile.
+    private volatile bool abortRequested;
+
+    // Running while the peer is busy (RNR) with our data still waiting; see TrackBusyPeer.
+    private readonly object busyGate = new();
+    private ITimer? busyTimer;
+
+    private Ax25GracefulClose(Ax25Session session, Action? peerRestarted)
+    {
+        this.session = session;
+        this.peerRestarted = peerRestarted;
+    }
 
     /// <summary>Completes when this close has either sent its DISC or found the link
     /// already ending or taken over.</summary>
     public Task Finished => finished.Task;
 
     /// <summary>
-    /// Start closing <paramref name="session"/> once its data is delivered. A link still being
-    /// set up (a dial nobody has data on yet) is disconnected at once, as before; a link that is
+    /// Start closing <paramref name="session"/> once its data is delivered. A link that is
     /// already down or releasing needs nothing. Returns the pending close, or null when there is
     /// nothing to wait for.
     /// </summary>
-    public static Ax25GracefulClose? Begin(Ax25Session session)
-    {
-        switch (session.CurrentState)
-        {
-            case "Connected" or "TimerRecovery":
-                var close = new Ax25GracefulClose(session);
-                Pending.AddOrUpdate(session, close);
-                session.DataLinkSignalEmitted += close.OnSignal;
-                session.TransitionFired += close.OnTransition;
-                // Subscribed first, then checked, so an acknowledgement landing between the two
-                // is seen by one or the other (Finish runs once either way).
-                close.Check();
-                return close;
-            case "AwaitingConnection" or "AwaitingV22Connection":
-                PostDisconnect(session);
-                return null;
-            default:
-                return null;
-        }
-    }
+    /// <remarks>
+    /// Awaiting Connection (or Awaiting v2.2 Connection) on a session a connection already wraps
+    /// is a reset of the established link (an FRMR, an unexpected UA, an N(R) error), not a
+    /// fresh dial: the wrapper only exists once a dial has connected. A DL-DISCONNECT request has
+    /// no effect there, so the close waits for the reset to settle like any other wait.
+    /// <paramref name="peerRestarted"/>, when given, is called if the peer starts the link over
+    /// with a SABM(E) while the close is pending: the close is dropped and the owner hands the
+    /// link on as a fresh connect, since no SessionAccepted is raised for a SABM in Connected.
+    /// Without it the close carries on (and, the SABM having emptied the queue, disconnects).
+    /// </remarks>
+    public static Ax25GracefulClose? Begin(Ax25Session session, Action? peerRestarted = null)
+        => Start(session, abort: false, peerRestarted);
 
     /// <summary>
     /// Disconnect now, discarding anything not yet delivered: the old close, kept for a sysop
-    /// kill and shutdown. If a close is pending on the session it is cut short.
+    /// kill and shutdown. If a close is pending on the session it is cut short. A link in the
+    /// middle of a reset is disconnected as soon as the reset settles.
     /// </summary>
     public static void DisconnectNow(Ax25Session session)
     {
@@ -88,10 +98,24 @@ internal sealed class Ax25GracefulClose
             return;
         }
 
-        if (session.CurrentState is "Connected" or "TimerRecovery" or "AwaitingConnection" or "AwaitingV22Connection")
+        Start(session, abort: true, peerRestarted: null);
+    }
+
+    private static Ax25GracefulClose? Start(Ax25Session session, bool abort, Action? peerRestarted)
+    {
+        if (session.CurrentState is not ("Connected" or "TimerRecovery" or "AwaitingConnection" or "AwaitingV22Connection"))
         {
-            PostDisconnect(session);
+            return null;
         }
+
+        var close = new Ax25GracefulClose(session, peerRestarted) { abortRequested = abort };
+        Pending.AddOrUpdate(session, close);
+        session.DataLinkSignalEmitted += close.OnSignal;
+        session.TransitionFired += close.OnTransition;
+        // Subscribed first, then checked, so an acknowledgement (or the reset settling) landing
+        // between the two is seen by one or the other (Finish runs once either way).
+        close.Check();
+        return close;
     }
 
     /// <summary>Send the DISC now for every close still pending on <paramref name="listener"/>'s
@@ -125,17 +149,12 @@ internal sealed class Ax25GracefulClose
         }
     }
 
-    /// <summary>Cut this close short: DISC now if the link is still up.</summary>
+    /// <summary>Cut this close short: DISC now if the link can take it, or as soon as a reset
+    /// in progress settles.</summary>
     public void Abort()
     {
-        if (Detach())
-        {
-            if (session.CurrentState is "Connected" or "TimerRecovery" or "AwaitingConnection" or "AwaitingV22Connection")
-            {
-                PostDisconnect(session);
-            }
-            finished.TrySetResult();
-        }
+        abortRequested = true;
+        Check();
     }
 
     private void OnTransition(object? sender, Packet.Ax25.Sdl.TransitionSpec transition) => Check();
@@ -144,7 +163,17 @@ internal sealed class Ax25GracefulClose
     {
         switch (signal)
         {
+            case DataLinkConnectIndication when peerRestarted is not null
+                && session.CurrentTrigger is SabmReceived or SabmeReceived:
+                // The peer started the link over. Leave it to a fresh owner instead of
+                // disconnecting the connection the peer has just made.
+                if (Finish(disconnect: false))
+                {
+                    peerRestarted();
+                }
+                break;
             case DataLinkConnectConfirm:
+                // A new dial on this cached session: it belongs to whoever dialled.
             case DataLinkDisconnectIndication:
             case DataLinkDisconnectConfirm:
                 Finish(disconnect: false);
@@ -165,13 +194,17 @@ internal sealed class Ax25GracefulClose
         switch (session.CurrentState)
         {
             case "Connected" or "TimerRecovery":
-                if (session.AllSentDataAcknowledged)
+                if (abortRequested || session.AllSentDataAcknowledged)
                 {
                     Finish(disconnect: true);
                 }
+                else
+                {
+                    TrackBusyPeer();
+                }
                 break;
             case "AwaitingConnection" or "AwaitingV22Connection":
-                // The link is re-establishing after an error; T1/N2 bound that too.
+                // The link is being reset; T1/N2 bound that too.
                 break;
             default:
                 // Disconnected or Awaiting Release: the link is ending by another route.
@@ -180,11 +213,55 @@ internal sealed class Ax25GracefulClose
         }
     }
 
-    private void Finish(bool disconnect)
+    // A peer that stays busy (answering RNR) is alive, so the link never gives up on it and a
+    // close waiting for it would wait for ever, with any redial to that peer behind it. So a busy
+    // peer gets the budget the link would give a silent one before declaring it gone, N2 retries
+    // of T1 with T1's backoff (figc4.7 Select T1 Value: RC x 250 ms + 2 x SRT), and if it is
+    // still busy at the end the DISC goes anyway, discarding what it would not take. The clock
+    // starts when the peer is seen busy and resets whenever it clears.
+    private void TrackBusyPeer()
+    {
+        lock (busyGate)
+        {
+            if (!session.Context.PeerReceiverBusy)
+            {
+                busyTimer?.Dispose();
+                busyTimer = null;
+            }
+            else if (busyTimer is null)
+            {
+                busyTimer = TimeProvider.System.CreateTimer(
+                    _ => OnBusyBudgetSpent(), null, BusyBudget(session.Context), Timeout.InfiniteTimeSpan);
+            }
+        }
+    }
+
+    private void OnBusyBudgetSpent()
+    {
+        lock (busyGate)
+        {
+            busyTimer?.Dispose();
+            busyTimer = null;
+        }
+
+        if (session.Context.PeerReceiverBusy)
+        {
+            Abort();
+        }
+    }
+
+    internal static TimeSpan BusyBudget(Ax25SessionContext context)
+    {
+        int n2 = context.N2;
+        return TimeSpan.FromMilliseconds((250.0 * n2 * (n2 + 1) / 2) + (n2 * 2 * context.Srt.TotalMilliseconds));
+    }
+
+    // True for the one call that ends this close.
+    private bool Finish(bool disconnect)
     {
         if (!Detach())
         {
-            return;
+            return false;
         }
 
         if (disconnect)
@@ -192,9 +269,9 @@ internal sealed class Ax25GracefulClose
             PostDisconnect(session);
         }
         finished.TrySetResult();
+        return true;
     }
 
-    // True for the one caller that ends this close.
     private bool Detach()
     {
         if (Interlocked.Exchange(ref done, 1) != 0)
@@ -204,6 +281,11 @@ internal sealed class Ax25GracefulClose
 
         session.TransitionFired -= OnTransition;
         session.DataLinkSignalEmitted -= OnSignal;
+        lock (busyGate)
+        {
+            busyTimer?.Dispose();
+            busyTimer = null;
+        }
         if (Pending.TryGetValue(session, out var current) && ReferenceEquals(current, this))
         {
             Pending.Remove(session);

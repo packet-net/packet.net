@@ -1964,7 +1964,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         _ = Task.Run(async () =>
         {
-            var connection = new Ax25NodeConnection(listener, session);
+            var connection = new Ax25NodeConnection(listener, session)
+            {
+                // A caller who starts the link over (SABM) while the console's close is still
+                // delivering its tail gets a fresh console, as a new connect would.
+                PeerRestartedAfterClose = () => OnSessionAccepted(portId, listener, connector, session),
+            };
             try
             {
                 // Wrap the same-port AX.25 connector with NET/ROM routing (when
@@ -1986,7 +1991,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             {
                 // The console ending on its own (BYE, an app returning) is an ordinary close: the
                 // link stays up until the user has everything the console sent, then DISC
-                // (packet.net#850). A node shutting down disconnects at once instead.
+                // (packet.net#850). A node shutting down disconnects at once instead. The dedupe
+                // entry goes first, so a restart during the drain can start the new console.
+                consoleSessions.TryRemove(session, out _);
                 if (lifecycle.IsCancellationRequested)
                 {
                     await connection.AbortAsync().ConfigureAwait(false);
@@ -1995,7 +2002,6 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 {
                     await connection.DisposeAsync().ConfigureAwait(false);
                 }
-                consoleSessions.TryRemove(session, out _);
             }
         }, CancellationToken.None);
     }
@@ -2030,6 +2036,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                     consoleSessions.TryRemove(session, out byte _);
                     return;
                 }
+                // A caller who starts the link over while the app's close is still draining is
+                // dispatched afresh, as a new connect would be (packet.net#850).
+                connection.PeerRestartedAfterClose = () => OnAppSessionAccepted(portId, listener, session);
                 await registration.OnAccepted(connection, portId).ConfigureAwait(false);
                 // The handler owns the connection from here; clear the dedupe entry when the
                 // link ends so a reconnect SABM dispatches a fresh accept.
