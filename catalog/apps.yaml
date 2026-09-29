@@ -85,7 +85,7 @@ apps:
 
   - id: convers
     name: Convers
-    version: "0.1.4"
+    version: "0.1.5"
     description: "Round-table packet chat — a leaf node on the worldwide convers network, for RF and web users."
     icon: chat
     capabilities: [packet, web]
@@ -94,14 +94,14 @@ apps:
       kind: deb
       debs:
         linux-x64:
-          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.4/pdn-convers_0.1.4_amd64.deb
-          sha256: 7957fea844dedd7bc8cc9d583a99346308430bd69b7a0defd186ee6ee71a9eb7
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.5/pdn-convers_0.1.5_amd64.deb
+          sha256: afb5ba04857a81e7a715ee84c7a75ab3333eacb59e40c7844320556fffc0b60b
         linux-arm64:
-          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.4/pdn-convers_0.1.4_arm64.deb
-          sha256: 6d1f880518df73a7156eb20a1a252c9964d2feeac4612ba25547564d32984976
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.5/pdn-convers_0.1.5_arm64.deb
+          sha256: 73a85baca847ef06671d25e66ee2d5c7550fd95101cb3177a9bfefb8a2a8c9f5
         linux-arm:
-          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.4/pdn-convers_0.1.4_armhf.deb
-          sha256: 178701f724a4eda6878fcdba8ebcf17a89a32ea34523ed1073e09adbf4e7d05c
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.5/pdn-convers_0.1.5_armhf.deb
+          sha256: 44241a16793dd12245e69fea2bf2aaa84050b036d09d3dfbebf39f6f686c8ae2
 
   - id: bbs
     name: BBS
