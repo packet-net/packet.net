@@ -14,8 +14,8 @@ public class EmbeddedAppCatalogTests
 
         var apps = catalog.List();
 
-        apps.Should().HaveCount(4);
-        apps.Select(a => a.Id).Should().BeEquivalentTo("dapps", "bpqchat", "convers", "bbs");
+        apps.Should().HaveCount(5);
+        apps.Select(a => a.Id).Should().BeEquivalentTo("dapps", "bpqchat", "convers", "bbs", "linmail");
     }
 
     [Fact]

@@ -10,9 +10,11 @@ public partial class AppCatalogYamlTests
     // The three runtime ids every shipped app must publish an artifact for.
     private static readonly string[] AllRids = ["linux-x64", "linux-arm64", "linux-arm"];
 
-    // A "semver-ish" version pin: digits-and-dots, e.g. "0.34.2" or "1.0". Deliberately loose -
-    // we assert the SHAPE of a pin, not the value, so a routine bump never fails this test.
-    [GeneratedRegex(@"^[0-9]+(\.[0-9]+)*$")]
+    // A "semver-ish" version pin: digits-and-dots, e.g. "0.34.2" or "1.0", optionally with a
+    // pre-release style suffix, e.g. "6.0.25.41-pdn1" (linmail: the LinBPQ version it is built
+    // from, then its own release number). Deliberately loose - we assert the SHAPE of a pin, not
+    // the value, so a routine bump never fails this test.
+    [GeneratedRegex(@"^[0-9]+(\.[0-9]+)*(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$")]
     private static partial Regex SemverIshRegex();
 
     // Exactly 64 lowercase hex chars - the catalog pin spelling.
@@ -34,9 +36,9 @@ public partial class AppCatalogYamlTests
         doc.Catalog.Should().Be(1);
 
         // The vetted set (docs/app-catalog.md) - by id, version-agnostic.
-        doc.Apps.Select(a => a.Id).Should().Contain(["dapps", "bpqchat", "convers", "bbs"]);
+        doc.Apps.Select(a => a.Id).Should().Contain(["dapps", "bpqchat", "convers", "bbs", "linmail"]);
 
-        // dapps is the assets-kind flagship; bbs/bpqchat/convers are deb-kind - so the shipped
+        // dapps is the assets-kind flagship; bbs/bpqchat/convers/linmail are deb-kind - so the shipped
         // catalog exercises both real kinds. (pdnapp's parse is covered by a dedicated test.)
         var dapps = doc.Apps.Single(a => a.Id == "dapps");
         dapps.Artifact!.Kind.Should().Be(ArtifactKind.Assets);
@@ -45,7 +47,7 @@ public partial class AppCatalogYamlTests
         dapps.Capabilities.Should().Contain(["packet", "web"]);
         dapps.Artifact.Assets!.Binaries["linux-x64"].Dest.Should().Be("dapps");
 
-        foreach (var id in new[] { "bpqchat", "convers", "bbs" })
+        foreach (var id in new[] { "bpqchat", "convers", "bbs", "linmail" })
         {
             doc.Apps.Single(a => a.Id == id).Artifact!.Kind.Should().Be(ArtifactKind.Deb);
         }
