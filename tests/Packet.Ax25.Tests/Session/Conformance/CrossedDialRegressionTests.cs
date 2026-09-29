@@ -13,8 +13,8 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// </summary>
 public class CrossedDialRegressionTests(ITestOutputHelper output)
 {
-    private static readonly Ax25SessionQuirks NoUaQuirk = Ax25SessionQuirks.Default with { UnexpectedUaIgnored = false };
-    private static readonly Ax25SessionQuirks NoSabmQuirk = Ax25SessionQuirks.Default with { RepeatedConnectSabmReacknowledged = false };
+    private static readonly Ax25SessionQuirks NoUaQuirk = Ax25SessionQuirks.Default with { Ax25Spec114UnexpectedUaIgnored = false };
+    private static readonly Ax25SessionQuirks NoSabmQuirk = Ax25SessionQuirks.Default with { Ax25Spec50RepeatedConnectSabmReacknowledged = false };
 
     [Fact]
     public void A_T1_expiry_during_the_crossing_makes_each_side_answer_two_SABMs_and_the_second_UA_must_not_reset()
@@ -86,9 +86,9 @@ public class CrossedDialRegressionTests(ITestOutputHelper output)
     /// <summary>A peer that runs the figures as drawn (direwolf, rax25, the Linux kernel).</summary>
     private static readonly Ax25SessionQuirks FigurePeer = Ax25SessionQuirks.Default with
     {
-        UnexpectedUaIgnored = false,
-        RepeatedConnectUaIgnored = false,
-        RepeatedConnectSabmReacknowledged = false,
+        Ax25Spec114UnexpectedUaIgnored = false,
+        Ax25Spec114RepeatedConnectUaIgnored = false,
+        Ax25Spec50RepeatedConnectSabmReacknowledged = false,
     };
 
     [Fact]

@@ -211,8 +211,8 @@ public class TransitionCoverageTests
         // the crossed-dial tests.
         var figureArmsReachable = Ax25SessionQuirks.Default with
         {
-            UnexpectedUaIgnored = false,
-            RepeatedConnectSabmReacknowledged = false,
+            Ax25Spec114UnexpectedUaIgnored = false,
+            Ax25Spec50RepeatedConnectSabmReacknowledged = false,
         };
 
         TwoStationHarness New(bool srej = false, int k = 4, bool extended = false, int n2 = 12,
