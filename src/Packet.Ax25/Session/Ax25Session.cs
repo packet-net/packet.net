@@ -49,6 +49,11 @@ public sealed class Ax25Session
     // which atomically replays then subscribes and disarms. Bounded so a session that
     // is only ever tapped via the raw event (a NET/ROM interlink) can't grow it.
     //
+    // The link ending is buffered too (DL-DISCONNECT indication or confirm), in order
+    // after the data: a peer that answers the SABM and hangs up at once puts its DISC in
+    // that same window, and a consumer that never hears the link end waits on it for
+    // ever (packet.net#843, an RHPv2 open whose handle never got its close push).
+    //
     // Armed PER CONNECTION, not once per object: Ax25Listener caches and REUSES an
     // Ax25Session per (local, remote) across connect/disconnect cycles (it evicts only
     // on LRU overflow, never on disconnect), so a one-shot buffer would stay disarmed
@@ -75,6 +80,25 @@ public sealed class Ax25Session
 
     /// <summary>Current state name, matching the SDL <c>state:</c> field.</summary>
     public string CurrentState { get; private set; }
+
+    /// <summary>
+    /// <see cref="CurrentState"/> as it stands once any dispatch in progress has finished,
+    /// signals and deferred events included. <see cref="CurrentState"/> moves on before a
+    /// transition's actions run, so a reader on another thread can see the next state while
+    /// that transition is still raising its signals; this waits them out instead
+    /// (packet.net#844: a dial must not arm while a release is still raising its
+    /// DL-DISCONNECT). Not for use from inside a signal handler of this session.
+    /// </summary>
+    internal string SettledState
+    {
+        get
+        {
+            lock (dispatchGate)
+            {
+                return CurrentState;
+            }
+        }
+    }
 
     /// <summary>
     /// The event currently being dispatched. Non-null only during
@@ -147,8 +171,12 @@ public sealed class Ax25Session
             {
                 earlyInbound = new();
             }
-            else if (earlyInbound is { } buffered && buffered.Count < MaxEarlyInbound && signal is DataLinkDataIndication)
+            else if (earlyInbound is { } buffered
+                && ((signal is DataLinkDataIndication && buffered.Count < MaxEarlyInbound)
+                    || (signal is DataLinkDisconnectIndication or DataLinkDisconnectConfirm && buffered.Count <= MaxEarlyInbound)))
             {
+                // The link's end gets one slot past the data bound, so a peer that sends more
+                // than the buffer holds and then hangs up still ends the consumer's connection.
                 buffered.Add(signal);
             }
             SafeInvokeSignal(signal);
@@ -188,13 +216,16 @@ public sealed class Ax25Session
 
     /// <summary>
     /// Subscribe <paramref name="handler"/> to <see cref="DataLinkSignalEmitted"/>, first
-    /// replaying any inbound DL-DATA indications that were emitted <em>before</em> this call -
-    /// the early-inbound buffer. Atomic with respect to emission (both take the session's
+    /// replaying any inbound DL-DATA indications that were emitted <em>before</em> this call,
+    /// and the link's end (DL-DISCONNECT indication or confirm) if that came too, in the order
+    /// they were emitted - the early-inbound buffer. Atomic with respect to emission (both take the session's
     /// dispatch gate), so a signal in flight is delivered to the handler exactly once, with no
     /// loss and no duplication. Used by an outbound consumer (the node's Ax25NodeConnection)
     /// that can only wrap the session after <see cref="Ax25Listener.ConnectAsync(Packet.Core.Callsign, System.Threading.CancellationToken)"/> has already
     /// returned a connected link - closing the window in which a peer's immediate greeting
-    /// (e.g. a node's connect banner) would otherwise be dropped. The attach disarms the buffer
+    /// (e.g. a node's connect banner) would otherwise be dropped, or a peer that hangs up
+    /// straight after its UA would leave the consumer holding a link that has already gone
+    /// (packet.net#843). The attach disarms the buffer
     /// (this consumer now owns the live stream); <see cref="RaiseDataLinkSignal"/> re-arms it on
     /// the next connect confirm/indication so a re-dialled cached session replays afresh. Raw
     /// <c>DataLinkSignalEmitted += </c> subscribers are unaffected either way.

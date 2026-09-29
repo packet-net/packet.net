@@ -64,4 +64,29 @@ public sealed class NodeConfigWarningsTests
 
         NodeConfigWarnings.DuplicateMqttInstances(config).Should().HaveCount(2);
     }
+
+    [Fact]
+    public void A_port_named_with_another_position_s_number_warns()
+    {
+        // #841: an id match wins over a position, so on [id "2", id "1"] an RHPv2 app asking
+        // for port 1 gets the second entry. Both ports are named.
+        var config = Config(Port("2", tcpPort: 8001), Port("1", tcpPort: 8002));
+
+        var warnings = NodeConfigWarnings.NumericIdsOutOfPosition(config);
+
+        warnings.Should().HaveCount(2);
+        warnings[0].Should().Contain("port '2' is port 1").And.Contain("asking for port 2");
+        new NodeConfigValidator().Validate(config).IsValid.Should().BeTrue("a numeric id is legal");
+    }
+
+    [Theory]
+    [InlineData("1", "vhf")]    // a number in its own position: no disagreement
+    [InlineData("vhf", "7")]    // a number no position has: nothing to shadow
+    [InlineData("vhf", "hf")]
+    public void Ids_that_agree_with_their_position_or_are_not_positions_do_not_warn(string first, string second)
+    {
+        var config = Config(Port(first, tcpPort: 8001), Port(second, tcpPort: 8002));
+
+        NodeConfigWarnings.NumericIdsOutOfPosition(config).Should().BeEmpty();
+    }
 }

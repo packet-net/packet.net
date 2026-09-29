@@ -85,16 +85,85 @@ public sealed class Ax25SessionReplayTests
     }
 
     [Fact]
-    public void Only_data_indications_are_buffered_not_other_signals()
+    public void Connect_and_error_signals_are_not_buffered()
     {
         var session = NewSession();
-        // A non-data signal before attach must not be buffered/replayed (it isn't inbound data).
+        // Only data and the link's end are replayed: the connect that arms the buffer, and
+        // anything else a consumer has no use for after the fact, are not.
         session.RaiseDataLinkSignal(new DataLinkConnectConfirm());
+        session.RaiseDataLinkSignal(new DataLinkErrorIndication("C"));
 
         var seen = new List<DataLinkSignal>();
         session.AttachConsumerWithReplay((_, sig) => seen.Add(sig));
 
-        seen.Should().BeEmpty("only DL-DATA indications are replayed, not connect/other signals");
+        seen.Should().BeEmpty("only DL-DATA indications and the link's end are replayed, not connect or error signals");
+    }
+
+    public static TheoryData<DataLinkSignal> LinkEnds => new()
+    {
+        new DataLinkDisconnectIndication(),
+        new DataLinkDisconnectConfirm(),
+    };
+
+    [Theory]
+    [MemberData(nameof(LinkEnds))]
+    public void A_link_that_ends_before_attach_is_replayed_after_its_data(DataLinkSignal end)
+    {
+        // packet.net#843: the peer answered the SABM(E) with UA and sent DISC straight after, so
+        // the link was up and gone again before the dialler's consumer attached. The consumer must
+        // still hear it end, after any data that came first, or it holds a dead link for ever.
+        var session = NewSession();
+        session.RaiseDataLinkSignal(new DataLinkConnectConfirm());
+        session.RaiseDataLinkSignal(Data("BYE"));
+        session.RaiseDataLinkSignal(end);
+
+        var seen = new List<DataLinkSignal>();
+        session.AttachConsumerWithReplay((_, sig) => seen.Add(sig));
+
+        seen.Should().HaveCount(2);
+        seen[0].Should().BeOfType<DataLinkDataIndication>();
+        seen[1].Should().BeSameAs(end, "the link's end replays after the data that preceded it");
+    }
+
+    [Fact]
+    public void The_link_s_end_is_kept_when_the_data_has_filled_the_buffer()
+    {
+        // The buffer is bounded, and a peer that sends more I frames than it holds before
+        // hanging up must still end the consumer's connection: the data past the bound is not
+        // replayed (as before), but the link's end always has room.
+        var session = NewSession();
+        session.RaiseDataLinkSignal(new DataLinkConnectConfirm());
+        for (int i = 0; i < 40; i++)
+        {
+            session.RaiseDataLinkSignal(Data($"LINE {i}"));
+        }
+        session.RaiseDataLinkSignal(new DataLinkDisconnectIndication());
+
+        var seen = new List<DataLinkSignal>();
+        session.AttachConsumerWithReplay((_, sig) => seen.Add(sig));
+
+        seen.Should().NotBeEmpty();
+        seen[^1].Should().BeOfType<DataLinkDisconnectIndication>("the link's end is replayed however much data came first");
+        seen.Count(sig => sig is DataLinkDataIndication).Should().Be(32, "the data is still bounded");
+    }
+
+    [Fact]
+    public void A_link_end_already_seen_by_a_consumer_is_not_replayed_to_the_next()
+    {
+        // Once a consumer has attached, the buffer is disarmed: a disconnect it heard live is
+        // not held over for the next connection's consumer, which re-arms on its own connect.
+        var session = NewSession();
+        session.RaiseDataLinkSignal(new DataLinkConnectConfirm());
+        EventHandler<DataLinkSignal> first = (_, _) => { };
+        session.AttachConsumerWithReplay(first);
+        session.RaiseDataLinkSignal(new DataLinkDisconnectIndication());
+        session.DataLinkSignalEmitted -= first;
+
+        session.RaiseDataLinkSignal(new DataLinkConnectConfirm());
+        var seen = new List<DataLinkSignal>();
+        session.AttachConsumerWithReplay((_, sig) => seen.Add(sig));
+
+        seen.Should().BeEmpty("the previous connection's disconnect belongs to the previous consumer");
     }
 
     [Fact]

@@ -394,7 +394,10 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// Initiate an outbound connect against this listener's
     /// <see cref="MyCall"/> + the given remote. Reuses the cached
     /// session for that peer if one exists (preserves SRT / T1V
-    /// history); otherwise builds one. Resolves to the session once
+    /// history); otherwise builds one. If that session is still
+    /// releasing a previous link (its DISC not yet answered), the dial
+    /// waits for the release to finish before it sends anything.
+    /// Resolves to the session once
     /// <see cref="DataLinkConnectConfirm"/> arrives.
     /// </summary>
     /// <returns>
@@ -462,6 +465,14 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         var cached = GetOrCreateSession(key);
         TouchLru(key);
 
+        // One session per (local, remote) serves every link between them, so a dial can
+        // arrive while that session is still releasing the previous link (its DISC not yet
+        // answered). Let the release finish first: the dial below re-arms the context and
+        // arms the signal rendezvous, and started on top of a release it would take the
+        // release's DL-DISCONNECT confirm as its own refusal, then carry on to connect a link
+        // nobody is waiting for (packet.net#844).
+        await WaitForReleaseAsync(cached, remote, local, ct).ConfigureAwait(false);
+
         LogConnecting(portName, local.ToString(), remote.ToString(), extended ? "v2.2/SABME" : "v2.0/SABM");
 
         // Arm the dial rendezvous: from here until this call returns, lifecycle
@@ -479,6 +490,41 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // Whatever the outcome (confirm, refusal, timeout, cancel), stop queueing
             // and drop anything unconsumed. Nothing accumulates on an idle session.
             cached.DisarmConnectWait();
+        }
+    }
+
+    // Waits while the session is in AwaitingRelease, which the SDL itself bounds: the DISC is
+    // answered (UA or DM) or T1 runs out N2 times and the link is declared gone. The state is
+    // read settled (under the session's dispatch lock): CurrentState says Disconnected before
+    // the release's last transition has raised its DL-DISCONNECT, and a dial that armed in
+    // that gap would take the release's teardown as its own refusal. The budget is a backstop:
+    // each DISC retry's T1 is RC x 250 ms + 2 x SRT (figc4.7 Select_T1_Value), so it allows
+    // twice the SRT part and all of the 250 ms steps. If the release somehow outlasts it, the
+    // dial fails having sent nothing, so a failed dial never leaves a link behind.
+    private async Task WaitForReleaseAsync(CachedSession cached, Callsign remote, Callsign local, CancellationToken ct)
+    {
+        if (cached.Session.SettledState != "AwaitingRelease")
+        {
+            return;
+        }
+
+        LogConnectWaitsForRelease(portName, local.ToString(), remote.ToString());
+        int n2 = cached.Session.Context.N2;
+        var budget = TimeSpan.FromMilliseconds(
+            (n2 + 1) * ((2 * cached.Session.Context.T1V.TotalMilliseconds) + (125 * n2)));
+        using var budgetCts = new CancellationTokenSource(budget, timeProvider);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, budgetCts.Token);
+        while (cached.Session.SettledState == "AwaitingRelease" && !cts.IsCancellationRequested)
+        {
+            try { await Task.Delay(25, cts.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
+        }
+
+        ct.ThrowIfCancellationRequested();
+        if (cached.Session.SettledState == "AwaitingRelease")
+        {
+            throw new TimeoutException(
+                $"outbound connect to {remote} gave up after {budget.TotalSeconds:F1}s waiting for the previous link to it to finish disconnecting.");
         }
     }
 
@@ -2080,6 +2126,9 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     [LoggerMessage(EventId = 5207, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} refused (DM / link reset)")]
     private partial void LogConnectRefused(string port, string local, string remote);
+
+    [LoggerMessage(EventId = 5208, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} waits for the previous link to finish disconnecting")]
+    private partial void LogConnectWaitsForRelease(string port, string local, string remote);
 
     [LoggerMessage(EventId = 5210, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} -> {Local}: {FrameType} received - accepting connection")]
     private partial void LogInboundAccept(string port, string peer, string local, string frameType);

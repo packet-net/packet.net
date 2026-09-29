@@ -152,6 +152,23 @@ public sealed class RhpServerTests : IAsyncDisposable
         close.Seqno.Should().NotBeNull();
     }
 
+    [Fact]
+    public async Task A_link_that_ended_before_the_open_completed_still_pushes_close()
+    {
+        // #843, the server's half: a peer can answer the connect and hang up before the handle
+        // exists, so the gateway hands back a connection that has already ended. The client
+        // still gets its handle, then the close push, rather than a handle that never closes.
+        var (server, gateway) = await StartServerAsync();
+        gateway.Connection.Drop();
+        var client = await ConnectAsync(server);
+
+        var handle = await OpenAsync(client);
+
+        var close = await client.ExpectAsync<CloseMessage>();
+        close.Handle.Should().Be(handle);
+        close.Id.Should().BeNull();
+    }
+
     // ── seqno: per-RHP-connection, starting at 0, shared across push types ─
     //    (RHPTEST-verified: first push is seqno 0; live XRouter confirms - a fresh
     //    connection's first notification carries "seqno":0.)
