@@ -1412,6 +1412,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-09-29 - modulo-128 sessions mark the source SSID reserved bits `01` (#859)
+
+Every frame a modulo-128 session emits now carries `01` (0x20 set, 0x40 clear) in the *source* SSID octet's reserved bits, the Linux kernel stack's convention (`ax25_addr_build()`), so `axlisten`-style monitors can tell the control field is two octets. Modulo-8 sessions and destination/repeater slots stay `11`. `Ax25Address.ExtendedLinkMark` (init-only, write-only) + `Ax25Frame.WithExtendedLinkMark()`, applied in `FrameSpecExtensions`. No named flag (follows the session modulus); the receive-side hint (#859 item 2) is not done and #696's "R bits not carried" stands. Test: `ExtendedLinkMarkTests`. Not built locally (no .NET SDK in this session) - CI to confirm.
+
 ### 2026-09-29 - RELEASE: lib-v0.47.0 + node-v0.58.0 (graceful close, #850)
 
 Tagged `lib-v0.47.0` and `node-v0.58.0` on `6981c92d` (main), with `ci`, `interop` (parity guard included), `fuzz`, `live-smoke` and `plan-check` all green on that merge commit. The release carries #852 (closes #850, entry below): when an app or the console closes an AX.25 session or NET/ROM circuit, the node holds the DISC until everything sent has been acknowledged, and a peer that stays busy gets the link's normal retry budget before the DISC goes anyway; sysop kills and shutdown stay immediate. It adds library surface, `Ax25Session.AllSentDataAcknowledged` in `Packet.Ax25` and `NetRomCircuit.DisconnectWhenDrained` in `Packet.NetRom`, so both trains moved.

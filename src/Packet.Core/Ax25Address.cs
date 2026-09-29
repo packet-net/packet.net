@@ -45,6 +45,14 @@ public readonly record struct Ax25Address(Callsign Callsign, bool CrhBit, bool E
     /// <summary>Number of octets one address slot occupies on the wire.</summary>
     public const int EncodedLength = 7;
 
+    /// <summary>
+    /// Transmit-only hint: write the reserved bits as <c>01</c> instead of <c>11</c>, the
+    /// Linux kernel stack's marker for a modulo-128 link (<c>ax25_addr_build()</c>; read by
+    /// <c>axlisten</c>). Meaningful on the source slot only. Not read back and not part of
+    /// <see cref="Read(ReadOnlySpan{byte}, Ax25ParseOptions)"/>'s output (#859).
+    /// </summary>
+    public bool ExtendedLinkMark { get; init; }
+
     /// <summary>Parse one 7-octet slot using the default lenient options.</summary>
     /// <exception cref="ArgumentException">Span is too short, or the encoded callsign is malformed.</exception>
     public static Ax25Address Read(ReadOnlySpan<byte> source)
@@ -125,8 +133,8 @@ public readonly record struct Ax25Address(Callsign Callsign, bool CrhBit, bool E
         }
 
         // SSID byte: C/H | R | R | SSID(4) | E
-        // R bits default to "11" per v2.2.
-        byte ssidByte = (byte)(0x60 | ((Callsign.Ssid & 0x0F) << 1));
+        // R bits default to "11" per v2.2; ExtendedLinkMark writes "01" (0x20 set, 0x40 clear).
+        byte ssidByte = (byte)((ExtendedLinkMark ? 0x20 : 0x60) | ((Callsign.Ssid & 0x0F) << 1));
         if (CrhBit)
         {
             ssidByte |= 0x80;

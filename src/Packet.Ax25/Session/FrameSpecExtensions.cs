@@ -30,6 +30,9 @@ public static class FrameSpecExtensions
 {
     /// <summary>Build an <see cref="Ax25Frame"/> for an outgoing supervisory frame using session addressing.</summary>
     public static Ax25Frame ToAx25Frame(this SupervisoryFrameSpec spec, Ax25SessionContext context)
+        => Mark(BuildFrame(spec, context), context);
+
+    private static Ax25Frame BuildFrame(SupervisoryFrameSpec spec, Ax25SessionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         var digi = ResolvePath(spec.Path, context);
@@ -46,6 +49,9 @@ public static class FrameSpecExtensions
 
     /// <summary>Build an <see cref="Ax25Frame"/> for an outgoing unnumbered frame using session addressing.</summary>
     public static Ax25Frame ToAx25Frame(this UFrameSpec spec, Ax25SessionContext context)
+        => Mark(BuildFrame(spec, context), context);
+
+    private static Ax25Frame BuildFrame(UFrameSpec spec, Ax25SessionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         var digi = ResolvePath(spec.Path, context);
@@ -65,6 +71,9 @@ public static class FrameSpecExtensions
 
     /// <summary>Build an <see cref="Ax25Frame"/> for an outgoing UI frame using session addressing.</summary>
     public static Ax25Frame ToAx25Frame(this UiFrameSpec spec, Ax25SessionContext context)
+        => Mark(BuildFrame(spec, context), context);
+
+    private static Ax25Frame BuildFrame(UiFrameSpec spec, Ax25SessionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         return Ax25Frame.Ui(
@@ -79,6 +88,9 @@ public static class FrameSpecExtensions
 
     /// <summary>Build an <see cref="Ax25Frame"/> for an outgoing I-frame using session addressing.</summary>
     public static Ax25Frame ToAx25Frame(this IFrameSpec spec, Ax25SessionContext context)
+        => Mark(BuildFrame(spec, context), context);
+
+    private static Ax25Frame BuildFrame(IFrameSpec spec, Ax25SessionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         return Ax25Frame.I(
@@ -92,6 +104,10 @@ public static class FrameSpecExtensions
             digipeaters: ResolvePath(spec.Path, context),
             extended: context.IsExtended);
     }
+
+    // #859: on a modulo-128 session mark the source SSID reserved bits 01 (Linux convention).
+    private static Ax25Frame Mark(Ax25Frame frame, Ax25SessionContext context)
+        => context.IsExtended ? frame.WithExtendedLinkMark() : frame;
 
     // Per-spec Path overrides the context's chain when present. The
     // dispatcher uses this for via-chain reversal on responses to
