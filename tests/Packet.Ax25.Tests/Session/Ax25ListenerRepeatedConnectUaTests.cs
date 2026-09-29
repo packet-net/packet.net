@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Session;
 using Packet.Core;
 using Xunit;
@@ -46,9 +47,9 @@ public sealed class Ax25ListenerRepeatedConnectUaTests
 
     // An RR poll after the frames under test: the pump handles inbound frames in order, so once
     // the answer to this poll is on the wire, everything before it has been dispatched.
-    private static async Task FlushAsync(LoopbackModem modem, bool extended)
+    private static async Task FlushAsync(LoopbackModem modem, bool extended, byte nr = 0)
     {
-        modem.InjectInbound(Ax25Frame.Rr(Local, Peer, nr: 0, isCommand: true, pollFinal: true, extended: extended));
+        modem.InjectInbound(Ax25Frame.Rr(Local, Peer, nr: nr, isCommand: true, pollFinal: true, extended: extended));
         await ListenerTestSupport.WaitFor(
             () => Sent(modem).Any(f => f.FrameType == Ax25FrameType.Rr && !f.IsCommand),
             TimeSpan.FromSeconds(5), "the poll is answered");
@@ -96,14 +97,36 @@ public sealed class Ax25ListenerRepeatedConnectUaTests
         listener.ActiveSessions.Single().CurrentState.Should().Be("AwaitingConnection");
     }
 
+    // #874, Ax25SessionQuirks.UnexpectedUaIgnored: on a link that is up, every UA is a late or
+    // repeated answer to the SABM(E) that set it up, whatever came before it. The narrow #842
+    // window is only what is left when that quirk is off.
+    private static readonly Ax25SessionQuirks NarrowOnly = Ax25SessionQuirks.Default with { UnexpectedUaIgnored = false };
+
     [Fact]
-    public async Task A_UA_after_other_traffic_from_the_peer_still_resets_the_link()
+    public async Task A_UA_after_other_traffic_from_the_peer_is_dropped_too()
     {
-        // The quirk is narrow: only the frame straight after the connecting UA can be its
-        // repeat. A UA that follows other traffic is the figure's unexpected UA (the peer may
-        // really have reset, e.g. a retried SABM crossing our first UA after it sent data), and
-        // the reset is what brings the two ends back into step.
         var (listener, modem, dial) = await DialAsync(Ax25SessionQuirks.Default, extended: false);
+        await using var _ = listener;
+
+        var ua = Ax25Frame.Ua(Local, Peer, finalBit: true);
+        modem.InjectInbound(ua);
+        var session = await dial.WithTimeout(TimeSpan.FromSeconds(10));
+
+        modem.InjectInbound(Ax25Frame.I(Local, Peer, nr: 0, ns: 0, "DAPPSv1>\r"u8));
+        modem.InjectInbound(ua);
+        await FlushAsync(modem, extended: false);
+
+        session.CurrentState.Should().Be("Connected");
+        session.Context.VR.Should().Be((byte)1, "the peer's data was taken and the UA after it changed nothing");
+        Sent(modem).Count(IsEstablish).Should().Be(1, "a UA on an up link is never a reason to reset it");
+    }
+
+    [Fact]
+    public async Task With_only_the_narrow_quirk_a_UA_after_other_traffic_still_resets_the_link()
+    {
+        // #842's window on its own: only the frame straight after the connecting UA can be its
+        // repeat. A UA that follows other traffic is the figure's unexpected UA.
+        var (listener, modem, dial) = await DialAsync(NarrowOnly, extended: false);
         await using var _ = listener;
 
         var ua = Ax25Frame.Ua(Local, Peer, finalBit: true);
@@ -119,10 +142,25 @@ public sealed class Ax25ListenerRepeatedConnectUaTests
     }
 
     [Fact]
-    public async Task A_UA_that_differs_from_the_connecting_one_still_resets_the_link()
+    public async Task A_UA_that_differs_from_the_connecting_one_is_dropped_too()
+    {
+        var (listener, modem, dial) = await DialAsync(Ax25SessionQuirks.Default, extended: false);
+        await using var _ = listener;
+
+        modem.InjectInbound(Ax25Frame.Ua(Local, Peer, finalBit: true));
+        var session = await dial.WithTimeout(TimeSpan.FromSeconds(10));
+        modem.InjectInbound(Ax25Frame.Ua(Local, Peer, finalBit: false));
+        await FlushAsync(modem, extended: false);
+
+        session.CurrentState.Should().Be("Connected");
+        Sent(modem).Count(IsEstablish).Should().Be(1, "the F bit does not make a UA on an up link mean anything else");
+    }
+
+    [Fact]
+    public async Task With_only_the_narrow_quirk_a_UA_that_differs_still_resets_the_link()
     {
         // Byte-for-byte: a UA with F=0 is not a copy of the F=1 UA that connected the link.
-        var (listener, modem, dial) = await DialAsync(Ax25SessionQuirks.Default, extended: false);
+        var (listener, modem, dial) = await DialAsync(NarrowOnly, extended: false);
         await using var _ = listener;
 
         modem.InjectInbound(Ax25Frame.Ua(Local, Peer, finalBit: true));
@@ -132,5 +170,93 @@ public sealed class Ax25ListenerRepeatedConnectUaTests
         await ListenerTestSupport.WaitFor(() => Sent(modem).Count(IsEstablish) == 2, TimeSpan.FromSeconds(5),
             "a different UA is the figure's unexpected UA");
         session.CurrentState.Should().Be("AwaitingConnection");
+    }
+
+    // packet.net#874's shape from A's side: a v2.2 dial whose T1 runs out once, so a second
+    // SABME is queued behind a slow transmitter; the peer's own SABME crosses (answered UA); the
+    // peer's UA to the first SABME returns the dial; both ends send at once; then the peer's UA to
+    // the retry arrives, after the peer's data.
+    private static async Task<(Ax25Listener listener, LoopbackModem modem, Ax25Session session, List<DataLinkSignal> signals)>
+        CrossedDialWithARetryAsync(Ax25SessionQuirks quirks)
+    {
+        var modem = new LoopbackModem();
+        var time = new FakeTimeProvider();
+        var t1 = TimeSpan.FromSeconds(1);
+        var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = Local, Quirks = quirks, T1V = t1 }, time);
+        await listener.StartAsync();
+
+        var dial = listener.ConnectAsync(Peer, Local, extended: true, preConnectXidNegotiatesSrej: false);
+        await ListenerTestSupport.WaitFor(() => Sent(modem).Count(IsEstablish) == 1, TimeSpan.FromSeconds(5), "the SABME is on the air");
+        // T1 runs out once, on the fake clock, so exactly one retry follows and nothing else
+        // can expire during the test.
+        time.Advance(t1 + TimeSpan.FromMilliseconds(50));
+        await ListenerTestSupport.WaitFor(() => Sent(modem).Count(IsEstablish) == 2, TimeSpan.FromSeconds(5),
+            "T1 runs out once and the dial sends its SABME again");
+
+        modem.InjectInbound(Ax25Frame.Sabme(Local, Peer));
+        await ListenerTestSupport.WaitFor(() => Sent(modem).Any(f => f.FrameType == Ax25FrameType.Ua), TimeSpan.FromSeconds(5),
+            "the crossing SABME is answered while the dial waits");
+
+        var ua = Ax25Frame.Ua(Local, Peer, finalBit: true);
+        modem.InjectInbound(ua);
+        var session = await dial.WithTimeout(TimeSpan.FromSeconds(10));
+        var signals = new List<DataLinkSignal>();
+        session.DataLinkSignalEmitted += (_, sig) => { lock (signals) { signals.Add(sig); } };
+
+        // What DAPPS does on crossed:true, at both ends.
+        modem.InjectInbound(Ax25Frame.I(Local, Peer, nr: 0, ns: 0, "exchange\r"u8, extended: true));
+        listener.SendData(session, "exchange\r"u8.ToArray());
+
+        // The peer's answer to the retry (#857 re-acknowledged it), then its next frame.
+        modem.InjectInbound(ua);
+        modem.InjectInbound(Ax25Frame.I(Local, Peer, nr: 1, ns: 1, "mail\r"u8, extended: true));
+        return (listener, modem, session, signals);
+    }
+
+    [Fact]
+    public async Task A_UA_answering_the_dial_s_own_T1_retry_does_not_reset_the_link()
+    {
+        var (listener, modem, session, signals) = await CrossedDialWithARetryAsync(Ax25SessionQuirks.Default);
+        await using var _ = listener;
+        // The poll acknowledges our S0, which the peer's S1 R1 already had; an N(R) behind
+        // V(a) would be the figure's N(R) error and a reset of its own.
+        await FlushAsync(modem, extended: true, nr: 1);
+
+        string Trace()
+        {
+            lock (signals)
+            {
+                return "sent: " + string.Join(", ", Sent(modem).Select(f => f.FrameType + (f.IsCommand ? " C" : " R")))
+                    + "; signals: " + string.Join(", ", signals.Select(x => x.Name));
+            }
+        }
+
+        session.CurrentState.Should().BeOneOf(new[] { "Connected", "TimerRecovery" }, Trace());
+        session.Context.VR.Should().Be((byte)2, "both of the peer's I frames were taken, the one after the stale UA too");
+        Sent(modem).Count(IsEstablish).Should().Be(2, "the T1 retry was the last SABME; the UA answering it changed nothing");
+        lock (signals)
+        {
+            signals.Where(s => s is DataLinkConnectIndication or DataLinkErrorIndication).Should().BeEmpty(
+                "nothing reset the link");
+        }
+    }
+
+    [Fact]
+    public async Task With_the_quirk_off_the_UA_answering_the_retry_resets_the_link_as_the_figure_draws()
+    {
+        // The paired test, and packet.net#874 on main: the UA after the peer's data is outside
+        // #842's window, figc4.4 t17 runs (DL-ERROR K, Establish Data Link), a third SABME goes out
+        // and the peer's next I frame is thrown away in AwaitingV22Connection.
+        var (listener, modem, session, signals) = await CrossedDialWithARetryAsync(NarrowOnly);
+        await using var _ = listener;
+
+        await ListenerTestSupport.WaitFor(() => Sent(modem).Count(IsEstablish) == 3, TimeSpan.FromSeconds(5),
+            "the figure re-establishes on the unexpected UA");
+        session.CurrentState.Should().Be("AwaitingV22Connection");
+        session.Context.VR.Should().Be((byte)1, "the I frame after the reset was discarded");
+        lock (signals)
+        {
+            signals.Should().Contain(s => s is DataLinkErrorIndication);
+        }
     }
 }

@@ -72,9 +72,10 @@ public sealed class TwoStationHarness
         bool srej = false, int k = 4, int t1Ms = DefaultT1Ms, int n2 = DefaultN2, int t2Ms = 40,
         bool extended = false, Ax25SessionQuirks? quirks = null,
         XidParameters? xidOfferA = null, XidParameters? xidOfferB = null,
-        bool segmenter = false, int? n1 = null)
+        bool segmenter = false, int? n1 = null, Ax25SessionQuirks? quirksB = null)
     {
         var q = quirks ?? Ax25SessionQuirks.Default;
+        var qB = quirksB ?? q;
         var nodeA = new Callsign("M0LTEA", 1);
         var nodeB = new Callsign("M0LTEB", 2);
         var time = new FakeTimeProvider();
@@ -82,7 +83,7 @@ public sealed class TwoStationHarness
         var t1v = TimeSpan.FromMilliseconds(t1Ms);
 
         var a = BuildEndpoint(nodeA, nodeB, time, link, srej, k, t1Ms, n2, t2Ms, extended, q, xidOfferA, segmenter, n1, out var aPeer);
-        var b = BuildEndpoint(nodeB, nodeA, time, link, srej, k, t1Ms, n2, t2Ms, extended, q, xidOfferB, segmenter, n1, out var bPeer);
+        var b = BuildEndpoint(nodeB, nodeA, time, link, srej, k, t1Ms, n2, t2Ms, extended, qB, xidOfferB, segmenter, n1, out var bPeer);
         aPeer.Target = b.Inbound; bPeer.Target = a.Inbound;
         aPeer.RxLog = b.ReceivedFromPeer; bPeer.RxLog = a.ReceivedFromPeer;
         // When A sends, the frame is delivered to B's wiring; route XID/FRMR to
@@ -163,6 +164,16 @@ public sealed class TwoStationHarness
 
             if (peerLocal.TargetLocal is { } expected && !parsed.Destination.Callsign.Equals(expected))
             {
+                return;
+            }
+
+            // A scheduled channel takes the frame into flight instead of delivering
+            // it; the scenario decides later whether, when and how often it lands
+            // (see CrossedDialExplorer). Drop and Duplicate are the scenario's to
+            // apply in that mode.
+            if (link.Schedule is { } schedule)
+            {
+                schedule(new InFlightFrame(local, parsed, () => DeliverToPeer(parsed)));
                 return;
             }
 
@@ -597,7 +608,18 @@ public sealed class TwoStationHarness
         public Func<Ax25Frame, bool>? Duplicate { get; set; }
 
         public bool ShouldDuplicate(Ax25Frame f) => Duplicate?.Invoke(f) == true;
+
+        /// <summary>When set, every frame that passes the address filter is handed
+        /// here as an <see cref="InFlightFrame"/> instead of being delivered. The
+        /// scenario calls <see cref="InFlightFrame.Deliver"/> when it decides the
+        /// frame lands (once, twice, or never). While set, <see cref="Drop"/> and
+        /// <see cref="Duplicate"/> are not consulted.</summary>
+        public Action<InFlightFrame>? Schedule { get; set; }
     }
+
+    /// <summary>A frame a station has transmitted that the scheduled channel has
+    /// not yet delivered: who sent it, what it is, and how to land it at the peer.</summary>
+    public sealed record InFlightFrame(Callsign From, Ax25Frame Frame, Action Deliver);
 
     public sealed class Endpoint
     {

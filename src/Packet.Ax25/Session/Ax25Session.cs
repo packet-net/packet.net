@@ -75,11 +75,26 @@ public sealed class Ax25Session
     // is a second delivery of it, not the figure's unexpected UA. See IsRepeatedConnectUa.
     private byte[]? connectingUa;
 
-    // RepeatedConnectSabmReacknowledged (#856): the encoded SABM(E) from the peer that this
-    // session answered with UA while the link was being set up, kept until the session sees
-    // anything else from the peer. A byte-identical copy on the connected link is the peer
-    // retrying after losing our UA, not the figure's reset. See IsRepeatedConnectSabm.
-    private byte[]? connectingSabm;
+    // UnexpectedUaIgnored (#874): the last UA dropped on the up link, kept until the peer shows
+    // it carried on (an in-sequence I frame) or the link leaves the connected states. If the
+    // peer's next I frame instead restarts at N(S) = 0 while V(r) is not 0, the peer reset on
+    // the SABM(E) that UA answered, and this UA was the figure's unexpected UA after all: it is
+    // dispatched then, so the reset is run and reported rather than the peer's resent frames
+    // being taken for duplicates. See IsUaOnUpLink and PeerSequenceRestarted.
+    private UaReceived? droppedUa;
+
+    // The information field (with its PID) of the last I frame numbered 0 taken from the peer,
+    // for PeerSequenceRestarted: a duplicated or retransmitted 0 carries the same bytes as the one
+    // already delivered, a restarted sequence brings new ones.
+    private byte[]? lastFrameZero;
+
+    // RepeatedConnectSabmReacknowledged (#856): true once this session has answered a SABM(E)
+    // from the peer (figc4.1 accepting its call, figc4.2 / figc4.6 answering it while our own
+    // dial waited, or the figure's reset on one), until the peer sends anything that moves a
+    // sequence variable (an I or S frame), or this end re-establishes the link itself. A
+    // SABM(E) of the link's modulo arriving then is the peer still waiting for our UA, not the
+    // figure's reset: both ends are at V(a) = V(r) = 0 either way. See IsRepeatedConnectSabm.
+    private bool peerCallAnswered;
 
     /// <summary>The session's mutable per-connection state.</summary>
     public Ax25SessionContext Context { get; }
@@ -436,7 +451,7 @@ public sealed class Ax25Session
 
     private void DispatchEvent(Ax25Event evt)
     {
-        if (!transitionsByState.TryGetValue(CurrentState, out var stateTransitions))
+        if (!transitionsByState.ContainsKey(CurrentState))
         {
             throw new InvalidOperationException($"no transitions defined for current state '{CurrentState}'");
         }
@@ -468,10 +483,37 @@ public sealed class Ax25Session
             return;
         }
 
+        if (IsUaOnUpLink(evt))
+        {
+            droppedUa = (UaReceived)evt;
+            return;
+        }
+
         if (IsRepeatedConnectUa(evt))
         {
             return;
         }
+
+        if (droppedUa is { } ua && PeerSequenceRestarted(evt))
+        {
+            // The peer's sequence starts over: it reset on the SABM(E) this UA answered. Run the
+            // figure's UA arm now (DL-ERROR, Establish Data Link), before this I frame, which the
+            // establishment state then discards as the figure does; the peer resets again on our
+            // SABM(E) and both ends start from zero, told.
+            droppedUa = null;
+            DispatchFigure(ua);
+        }
+        else if (droppedUa is not null && IsInSequenceIFrame(evt))
+        {
+            droppedUa = null;
+        }
+
+        DispatchFigure(evt);
+    }
+
+    private void DispatchFigure(Ax25Event evt)
+    {
+        var stateTransitions = transitionsByState[CurrentState];
 
         // Expose the trigger to frame-aware guard bindings + the
         // dispatcher's TransitionContext. Cleared in the finally so
@@ -567,7 +609,8 @@ public sealed class Ax25Session
             }
 
             NoteConnectingUa(evt, stateBefore);
-            NoteConnectingSabm(evt, stateBefore);
+            NotePeerCall(evt, stateBefore);
+            NoteFrameZero(evt, stateBefore);
 
             // Transition committed (state advanced, timers kept) - notify
             // observers. Raised here rather than inside the try so a throwing
@@ -579,6 +622,65 @@ public sealed class Ax25Session
             CurrentTrigger = null;
         }
     }
+
+    /// <summary>
+    /// <see cref="Ax25SessionQuirks.UnexpectedUaIgnored"/>: true when <paramref name="evt"/> is a UA
+    /// received while the link is up, which is then dropped before the figure can read it as the
+    /// §6.5 unexpected UA (figc4.4 <c>t17_ua_received_*</c>, figc4.5 <c>t11_ua_received</c>) and
+    /// reset the link. With no SABM(E) or DISC of ours outstanding, it can only be a late or
+    /// repeated answer to the one that set the link up. The windows of the two narrower quirks
+    /// are left as they are: a UA closes neither.
+    /// </summary>
+    private bool IsUaOnUpLink(Ax25Event evt) =>
+        Context.Quirks.UnexpectedUaIgnored
+        && evt is UaReceived
+        && CurrentState is "Connected" or "TimerRecovery";
+
+    /// <summary>
+    /// True when <paramref name="evt"/> is an I frame from the peer numbered 0 while this end has
+    /// already received frames on the link (V(r) is not 0): the peer's send sequence has started
+    /// over. After a dropped UA that is the sign of a peer that reset on the SABM(E) the UA
+    /// answered, as a figure-following peer does (direwolf, rax25, the Linux kernel), rather than
+    /// re-acknowledging it (#857, LinBPQ). Taking its resent frames for duplicates would discard
+    /// and acknowledge them, and nobody would know; running the figure's reset instead costs what
+    /// the peer's own reset already cost, and tells both ends.
+    /// </summary>
+    private bool PeerSequenceRestarted(Ax25Event evt) =>
+        evt is IFrameReceived i
+        && CurrentState is "Connected" or "TimerRecovery"
+        && i.Frame.Ns == 0
+        && Context.VR != 0
+        && !(lastFrameZero is { } seen && seen.AsSpan().SequenceEqual(InfoWithPid(i.Frame)));
+
+    private static byte[] InfoWithPid(Ax25Frame frame)
+    {
+        var bytes = new byte[frame.Info.Length + 1];
+        bytes[0] = frame.Pid ?? 0;
+        frame.Info.Span.CopyTo(bytes.AsSpan(1));
+        return bytes;
+    }
+
+    /// <summary>Remember the bytes of an I frame numbered 0 the figure has just taken in
+    /// sequence, so a later copy of it is known for what it is. Forgotten when the link leaves
+    /// the connected states.</summary>
+    private void NoteFrameZero(Ax25Event evt, string stateBefore)
+    {
+        if (CurrentState is not ("Connected" or "TimerRecovery"))
+        {
+            lastFrameZero = null;
+        }
+        else if (evt is IFrameReceived { Frame.Ns: 0 } i && stateBefore is "Connected" or "TimerRecovery")
+        {
+            lastFrameZero = InfoWithPid(i.Frame);
+        }
+    }
+
+    /// <summary>True when <paramref name="evt"/> is an I frame carrying the N(S) this end expects
+    /// next, other than 0: the peer's sequence carried on past the start, so the UA dropped
+    /// before it was a repeat. An in-sequence 0 proves nothing: with V(r) = 0 it is as much a
+    /// restarted sequence as a continued one, and the frames after it tell.</summary>
+    private bool IsInSequenceIFrame(Ax25Event evt) =>
+        evt is IFrameReceived i && i.Frame.Ns != 0 && i.Frame.Ns == Context.VR;
 
     /// <summary>
     /// <see cref="Ax25SessionQuirks.RepeatedConnectUaIgnored"/>: true when <paramref name="evt"/>
@@ -613,6 +715,11 @@ public sealed class Ax25Session
     /// </summary>
     private void NoteConnectingUa(Ax25Event evt, string stateBefore)
     {
+        if (CurrentState is not ("Connected" or "TimerRecovery"))
+        {
+            droppedUa = null;
+        }
+
         if (!string.Equals(CurrentState, "Connected", StringComparison.Ordinal))
         {
             connectingUa = null;
@@ -627,44 +734,35 @@ public sealed class Ax25Session
 
     /// <summary>
     /// <see cref="Ax25SessionQuirks.RepeatedConnectSabmReacknowledged"/>: true when
-    /// <paramref name="evt"/> is a byte-identical copy of the SABM(E) this session answered with
-    /// UA while the link was being set up, arriving on the connected link before the peer has
-    /// sent anything else. The peer is still waiting for that UA and has retried; the figure
-    /// would read the copy as the §6.5 reset (figc4.4 / figc4.5 <c>t1x_sabm(e)_received_*</c>).
-    /// Any frame from the peer that reaches the session, other than a UA or the same SABM(E),
-    /// ends the window. The listener answers an XID command (and absorbs TEST and UI) without
-    /// the session, so those leave it open; none of them moves a sequence variable.
+    /// <paramref name="evt"/> is a SABM(E) of the link's modulo arriving on the connected link
+    /// from a peer whose SABM(E) this session has answered, while the peer has sent nothing since
+    /// that moved a sequence variable. The peer is still waiting for that UA and has retried; the
+    /// figure would read the retry as the §6.5 reset (figc4.4 / figc4.5
+    /// <c>t1x_sabm(e)_received_*</c>) and discard what this end has queued. Re-acknowledging
+    /// keeps the two ends in step: the peer is at V(s) = V(r) = 0, and so are this end's V(a) and
+    /// V(r), since nothing from the peer has moved them; what this end has outstanding is sent
+    /// from N(S) = 0 by the usual recovery. A SABM(E) of the other modulo, or one after an I or S
+    /// frame from the peer, runs the figure: that peer has moved on and may really mean a reset.
+    /// Frames that move no sequence variable (UA, XID, UI, TEST) leave the window open. A SABM(E)
+    /// on a link this end dialled, from a peer whose call it never answered, runs the figure too:
+    /// on the wire that is the same frame as a peer that started over, and the node hands such a
+    /// link to a fresh owner.
     /// </summary>
     private bool IsRepeatedConnectSabm(Ax25Event evt)
     {
-        if (connectingSabm is not { } connecting || !IsFrameFromPeer(evt))
+        if (!Context.Quirks.RepeatedConnectSabmReacknowledged
+            || !peerCallAnswered
+            || CurrentState is not ("Connected" or "TimerRecovery"))
         {
             return false;
         }
 
-        var call = evt switch
+        return evt switch
         {
-            SabmReceived sabm => sabm.Frame,
-            SabmeReceived sabme => sabme.Frame,
-            _ => null,
+            SabmReceived => !Context.IsExtended,
+            SabmeReceived => Context.IsExtended,
+            _ => false,
         };
-
-        if (call is not null && call.ToBytes().AsSpan().SequenceEqual(connecting))
-        {
-            // In AwaitingConnection / AwaitingV22Connection the figure itself answers the copy
-            // with UA and waits on, so only a copy on the connected link is ours to handle.
-            return Context.Quirks.RepeatedConnectSabmReacknowledged
-                && CurrentState is "Connected" or "TimerRecovery";
-        }
-
-        // A UA is how a dial that crossed the peer's call connects, and a copy of it (#842) is
-        // no sign the peer has moved on. Anything else is.
-        if (evt is not UaReceived)
-        {
-            connectingSabm = null;
-        }
-
-        return false;
     }
 
     /// <summary>
@@ -692,38 +790,43 @@ public sealed class Ax25Session
     }
 
     /// <summary>
-    /// Keep the SABM(E) this session answered with UA while the link was being set up (for
-    /// <see cref="IsRepeatedConnectSabm"/>): one that took it from Disconnected to Connected
-    /// (figc4.1), or one that crossed our own dial in AwaitingConnection or
-    /// AwaitingV22Connection. Forget it once the link leaves the connecting and connected
-    /// states, or when this end re-establishes the link itself.
+    /// Track whether this session has answered a SABM(E) from the peer and heard nothing from it
+    /// since that moved a sequence variable (for <see cref="IsRepeatedConnectSabm"/>). Set by a
+    /// SABM(E) the figure answered with UA: one that took the link from Disconnected to Connected,
+    /// one that crossed our own dial in AwaitingConnection or AwaitingV22Connection, or one that
+    /// reset a connected link. Cleared by any I or S frame from the peer, and by leaving the
+    /// connecting and connected states. This end re-establishing the link itself (a DL-CONNECT
+    /// request on a link the peer's call had just brought up, packet-net/packet.net#862) does not
+    /// clear it: that puts this end at zero too, so the peer's retry is still safe to answer, and
+    /// the figure's reset on it would discard what this end queued on the new link with nothing
+    /// said to its owner (seen on a simulated AFSK channel).
     /// </summary>
-    private void NoteConnectingSabm(Ax25Event evt, string stateBefore)
+    private void NotePeerCall(Ax25Event evt, string stateBefore)
     {
         if (!Context.Quirks.RepeatedConnectSabmReacknowledged
             || CurrentState is not ("AwaitingConnection" or "AwaitingV22Connection" or "Connected" or "TimerRecovery"))
         {
-            connectingSabm = null;
+            peerCallAnswered = false;
             return;
         }
 
-        var answered = (evt, stateBefore) switch
+        var answered = (evt, CurrentState) switch
         {
-            (SabmReceived sabm, "Disconnected") when CurrentState == "Connected" => sabm.Frame,
-            (SabmeReceived sabme, "Disconnected") when CurrentState == "Connected" => sabme.Frame,
-            (SabmReceived sabm, "AwaitingConnection" or "AwaitingV22Connection") => sabm.Frame,
-            (SabmeReceived sabme, "AwaitingV22Connection") => sabme.Frame,
-            _ => null,
+            (SabmReceived, "Connected" or "TimerRecovery" or "AwaitingConnection") => true,
+            (SabmeReceived, "Connected" or "TimerRecovery" or "AwaitingV22Connection") => true,
+            _ => false,
         };
 
-        if (answered is not null)
+        if (answered)
         {
-            connectingSabm = answered.ToBytes();
+            // Only when the answer left the link at zero: figc4.5's V(s) = V(a) arms
+            // (t13 / t14 _yes) keep the sequence variables, and re-acknowledging a retry from
+            // there would leave this end's V(r) ahead of a peer at zero.
+            peerCallAnswered = Context.VS == 0 && Context.VA == 0 && Context.VR == 0;
         }
-        else if (stateBefore is "Connected" or "TimerRecovery"
-            && CurrentState is "AwaitingConnection" or "AwaitingV22Connection")
+        else if (evt is IFrameReceived or RrReceived or RnrReceived or RejReceived or SrejReceived or IOrSCommandReceived)
         {
-            connectingSabm = null;
+            peerCallAnswered = false;
         }
     }
 

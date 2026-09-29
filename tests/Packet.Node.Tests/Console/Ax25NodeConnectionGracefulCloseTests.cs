@@ -369,12 +369,14 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
         await using var rig = await Rig.ConnectAsync();
         var conn = new Ax25NodeConnection(rig.Node, rig.NodeSession);
 
-        // An unexpected UA resets the link: the node sends SABM and waits in Awaiting Connection.
-        // Hold the SABM on the air so the close lands mid-reset.
+        // An FRMR from the peer resets the link (figc4.4 t16: DL-ERROR K, Establish Data Link):
+        // the node sends SABM and waits in Awaiting Connection. Hold the SABM on the air so the
+        // close lands mid-reset. (A UA used to serve here; since #874 a UA on an up link is
+        // dropped.)
         rig.Wire.HoldNodeToPeer = true;
-        rig.Wire.InjectToNode(Ax25Frame.Ua(NodeCall, PeerCall, finalBit: false));
+        rig.Wire.InjectToNode(Ax25Frame.Frmr(NodeCall, PeerCall, new byte[] { 0x00, 0x00, 0x00 }, finalBit: true));
         await Wait.ForAsync(() => rig.NodeSession.CurrentState is "AwaitingConnection" or "AwaitingV22Connection",
-            "the unexpected UA starts a reset");
+            "the FRMR starts a reset");
 
         if (abort)
         {
