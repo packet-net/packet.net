@@ -1231,8 +1231,13 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             return;
         }
 
-        // No cached session - run the establishment / transient handling.
-        HandleNoCachedSession(key, local, parsed.Source.Callsign, parsed);
+        // No cached session - run the establishment / transient handling. It can find one after
+        // all: a dial to this peer may have created the session since the lookup above, and then
+        // the frame belongs to that session (#867).
+        if (!HandleNoCachedSession(key, local, parsed.Source.Callsign, parsed))
+        {
+            TryRouteToCachedSession(key, parsed, payload, parseOptions);
+        }
     }
 
     /// <summary>
@@ -1371,7 +1376,10 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// establishment (SABM accept), the pre-session XID responder, and the transient
     /// fall-through that emits the appropriate Disconnected-state response (DM / etc.).
     /// </summary>
-    private void HandleNoCachedSession(SessionKey key, Callsign local, Callsign peer, Ax25Frame parsed)
+    /// <returns><c>false</c> when a session for <paramref name="key"/> was created by a dial
+    /// between the caller's cache lookup and here, so the frame was not handled and belongs to
+    /// that session.</returns>
+    private bool HandleNoCachedSession(SessionKey key, Callsign local, Callsign peer, Ax25Frame parsed)
     {
         // No cached session - the establishment / transient paths below deal in
         // U-frames (SABM/SABME) or fall to the Disconnected catch-all (→ DM),
@@ -1414,7 +1422,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // transient responder AS the alias - fall silent (we no longer answer for it).
         if (!local.Equals(MyCall) && !localAliases.ContainsKey(local))
         {
-            return;
+            return true;
         }
 
         // Pre-session XID *command* (a peer doing pre-SABM negotiation to us, no
@@ -1441,8 +1449,13 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // we won't accept the connection we shouldn't half-open from an XID.
         if (classified is XidReceived && parsed.IsCommand && AcceptIncoming)
         {
+            LogPreSessionXid(portName, peer.ToString(), local.ToString());
             var xidSession = BuildSession(local, peer, allowAccept: true);
-            AddToCache(key, xidSession);
+            if (!TryAddToCache(key, xidSession))
+            {
+                return false;
+            }
+
             options.ConfigureSession?.Invoke(xidSession.Session);
 
             // Seed the context with what this station CAN do, so DefaultOfferFor
@@ -1464,7 +1477,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // raises it. DO NOT dispose the scheduler - the session must persist for
             // that SABM, and the responder arms no timer, so nothing leaks.
             xidSession.Mdl.RespondToXidCommand(parsed);
-            return;
+            return true;
         }
 
         if (isSabmShaped && AcceptIncoming)
@@ -1476,11 +1489,15 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // was addressed to (MyCall or a registered alias).
             LogInboundAccept(portName, peer.ToString(), local.ToString(), classified is SabmeReceived ? "SABME" : "SABM");
             var built = BuildSession(local, peer, allowAccept: true);
-            AddToCache(key, built);
+            if (!TryAddToCache(key, built))
+            {
+                return false;
+            }
+
             options.ConfigureSession?.Invoke(built.Session);
             built.Session.PostEvent(classified);
             RaiseSessionAccepted(built.Session);
-            return;
+            return true;
         }
 
         // Transient fall-through:
@@ -1504,6 +1521,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             : ReclassifyForDisconnectedCatchAll(classified, parsed);
         transient.Session.PostEvent(transientEvent);
         transient.Scheduler.Dispose();
+        return true;
     }
 
     /// <summary>
@@ -2022,11 +2040,24 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         return cachedRef;
     }
 
-    private void AddToCache(SessionKey key, CachedSession built)
+    // Cache a session the inbound path built, unless a session for the key already exists:
+    // the pump looked the key up and found nothing, but a dial (GetOrCreateSession, on another
+    // thread) can create the peer's session before the pump gets here. Overwriting it used to
+    // leave the dial holding a session that no inbound frame reached, while the peer's frames
+    // went to this one: the dial never completed, and the link the peer set up acknowledged its
+    // I frames with nobody attached (#867). One session per (local, remote), so the frame goes
+    // to the one that is there, and the unused build is discarded.
+    private bool TryAddToCache(SessionKey key, CachedSession built)
     {
         List<Ax25Session>? evictedLive;
         lock (cacheGate)
         {
+            if (sessions.ContainsKey(key))
+            {
+                built.Scheduler.Dispose();
+                return false;
+            }
+
             sessions[key] = built;
             UpdateLruLocked(key);
             evictedLive = EvictExcessLocked(justAdded: key);
@@ -2036,7 +2067,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // call back into the listener.
         if (evictedLive is null)
         {
-            return;
+            return true;
         }
 
         foreach (var session in evictedLive)
@@ -2047,6 +2078,8 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // (packet-net/packet.net#696).
             session.RaiseDataLinkSignal(new DataLinkDisconnectIndication());
         }
+
+        return true;
     }
 
     private void TouchLru(SessionKey key)
@@ -2193,6 +2226,9 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     [LoggerMessage(EventId = 5209, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} <-> {Remote} ({Version}) by the peer's own call during the pre-connect XID; not re-dialling")]
     private partial void LogConnectedByPeerDuringXid(string port, string local, string remote, string version);
+
+    [LoggerMessage(EventId = 5222, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} -> {Local}: XID command with no session - answering it before any connection")]
+    private partial void LogPreSessionXid(string port, string peer, string local);
 
     [LoggerMessage(EventId = 5210, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} -> {Local}: {FrameType} received - accepting connection")]
     private partial void LogInboundAccept(string port, string peer, string local, string frameType);

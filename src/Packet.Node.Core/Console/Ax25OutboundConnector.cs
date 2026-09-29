@@ -112,7 +112,12 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                 // costs only what every crossing costs without E1 (the client's prompt wait).
                 bool upAlready = LinkIsUp(local, target);
                 Ax25NodeConnection Connected(Ax25Session s)
-                    => new(listener, s, timeProvider) { Crossed = upAlready || crossing.PeerCalledUs };
+                {
+                    // The caller holds the link from here, so a failing dial on the same claim
+                    // must not end it.
+                    (ticket as IOutboundClaim)?.MarkDelivered();
+                    return new(listener, s, timeProvider) { Crossed = upAlready || crossing.PeerCalledUs };
+                }
 
                 // No cache AND nothing declared => today's exact call: the no-extended-arg overload
                 // follows the listener's PreferExtendedConnect + PreConnectXidNegotiatesSrej defaults,
@@ -207,6 +212,19 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
 
                 return Connected(session);
             }
+            catch (Exception) when (ticket is IOutboundClaim { LeavesALinkNobodyHolds: true })
+            {
+                // The peer's call set the link up under the claim (figc4.1, on this dial's own
+                // session, the one per (local, remote)), so the host dropped its accept, and the
+                // dial then failed or was cancelled before it could hand the link over. Nobody
+                // holds it, and left up it would acknowledge the peer's I frames and deliver them
+                // to no one (#867). End it, so the peer's application sees the link go rather than
+                // its data vanish. The claim, not this dial's frame watch, says whether that
+                // happened, so a call landing anywhere after the claim was taken counts, and a
+                // call that reached its owner before it does not.
+                DisconnectLinkNobodyHolds(listener, local, target);
+                throw;
+            }
             finally
             {
                 listener.FrameTraced -= OnFrame;
@@ -215,6 +233,21 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         finally
         {
             ticket?.Dispose();
+        }
+    }
+
+    /// <summary>End the (local, remote) link if it is up: a DL-DISCONNECT request, for a link a
+    /// dial's claim left with nobody to hold it (#867).</summary>
+    internal static void DisconnectLinkNobodyHolds(Ax25Listener listener, Callsign local, Callsign remote)
+    {
+        foreach (var s in listener.ActiveSessions)
+        {
+            if (s.Context.Local.Equals(local)
+                && s.Context.Remote.Equals(remote)
+                && s.CurrentState is "Connected" or "TimerRecovery")
+            {
+                s.PostEvent(new DlDisconnectRequest());
+            }
         }
     }
 
