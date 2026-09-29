@@ -76,9 +76,9 @@ public sealed class Ax25Session
     private byte[]? connectingUa;
 
     // RepeatedConnectSabmReacknowledged (#856): the encoded SABM(E) from the peer that this
-    // session answered with UA while the link was being set up, kept until the peer sends
-    // anything else. A byte-identical copy on the connected link is the peer retrying after
-    // losing our UA, not the figure's reset. See IsRepeatedConnectSabm.
+    // session answered with UA while the link was being set up, kept until the session sees
+    // anything else from the peer. A byte-identical copy on the connected link is the peer
+    // retrying after losing our UA, not the figure's reset. See IsRepeatedConnectSabm.
     private byte[]? connectingSabm;
 
     /// <summary>The session's mutable per-connection state.</summary>
@@ -631,7 +631,9 @@ public sealed class Ax25Session
     /// UA while the link was being set up, arriving on the connected link before the peer has
     /// sent anything else. The peer is still waiting for that UA and has retried; the figure
     /// would read the copy as the §6.5 reset (figc4.4 / figc4.5 <c>t1x_sabm(e)_received_*</c>).
-    /// Any frame from the peer other than a UA or the same SABM(E) ends the window.
+    /// Any frame from the peer that reaches the session, other than a UA or the same SABM(E),
+    /// ends the window. The listener answers an XID command (and absorbs TEST and UI) without
+    /// the session, so those leave it open; none of them moves a sequence variable.
     /// </summary>
     private bool IsRepeatedConnectSabm(Ax25Event evt)
     {

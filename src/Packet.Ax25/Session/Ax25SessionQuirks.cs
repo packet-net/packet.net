@@ -193,10 +193,12 @@ public sealed record Ax25SessionQuirks
     /// being set up: one that took it from Disconnected to Connected (figc4.1), or one that
     /// crossed our own dial in AwaitingConnection or AwaitingV22Connection (figc4.2 / figc4.6
     /// answer it with UA and wait on). While the link is Connected or in Timer Recovery and
-    /// the peer has sent nothing else since (a UA, which is how a crossing dial connects, does
-    /// not count), a byte-identical SABM(E) is answered with UA (F = P) and nothing else
-    /// happens. Any other frame from the peer ends that, and so does the link leaving those
-    /// states. The two ends stay in step even if the peer did mean a reset: it has sent and
+    /// the session has had nothing else from the peer since (a UA, which is how a crossing dial
+    /// connects, does not count), a byte-identical SABM(E) is answered with UA (F = P) and
+    /// nothing else happens. Any other frame from the peer that reaches the session ends that,
+    /// and so does the link leaving those states. Frames the listener handles without the
+    /// session (an XID command, which it answers itself, or TEST and UI) leave the window
+    /// open; none of them moves a sequence variable. The two ends stay in step even if the peer did mean a reset: it has sent and
     /// acknowledged nothing, so its V(s) = V(r) = 0 match this end's V(r) and V(a), and what
     /// this end has outstanding is retransmitted from N(S) = 0 by the usual recovery.
     /// </para>

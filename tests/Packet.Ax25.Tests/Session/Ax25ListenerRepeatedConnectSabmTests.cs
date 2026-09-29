@@ -188,6 +188,54 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
     }
 
     [Fact]
+    public async Task Strictly_faithful_resets_on_the_repeated_SABM_as_the_figure_draws()
+    {
+        // StrictlyFaithful clears the quirk with every other; on a mod-8 dial the crossing runs as
+        // it does by default (the Ax25Spec44 routing only matters to a mod-128 dial), so this is
+        // the figure's reset on its own.
+        var (onA, _, signalsOnA, receivedOnB, _, _, cleanup) = await CrossWithALostUaAsync(Ax25SessionQuirks.StrictlyFaithful, extended: false);
+        await using var _ = cleanup;
+
+        await WaitFor(() => { lock (signalsOnA) { return signalsOnA.Any(s => s is DataLinkConnectIndication); } },
+            TimeSpan.FromSeconds(10), "the repeated SABM resets A's link");
+        await Task.Delay(T1V * 6);
+        receivedOnB().Should().BeEmpty("the reset discarded the I frame B never saw");
+        onA.Context.VS.Should().Be((byte)0);
+    }
+
+    [Fact]
+    public async Task A_repeat_that_arrives_in_Timer_Recovery_is_answered_again_without_a_reset()
+    {
+        // Our banner's T1 has run out before the peer's retry arrives, so the link is in Timer
+        // Recovery (figc4.5 has the same SABM(E) reset arms as figc4.4).
+        var modem = new LoopbackModem();
+        await using var listener = Station(modem, CallA, Ax25SessionQuirks.Default);
+        await listener.StartAsync();
+        Ax25Session? accepted = null;
+        listener.SessionAccepted += (_, e) => Volatile.Write(ref accepted, e.Session);
+
+        modem.InjectInbound(Ax25Frame.Sabme(CallA, CallB));
+        await WaitFor(() => Volatile.Read(ref accepted) is not null, TimeSpan.FromSeconds(5), "the call is accepted");
+        var session = Volatile.Read(ref accepted)!;
+        var signals = new List<DataLinkSignal>();
+        session.DataLinkSignalEmitted += (_, s) => { lock (signals) { signals.Add(s); } };
+        listener.SendData(session, "banner\r"u8.ToArray());
+        await WaitFor(() => session.CurrentState == "TimerRecovery", TimeSpan.FromSeconds(10),
+            "the banner's T1 runs out with nothing from the peer");
+
+        modem.InjectInbound(Ax25Frame.Sabme(CallA, CallB));
+        await WaitFor(() => Sent(modem).Count(f => f.FrameType == Ax25FrameType.Ua) == 2, TimeSpan.FromSeconds(5),
+            "the repeat is answered with UA");
+
+        session.CurrentState.Should().Be("TimerRecovery", "the link carries on recovering the banner");
+        session.Context.VS.Should().Be((byte)1, "the banner is still outstanding");
+        lock (signals)
+        {
+            signals.Where(s => s is DataLinkConnectIndication or DataLinkErrorIndication).Should().BeEmpty();
+        }
+    }
+
+    [Fact]
     public async Task With_RepeatedConnectUaIgnored_a_doubled_connecting_UA_and_then_the_SABM_repeat_are_both_absorbed()
     {
         // #842 and #856 together, on a path that delivers every frame twice (LinBPQ with two
