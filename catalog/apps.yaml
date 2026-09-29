@@ -33,7 +33,7 @@ apps:
   # manifest. DAPPS publishes exactly this shape.
   - id: dapps
     name: DAPPS
-    version: "0.34.3"
+    version: "0.42.0"
     description: "Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging over packet radio."
     icon: inbox
     capabilities: [packet, web]
@@ -41,22 +41,22 @@ apps:
     artifact:
       kind: assets
       manifest:
-        url: https://github.com/packet-net/dapps/releases/download/v0.34.3/pdn-app.yaml
-        sha256: 20415ee51436dd099fa6b0ec72c2258129d180d48a5a9940341a8c0e674345ae
+        url: https://github.com/packet-net/dapps/releases/download/v0.42.0/pdn-app.yaml
+        sha256: 4f82539e8f290f3a8d9643daf6f362f616f5bb6167a8f71d26542ae77dadfbe8
       binaries:
         linux-x64:
-          url: https://github.com/packet-net/dapps/releases/download/v0.34.3/dapps-linux-x64
-          sha256: eceebd56f3c9bf25b56906e8a53619316fcb9e856ddf11f4884fcabd10b0966a
+          url: https://github.com/packet-net/dapps/releases/download/v0.42.0/dapps-linux-x64
+          sha256: 8a666926bdccf972e5304a5bd3eab57a95da3abe6a043fe058de808f66c95ef2
           dest: dapps
           mode: "0755"
         linux-arm64:
-          url: https://github.com/packet-net/dapps/releases/download/v0.34.3/dapps-linux-arm64
-          sha256: aa3a3539288b0b3ada62d5e07fe249daea53d53fbb48b2d2e875e43abdc9b84d
+          url: https://github.com/packet-net/dapps/releases/download/v0.42.0/dapps-linux-arm64
+          sha256: 0012d7078342be0f739f9f1b5011eb2c09a5d6928276fe7a1cad78c74add635d
           dest: dapps
           mode: "0755"
         linux-arm:
-          url: https://github.com/packet-net/dapps/releases/download/v0.34.3/dapps-linux-arm
-          sha256: e7a8b7b6276dc219998b28d20ab45ef6e065c744a48d394594ff19e11423c470
+          url: https://github.com/packet-net/dapps/releases/download/v0.42.0/dapps-linux-arm
+          sha256: 39dc4022188431c4078e4551d6ec778d93268ec7d9f36b7e4bd862f0f772bf9e
           dest: dapps
           mode: "0755"
 
@@ -85,7 +85,7 @@ apps:
 
   - id: convers
     name: Convers
-    version: "0.1.3"
+    version: "0.1.4"
     description: "Round-table packet chat — a leaf node on the worldwide convers network, for RF and web users."
     icon: chat
     capabilities: [packet, web]
@@ -94,18 +94,18 @@ apps:
       kind: deb
       debs:
         linux-x64:
-          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.3/pdn-convers_0.1.3_amd64.deb
-          sha256: 2005f6664979e9b73a9b030996fc87f4fcf3ba1e2128942d3f9f81acaaeca55a
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.4/pdn-convers_0.1.4_amd64.deb
+          sha256: 7957fea844dedd7bc8cc9d583a99346308430bd69b7a0defd186ee6ee71a9eb7
         linux-arm64:
-          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.3/pdn-convers_0.1.3_arm64.deb
-          sha256: f08fef7712f5719a908fd317a9149e2062e58474e0411de4b65225056549ca22
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.4/pdn-convers_0.1.4_arm64.deb
+          sha256: 6d1f880518df73a7156eb20a1a252c9964d2feeac4612ba25547564d32984976
         linux-arm:
-          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.3/pdn-convers_0.1.3_armhf.deb
-          sha256: bda6227486f9a13ac1a6e4574cf6847460b7860e16fb0155c7a5058942800bca
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.4/pdn-convers_0.1.4_armhf.deb
+          sha256: 178701f724a4eda6878fcdba8ebcf17a89a32ea34523ed1073e09adbf4e7d05c
 
   - id: bbs
     name: BBS
-    version: "0.2.51"
+    version: "0.2.54"
     description: "Packet-radio mailbox — personal mail, bulletins + NTS, FBB store-and-forward, webmail, and IMAP/SMTP for a phone mail app over Tailscale. Renders inside the pdn panel (slot UI mode), styled to match and following the panel's theme. Binds <node>-<ssid> + the BBS alias; mail addresses are SSID-less. Sysop forwarding dashboard; reverse collection."
     icon: mail
     capabilities: [packet, web]
@@ -114,14 +114,14 @@ apps:
       kind: deb
       debs:
         linux-x64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.51/pdn-bbs_0.2.51_amd64.deb
-          sha256: f566168df9b5f85bacf1327634eca8c659ae26945de5cb11aa0cf83dac5afbf0
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.54/pdn-bbs_0.2.54_amd64.deb
+          sha256: b2ce0e6e4339ae3c8bcf39c398efa1c7eb7bacf29aed67bf5877d293aab8d96f
         linux-arm64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.51/pdn-bbs_0.2.51_arm64.deb
-          sha256: cabfa1fb3b7772d662e6d274482579467571b13dc63eec6367828732af616652
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.54/pdn-bbs_0.2.54_arm64.deb
+          sha256: f1a2c4503d48f821135a0bab537f063f63370b35e0fc7b30eec681cf58a12a4a
         linux-arm:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.51/pdn-bbs_0.2.51_armhf.deb
-          sha256: a0229fd54d274eb47dbf3ccbb032be249b807e64e2a49ebcaa007c098c014d38
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.54/pdn-bbs_0.2.54_armhf.deb
+          sha256: 2df2fab47f62a9ecd344557b766c5810c697bdb5345b8a7586aca14c9f536155
 
   - id: linmail
     name: LinBPQ Mail
