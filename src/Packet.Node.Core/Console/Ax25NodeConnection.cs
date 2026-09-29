@@ -52,6 +52,11 @@ public sealed class Ax25NodeConnection : INodeConnection
     /// <inheritdoc/>
     public Task Completion => completion.Task;
 
+    /// <inheritdoc/>
+    /// <remarks>Set by <see cref="Ax25OutboundConnector"/>, which watches the dial; an
+    /// inbound connection leaves it false.</remarks>
+    public bool Crossed { get; init; }
+
     /// <summary>The wrapped session - exposed so the AX.25 adapter source
     /// (listener wiring) can correlate, and for tests.</summary>
     public Ax25Session Session => session;
