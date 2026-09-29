@@ -65,7 +65,7 @@ apps:
   # kind: assets - a per-RID binary + a separately-fetched manifest (DAPPS today).
   - id: dapps                    # must equal the installed package's manifest id
     name: DAPPS
-    version: "0.34.1"            # the curated version (drives "update available")
+    version: "0.34.1"            # the curated version (drives "update available", Debian ordering)
     description: Distributed Asynchronous Packet Pub/Sub - store-and-forward messaging.
     icon: inbox
     capabilities: [packet, web]  # shown to the owner at install/enable time (packet = full
@@ -122,11 +122,24 @@ The sha256 pin comes straight from **GitHub's per-asset `digest` (`sha256:…`)*
 
 ## Install flow
 
-1. **List.** `GET /api/v1/apps/available` returns each catalog entry projected with the node's view: `installed` (is a package with this id present?), the installed `version` vs the catalog `version`, and `updateAvailable`. The node's RID (from `RuntimeInformation`) selects the right per-arch artifact for display/fetch.
+1. **List.** `GET /api/v1/apps/available` returns each catalog entry projected with the node's view: `installed` (is a package with this id present?), the installed `version` vs the catalog `version`, and `updateAvailable`. The node's RID (from `RuntimeInformation`) selects the right per-arch artifact for display/fetch `updateAvailable` is true only when the catalog `version` sorts strictly above the installed one under Debian version ordering (see § Version ordering).
 2. **Install** (`POST /api/v1/apps/available/{id}/install`, admin, audited): resolve the artifact for this RID → download to a temp area → **sha256-verify against the catalog pin** (hard refusal on mismatch) → assemble the package dir in a temp dir: for `kind: assets` write the verified manifest + binary at their `dest`/`mode`; for `kind: deb` run `dpkg-deb -x` and lift the `usr/share/packetnet/apps/<id>/` subtree; for `kind: pdnapp` untar with a path-traversal-safe extractor → **commit** into `/var/lib/packetnet/apps/<id>/` (the `pdn-app.yaml` lands at the package-dir root, exactly like a hand-installed package) and write a `.pdn-install.json` **payload marker** (see O1). The package then appears as discovered-but-**disabled** on the next `Discover()` (immediate; disk is scanned live; discovery is unchanged). The operator enables it via the existing toggle.
 3. **Upload** (`POST /api/v1/apps/packages/upload`, admin, audited): same staging pipeline, bytes from a multipart `.pdnapp` instead of a URL; the manifest id inside the tarball is authoritative and must equal the (validated) directory it lands in.
 4. **Update**: re-run the install pipeline for an installed app at a newer catalog version - the marker's recorded payload is deleted and the new payload committed, **preserving the app's state** (the O1 marker makes this safe). Under A1, "update available" only surfaces at pdn-release cadence; A2 makes it live. **Auto-restart on update:** after the payload is committed, if the app is currently **enabled**, **pdn-managed** (`service.managed == pdn`), and **error-free**, the install endpoint drives the supervisor's `RestartAsync(id)` synchronously within the request so the freshly-laid binary actually runs. This is necessary because the supervisor only restarts a service when its *spawn fingerprint* (resolved command + args + working dir + merged environment) changes, and a version bump changes none of those - so a plain reconcile would keep the old process alive and the operator would otherwise have to restart by hand. The restart is **best-effort and never demotes a committed install to a failure**: a missing supervisor, a disabled/unmanaged/broken package, or any restart error yields `restarted: false` in the JSON response (alongside `ok: true`) and an audit line, never a 422 - the payload is already on disk and the operator can restart from the package row. A **fresh** install lands disabled (install ≠ enable), so nothing is restarted (`restarted: false`); the owner's separate enable grant is what first runs it.
 5. **Uninstall** (`POST /api/v1/apps/packages/{id}/uninstall`, admin, audited): only for catalog/upload-installed packages (those carrying a marker, always under `/var/lib/packetnet/apps/`, never the dpkg-owned `/usr/share/...` root); requires the app to be **disabled first** (removes nothing that is running); removes exactly the marker's recorded payload files + the marker, leaving app-created state, and removes the dir only if it ends up empty. A marker-less (hand-sideloaded) dir is refused - pdn never deletes files it did not place.
+
+## Version ordering
+
+"Update available" compares the installed version (the install marker's, else the manifest's) with the catalog `version` using **Debian version ordering**, the rules behind `dpkg --compare-versions` (`DebianVersion` in `src/Packet.Node.Core/Applications/Catalog/`). Most catalog artifacts are `.deb`s whose versions are Debian versions already.
+
+- A version is `[epoch:]upstream[-revision]`. The epoch (default 0) is compared first, then the upstream version, then the revision (default empty).
+- Runs of digits compare as numbers: `0.2.10` is above `0.2.9`, and `1.0` equals `1.00`.
+- Between digits, letters sort before any other character, and `~` sorts before everything, even the end of the string: `1.0~rc1` is below `1.0`, which is below `1.0a`, which is below `1.0+b1`.
+- So a suffix counts: `6.0.25.41-pdn1` is below `6.0.25.41-pdn2`, which is below `6.0.25.42-pdn1`.
+- A single leading `v` before a digit (the release-tag spelling) is ignored.
+- A version dpkg would reject or warn about (for example one that doesn't start with a digit) never shows an update, and neither does an equal or older catalog version.
+
+Plain dotted versions order exactly as they did under the old comparer, which ignored anything after a dash. One difference for future entries: `1.0` is now below `1.0.0`, where the old comparer called them equal. The node's own self-update keeps its separate ordering (`NodeVersion`), which has a rule for dev builds.
 
 ## Surfaces
 

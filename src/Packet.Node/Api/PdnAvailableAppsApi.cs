@@ -6,7 +6,6 @@ using Packet.Node.Core.Applications.Catalog;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Audit;
 using Packet.Node.Core.Configuration;
-using Packet.Node.Core.SelfUpdate;
 
 namespace Packet.Node.Api;
 
@@ -199,11 +198,12 @@ public static class PdnAvailableAppsApi
             installedVersion = installer.GetInstalled(entry.Id)?.Version ?? package!.Manifest?.Version;
         }
 
-        // An update is offered ONLY when the catalog pin is a genuine UPGRADE - a strictly-greater
-        // numeric version (see IsUpgrade). This guards against a backwards "update vX → vY" when the
-        // catalog version is OLDER than what's installed (an out-of-band install, or a catalog
-        // rollback), and against the naive Ordinal string compare that mis-orders "0.2.10" vs
-        // "0.2.9". Equal, older, or unparseable → no badge.
+        // An update is offered ONLY when the catalog pin is a genuine UPGRADE - strictly greater
+        // under Debian version ordering (see IsUpgrade). This guards against a backwards "update
+        // vX → vY" when the catalog version is OLDER than what's installed (an out-of-band install,
+        // or a catalog rollback), against the naive Ordinal string compare that mis-orders "0.2.10"
+        // vs "0.2.9", and makes a packaging suffix count ("-pdn2" over "-pdn1"). Equal, older, or
+        // unparseable → no badge.
         var updateAvailable = installed
             && installedVersion is not null
             && IsUpgrade(installedVersion, entry.Version);
@@ -227,17 +227,23 @@ public static class PdnAvailableAppsApi
 
     /// <summary>
     /// Whether the <paramref name="catalogVersion"/> is a genuine upgrade over the
-    /// <paramref name="installedVersion"/> — a strictly-greater numeric base
-    /// (<see cref="NodeVersion.IsUpdateOver"/>, the same comparator the node self-update uses). An
-    /// equal or OLDER catalog version (a downgrade — e.g. an out-of-band install left the box ahead
-    /// of the catalog, or the catalog was rolled back) is NOT an update. Either side unparseable →
-    /// not an update (conservative: never a spurious or backwards badge). This also fixes the naive
-    /// Ordinal string compare, under which "0.2.9" sorts after "0.2.10".
+    /// <paramref name="installedVersion"/>: strictly greater under Debian version ordering
+    /// (<see cref="DebianVersion"/>, the <c>dpkg --compare-versions</c> rules), so a suffix
+    /// counts (<c>6.0.25.41-pdn2</c> is an update over <c>6.0.25.41-pdn1</c>) and digits compare
+    /// numerically (<c>0.2.10</c> is above <c>0.2.9</c>). An equal or OLDER catalog version (a
+    /// downgrade, e.g. an out-of-band install left the box ahead of the catalog, or the catalog
+    /// was rolled back) is NOT an update. Either side unreadable means not an update
+    /// (conservative: never a spurious or backwards badge). A single leading <c>v</c> before a
+    /// digit (the release-tag spelling, <c>v0.2.1</c>) is ignored on either side.
     /// </summary>
     internal static bool IsUpgrade(string installedVersion, string? catalogVersion) =>
-        NodeVersion.TryParse(catalogVersion, out var catalog)
-        && NodeVersion.TryParse(installedVersion, out var installed)
-        && catalog.IsUpdateOver(installed);
+        DebianVersion.IsNewer(StripTagPrefix(catalogVersion), StripTagPrefix(installedVersion));
+
+    private static string? StripTagPrefix(string? version)
+    {
+        var s = version?.Trim();
+        return s is { Length: > 1 } && (s[0] == 'v' || s[0] == 'V') && char.IsAsciiDigit(s[1]) ? s[1..] : s;
+    }
 
     /// <summary>Whether the catalog entry carries an artifact for <paramref name="rid"/> — an
     /// <c>assets</c> binary, a <c>deb</c>, or a <c>pdnapp</c> variant (or its rid-independent
