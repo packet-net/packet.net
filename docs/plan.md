@@ -1428,6 +1428,15 @@ Found by DAPPS's crossed-call tests on `node-v0.59.0`, about one run in five: no
 - **Evidence.** `Ax25ListenerInboundDuringDialTests`: a logger holds the pump after its lookup missed until the dial has created its session and sent its probe, then A's SABME and XID answer follow; the dial returns the one session, Connected, with no SABM(E) of ours, and A's I frame reaches it. Both the XID and the SABME variants time out with `main`'s overwrite. `RhpDialOvertakenByPeerTests` is DAPPS's shape end to end over RHPv2: B's `open` answers `crossed:true` and B's client gets A's `exchange` (no `openReply` in 20 s with the overwrite). `DialClaimLeavesNoOrphanLinkTests`: a call to the node's callsign during an app's dial gets its console, and a dial cancelled after the peer's call set up the link sends DISC; both fail on `main`.
 - **Release impact.** Library change in `Packet.Ax25` (no API change) and node changes, so the next `lib-v*` and `node-v*`. No named flag, no listener surface change, no parity leg.
 
+### 2026-09-29 - app catalog: "update available" uses Debian version ordering
+
+The Available apps view decided "update available" with the node self-updater's comparer (`NodeVersion`), which drops everything after a dash, so linmail-pdn's `6.0.25.41-pdn2` would not have shown as an update over `6.0.25.41-pdn1` (the open item in the node-v0.60.0 entry below). App versions now compare with Debian version ordering, the `dpkg --compare-versions` rules (epoch, upstream version, revision; digits numerically; letters before other characters; `~` before everything), in a new `DebianVersion` (`src/Packet.Node.Core/Applications/Catalog/`) used by `PdnAvailableAppsApi.IsUpgrade`. That was the only place pdn compares app versions: the installer and the UI don't, and the self-updater keeps `NodeVersion` and its dev-build rule unchanged.
+
+- **Nothing in the catalog moves.** Every version string the catalog has carried is plain dotted numbers except `6.0.25.41-pdn1`, and a test checks each shipped version against its neighbours under both comparers. A leading `v` is still ignored, and a version dpkg would reject or warn about still never shows an update. The one new difference, for future entries: `1.0` now sorts below `1.0.0`.
+- **Tests.** `DebianVersionTests` (the dpkg reference cases, each pair checked against dpkg 1.23.7, plus the `-pdnN` cases and malformed versions) and new cases in `AvailableAppsUpdateGuardTests`.
+- **Docs.** [`app-catalog.md`](app-catalog.md) § Version ordering states the rule.
+- **Also today.** #866 refreshed the stale catalog pins (dapps 0.42.0, convers 0.1.4, bbs 0.2.54), closing the other open item in the node-v0.60.0 entry.
+
 ### 2026-09-29 - downstream: `packet-net/axcall` is now `packet-net/pdn-ax25-tools`
 
 The downstream .NET app repo was renamed from `axcall` to `pdn-ax25-tools`, because since v0.15.0 it ships five programs: `axcall`, `axinetd`, `axsocks`, `axtun`, and the new channel monitor `axlisten`.
