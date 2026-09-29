@@ -106,6 +106,16 @@ A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyF
 
 **`Ax25Spec38SrejSelectiveRetransmit` has been retired** (2026-08-03). With the corrected tables it was inert - it rewrote `Push*OnQueue` verbs and skipped `InvokeRetransmission`, and neither survives on any SREJ path in 0.10.2 - so the quirk, its dispatcher interception and its three synthetic tests are gone. Nothing it protected was lost: the selective-retransmit behaviour now comes from the figure itself and is covered end-to-end by `DataLinkSrejUnderLossTests` driving the real tables, which is stronger coverage than feeding the dispatcher hand-authored verb lists that the tables no longer emit.
 
+### A repeated UA after the connect - duplicate delivery (`RepeatedConnectUaIgnored`)
+
+A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyFaithful`. It drops a second delivery of the UA that just connected a dial, rather than reading it as an unexpected UA and resetting the link (packet-net/packet.net#842). Not a figure defect: figc4.4 matches the prose.
+
+| Knob | Spec / figure model | De-facto (default-on) behaviour | Evidence | Default | Off restores |
+|---|---|---|---|---|---|
+| `Ax25SessionQuirks.RepeatedConnectUaIgnored` | figc4.4 connected-state UA (`t17_ua_received_*`): DL-ERROR, Establish Data Link, back to AwaitingConnection (or AwaitingV22Connection). §6.5 ¶2: "A TNC initiates a reset procedure whenever it receives an unexpected UA response frame." The figure keeps no memory of the UA that connected the link, and the spec does not consider duplicate delivery, so every UA in the connected state is "unexpected". | A UA in the connected state that is byte for byte the UA that took the dial to Connected, and is the next frame the peer sent, is dropped (any number of copies). Anything else runs the figure: a UA that differs, or one after other traffic from the peer, which may mean the peer really did reset (a retried SABM answered after it had sent data). | **LinBPQ** with two AXIP `MAP` lines for one address sends every frame once per line, so a dial sees UA, UA and the figure loops for ever (SABM, UA, UA, SABM...); seen in DAPPS's end-to-end tests against pdn. **LinBPQ** itself discards every UA on a link that is up (`L2Code.c` `SDUFRM`: *"DISCARD - PROBABLY REPEAT OF ACK OF SABM"*), and the **Linux kernel** drops them too (`ax25_std_in.c` `ax25_std_state3_machine` has no UA case); **direwolf** and **rax25** follow the figure. The quirk is narrower than LinBPQ and Linux on purpose. | `true` | the figure as drawn - the repeated UA resets the link. |
+
+**Why not drop duplicate datagrams at the AXUDP port instead.** A duplicate is not only an AXUDP artefact, and a transport-level filter would have to guess from timing which identical datagrams are copies. The session knows exactly which UA connected the link and what arrived since, so the rule needs no clock.
+
 ### XID Classes-of-Procedures ABM bit (spec worked-example defect)
 
 | Location | Choice | Why it's not a flag |

@@ -130,6 +130,45 @@ public sealed record Ax25SessionQuirks
     public bool SrejCommandIgnored { get; init; } = true;
 
     /// <summary>
+    /// <b>De-facto-interop quirk (not a figure defect - no ax25spec issue).</b> Drop a
+    /// repeated copy of the UA that just connected the link, rather than reading it as an
+    /// unexpected UA and resetting. Default <c>true</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// figc4.4's connected-state UA arm (<c>t17_ua_received_*</c>) raises DL-ERROR and runs
+    /// Establish Data Link, as §6.5 asks: "A TNC initiates a reset procedure whenever it
+    /// receives an unexpected UA response frame." The figure keeps no memory of the UA that
+    /// connected the link, so it cannot tell a second delivery of that same UA from a
+    /// genuinely unexpected one, and the spec does not consider duplicate delivery at all.
+    /// A path that delivers every frame twice therefore never connects: the dialler resets on
+    /// the copy, sends SABM(E) again, and gets two UAs again. LinBPQ with two AXIP
+    /// <c>MAP</c> lines for one address does exactly that (packet-net/packet.net#842, seen
+    /// with a node's call and an app's call mapped to the same IP and port), and a UDP path
+    /// can duplicate a datagram on its own.
+    /// </para>
+    /// <para>
+    /// When <c>true</c>, a UA received in the connected state is dropped if it is byte for
+    /// byte the UA that took this link from AwaitingConnection or AwaitingV22Connection to
+    /// Connected, and no other frame from the peer has arrived since. Any number of copies are
+    /// dropped. Anything else still runs the figure: a UA that differs (F=0, say), or one that
+    /// follows other traffic from the peer. That second limit matters. A peer that answered a
+    /// retried SABM after it had already sent data has really reset its sequence variables,
+    /// and the figure's reset is what brings the two ends back into step.
+    /// </para>
+    /// <para>
+    /// LinBPQ discards every UA on a link that is up (<c>L2Code.c</c> <c>SDUFRM</c>: "DISCARD -
+    /// PROBABLY REPEAT OF ACK OF SABM"), and the Linux kernel's state-3 machine
+    /// (<c>ax25_std_in.c</c> <c>ax25_std_state3_machine</c>) has no UA case, so it drops them
+    /// too; direwolf and rax25 follow the figure.
+    /// This quirk is deliberately narrower than LinBPQ and Linux. When <c>false</c>
+    /// (<see cref="StrictlyFaithful"/>), every UA in the connected state resets the link as
+    /// drawn.
+    /// </para>
+    /// </remarks>
+    public bool RepeatedConnectUaIgnored { get; init; } = true;
+
+    /// <summary>
     /// Work around <c>packethacking/ax25spec#41</c>: figc4.7 <c>Select_T1_Value</c>
     /// folds <c>(T1V − "Remaining Time on T1 When Last Stopped")</c> into the
     /// smoothed round-trip time without Karn's-algorithm guard. That term is only
@@ -468,6 +507,7 @@ public sealed record Ax25SessionQuirks
     {
         SegmentFirstCarriesL3Pid = false,
         SrejCommandIgnored = false,
+        RepeatedConnectUaIgnored = false,
         Ax25Spec41KarnSrtSampling = false,
         Ax25Spec42SrejTargetsGap = false,
         Ax25Spec43DlFlowOffEntersBusy = false,
