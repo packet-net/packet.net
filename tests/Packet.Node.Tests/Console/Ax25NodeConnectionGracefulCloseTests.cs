@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Channels;
 using AwesomeAssertions;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25;
 using Packet.Ax25.Session;
 using Packet.Ax25.Transport;
@@ -152,9 +153,12 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
     [Fact]
     public async Task A_peer_still_busy_after_the_retry_budget_gets_DISC_and_a_redial_then_proceeds()
     {
-        await using var rig = await Rig.ConnectAsync();
-        var connector = new Ax25OutboundConnector("p1", rig.Node);
-        var conn = new Ax25NodeConnection(rig.Node, rig.NodeSession);
+        // On a fake clock shared by both listeners, the connection and the connector, so the
+        // link's T1/T3 and the close's busy budget run on the same time.
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        await using var rig = await Rig.ConnectAsync(time);
+        var connector = new Ax25OutboundConnector("p1", rig.Node, timeProvider: time);
+        var conn = new Ax25NodeConnection(rig.Node, rig.NodeSession, time);
 
         rig.PeerSession!.PostEvent(new DlFlowOffRequest());   // busy, and it never clears
         await Wait.ForAsync(() => rig.NodeSession.Context.PeerReceiverBusy, "the node hears the RNR");
@@ -165,19 +169,60 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
 
         // The budget a silent peer would get: N2 retries of T1 with its backoff.
         var budget = Ax25GracefulClose.BusyBudget(rig.NodeSession.Context);
-        var clock = System.Diagnostics.Stopwatch.StartNew();
         await conn.DisposeAsync();
         var redial = connector.ConnectAsync(PeerCall);
 
+        // Run the clock to just short of the budget in steps shorter than T1, letting the peer
+        // answer each poll before moving on, so the link sees a live, busy peer throughout.
+        var step = TimeSpan.FromMilliseconds(100);
+        var elapsed = TimeSpan.Zero;
+        while (elapsed + step < budget)
+        {
+            time.Advance(step);
+            elapsed += step;
+            await Wait.ForAsync(
+                () => rig.Wire.PeerSent.Count(IsPollAnsweredWithRnr) >= rig.Wire.NodeSent.Count(IsPoll),
+                "the busy peer answers every poll");
+        }
+
+        rig.Wire.PeerSent.Should().Contain(f => IsPollAnsweredWithRnr(f), "the node polled and the peer answered busy");
+        rig.Wire.NodeSent.Should().NotContain(f => IsDisc(f), "inside the budget the busy peer is waited for");
+        redial.IsCompleted.Should().BeFalse("the redial waits behind the pending close");
+
+        // The rest of the budget: the DISC goes, busy peer or not.
+        time.Advance(budget - elapsed);
         await Wait.ForAsync(() => rig.Wire.NodeSent.Exists(IsDisc), "the DISC goes once the budget is spent");
-        clock.Elapsed.Should().BeGreaterThanOrEqualTo(budget - TimeSpan.FromMilliseconds(50),
-            "the busy peer had the whole budget first");
-        rig.Wire.PeerSent.Should().Contain(f => IsPollAnsweredWithRnr(f), "the peer was still answering RNR");
         rig.PeerReceived.Length.Should().BeLessThan(Tail.Length, "what the busy peer would not take is discarded");
 
         // The redial waited behind the close and now goes ahead.
         await using var second = await redial.WaitAsync(Wait.DefaultBudget);
         rig.NodeSession.CurrentState.Should().Be("Connected");
+    }
+
+    [Fact]
+    public async Task A_kill_while_the_link_is_still_being_dialled_takes_effect_when_it_connects()
+    {
+        await using var rig = await Rig.ConnectAsync();
+        rig.NodeSession.PostEvent(new DlDisconnectRequest());
+        await Wait.ForAsync(() => rig.NodeSession.CurrentState == "Disconnected", "the first link is down");
+
+        // Redial with the SABM held on the air, so the link sits in Awaiting Connection...
+        rig.Wire.HoldNodeToPeer = true;
+        var dial = rig.Node.ConnectAsync(PeerCall, NodeCall);
+        await Wait.ForAsync(() => rig.NodeSession.CurrentState is "AwaitingConnection" or "AwaitingV22Connection",
+            "the dial is waiting for its UA");
+        int sabms = rig.Wire.NodeSent.Count(IsSabm);
+
+        // ...when the sysop kills it (HostSysopOperations' KICK goes through here).
+        Ax25GracefulClose.DisconnectNow(rig.NodeSession);
+        rig.Wire.HoldNodeToPeer = false;
+
+        // The first link's own DISC is earlier on the wire; the kill's comes after the dial's SABM.
+        bool KillDiscSent() => rig.Wire.NodeSent.FindLastIndex(IsDisc) > rig.Wire.NodeSent.FindLastIndex(IsSabm);
+        await Wait.ForAsync(KillDiscSent, "the kill is carried out once the dial connects");
+        rig.Wire.NodeSent.Count(IsSabm).Should().Be(sabms, "the kill does not restart the dial");
+        await Wait.ForAsync(() => rig.NodeSession.CurrentState == "Disconnected", "the link does not stay up");
+        try { await dial.WaitAsync(Wait.DefaultBudget); } catch (InvalidOperationException) { /* the dial may see the kill first */ }
     }
 
     [Fact]
@@ -384,6 +429,36 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
     }
 
     [Fact]
+    public async Task A_declined_hand_off_of_a_restarted_link_ends_it_with_DISC()
+    {
+        await using var rig = await Rig.ConnectAsync();
+        int offered = 0;
+        var conn = new Ax25NodeConnection(rig.Node, rig.NodeSession)
+        {
+            // The owner is asked but declines, as the port supervisor does when the peer is
+            // claimed by an outbound dial or someone already owns the session.
+            PeerRestartedAfterClose = () =>
+            {
+                Interlocked.Increment(ref offered);
+                return false;
+            },
+        };
+
+        rig.Wire.DropNodeToPeer = f => IsIFrame(f, out _);
+        foreach (var line in Lines)
+        {
+            await conn.WriteAsync(Encoding.ASCII.GetBytes(line));
+        }
+        await conn.DisposeAsync();
+        rig.Wire.DropNodeToPeer = null;
+
+        rig.PeerSession!.PostEvent(new DlConnectRequest());
+        await Wait.ForAsync(() => rig.Wire.NodeSent.Exists(IsDisc), "a link nobody took is ended, not left up");
+        Volatile.Read(ref offered).Should().Be(1, "the owner was offered the restarted link first");
+        await Wait.ForAsync(() => rig.NodeSession.CurrentState == "Disconnected", "the link ends");
+    }
+
+    [Fact]
     public async Task Without_a_fresh_owner_a_peer_restart_during_the_drain_ends_with_DISC()
     {
         await using var rig = await Rig.ConnectAsync();
@@ -459,7 +534,7 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
         public bool PeerDisconnected => Volatile.Read(ref disconnected) != 0;
         public bool PeerDisconnectedByDisc => Volatile.Read(ref disconnectedByDisc) != 0;
 
-        public static async Task<Rig> ConnectAsync()
+        public static async Task<Rig> ConnectAsync(TimeProvider? time = null)
         {
             var wire = new ControlledWire();
             var options = (Callsign call) => new Ax25ListenerOptions
@@ -472,8 +547,12 @@ public sealed class Ax25NodeConnectionGracefulCloseTests
                 PreferExtendedConnect = false,
                 PreConnectXidNegotiatesSrej = false,
             };
-            var node = new Ax25Listener(wire.NodeEnd, options(NodeCall));
-            var peer = new Ax25Listener(wire.PeerEnd, options(PeerCall));
+            var node = time is null
+                ? new Ax25Listener(wire.NodeEnd, options(NodeCall))
+                : new Ax25Listener(wire.NodeEnd, options(NodeCall), time);
+            var peer = time is null
+                ? new Ax25Listener(wire.PeerEnd, options(PeerCall))
+                : new Ax25Listener(wire.PeerEnd, options(PeerCall), time);
             var rig = new Rig(node, peer, wire);
 
             peer.SessionAccepted += (_, e) =>

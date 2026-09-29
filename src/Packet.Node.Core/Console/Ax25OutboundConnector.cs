@@ -42,6 +42,7 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
     // The port's declared link policy, read per dial so a hot config edit reaches the connector
     // the supervisor built at bring-up. Null ⇒ all-auto.
     private readonly Func<PortLinkConfig?>? linkPolicy;
+    private readonly TimeProvider timeProvider;
 
     public Ax25OutboundConnector(
         string portId,
@@ -49,8 +50,12 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         Func<Callsign, IDisposable>? claim = null,
         Callsign? localOverride = null,
         PeerCapabilityCache? cache = null,
-        Func<PortLinkConfig?>? linkPolicy = null)
+        Func<PortLinkConfig?>? linkPolicy = null,
+        TimeProvider? timeProvider = null)
     {
+        // The clock the connections this connector makes use for their close (packet.net#850);
+        // pass the listener's, so it and the link's own timers agree. Null means the system clock.
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         PortId = portId ?? throw new ArgumentNullException(nameof(portId));
         this.listener = listener ?? throw new ArgumentNullException(nameof(listener));
         this.claim = claim;
@@ -107,7 +112,7 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                 // costs only what every crossing costs without E1 (the client's prompt wait).
                 bool upAlready = LinkIsUp(local, target);
                 Ax25NodeConnection Connected(Ax25Session s)
-                    => new(listener, s) { Crossed = upAlready || crossing.PeerCalledUs };
+                    => new(listener, s, timeProvider) { Crossed = upAlready || crossing.PeerCalledUs };
 
                 // No cache AND nothing declared => today's exact call: the no-extended-arg overload
                 // follows the listener's PreferExtendedConnect + PreConnectXidNegotiatesSrej defaults,

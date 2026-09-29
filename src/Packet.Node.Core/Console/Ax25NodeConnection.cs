@@ -33,14 +33,19 @@ public sealed class Ax25NodeConnection : INodeConnection
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private int disposed;
+    private readonly TimeProvider timeProvider;
 
     // The pending drain-then-DISC started by DisposeAsync, so AbortAsync can cut it short.
     private Ax25GracefulClose? closing;
 
-    public Ax25NodeConnection(Ax25Listener listener, Ax25Session session)
+    /// <summary>Wrap <paramref name="session"/>, owned by <paramref name="listener"/>.
+    /// <paramref name="timeProvider"/> is the clock the close uses to bound its wait on a busy
+    /// peer; pass the one the listener runs its timers on. Null means the system clock.</summary>
+    public Ax25NodeConnection(Ax25Listener listener, Ax25Session session, TimeProvider? timeProvider = null)
     {
         this.listener = listener ?? throw new ArgumentNullException(nameof(listener));
         this.session = session ?? throw new ArgumentNullException(nameof(session));
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         // Replay-then-subscribe: catches a peer's pre-subscribe greeting (e.g. a node's connect
         // banner on an outbound link) that a plain `+= OnSignal` would miss. See class remarks.
         session.AttachConsumerWithReplay(OnSignal);
@@ -60,8 +65,9 @@ public sealed class Ax25NodeConnection : INodeConnection
     /// for its data to be acknowledged: the owner of an inbound link sets this to hand it on as a
     /// fresh connect, which the listener does not do for a SABM in Connected. Unset, the close
     /// carries on and disconnects the reset link. See <see cref="Ax25GracefulClose.Begin"/>.
+    /// It returns whether it took the link; if it did not, the close disconnects it.
     /// </summary>
-    internal Action? PeerRestartedAfterClose { get; set; }
+    internal Func<bool>? PeerRestartedAfterClose { get; set; }
 
     /// <inheritdoc/>
     /// <remarks>Set by <see cref="Ax25OutboundConnector"/>, which watches the dial; an
@@ -182,7 +188,7 @@ public sealed class Ax25NodeConnection : INodeConnection
 
         try
         {
-            Volatile.Write(ref closing, Ax25GracefulClose.Begin(session, PeerRestartedAfterClose));
+            Volatile.Write(ref closing, Ax25GracefulClose.Begin(session, timeProvider, PeerRestartedAfterClose));
         }
         catch
         {

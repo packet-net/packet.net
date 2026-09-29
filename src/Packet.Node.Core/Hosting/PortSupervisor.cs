@@ -97,7 +97,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // supervisor's own background loops (the bring-up retry, #576/#722, and the running-state
     // watchdog), which would otherwise race a reconcile touching the same port set.
     private readonly SemaphoreSlim mutationGate = new(1, 1);
-    private readonly ConcurrentDictionary<Ax25Session, byte> consoleSessions = new();
+    // The value is the owning connection's token, so an owner clears only its own entry: a late
+    // clean-up from a previous owner must not remove the entry a restarted link's new owner holds.
+    private readonly ConcurrentDictionary<Ax25Session, object> consoleSessions = new();
     // Remotes a connect-OUT is dialling right now, keyed by (PORT, remote) with a refcount
     // (two console sessions could dial the same call on the same port). SessionAccepted for a
     // claimed (port, remote) is the outbound session we just opened - NOT an inbound caller - so
@@ -317,7 +319,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         return port is null
             ? null
             : new Ax25OutboundConnector(
-                port.Id, port.Listener, r => ClaimOutbound(port.Id, r), localOverride, capabilityCache, LinkPolicyFor(port.Id));
+                port.Id, port.Listener, r => ClaimOutbound(port.Id, r), localOverride, capabilityCache, LinkPolicyFor(port.Id),
+                timeProvider);
     }
 
     /// <summary>
@@ -653,7 +656,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             ? null
             : new Ax25OutboundConnector(
                 first.Id, first.Listener, r => ClaimOutbound(first.Id, r), localOverride: null, cache: capabilityCache,
-                linkPolicy: LinkPolicyFor(first.Id));
+                linkPolicy: LinkPolicyFor(first.Id), timeProvider: timeProvider);
 
         // A telnet dial-in has no callsign of its own; a NET/ROM-routed `connect`
         // originates on behalf of this node. Wrap with NET/ROM routing when enabled
@@ -1398,7 +1401,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
         var connector = new Ax25OutboundConnector(
             port.Id, listener, r => ClaimOutbound(port.Id, r), localOverride: null, cache: capabilityCache,
-            linkPolicy: LinkPolicyFor(port.Id));
+            linkPolicy: LinkPolicyFor(port.Id), timeProvider: timeProvider);
         // The arrival port id is captured here rather than reverse-looked-up from the listener:
         // it is now load-bearing (the outbound claim and the app-registration lookup are both
         // keyed on it), and a SessionAccepted racing a teardown must not resolve to "?".
@@ -1923,6 +1926,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     };
 
     private void OnSessionAccepted(string portId, Ax25Listener listener, Ax25OutboundConnector connector, Ax25Session session)
+        => TryAcceptInbound(portId, listener, connector, session);
+
+    // Start a console (or an app's accept) for an inbound session. False when it declines: the
+    // session is our own dial, or someone already owns it. A graceful close handing on a link the
+    // peer restarted (packet.net#850) disconnects it if nobody takes it.
+    private bool TryAcceptInbound(string portId, Ax25Listener listener, Ax25OutboundConnector connector, Ax25Session session)
     {
         // A session we are dialling OUT to (the console's Connect command) also
         // raises SessionAccepted on this listener - but it is NOT an inbound
@@ -1932,7 +1941,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // keeps a same-callsign caller arriving on another port from being swallowed.
         if (IsOutbound(portId, session.Context.Remote))
         {
-            return;
+            return false;
         }
 
         // Cutover observability: a genuine inbound caller (the outbound guard above ruled out
@@ -1950,25 +1959,25 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // the RHPv2 server's accept path - never to the node console.
         if (!session.Context.Local.Equals(listener.MyCall))
         {
-            OnAppSessionAccepted(portId, listener, session);
-            return;
+            return OnAppSessionAccepted(portId, listener, session);
         }
 
         // SessionAccepted can re-fire for the same session (a reconnect SABM on a
         // cached session). Only the first start a console loop; the dictionary is
         // the dedupe guard. Entries are removed when the loop ends.
-        if (!consoleSessions.TryAdd(session, 0))
+        var owner = new object();
+        if (!consoleSessions.TryAdd(session, owner))
         {
-            return;
+            return false;
         }
 
         _ = Task.Run(async () =>
         {
-            var connection = new Ax25NodeConnection(listener, session)
+            var connection = new Ax25NodeConnection(listener, session, timeProvider)
             {
                 // A caller who starts the link over (SABM) while the console's close is still
                 // delivering its tail gets a fresh console, as a new connect would.
-                PeerRestartedAfterClose = () => OnSessionAccepted(portId, listener, connector, session),
+                PeerRestartedAfterClose = () => TryAcceptInbound(portId, listener, connector, session),
             };
             try
             {
@@ -1993,7 +2002,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 // link stays up until the user has everything the console sent, then DISC
                 // (packet.net#850). A node shutting down disconnects at once instead. The dedupe
                 // entry goes first, so a restart during the drain can start the new console.
-                consoleSessions.TryRemove(session, out _);
+                consoleSessions.TryRemove(KeyValuePair.Create(session, owner));
                 if (lifecycle.IsCancellationRequested)
                 {
                     await connection.AbortAsync().ConfigureAwait(false);
@@ -2004,6 +2013,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 }
             }
         }, CancellationToken.None);
+        return true;
     }
 
     // Route an inbound session for an app callsign to its registration's handler. The session
@@ -2012,11 +2022,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // console path; the entry clears when the connection completes so a genuine reconnect
     // dispatches a fresh accept. No registration (a just-removed bind racing an accept) →
     // dispose the wrapper, which posts DISC.
-    private void OnAppSessionAccepted(string portId, Ax25Listener listener, Ax25Session session)
+    private bool OnAppSessionAccepted(string portId, Ax25Listener listener, Ax25Session session)
     {
-        if (!consoleSessions.TryAdd(session, 0))
+        var owner = new object();
+        if (!consoleSessions.TryAdd(session, owner))
         {
-            return;
+            return false;
         }
 
         // Resolved by (Local, ARRIVAL PORT), wildcard as fallback (#723 item 2). An app bound to
@@ -2026,33 +2037,40 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         _ = Task.Run(async () =>
         {
-            var connection = new Ax25NodeConnection(listener, session);
+            var connection = new Ax25NodeConnection(listener, session, timeProvider);
             try
             {
                 if (registration is null)
                 {
                     LogAppSessionUnclaimed(session.Context.Local.ToString(), session.Context.Remote.ToString(), portId);
                     await connection.DisposeAsync().ConfigureAwait(false);   // posts DISC
-                    consoleSessions.TryRemove(session, out byte _);
+                    consoleSessions.TryRemove(KeyValuePair.Create(session, owner));
                     return;
                 }
                 // A caller who starts the link over while the app's close is still draining is
-                // dispatched afresh, as a new connect would be (packet.net#850).
-                connection.PeerRestartedAfterClose = () => OnAppSessionAccepted(portId, listener, session);
+                // dispatched afresh, as a new connect would be (packet.net#850). This owner's
+                // dedupe entry goes first: the Completion continuation below that would clear it
+                // runs on the thread pool and may not have yet.
+                connection.PeerRestartedAfterClose = () =>
+                {
+                    consoleSessions.TryRemove(KeyValuePair.Create(session, owner));
+                    return OnAppSessionAccepted(portId, listener, session);
+                };
                 await registration.OnAccepted(connection, portId).ConfigureAwait(false);
                 // The handler owns the connection from here; clear the dedupe entry when the
                 // link ends so a reconnect SABM dispatches a fresh accept.
                 _ = connection.Completion.ContinueWith(
-                    _ => consoleSessions.TryRemove(session, out byte _),
+                    _ => consoleSessions.TryRemove(KeyValuePair.Create(session, owner)),
                     CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             }
             catch (Exception ex)
             {
                 LogAppSessionFaulted(ex, session.Context.Local.ToString());
                 try { await connection.DisposeAsync().ConfigureAwait(false); } catch { /* teardown */ }
-                consoleSessions.TryRemove(session, out byte _);
+                consoleSessions.TryRemove(KeyValuePair.Create(session, owner));
             }
         }, CancellationToken.None);
+        return true;
     }
 
     /// <summary>

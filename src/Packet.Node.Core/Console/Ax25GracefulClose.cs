@@ -45,7 +45,9 @@ internal sealed class Ax25GracefulClose
     private static readonly ConditionalWeakTable<Ax25Session, Ax25GracefulClose> Pending = new();
 
     private readonly Ax25Session session;
-    private readonly Action? peerRestarted;
+    // Null for a close that started as an abort: it never waits, so never needs the busy-peer clock.
+    private readonly TimeProvider? time;
+    private readonly Func<bool>? peerRestarted;
     private readonly TaskCompletionSource finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int done;
 
@@ -57,9 +59,10 @@ internal sealed class Ax25GracefulClose
     private readonly object busyGate = new();
     private ITimer? busyTimer;
 
-    private Ax25GracefulClose(Ax25Session session, Action? peerRestarted)
+    private Ax25GracefulClose(Ax25Session session, TimeProvider? time, Func<bool>? peerRestarted)
     {
         this.session = session;
+        this.time = time;
         this.peerRestarted = peerRestarted;
     }
 
@@ -80,15 +83,18 @@ internal sealed class Ax25GracefulClose
     /// <paramref name="peerRestarted"/>, when given, is called if the peer starts the link over
     /// with a SABM(E) while the close is pending: the close is dropped and the owner hands the
     /// link on as a fresh connect, since no SessionAccepted is raised for a SABM in Connected.
-    /// Without it the close carries on (and, the SABM having emptied the queue, disconnects).
+    /// It returns whether anyone took the link; if not, or without it, the link is disconnected
+    /// (the SABM has emptied the queue, so there is nothing left to deliver).
+    /// <paramref name="time"/> is the clock for the busy-peer budget: the listener's, so it
+    /// agrees with the link's own timers.
     /// </remarks>
-    public static Ax25GracefulClose? Begin(Ax25Session session, Action? peerRestarted = null)
-        => Start(session, abort: false, peerRestarted);
+    public static Ax25GracefulClose? Begin(Ax25Session session, TimeProvider time, Func<bool>? peerRestarted = null)
+        => Start(session, time, abort: false, peerRestarted);
 
     /// <summary>
     /// Disconnect now, discarding anything not yet delivered: the old close, kept for a sysop
     /// kill and shutdown. If a close is pending on the session it is cut short. A link in the
-    /// middle of a reset is disconnected as soon as the reset settles.
+    /// middle of a reset, or still being dialled, is disconnected as soon as it is up.
     /// </summary>
     public static void DisconnectNow(Ax25Session session)
     {
@@ -98,17 +104,17 @@ internal sealed class Ax25GracefulClose
             return;
         }
 
-        Start(session, abort: true, peerRestarted: null);
+        Start(session, time: null, abort: true, peerRestarted: null);
     }
 
-    private static Ax25GracefulClose? Start(Ax25Session session, bool abort, Action? peerRestarted)
+    private static Ax25GracefulClose? Start(Ax25Session session, TimeProvider? time, bool abort, Func<bool>? peerRestarted)
     {
         if (session.CurrentState is not ("Connected" or "TimerRecovery" or "AwaitingConnection" or "AwaitingV22Connection"))
         {
             return null;
         }
 
-        var close = new Ax25GracefulClose(session, peerRestarted) { abortRequested = abort };
+        var close = new Ax25GracefulClose(session, time, peerRestarted) { abortRequested = abort };
         Pending.AddOrUpdate(session, close);
         session.DataLinkSignalEmitted += close.OnSignal;
         session.TransitionFired += close.OnTransition;
@@ -166,11 +172,18 @@ internal sealed class Ax25GracefulClose
             case DataLinkConnectIndication when peerRestarted is not null
                 && session.CurrentTrigger is SabmReceived or SabmeReceived:
                 // The peer started the link over. Leave it to a fresh owner instead of
-                // disconnecting the connection the peer has just made.
-                if (Finish(disconnect: false))
+                // disconnecting the connection the peer has just made; if nobody takes it (the
+                // owner declines), end it rather than leave a link up that nobody holds. The
+                // DL-DISCONNECT request queues behind the SABM's transition.
+                if (Finish(disconnect: false) && !peerRestarted())
                 {
-                    peerRestarted();
+                    PostDisconnect(session);
                 }
+                break;
+            case DataLinkConnectConfirm when abortRequested:
+                // A kill that landed while the link was still being dialled: the dial has now
+                // connected, so carry the kill out rather than let the link stay up.
+                Finish(disconnect: true);
                 break;
             case DataLinkConnectConfirm:
                 // A new dial on this cached session: it belongs to whoever dialled.
@@ -228,9 +241,9 @@ internal sealed class Ax25GracefulClose
                 busyTimer?.Dispose();
                 busyTimer = null;
             }
-            else if (busyTimer is null)
+            else if (busyTimer is null && time is not null)
             {
-                busyTimer = TimeProvider.System.CreateTimer(
+                busyTimer = time.CreateTimer(
                     _ => OnBusyBudgetSpent(), null, BusyBudget(session.Context), Timeout.InfiniteTimeSpan);
             }
         }
