@@ -14,8 +14,9 @@ public interface IRhpGateway
     /// <summary>
     /// Open an outbound AX.25 stream (the wire's <c>open</c> with the Active flag).
     /// </summary>
-    /// <param name="portLabel">The operator-defined port id (e.g. <c>"vhf-2m"</c>), matched
-    /// case-insensitively against the configured ports. Null resolves a locally-registered app
+    /// <param name="portLabel">The port: its operator-defined id (e.g. <c>"vhf-2m"</c>), matched
+    /// case-insensitively, or failing that its number in configuration order counting from 1
+    /// (<c>"1"</c> = the first configured port), RHPv2's own form. Null resolves a locally-registered app
     /// (loopback) or errors - it does NOT silently default to the first port for an RF dial.</param>
     /// <param name="local">The client-requested local (originating) callsign, or null for the
     /// node's own. R-2 requires this to be the node callsign (see the named limitation).</param>
@@ -32,8 +33,8 @@ public interface IRhpGateway
     /// id of the port it arrived on (the <c>accept.port</c> string). Dispose the returned
     /// registration to stop listening (live sessions are unaffected).
     /// </summary>
-    /// <param name="portLabel">Restrict to one port (by id), or null for all ports -
-    /// the wire's null bind port.</param>
+    /// <param name="portLabel">Restrict to one port (by id or number, as for
+    /// <see cref="OpenAx25StreamAsync"/>), or null for all ports - the wire's null bind port.</param>
     /// <exception cref="RhpGatewayException">6 - not a valid callsign; 9 - already
     /// listening / the node's own callsign; 10 - no such port.</exception>
     IDisposable RegisterListener(
@@ -45,8 +46,8 @@ public interface IRhpGateway
     /// (<paramref name="remote"/>), bypassing connected-mode entirely. This is the IP-over-AX.25
     /// (pid <c>0xCC</c>) / native beacon / APRS (pid <c>0xF0</c>) path.
     /// </summary>
-    /// <param name="portLabel">The port id to emit on (e.g. <c>"vhf-2m"</c>), matched
-    /// case-insensitively; null for the first configured port.</param>
+    /// <param name="portLabel">The port to emit on, by id or number as for
+    /// <see cref="OpenAx25StreamAsync"/>; null for the first configured port.</param>
     /// <param name="local">The UI frame's source (originating) callsign.</param>
     /// <param name="remote">The UI frame's destination callsign.</param>
     /// <param name="info">The UI frame's information field.</param>
@@ -66,8 +67,8 @@ public interface IRhpGateway
     /// service taps NODES - so a bound RHP dgram socket sees all UI on its port and the client
     /// filters by <c>recv.local</c>. Dispose the returned registration to stop hearing.
     /// </summary>
-    /// <param name="portLabel">Restrict to one port (by id), or null for all ports -
-    /// the wire's null bind port.</param>
+    /// <param name="portLabel">Restrict to one port (by id or number, as for
+    /// <see cref="OpenAx25StreamAsync"/>), or null for all ports - the wire's null bind port.</param>
     /// <exception cref="RhpGatewayException">10 - no such port.</exception>
     IDisposable RegisterUiListener(string? portLabel, Func<UiDatagram, Task> onReceived);
 }
