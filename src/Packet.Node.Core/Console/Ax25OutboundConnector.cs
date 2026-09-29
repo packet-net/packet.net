@@ -93,8 +93,11 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
             listener.FrameTraced += OnFrame;
             try
             {
-                // Read after subscribing: a peer SABM(E) processed before this line has brought
-                // the link up, and one processed after it is on the trace, so either way it is seen.
+                // Read after subscribing, which narrows the gap between the two checks but does
+                // not close it: the trace fires on the listener's pump before the frame is
+                // handled, so a SABM(E) traced just before the subscription and handled just
+                // after this read is seen by neither. The window is microseconds, and a miss
+                // costs only what every crossing costs without E1 (the client's prompt wait).
                 bool upAlready = LinkIsUp(local, target);
                 Ax25NodeConnection Connected(Ax25Session s)
                     => new(listener, s) { Crossed = upAlready || crossing.PeerCalledUs };
