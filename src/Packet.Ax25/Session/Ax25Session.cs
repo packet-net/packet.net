@@ -147,9 +147,12 @@ public sealed class Ax25Session
             {
                 earlyInbound = new();
             }
-            else if (earlyInbound is { } buffered && buffered.Count < MaxEarlyInbound
-                && signal is DataLinkDataIndication or DataLinkDisconnectIndication or DataLinkDisconnectConfirm)
+            else if (earlyInbound is { } buffered
+                && ((signal is DataLinkDataIndication && buffered.Count < MaxEarlyInbound)
+                    || (signal is DataLinkDisconnectIndication or DataLinkDisconnectConfirm && buffered.Count <= MaxEarlyInbound)))
             {
+                // The link's end gets one slot past the data bound, so a peer that sends more
+                // than the buffer holds and then hangs up still ends the consumer's connection.
                 buffered.Add(signal);
             }
             SafeInvokeSignal(signal);

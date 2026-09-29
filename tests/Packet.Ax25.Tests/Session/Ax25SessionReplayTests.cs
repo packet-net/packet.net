@@ -126,6 +126,28 @@ public sealed class Ax25SessionReplayTests
     }
 
     [Fact]
+    public void The_link_s_end_is_kept_when_the_data_has_filled_the_buffer()
+    {
+        // The buffer is bounded, and a peer that sends more I frames than it holds before
+        // hanging up must still end the consumer's connection: the data past the bound is not
+        // replayed (as before), but the link's end always has room.
+        var session = NewSession();
+        session.RaiseDataLinkSignal(new DataLinkConnectConfirm());
+        for (int i = 0; i < 40; i++)
+        {
+            session.RaiseDataLinkSignal(Data($"LINE {i}"));
+        }
+        session.RaiseDataLinkSignal(new DataLinkDisconnectIndication());
+
+        var seen = new List<DataLinkSignal>();
+        session.AttachConsumerWithReplay((_, sig) => seen.Add(sig));
+
+        seen.Should().NotBeEmpty();
+        seen[^1].Should().BeOfType<DataLinkDisconnectIndication>("the link's end is replayed however much data came first");
+        seen.Count(sig => sig is DataLinkDataIndication).Should().Be(32, "the data is still bounded");
+    }
+
+    [Fact]
     public void A_link_end_already_seen_by_a_consumer_is_not_replayed_to_the_next()
     {
         // Once a consumer has attached, the buffer is disarmed: a disconnect it heard live is
