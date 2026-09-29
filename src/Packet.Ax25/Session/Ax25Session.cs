@@ -75,6 +75,12 @@ public sealed class Ax25Session
     // is a second delivery of it, not the figure's unexpected UA. See IsRepeatedConnectUa.
     private byte[]? connectingUa;
 
+    // RepeatedConnectSabmReacknowledged (#856): the encoded SABM(E) from the peer that this
+    // session answered with UA while the link was being set up, kept until the peer sends
+    // anything else. A byte-identical copy on the connected link is the peer retrying after
+    // losing our UA, not the figure's reset. See IsRepeatedConnectSabm.
+    private byte[]? connectingSabm;
+
     /// <summary>The session's mutable per-connection state.</summary>
     public Ax25SessionContext Context { get; }
 
@@ -456,6 +462,12 @@ public sealed class Ax25Session
             vaAdvancedSinceT1Expiry = false;
         }
 
+        if (IsRepeatedConnectSabm(evt))
+        {
+            ReacknowledgeConnectSabm(evt);
+            return;
+        }
+
         if (IsRepeatedConnectUa(evt))
         {
             return;
@@ -555,6 +567,7 @@ public sealed class Ax25Session
             }
 
             NoteConnectingUa(evt, stateBefore);
+            NoteConnectingSabm(evt, stateBefore);
 
             // Transition committed (state advanced, timers kept) - notify
             // observers. Raised here rather than inside the try so a throwing
@@ -609,6 +622,106 @@ public sealed class Ax25Session
             && stateBefore is "AwaitingConnection" or "AwaitingV22Connection")
         {
             connectingUa = connecting.Frame.ToBytes();
+        }
+    }
+
+    /// <summary>
+    /// <see cref="Ax25SessionQuirks.RepeatedConnectSabmReacknowledged"/>: true when
+    /// <paramref name="evt"/> is a byte-identical copy of the SABM(E) this session answered with
+    /// UA while the link was being set up, arriving on the connected link before the peer has
+    /// sent anything else. The peer is still waiting for that UA and has retried; the figure
+    /// would read the copy as the §6.5 reset (figc4.4 / figc4.5 <c>t1x_sabm(e)_received_*</c>).
+    /// Any frame from the peer other than a UA or the same SABM(E) ends the window.
+    /// </summary>
+    private bool IsRepeatedConnectSabm(Ax25Event evt)
+    {
+        if (connectingSabm is not { } connecting || !IsFrameFromPeer(evt))
+        {
+            return false;
+        }
+
+        var call = evt switch
+        {
+            SabmReceived sabm => sabm.Frame,
+            SabmeReceived sabme => sabme.Frame,
+            _ => null,
+        };
+
+        if (call is not null && call.ToBytes().AsSpan().SequenceEqual(connecting))
+        {
+            // In AwaitingConnection / AwaitingV22Connection the figure itself answers the copy
+            // with UA and waits on, so only a copy on the connected link is ours to handle.
+            return Context.Quirks.RepeatedConnectSabmReacknowledged
+                && CurrentState is "Connected" or "TimerRecovery";
+        }
+
+        // A UA is how a dial that crossed the peer's call connects, and a copy of it (#842) is
+        // no sign the peer has moved on. Anything else is.
+        if (evt is not UaReceived)
+        {
+            connectingSabm = null;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Answer the peer's repeated connecting SABM(E) as the figure answers a SABM(E) it does not
+    /// act on (figc4.2 <c>t16_sabm_received</c>: <c>F := P</c>, <c>UA</c>), and change nothing
+    /// else: no reset, no signal to layer 3, the I-frame queue and timers left as they are.
+    /// </summary>
+    private static readonly ActionStep[] ReacknowledgeSteps =
+    [
+        new(Ax25ActionVerb.FAssignP, ActionKind.Processing),
+        new(Ax25ActionVerb.UA, ActionKind.SignalLower),
+    ];
+
+    private void ReacknowledgeConnectSabm(Ax25Event evt)
+    {
+        CurrentTrigger = evt;
+        try
+        {
+            dispatcher.Execute(ReacknowledgeSteps, new TransitionContext(Context, scheduler, evt));
+        }
+        finally
+        {
+            CurrentTrigger = null;
+        }
+    }
+
+    /// <summary>
+    /// Keep the SABM(E) this session answered with UA while the link was being set up (for
+    /// <see cref="IsRepeatedConnectSabm"/>): one that took it from Disconnected to Connected
+    /// (figc4.1), or one that crossed our own dial in AwaitingConnection or
+    /// AwaitingV22Connection. Forget it once the link leaves the connecting and connected
+    /// states, or when this end re-establishes the link itself.
+    /// </summary>
+    private void NoteConnectingSabm(Ax25Event evt, string stateBefore)
+    {
+        if (!Context.Quirks.RepeatedConnectSabmReacknowledged
+            || CurrentState is not ("AwaitingConnection" or "AwaitingV22Connection" or "Connected" or "TimerRecovery"))
+        {
+            connectingSabm = null;
+            return;
+        }
+
+        var answered = (evt, stateBefore) switch
+        {
+            (SabmReceived sabm, "Disconnected") when CurrentState == "Connected" => sabm.Frame,
+            (SabmeReceived sabme, "Disconnected") when CurrentState == "Connected" => sabme.Frame,
+            (SabmReceived sabm, "AwaitingConnection" or "AwaitingV22Connection") => sabm.Frame,
+            (SabmeReceived sabme, "AwaitingV22Connection") => sabme.Frame,
+            _ => null,
+        };
+
+        if (answered is not null)
+        {
+            connectingSabm = answered.ToBytes();
+        }
+        else if (stateBefore is "Connected" or "TimerRecovery"
+            && CurrentState is "AwaitingConnection" or "AwaitingV22Connection")
+        {
+            connectingSabm = null;
         }
     }
 

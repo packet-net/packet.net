@@ -18,9 +18,11 @@ public sealed class SharedRadioBus
     private readonly object gate = new();
 
     /// <summary>Attach a new endpoint (a transport) to the bus.</summary>
-    public IAx25Transport Attach()
+    /// <param name="loseOutbound">Optional: return true for a frame this endpoint transmits to
+    /// lose it on the air (nobody hears it). For losing one particular frame, such as a UA.</param>
+    public IAx25Transport Attach(Func<ReadOnlyMemory<byte>, bool>? loseOutbound = null)
     {
-        var ep = new Endpoint(this);
+        var ep = new Endpoint(this, loseOutbound);
         lock (gate)
         {
             endpoints.Add(ep);
@@ -49,12 +51,23 @@ public sealed class SharedRadioBus
         private readonly Channel<KissFrame> rx =
             Channel.CreateUnbounded<KissFrame>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
-        public Endpoint(SharedRadioBus bus) => this.bus = bus;
+        private readonly Func<ReadOnlyMemory<byte>, bool>? loseOutbound;
+
+        public Endpoint(SharedRadioBus bus, Func<ReadOnlyMemory<byte>, bool>? loseOutbound)
+        {
+            this.bus = bus;
+            this.loseOutbound = loseOutbound;
+        }
 
         internal void Deliver(KissFrame frame) => rx.Writer.TryWrite(frame);
 
         public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
         {
+            if (loseOutbound?.Invoke(ax25) == true)
+            {
+                return Task.CompletedTask;
+            }
+
             bus.Broadcast(this, new KissFrame((byte)0, KissCommand.Data, ax25.ToArray()));
             return Task.CompletedTask;
         }
