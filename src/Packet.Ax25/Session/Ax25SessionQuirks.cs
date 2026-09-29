@@ -169,6 +169,51 @@ public sealed record Ax25SessionQuirks
     public bool RepeatedConnectUaIgnored { get; init; } = true;
 
     /// <summary>
+    /// <b>De-facto-interop quirk (not a figure defect - no ax25spec issue).</b> Answer a
+    /// repeat of the peer's connecting SABM or SABME with UA again, rather than reading it as
+    /// the §6.5 reset and discarding what this end has queued. Default <c>true</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A station that sent SABM(E) and did not hear the UA sends the SABM(E) again when T1
+    /// runs out (§6.3.1). If this end had answered it and is connected by then, figc4.4's
+    /// SABM(E) arm (<c>t14_sabm_received_*</c>, <c>t15_sabme_received_*</c>; figc4.5 the same
+    /// in Timer Recovery) runs the resetting procedure, as §6.3.3 asks: UA, DL-ERROR (F), and,
+    /// with frames outstanding, Discard I Frame Queue and DL-CONNECT indication, V(s) = V(a) =
+    /// V(r) = 0. The figure keeps no memory of the SABM(E) that set the link up, so it cannot
+    /// tell the peer's retry of it from a real reset, and the spec does not consider a lost
+    /// UA here. Whatever this end sent after connecting is thrown away: the peer, still
+    /// waiting for its UA, had already discarded it (§6.3.1). Two stations that dial each
+    /// other at once and lose one UA of the crossing do exactly this (packet-net/packet.net#856,
+    /// seen by DAPPS through pdn's RHPv2 <c>crossed</c> key), and so does any call we answer
+    /// with a banner when our UA is lost.
+    /// </para>
+    /// <para>
+    /// When <c>true</c>, the session keeps the SABM(E) it answered with UA while the link was
+    /// being set up: one that took it from Disconnected to Connected (figc4.1), or one that
+    /// crossed our own dial in AwaitingConnection or AwaitingV22Connection (figc4.2 / figc4.6
+    /// answer it with UA and wait on). While the link is Connected or in Timer Recovery and
+    /// the session has had nothing else from the peer since (a UA, which is how a crossing dial
+    /// connects, does not count), a byte-identical SABM(E) is answered with UA (F = P) and
+    /// nothing else happens. Any other frame from the peer that reaches the session ends that,
+    /// and so does the link leaving those states. Frames the listener handles without the
+    /// session (an XID command, which it answers itself, or TEST and UI) leave the window
+    /// open; none of them moves a sequence variable. The two ends stay in step even if the peer did mean a reset: it has sent and
+    /// acknowledged nothing, so its V(s) = V(r) = 0 match this end's V(r) and V(a), and what
+    /// this end has outstanding is retransmitted from N(S) = 0 by the usual recovery.
+    /// </para>
+    /// <para>
+    /// LinBPQ answers every SABM on a link that has received no I frame yet with UA and no
+    /// reset (<c>L2Code.c</c>: "REPEAT OF ORIGINAL SABM COS OTHER END MISSED UA ... IF SABM
+    /// REPEATED BEFORE THIS, I'LL ASSUME CONDITION 4, AND JUST RESEND THE UA"). This quirk is
+    /// narrower: only a copy of the one SABM(E) we answered, and only until the peer sends
+    /// anything else. When <c>false</c> (<see cref="StrictlyFaithful"/>), the repeat resets the
+    /// link as drawn.
+    /// </para>
+    /// </remarks>
+    public bool RepeatedConnectSabmReacknowledged { get; init; } = true;
+
+    /// <summary>
     /// Work around <c>packethacking/ax25spec#41</c>: figc4.7 <c>Select_T1_Value</c>
     /// folds <c>(T1V − "Remaining Time on T1 When Last Stopped")</c> into the
     /// smoothed round-trip time without Karn's-algorithm guard. That term is only
@@ -508,6 +553,7 @@ public sealed record Ax25SessionQuirks
         SegmentFirstCarriesL3Pid = false,
         SrejCommandIgnored = false,
         RepeatedConnectUaIgnored = false,
+        RepeatedConnectSabmReacknowledged = false,
         Ax25Spec41KarnSrtSampling = false,
         Ax25Spec42SrejTargetsGap = false,
         Ax25Spec43DlFlowOffEntersBusy = false,
