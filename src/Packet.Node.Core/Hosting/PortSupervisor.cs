@@ -2055,7 +2055,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 PeerRestartedAfterClose = () => TryAcceptInbound(portId, listener, connector, session),
                 // A neighbour's session NET/ROM is using rides out a reset: L4 recovers its
                 // own frames, and ending the console here would DISC the interlink (#885).
-                KeepOnLinkReset = () => netRom?.UsesAsInterlink(session) == true,
+                KeepOnLinkReset = () => netRom?.UsesAsInterlink(portId, session) == true,
             };
             try
             {

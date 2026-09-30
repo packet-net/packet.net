@@ -106,10 +106,16 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     // never from a first-match scan.
     private readonly ConcurrentDictionary<NeighbourKey, Interlink> interlinks = new();
 
-    /// <summary>Whether <paramref name="session"/> carries a NET/ROM interlink right now: L4
-    /// recovers its own frames over a reset, so the console connection sharing the session
-    /// must not end on one (packet.net#885).</summary>
-    internal bool UsesAsInterlink(Ax25Session session)
+    // Adjacencies whose interlink dial is in flight: the dial lands on the neighbour's live
+    // inbound session when there is one (a DL-CONNECT request on it, a reset), and the link is
+    // recorded as an interlink only once the dial returns.
+    private readonly ConcurrentDictionary<NeighbourKey, byte> interlinkDials = new();
+
+    /// <summary>Whether <paramref name="session"/> on <paramref name="portId"/> carries a
+    /// NET/ROM interlink right now, or is the neighbour's session an interlink dial is landing
+    /// on: L4 recovers its own frames over a reset, so the console connection sharing the
+    /// session must not end on one (packet.net#885).</summary>
+    internal bool UsesAsInterlink(string portId, Ax25Session session)
     {
         foreach (var link in interlinks.Values)
         {
@@ -119,7 +125,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             }
         }
 
-        return false;
+        return interlinkDials.ContainsKey(new NeighbourKey(portId, session.Context.Remote));
     }
 
     // Sessions we have already tapped for inbound 0xCF (so we attach the tap once).
@@ -1304,6 +1310,19 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             return;   // already up
         }
 
+        interlinkDials[key] = 0;
+        try
+        {
+            await DialInterlinkAsync(key, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            interlinkDials.TryRemove(key, out _);
+        }
+    }
+
+    private async Task DialInterlinkAsync(NeighbourKey key, CancellationToken ct)
+    {
         var neighbour = key.Callsign;
 
         // Which port this interlink leaves on is not a choice any more: it is in the KEY. The

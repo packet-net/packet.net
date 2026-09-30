@@ -857,9 +857,12 @@ public sealed class Ax25Session
             windowReported = windowLost > 0;
         }
         else if (vsBefore != vaBefore && Context.VS == 0 && Context.VA == 0
-            && !(stateBefore is "AwaitingConnection" or "AwaitingV22Connection" && windowReported))
+            && stateBefore is "Connected" or "TimerRecovery"
+            && CurrentTrigger is SabmReceived or SabmeReceived)
         {
-            // Zeroed in place: the peer's SABM(E) on the up link.
+            // Zeroed in place by the peer's SABM(E) on the up link (figc4.4 t14 / t15, figc4.5
+            // t13 / t14). Only on that trigger: an ordinary acknowledgement at the sequence
+            // wrap also leaves V(s) = V(a) = 0, and loses nothing.
             windowLost = inFlight;
         }
 
@@ -868,7 +871,11 @@ public sealed class Ax25Session
             windowReported = false;
         }
 
-        if (queuedDiscarded > 0 || windowLost > 0)
+        // Only where the link carries on: a reset, or this end re-establishing. The arms that
+        // end the link (a DL-DISCONNECT request, a DISC or DM received, the N2 give-up) discard
+        // the queue too, but they are disconnects, and they say so themselves.
+        if ((queuedDiscarded > 0 || windowLost > 0)
+            && CurrentState is "Connected" or "TimerRecovery" or "AwaitingConnection" or "AwaitingV22Connection")
         {
             RaiseDataLinkSignal(new DataLinkResetIndication(queuedDiscarded, windowLost, match.Id));
         }

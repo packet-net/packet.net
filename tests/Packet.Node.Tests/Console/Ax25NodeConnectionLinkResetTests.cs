@@ -176,6 +176,62 @@ public sealed class Ax25NodeConnectionLinkResetTests
     }
 
     [Fact]
+    public async Task Acknowledgements_across_the_sequence_wrap_are_not_a_reset()
+    {
+        // At the wrap V(s) and V(a) both come back to 0 on an ordinary acknowledgement; the
+        // window count must key on the peer's SABM(E), not on the zeroes (found in review).
+        await using var rig = await Rig.ConnectAsync();
+
+        for (int i = 0; i < 9; i++)
+        {
+            await rig.Connection.WriteAsync(System.Text.Encoding.ASCII.GetBytes($"line {i}\r"));
+            SpinWait.SpinUntil(() => rig.NodeSession.AllSentDataAcknowledged, TimeSpan.FromSeconds(5))
+                .Should().BeTrue($"line {i} is acknowledged");
+        }
+
+        rig.NodeSession.Context.VS.Should().Be(1, "nine frames on a mod-8 link wrapped once");
+        rig.Connection.Completion.IsCompleted.Should().BeFalse("nothing was lost");
+        rig.Connection.EndReason.Should().BeNull();
+        rig.NodeSentA(Ax25FrameType.Disc).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_peers_restart_taken_by_a_fresh_owner_is_not_disconnected_by_the_old_owners_close()
+    {
+        // The #850 hand-over, on the reset's own signal: the caller started the link over
+        // while we had output unacknowledged, so this connection ends, and if the supervisor
+        // finds the restarted link an owner (a console, an accept, a waiting dial), this
+        // owner's close must not DISC the link that is now theirs.
+        await using var rig = await Rig.ConnectAsync();
+        int offered = 0;
+        rig.Connection.PeerRestartedAfterClose = () => { Interlocked.Increment(ref offered); return true; };
+        await WriteUnacknowledgedAsync(rig, "hello\r");
+
+        rig.PeerSession.PostEvent(new DlConnectRequest());
+
+        await rig.Connection.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        offered.Should().Be(1, "the restarted link was offered to a fresh owner");
+        await rig.Connection.DisposeAsync();
+        await Task.Delay(300);
+        rig.NodeSentA(Ax25FrameType.Disc).Should().BeFalse("the link belongs to its new owner");
+        rig.NodeSession.CurrentState.Should().Be("Connected");
+    }
+
+    [Fact]
+    public async Task A_peers_restart_nobody_takes_is_disconnected_by_the_old_owners_close()
+    {
+        await using var rig = await Rig.ConnectAsync();
+        rig.Connection.PeerRestartedAfterClose = () => false;
+        await WriteUnacknowledgedAsync(rig, "hello\r");
+
+        rig.PeerSession.PostEvent(new DlConnectRequest());
+
+        await rig.Connection.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await rig.Connection.DisposeAsync();
+        SpinWait.SpinUntil(() => rig.NodeSentA(Ax25FrameType.Disc), TimeSpan.FromSeconds(5)).Should().BeTrue("nobody took it, so it ends");
+    }
+
+    [Fact]
     public async Task An_interlink_NET_ROM_is_using_rides_the_reset_out()
     {
         await using var rig = await Rig.ConnectAsync();

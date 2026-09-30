@@ -748,7 +748,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // Discard I Queue Entries) - all clear the I-frame transmit
             // queue.
             Ax25ActionVerb.DiscardFrameQueue => Do(() => DiscardQueue(ctx)),
-            Ax25ActionVerb.DiscardQueue => Do(() => ctx.IFrameQueue.Clear()),
+            Ax25ActionVerb.DiscardQueue => Do(() => DiscardQueue(ctx)),
             Ax25ActionVerb.DiscardIFrameQueue => Do(() => DiscardQueue(ctx)),
             Ax25ActionVerb.DiscardIQueueEntries => Do(() => DiscardQueue(ctx)),
 

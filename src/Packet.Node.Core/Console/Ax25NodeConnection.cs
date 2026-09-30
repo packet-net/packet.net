@@ -114,7 +114,14 @@ public sealed class Ax25NodeConnection : INodeConnection
                 }
 
                 EndReason = DescribeReset(reset);
-                Volatile.Write(ref endedByReset, 1);
+                // A caller who started the link over (SABM(E)) gets the same hand-over a
+                // restart during a graceful close gets (#850): a fresh console, an app's
+                // accept, or a dial whose claim covers it. Decided here, on the reset's own
+                // signal, so it does not race the owner's close. If nobody takes it, the
+                // owner's close disconnects it.
+                bool handedOver = session.CurrentTrigger is SabmReceived or SabmeReceived
+                    && PeerRestartedAfterClose?.Invoke() == true;
+                Volatile.Write(ref endedByReset, handedOver ? 2 : 1);
                 Complete();
                 break;
         }
@@ -149,6 +156,12 @@ public sealed class Ax25NodeConnection : INodeConnection
             || t.Contains("length_error", StringComparison.Ordinal))
         {
             cause = "link re-established after a frame error";
+        }
+        else if (t.Contains("_received", StringComparison.Ordinal))
+        {
+            // An I or S frame received can only take a connected link back to establishment
+            // through the N(R) error recovery (figc4.4 / figc4.5 Check N(R)).
+            cause = "link re-established after an N(R) error";
         }
         else if (t.Contains("t1_expiry", StringComparison.Ordinal))
         {
@@ -257,12 +270,18 @@ public sealed class Ax25NodeConnection : INodeConnection
 
         try
         {
-            if (Volatile.Read(ref endedByReset) != 0)
+            if (Volatile.Read(ref endedByReset) == 2)
+            {
+                // The peer's restart was handed to a fresh owner when the reset landed: the
+                // link is theirs now, and this owner's close ends only its own connection.
+            }
+            else if (Volatile.Read(ref endedByReset) == 1)
             {
                 // The link was reset under this connection and the stream ended for it; the
                 // owner's close now is not a drain (nothing of its is queued any more) but the
-                // end of a link that already lost data. Disconnect it now, rather than start a
-                // graceful close whose restart hand-over would race the reset's own signals.
+                // end of a link that already lost data and nobody took. Disconnect it now,
+                // rather than start a graceful close whose restart hand-over would race the
+                // reset's own signals.
                 Ax25GracefulClose.DisconnectNow(session);
             }
             else
