@@ -116,6 +116,20 @@ public class XidNegotiatorTests
         ctx.N1.Should().Be(128, "N1 reverts to the min (the peer's smaller Rx capacity)");
     }
 
+    [Fact]
+    public void An_advertised_limit_under_one_octet_leaves_N1_at_zero_neither_floored_nor_ignored()
+    {
+        // #894: N1 is a limit a transmitter may not exceed (§4.3.3.7) and the spec sets no
+        // minimum, so a peer that advertises 4 bits has asked for no information field at
+        // all. Floored, we would exceed its limit; ignored, we would keep our own 256.
+        var ctx = NewContext();
+        ctx.N1 = 256;
+        XidNegotiator.ApplyNegotiated(ctx,
+            new XidParameters { IFieldLengthRxBits = XidParameters.OctetsToBits(256) },
+            new XidParameters { IFieldLengthRxBits = 4 });
+        ctx.N1.Should().Be(0);
+    }
+
     // ─── T1 + N2: greater (§6.3.2 ¶1432 / ¶1434) ────────────────────────────
 
     [Fact]
