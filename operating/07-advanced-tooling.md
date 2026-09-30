@@ -40,6 +40,13 @@ There are a few more low-level bench verbs (`verify-control`, `measure`,
 
 ## Firmware flashing (`flash-tnc`)
 
+> **On a packaged node** the same verb ships in the node's own binary, so no checkout of
+> this repo is needed: `pdn flash-tnc <tncPort> <firmware.hex> [--yes]`. Stop the node
+> first (`sudo systemctl stop packetnet`) or disable the port: the flash needs the serial
+> port to itself and the verb refuses while another process holds it. Everything below
+> about pre-flight, confirmation, the interrupted-flash warning and the post-flash
+> verification applies to both spellings (#175).
+
 Flash a NinoTNC with an Intel-HEX firmware image using the built-in bootloader
 flasher:
 
