@@ -42,7 +42,11 @@ public sealed record UpdateLaunchResult(UpdateLaunchOutcome Outcome, string? Det
 /// <param name="GithubRequest">For the github channel: the validated download request the helper
 /// applies (<c>targetVersion</c> / <c>arch</c> / <c>debUrl</c> / <c>sha256</c> / <c>healthUrl</c>).
 /// Null otherwise.</param>
-public sealed record SystemUpdateRequest(string Channel, GithubUpdateRequest? GithubRequest = null);
+/// <param name="HealthUrl">The node's effective loopback health URL, spooled for every channel so
+/// the apt helper's post-upgrade gate probes the port this node serves too (#471); the helper
+/// re-validates it and falls back to its default, then to <c>systemctl is-active</c>. Null
+/// spools nothing.</param>
+public sealed record SystemUpdateRequest(string Channel, GithubUpdateRequest? GithubRequest = null, string? HealthUrl = null);
 
 /// <summary>
 /// The github-channel Apply request file the privileged helper consumes - written by the node, but

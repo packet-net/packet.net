@@ -609,7 +609,8 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                 await NegotiateParametersBeforeConnectAsync(cached, extended, ct).ConfigureAwait(false);
                 LogXidOutcome(portName, local.ToString(), remote.ToString(),
                     cached.Session.Context.ParametersNegotiated ? "confirmed" : "no response",
-                    cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N");
+                    $"{(cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N")}, N1 {cached.Session.Context.N1}");
+                WarnIfNoInformationField(cached.Session.Context);
             }
 
             // The peer called us while we were probing: its SABM(E) reached this session in
@@ -1337,6 +1338,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             }
 
             cached.Mdl.RespondToXidCommand(frame);
+            WarnIfNoInformationField(cached.Session.Context);
             return true;
         }
         if (cached.Mdl.IsNegotiating && cachedClassified is XidReceived)
@@ -1484,6 +1486,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // raises it. DO NOT dispose the scheduler - the session must persist for
             // that SABM, and the responder arms no timer, so nothing leaks.
             xidSession.Mdl.RespondToXidCommand(parsed);
+            WarnIfNoInformationField(xidSession.Session.Context);
             return true;
         }
 
@@ -2218,6 +2221,22 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     [LoggerMessage(EventId = 5204, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} -> {Remote}: XID {Outcome} - {Detail}")]
     private partial void LogXidOutcome(string port, string local, string remote, string outcome, string detail);
+
+    // A peer's XID I Field Length Rx under eight bits negotiates N1 to zero (#894): the
+    // parameter is a limit a transmitter may not exceed (s4.3.3.7, s6.3.2), the spec sets no
+    // minimum, and a limit under one octet is a link that carries no information field.
+    // Neither floored nor ignored, since either would exceed what the peer said it handles;
+    // said once here so an operator whose link is up but carries nothing can see why.
+    private void WarnIfNoInformationField(Ax25SessionContext ctx)
+    {
+        if (ctx.ParametersNegotiated && ctx.N1 <= 0)
+        {
+            LogNoInformationField(portName, ctx.Local.ToString(), ctx.Remote.ToString());
+        }
+    }
+
+    [LoggerMessage(EventId = 5223, Level = LogLevel.Warning, Message = "AX.25 [{Port}] {Local} <-> {Remote}: the peer's XID advertised an I-field limit under one octet, so N1 is 0 and this link carries no information field (AX.25 v2.2 s4.3.3.7: a transmitter may not exceed the peer's limit)")]
+    private partial void LogNoInformationField(string port, string local, string remote);
 
     [LoggerMessage(EventId = 5205, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} <-> {Remote} ({Version})")]
     private partial void LogConnected(string port, string local, string remote, string version);

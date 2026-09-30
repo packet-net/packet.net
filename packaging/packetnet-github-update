@@ -247,18 +247,22 @@ log "installed ($prev -> $new); health-gating the node"
 # --- health-gate on /healthz; roll back on failure --------------------------------------
 log "health gate: $HEALTH_URL"
 healthy=0
+answered=0
 i=0
 while [ "$i" -lt 30 ]; do
     if curl -fsS -o /dev/null --max-time 3 "$HEALTH_URL" 2>/dev/null; then healthy=1; break; fi
+    # curl exit 22 is an HTTP error under -f: the node answered and said it is not healthy,
+    # which is the one verdict the second opinion below must not overrule.
+    [ $? -eq 22 ] && answered=1
     i=$((i + 1))
     sleep 2
 done
 
 # Second opinion before we roll a good install back. The probe can miss for reasons that are
 # not the node being broken - a bind we could not normalise to loopback (a single LAN address),
-# a firewall, no curl - so fall back to the weaker gate the apt helper uses: the unit being
-# active. Only if BOTH say no do we treat the new version as bad.
-if [ "$healthy" -ne 1 ] && systemctl is-active --quiet "$PKG.service" 2>/dev/null; then
+# a firewall, no curl - so a probe that never got an answer falls back to the weaker gate: the
+# unit being active. A node that ANSWERED unhealthy is unhealthy, whatever systemd says.
+if [ "$healthy" -ne 1 ] && [ "$answered" -ne 1 ] && systemctl is-active --quiet "$PKG.service" 2>/dev/null; then
     log "no answer from $HEALTH_URL, but $PKG.service is active - accepting the install"
     healthy=1
 fi

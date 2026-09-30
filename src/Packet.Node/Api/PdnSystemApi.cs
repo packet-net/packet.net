@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Packet.Node.Core.Audit;
+using Packet.Node.Core.Configuration;
 using Packet.Node.Core.SelfUpdate;
 using Packet.Node.Core.Tailscale;
 
@@ -87,6 +88,7 @@ public static class PdnSystemApi
             IInstallChannelProvider channel,
             ISystemUpdateLauncher launcher,
             GithubUpdateRequestBuilder githubRequests,
+            IConfigProvider config,
             IAuditLog auditLog,
             TimeProvider clock,
             ILoggerFactory logs) =>
@@ -122,7 +124,10 @@ public static class PdnSystemApi
                     }
                 }
 
-                var request = new SystemUpdateRequest(via, githubReq);
+                // The loopback health URL rides the spool for every channel, so the apt helper's
+                // post-upgrade gate probes the port this node serves as the github one does (#471).
+                var request = new SystemUpdateRequest(via, githubReq,
+                    GithubUpdateRequestBuilder.HealthUrlFor(config.Current.Management.Http));
                 var result = await launcher.StartUpdateAsync(request, http.RequestAborted).ConfigureAwait(false);
                 return result.Outcome switch
                 {
