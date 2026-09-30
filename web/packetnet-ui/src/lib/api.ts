@@ -8,7 +8,7 @@
 // Toggle with VITE_API_MODE=live (see vite proxy). The Slice-3 backend (locked
 // in docs/node-api.md) lands behind the "live" path with no screen changes.
 // ============================================================
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   SpectrumEvent,
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
@@ -1642,7 +1642,9 @@ export function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[] = []): Qu
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, ...deps]);
-  return { data, loading, error, reload: () => setTick((t) => t + 1) };
+  // A stable reload, so an effect that re-fetches on a condition can list it as a dependency.
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+  return { data, loading, error, reload };
 }
 
 // ---- the shared SSE plumbing -------------------------------

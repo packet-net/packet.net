@@ -27,7 +27,7 @@ import {
   LINK_DIAL_OPTIONS, LINK_DIAL_HELP, LINK_XID_OPTIONS, LINK_XID_HELP,
   KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs,
 } from "@/lib/catalogue";
-import { portDotState, portHealth, portIsServing } from "@/lib/health";
+import { portDotState, portHealth, portIsServing, portIsSettling } from "@/lib/health";
 import { api, apiMode, useQuery, subscribeRadioProgram, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 
@@ -278,6 +278,9 @@ function problemLabel(path: string): string {
   return (path ?? "").replace(/^ports\[\d+]\./i, "").replace(/^port\./i, "") || "config";
 }
 
+// How often the screen looks again at a port that is still on its way up or down.
+const SETTLE_POLL_MS = 1500;
+
 export function Ports() {
   const navigate = useNavigate();
   const { has } = useAuth();
@@ -311,6 +314,16 @@ export function Ports() {
   const list = config?.ports ?? [];
   const statusById: Record<string, PortStatus> = {};
   for (const st of portStatus ?? []) statusById[st.id] = st;
+
+  // A port in a transitional state is on its way somewhere: a restart after a save can pass
+  // through one failed open (the device's previous holder had not let go yet) before it comes
+  // up, and the one fetch after the save used to freeze that retry's error on the card until the
+  // operator refreshed the page (#777). Look again until every port has settled.
+  useEffect(() => {
+    if (!portStatus?.some((s) => portIsSettling(s.state))) return;
+    const t = setTimeout(reloadPorts, SETTLE_POLL_MS);
+    return () => clearTimeout(t);
+  }, [portStatus, reloadPorts]);
 
   // Turn any caught error into a human banner (a 422 carries per-field problems).
   const showError = (e: unknown, fallback: string) => {

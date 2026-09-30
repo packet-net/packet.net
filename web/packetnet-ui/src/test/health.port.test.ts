@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { portDotState, portHealth, portIsServing } from "@/lib/health";
+import { portDotState, portHealth, portIsServing, portIsSettling } from "@/lib/health";
 import type { LinkStats, PortStatus } from "@/lib/types";
 
 // The port badge is the SERVER's verdict now (packet-net/packet.net#722): the node keeps a
@@ -46,6 +46,15 @@ describe("port health comes from the node's state model", () => {
   it("does not let the link heuristic downgrade a port the node calls faulted", () => {
     const h = portHealth(port({ state: "faulted", lastError: "device busy" }), struggling);
     expect(h.reason).toBe("device busy");
+  });
+
+  it("knows which states are still on their way somewhere", () => {
+    expect(portIsSettling("starting")).toBe(true);
+    expect(portIsSettling("stopping")).toBe(true);
+    expect(portIsSettling("retrying")).toBe(true);
+    for (const settled of ["up", "degraded", "faulted", "configured", "disabled", undefined] as const) {
+      expect(portIsSettling(settled)).toBe(false);
+    }
   });
 
   it("knows which states are serving, and paints them", () => {
