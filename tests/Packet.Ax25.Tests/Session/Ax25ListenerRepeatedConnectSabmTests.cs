@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Session;
 using Packet.Core;
 using Xunit;
@@ -21,6 +22,11 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
     private static readonly Callsign CallA = new("N0AAA", 3);
     private static readonly Callsign CallB = new("N0BBB", 3);
     private static readonly TimeSpan T1V = TimeSpan.FromMilliseconds(400);
+
+    // One clock for both stations. T1 runs on it, so a retry is a step of the clock and not a
+    // wait on the box: on wall-clock timers B's 400 ms retry once took more than 10 s to reach A
+    // under runner load (#902). The wire's pump still runs on wall time, which each step yields to.
+    private readonly FakeTimeProvider clock = new();
 
     // Two modems joined by a polling pump. Both directions can be held (so two dials really do
     // cross: each SABM(E) is on the air before the other is heard), and a predicate can lose
@@ -76,12 +82,48 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
         }
     }
 
-    private static Ax25Listener Station(LoopbackModem modem, Callsign me, Ax25SessionQuirks quirks) => new(modem, new Ax25ListenerOptions
+    private Ax25Listener Station(LoopbackModem modem, Callsign me, Ax25SessionQuirks quirks) => new(modem, new Ax25ListenerOptions
     {
         MyCall = me,
         T1V = T1V,
         Quirks = quirks,
-    });
+    }, clock);
+
+    // Step the clock past T1 and give the wire time to carry what the timers put on the air.
+    private async Task PastT1Async(int steps = 1)
+    {
+        for (int i = 0; i < steps; i++)
+        {
+            clock.Advance(T1V + TimeSpan.FromMilliseconds(1));
+            await Task.Delay(50);
+        }
+    }
+
+    // Step past T1 until the condition holds, with a wall-clock settle after each step for the
+    // frames to cross. Each step is a T1 expiry on every running timer of both stations.
+    private async Task PastT1UntilAsync(Func<bool> condition, string reason, int maxSteps = 12)
+    {
+        for (int i = 0; i < maxSteps; i++)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            clock.Advance(T1V + TimeSpan.FromMilliseconds(1));
+            try
+            {
+                await WaitFor(condition, TimeSpan.FromSeconds(1));
+                return;
+            }
+            catch (TimeoutException)
+            {
+                // Not yet: the next step is another T1 expiry.
+            }
+        }
+
+        throw new TimeoutException($"condition did not become true within {maxSteps} T1 expiries - {reason}");
+    }
 
     private static List<Ax25Frame> Sent(LoopbackModem modem) =>
         modem.SentFrames.SnapshotList()
@@ -94,7 +136,7 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
 
     // Both dial, A's UA to B is lost, A connects and sends at once. Returns both links, A's link
     // signals from the moment it connected, and what B's application received.
-    private static async Task<(Ax25Session onA, Ax25Session onB, List<DataLinkSignal> signalsOnA, Func<string> receivedOnB, LoopbackModem modemA, LoopbackModem modemB, IAsyncDisposable cleanup)> CrossWithALostUaAsync(
+    private async Task<(Ax25Session onA, Ax25Session onB, List<DataLinkSignal> signalsOnA, Func<string> receivedOnB, LoopbackModem modemA, LoopbackModem modemB, IAsyncDisposable cleanup)> CrossWithALostUaAsync(
         Ax25SessionQuirks quirks, bool extended)
     {
         var modemA = new LoopbackModem();
@@ -118,7 +160,10 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
 
         // What DAPPS does on crossed:true: speak at once.
         a.SendData(onA, "exchange\r"u8.ToArray());
+        await WaitFor(() => Sent(modemA).Any(f => f.FrameType == Ax25FrameType.I), TimeSpan.FromSeconds(5), "A's data is on the air");
 
+        // B, still waiting for the UA that was lost, sends its SABM(E) again when T1 runs out.
+        await PastT1UntilAsync(() => dialB.IsCompleted, "B's dial completes on its retry");
         var onB = await dialB.WithTimeout(TimeSpan.FromSeconds(10));
         var received = new System.Text.StringBuilder();
         onB.AttachConsumerWithReplay((_, s) =>
@@ -151,7 +196,8 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
         var (onA, onB, signalsOnA, receivedOnB, modemA, _, cleanup) = await CrossWithALostUaAsync(Ax25SessionQuirks.Default, extended);
         await using var _ = cleanup;
 
-        await WaitFor(() => receivedOnB().Contains("exchange", StringComparison.Ordinal), TimeSpan.FromSeconds(10),
+        // B's T1 sends its SABM(E) again and A's T1 recovers the I frame B threw away.
+        await PastT1UntilAsync(() => receivedOnB().Contains("exchange", StringComparison.Ordinal),
             "A's data reaches B's application, retransmitted once B is connected");
 
         onA.CurrentState.Should().BeOneOf("Connected", "TimerRecovery");
@@ -178,11 +224,11 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
             Ax25SessionQuirks.Default with { Ax25Spec50RepeatedConnectSabmReacknowledged = false }, extended);
         await using var _ = cleanup;
 
-        await WaitFor(() => { lock (signalsOnA) { return signalsOnA.Any(s => s is DataLinkConnectIndication); } },
-            TimeSpan.FromSeconds(10), "the repeated SABM(E) resets A's link (DL-CONNECT indication)");
+        await PastT1UntilAsync(() => { lock (signalsOnA) { return signalsOnA.Any(s => s is DataLinkConnectIndication); } },
+            "the repeated SABM(E) resets A's link (DL-CONNECT indication)");
 
-        // Long enough for A's T1 to have run out several times over had the frame still been queued.
-        await Task.Delay(T1V * 6);
+        // A's T1 runs out several times over: had the frame still been queued it would be resent.
+        await PastT1Async(6);
         receivedOnB().Should().BeEmpty("the reset discarded the I frame B never saw");
         onA.Context.VS.Should().Be((byte)0);
     }
@@ -196,9 +242,9 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
         var (onA, _, signalsOnA, receivedOnB, _, _, cleanup) = await CrossWithALostUaAsync(Ax25SessionQuirks.StrictlyFaithful, extended: false);
         await using var _ = cleanup;
 
-        await WaitFor(() => { lock (signalsOnA) { return signalsOnA.Any(s => s is DataLinkConnectIndication); } },
-            TimeSpan.FromSeconds(10), "the repeated SABM resets A's link");
-        await Task.Delay(T1V * 6);
+        await PastT1UntilAsync(() => { lock (signalsOnA) { return signalsOnA.Any(s => s is DataLinkConnectIndication); } },
+            "the repeated SABM resets A's link");
+        await PastT1Async(6);
         receivedOnB().Should().BeEmpty("the reset discarded the I frame B never saw");
         onA.Context.VS.Should().Be((byte)0);
     }
@@ -220,7 +266,8 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
         var signals = new List<DataLinkSignal>();
         session.DataLinkSignalEmitted += (_, s) => { lock (signals) { signals.Add(s); } };
         listener.SendData(session, "banner\r"u8.ToArray());
-        await WaitFor(() => session.CurrentState == "TimerRecovery", TimeSpan.FromSeconds(10),
+        await WaitFor(() => Sent(modem).Any(f => f.FrameType == Ax25FrameType.I), TimeSpan.FromSeconds(5), "the banner is on the air");
+        await PastT1UntilAsync(() => session.CurrentState == "TimerRecovery",
             "the banner's T1 runs out with nothing from the peer");
 
         modem.InjectInbound(Ax25Frame.Sabme(CallA, CallB));
@@ -286,6 +333,12 @@ public sealed class Ax25ListenerRepeatedConnectSabmTests
         var xid = Sent(modem).First(f => f.FrameType == Ax25FrameType.Xid);
         modem.InjectInbound(Ax25Frame.Sabme(CallA, CallB));
         modem.InjectInbound(Ax25Frame.Xid(CallA, CallB, xid.Info.Span, isCommand: false, pollFinal: true));
+        // The probe's wait polls on the listener's clock: tick it until the dial has seen the answer.
+        for (int i = 0; i < 200 && !dial.IsCompleted; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(25));
+            await Task.Delay(5);
+        }
         var session = await dial.WithTimeout(TimeSpan.FromSeconds(10));
         Sent(modem).Count(IsEstablish).Should().Be(0, "the dial returned the link the peer's call brought up (#854)");
         var signals = new List<DataLinkSignal>();
