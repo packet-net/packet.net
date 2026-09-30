@@ -69,7 +69,7 @@ export const NODE_CONFIG: NodeConfig = {
   },
   beacon: { enabled: true, intervalMinutes: 30, text: "{node}:{call} pdn node — Reading & District ARS" },
   rhp: { enabled: false, bind: "127.0.0.1", port: 9000, requireAuth: false, maxConnections: 64, maxHandlesPerClient: 256, inFrameTimeoutSeconds: 30 },
-  mcp: { enabled: false, sse: { enabled: false, path: "/mcp" }, tokenLifetimeDays: 90, oauth: { enabled: false, accessTokenLifetimeMinutes: 60 } },
+  mcp: { enabled: false, sse: { enabled: false, path: "/mcp" }, tokenLifetimeDays: 90, oauth: { enabled: false, accessTokenLifetimeMinutes: 60, issuer: null } },
   applications: [],
   // The owner's overrides for the discovered packages in APP_PACKAGES - what the Apps screen writes.
   apps: [

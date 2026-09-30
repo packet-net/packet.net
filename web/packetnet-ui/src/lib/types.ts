@@ -414,7 +414,8 @@ export interface RhpConfig {
   maxConnections: number; maxHandlesPerClient: number; inFrameTimeoutSeconds: number;
 }
 export interface McpSseConfig { enabled: boolean; path: string }
-export interface McpOauthConfig { enabled: boolean; accessTokenLifetimeMinutes: number }
+// issuer: the canonical base URL discovery advertises; null derives it from each request (#427).
+export interface McpOauthConfig { enabled: boolean; accessTokenLifetimeMinutes: number; issuer: string | null }
 // The Model Context Protocol server (server: McpConfig).
 export interface McpConfig {
   enabled: boolean; sse: McpSseConfig; tokenLifetimeDays: number; oauth: McpOauthConfig;

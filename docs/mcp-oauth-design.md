@@ -63,7 +63,8 @@ POST /oauth/revoke                              RFC 7009 token revocation
 - **Authorization codes**: single-use (atomic consume, like the WebAuthn challenge cache), short TTL (≤60 s), bound to `client_id` + `code_challenge` + `redirect_uri` + the authenticated user.
 - **Audience binding** (above) - the MCP token can't hit the panel API and vice-versa.
 - **Consent is explicit** and shows the requested scopes + the client's declared name/URI; the owner must be logged in (passkey/password) to approve.
-- **HTTPS required** for the remote flow (the listener's TLS); refuse the OAuth endpoints over plain HTTP unless loopback.
+- **HTTPS required** for the remote flow (the listener's TLS); refuse the OAuth endpoints over plain HTTP unless loopback. *As built (2026-09-30, #427): not refused, since the panel's own login has the same exposure and a hard block would break the reverse-proxy TLS case; instead the node logs one warning at startup when `mcp.oauth.enabled` sits on a plain-HTTP, non-loopback bind with neither `management.https` nor the Tailscale sidecar.*
+- **The issuer is the operator's, not the client's.** Discovery, the advertised endpoint URLs and the RFC 9207 `iss` are built on `mcp.oauth.issuer` when set; otherwise on the request's scheme and host, which the forwarded-headers middleware corrects for a loopback proxy (the sidecar) and which is otherwise the client's own `Host` header. Set it behind any other proxy (#427).
 - **DCR is open but rate-limited** (the spec expects open registration for clients like claude.ai); optionally gate behind an owner toggle. Registered clients are persisted + listable/revocable in the panel.
 - **Refresh-token rotation + reuse-detection** - reuse the shipped `RefreshTokenService`.
 - **Everything audited** via `IAuditLog` (register, authorize-grant, token-issue, revoke), actor = the consenting owner, source = `oauth`.

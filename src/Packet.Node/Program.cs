@@ -1094,6 +1094,12 @@ app.Lifetime.ApplicationStarted.Register(() =>
             PanelLog.SetupPending(logger);
         }
     }
+    // One line, not a refusal: the OAuth consent page takes a password, and on a LAN-facing
+    // plain-HTTP bind with no TLS in front that is cleartext to the whole segment (#427).
+    if (McpOauthCleartext.Exposed(configProvider.Current))
+    {
+        PanelLog.OauthOverCleartext(logger, http.Bind, http.Port);
+    }
 
     static IReadOnlyList<IPAddress> MachineAddresses()
     {

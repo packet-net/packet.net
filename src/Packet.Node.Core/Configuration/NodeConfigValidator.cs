@@ -86,6 +86,14 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
             .Must(c => !(c.Mcp.Oauth.Enabled && !c.Management.Auth.Enabled))
             .WithMessage("mcp.oauth.enabled requires management.auth.enabled - OAuth tokens are only enforced when management auth is on.");
 
+        // The pinned issuer is what discovery advertises and what a client compares the
+        // RFC 9207 iss against, so it must be a usable absolute origin (a path is allowed,
+        // RFC 8414 permits one); a query or fragment can never be part of an issuer.
+        RuleFor(c => c.Mcp.Oauth.Issuer)
+            .Must(BeAnAbsoluteHttpUrlWithoutQueryOrFragment)
+            .When(c => c.Mcp.Oauth.Issuer is not null)
+            .WithMessage("mcp.oauth.issuer must be an absolute http(s) URL with no query or fragment (e.g. https://pdn.example:8443).");
+
         RuleFor(c => c.NetRom).NotNull().SetValidator(new NetRomValidator());
 
         RuleFor(c => c.Beacon).NotNull().SetValidator(new BeaconConfigValidator());
@@ -191,6 +199,13 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
     /// and head-end-bound radios, as <c>headEndId/deviceId</c> keys. Empty ⇒ every device has one
     /// client. Case-insensitive, matching the transport-endpoint uniqueness rule; incomplete bindings
     /// (a blank half) are skipped - their own validators report those.</summary>
+
+    private static bool BeAnAbsoluteHttpUrlWithoutQueryOrFragment(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+        && string.IsNullOrEmpty(uri.Query)
+        && string.IsNullOrEmpty(uri.Fragment);
+
     private static List<string> DuplicateHeadEndDeviceBindings(NodeConfig c)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
