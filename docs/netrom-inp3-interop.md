@@ -23,7 +23,7 @@
 | Enable knob | **`PREFERINP3ROUTES=1`** - a global L3 directive: when both an INP3 (time) route and a vanilla (quality) route exist to a destination, prefer the time route. This is the exact knob our `NetRomInp3Options.PreferInp3Routes` mirrors (I-3). | BPQ config reference; plan §2/§8. |
 | L3RTT probing | BPQ emits L3RTT datagrams (dest `L3RTT-0`, opcode 0x02, `$N`/`$IX` capability text) on its INP3-capable interlinks and reflects peers' probes - the same wire mechanic `Inp3L3RttFrame` builds/recognises. | I-1 wire-spec; codec `src/Packet.NetRom/Wire/Inp3L3Rtt.cs`. |
 | Known risk | **Historically considered problematic** (Tom, plan §2/§12 risk #2): in mixed networks BPQ's INP3 has been observed to fill timer tables / behave erratically. May have improved in 6.0.25.x - **unverified against a live peer.** | plan §2, §12. |
-| Version in stack | **LinBPQ 6.0.25.23** (the pinned `m0lte/linbpq` image). The mod-128 note in `bpq32.cfg` already source-quotes this build's `L2Code.c`; the INP3 path is compiled in but **off in our fixture**. | `docker/compose.interop.yml` pin; `docker/linbpq/bpq32.cfg`. |
+| Version in stack | **LinBPQ 6.0.25.41** (the pinned `m0lte/linbpq` image, moved from 6.0.25.23 on 2026-09-30). The mod-128 note in `bpq32.cfg` already source-quotes this build's `L2Code.c`; the INP3 path is compiled in but **off in our fixture**. | `docker/compose.interop.yml` pin; `docker/linbpq/bpq32.cfg`. |
 
 **Treatment (CLAUDE.md discipline):** BPQ is the de-facto **vanilla** NET/ROM reference, but it is **not** the INP3 reference - its INP3 is the shaky tier. A divergence we find against live BPQ becomes a named `NetRomInp3Options` flag + a `strict-vs-pragmatic-audit.md` row, never a bend of the spec-faithful core.
 
