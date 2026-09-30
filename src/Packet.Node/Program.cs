@@ -56,6 +56,14 @@ if (args.Length > 0 && args[0] == "auth")
     return await PdnAuthCli.RunAsync(args);
 }
 
+// `pdn flash-tnc <port> <hex> [--yes]` - flash a NinoTNC from the node's own binary (Phase 10,
+// #175). Short-circuits like the verbs above: it opens the serial port and nothing else, and
+// refuses when another process (a running node) holds it. See PdnFlashTncCli.
+if (args.Length > 0 && args[0] == "flash-tnc")
+{
+    return await PdnFlashTncCli.RunAsync(args);
+}
+
 var configPath = ResolveConfigPath(args);
 var dbPath = ResolveDbPath(args);
 var seedPath = ResolveSeedPath();
