@@ -18,6 +18,12 @@ export function portIsServing(state: PortState | undefined): boolean {
   return state === "up" || state === "degraded";
 }
 
+/** Whether the port is on its way somewhere (starting / stopping / retrying): a snapshot taken
+ *  now is not where it will be in a moment, so a screen that shows one should look again. */
+export function portIsSettling(state: PortState | undefined): boolean {
+  return state === "starting" || state === "stopping" || state === "retrying";
+}
+
 /** Map a server port state onto the StatusDot's four colours: green = on the air, amber =
  *  serving with a piece missing, red = not on the air and it should be, grey = by design. */
 export function portDotState(state: PortState | undefined): "up" | "down" | "faulted" | "error" {
