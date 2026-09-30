@@ -72,6 +72,28 @@ public class JwtTokenServiceTests
     }
 
     [Fact]
+    public async Task Every_token_carries_its_own_jti_and_reads_back_for_revocation()
+    {
+        // #428: the id is what makes one token revocable without a key rotation.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 30, 0, 0, 0, TimeSpan.Zero));
+        var svc = Make(clock);
+
+        var (first, expiresAt) = svc.Issue("m0lte", AuthScopes.Read, TimeSpan.FromMinutes(30), JwtTokenService.McpAudience);
+        var (second, _) = svc.Issue("m0lte", AuthScopes.Read, TimeSpan.FromMinutes(30), JwtTokenService.McpAudience);
+
+        var live = await svc.ReadForRevocationAsync(first);
+        live.Should().NotBeNull();
+        live!.Value.Jti.Should().NotBeNullOrEmpty();
+        live.Value.ExpiresAt.Should().Be(expiresAt);
+        (await svc.ReadForRevocationAsync(second))!.Value.Jti.Should().NotBe(live.Value.Jti);
+
+        // A token that does not validate cannot be revoked and lists nothing.
+        (await svc.ReadForRevocationAsync(first + "x")).Should().BeNull();
+        clock.Advance(TimeSpan.FromMinutes(31));
+        (await svc.ReadForRevocationAsync(first)).Should().BeNull("an expired token is dead on its own");
+    }
+
+    [Fact]
     public void Issue_rejects_a_non_positive_lifetime()
     {
         var svc = Make(new FakeTimeProvider());
