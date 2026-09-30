@@ -91,6 +91,13 @@ internal sealed class Ax25GracefulClose
     public static Ax25GracefulClose? Begin(Ax25Session session, TimeProvider time, Func<bool>? peerRestarted = null)
         => Start(session, time, abort: false, peerRestarted);
 
+    /// <summary>Whether a close is draining <paramref name="session"/> right now: the link
+    /// is still up, but DISC follows once the peer has everything, so it is no link to take
+    /// for new work (packet.net#889). The entry goes just before the DISC is posted, so a
+    /// caller can still take a link whose DISC is queued; that is the same race as any dial
+    /// against a disconnect, and the next attempt dials afresh.</summary>
+    internal static bool IsClosing(Ax25Session session) => Pending.TryGetValue(session, out _);
+
     /// <summary>
     /// Disconnect now, discarding anything not yet delivered: the old close, kept for a sysop
     /// kill and shutdown. If a close is pending on the session it is cut short. A link in the
