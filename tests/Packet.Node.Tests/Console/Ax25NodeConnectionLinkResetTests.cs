@@ -218,6 +218,33 @@ public sealed class Ax25NodeConnectionLinkResetTests
     }
 
     [Fact]
+    public async Task An_old_owner_cannot_write_onto_the_link_the_reset_took_from_it()
+    {
+        // Between the reset signal and its own dispose the old owner may still write (a console
+        // finishing a command, say); that must not go out on the restarted link, which may be a
+        // fresh owner's now.
+        await using var rig = await Rig.ConnectAsync();
+        rig.Connection.PeerRestartedAfterClose = () => true;
+        await WriteUnacknowledgedAsync(rig, "hello\r");
+
+        rig.PeerSession.PostEvent(new DlConnectRequest());
+        await rig.Connection.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        rig.DropNodeIFrames = false;
+        int sentBefore;
+        lock (rig.NodeSent) { sentBefore = rig.NodeSent.Count; }
+
+        await rig.Connection.WriteAsync(System.Text.Encoding.ASCII.GetBytes("stale tail\r"));
+        await Task.Delay(300);
+
+        rig.NodeSession.Context.VS.Should().Be(0, "nothing of the old owner's went out on the restarted link");
+        lock (rig.NodeSent)
+        {
+            rig.NodeSent.Skip(sentBefore).Any(b => Ax25Frame.TryParse(b, Ax25ParseOptions.Lenient, out var f) && f.FrameType == Ax25FrameType.I)
+                .Should().BeFalse();
+        }
+    }
+
+    [Fact]
     public async Task A_peers_restart_nobody_takes_is_disconnected_by_the_old_owners_close()
     {
         await using var rig = await Rig.ConnectAsync();

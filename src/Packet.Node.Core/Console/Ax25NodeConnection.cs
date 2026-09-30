@@ -202,7 +202,10 @@ public sealed class Ax25NodeConnection : INodeConnection
     /// <inheritdoc/>
     public ValueTask WriteAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
     {
-        if (Volatile.Read(ref disposed) != 0)
+        // Nothing goes out once the connection is closed or a reset has ended it (#885): the
+        // link may be a fresh owner's by then, and an old owner's tail must not land in the
+        // new console's output.
+        if (Volatile.Read(ref disposed) != 0 || Volatile.Read(ref endedByReset) != 0)
         {
             return ValueTask.CompletedTask;
         }
