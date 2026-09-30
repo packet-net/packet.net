@@ -170,6 +170,16 @@ public sealed record WebAuthnConfig
     /// origin(s) exactly.</summary>
     public IReadOnlyList<string> AllowedOrigins { get; init; } = [];
 
+    /// <summary>Whether a passkey ceremony asks the authenticator to <em>verify</em> the
+    /// user (PIN, biometric, device unlock) rather than only to check for their presence.
+    /// Default <c>false</c>: user verification is <em>preferred</em>, which is what the
+    /// localhost-first, single-operator node wants (a touch on a security key or a tap on
+    /// a phone signs in). Set <c>true</c> to make it <em>required</em>: a passkey used to
+    /// register or to sign in must then have verified the user, and an authenticator that
+    /// cannot (a bare U2F key) is refused. Applies to registration and to sign-in alike,
+    /// and only to ceremonies begun after the change. WebAuthn review O-1 (#414).</summary>
+    public bool RequireUserVerification { get; init; }
+
     // Records compare a collection member by REFERENCE, so two configs with equal-but-
     // distinct AllowedOrigins lists would be unequal - breaking the YAML round-trip
     // identity (serialise→parse yields a fresh list). Compare the list by value so
@@ -178,10 +188,11 @@ public sealed record WebAuthnConfig
         other is not null
         && RelyingPartyId == other.RelyingPartyId
         && RelyingPartyName == other.RelyingPartyName
-        && ConfigEquality.ListEqual(AllowedOrigins, other.AllowedOrigins);
+        && ConfigEquality.ListEqual(AllowedOrigins, other.AllowedOrigins)
+        && RequireUserVerification == other.RequireUserVerification;
 
     public override int GetHashCode() =>
-        HashCode.Combine(RelyingPartyId, RelyingPartyName, ConfigEquality.ListHash(AllowedOrigins));
+        HashCode.Combine(RelyingPartyId, RelyingPartyName, ConfigEquality.ListHash(AllowedOrigins), RequireUserVerification);
 }
 
 /// <summary>

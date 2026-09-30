@@ -166,22 +166,6 @@ public sealed partial class SqliteWebAuthnCredentialStore : IWebAuthnCredentialS
     }
 
     /// <inheritdoc/>
-    public IReadOnlyList<byte[]> GetAllCredentialIds()
-    {
-        try
-        {
-            using var conn = Open();
-            // Dapper maps a single BLOB column to byte[] directly.
-            return conn.Query<byte[]>("SELECT credential_id FROM webauthn_credential;").ToList();
-        }
-        catch (SqliteException ex)
-        {
-            LogReadFailed(ex, connectionString);
-            return [];
-        }
-    }
-
-    /// <inheritdoc/>
     public void UpdateSignCount(byte[] credentialId, uint newCount, DateTimeOffset whenUtc)
     {
         ArgumentNullException.ThrowIfNull(credentialId);

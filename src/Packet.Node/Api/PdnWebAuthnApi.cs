@@ -94,9 +94,13 @@ public static class PdnWebAuthnApi
 
             // Build the allow-list. With a username, scope it to that user's credentials;
             // without one, leave it empty so a discoverable credential can be used (the
-            // user is identified by the signed credential at /complete). We do NOT leak
-            // whether a username exists: an unknown user simply yields an empty list,
-            // which is indistinguishable from "use a discoverable credential".
+            // user is identified by the signed credential at /complete). An unknown user
+            // yields an empty list rather than an error, so the response SHAPE does not
+            // say whether the username exists - but the allow-list's contents do: a user
+            // with passkeys gets their descriptors and a user without gets none, so a
+            // username-scoped begin is a passkey-existence oracle. That is inherent to the
+            // standard non-discoverable allowCredentials flow (review O-2, #414); the
+            // username-less flow is the one that discloses nothing.
             List<PublicKeyCredentialDescriptor> allow = [];
             if (!string.IsNullOrWhiteSpace(body?.Username))
             {
@@ -106,11 +110,12 @@ public static class PdnWebAuthnApi
                 }
             }
 
-            var fido2 = WebAuthnFido2Builder.ForRequest(config.Current.Management.Auth.WebAuthn, http.Request);
+            var webAuthn = config.Current.Management.Auth.WebAuthn;
+            var fido2 = WebAuthnFido2Builder.ForRequest(webAuthn, http.Request);
             var options = fido2.GetAssertionOptions(new GetAssertionOptionsParams
             {
                 AllowedCredentials = allow,
-                UserVerification = UserVerificationRequirement.Preferred,
+                UserVerification = UserVerification(webAuthn),
             });
 
             // Bind the pending assertion to a fresh per-attempt session id (a random
@@ -290,7 +295,8 @@ public static class PdnWebAuthnApi
                 exclude.Add(Descriptor(c));
             }
 
-            var fido2 = WebAuthnFido2Builder.ForRequest(config.Current.Management.Auth.WebAuthn, http.Request);
+            var webAuthn = config.Current.Management.Auth.WebAuthn;
+            var fido2 = WebAuthnFido2Builder.ForRequest(webAuthn, http.Request);
             var options = fido2.RequestNewCredential(new RequestNewCredentialParams
             {
                 User = fido2User,
@@ -298,7 +304,7 @@ public static class PdnWebAuthnApi
                 AuthenticatorSelection = new AuthenticatorSelection
                 {
                     ResidentKey = ResidentKeyRequirement.Required,        // discoverable ⇒ username-less login
-                    UserVerification = UserVerificationRequirement.Preferred,
+                    UserVerification = UserVerification(webAuthn),
                 },
                 AttestationPreference = AttestationConveyancePreference.None,
             });
@@ -487,9 +493,20 @@ public static class PdnWebAuthnApi
         }, CancellationToken.None);
     }
 
+    // Presence is enough by default (a touch or a tap); the owner can demand a PIN, a
+    // biometric or a device unlock instead. The requirement rides in the options the
+    // challenge cache keeps, so the verifier at /complete holds the ceremony to what its
+    // /begin asked for (review O-1, #414).
+    private static UserVerificationRequirement UserVerification(WebAuthnConfig webAuthn) =>
+        webAuthn.RequireUserVerification ? UserVerificationRequirement.Required : UserVerificationRequirement.Preferred;
+
     // A counter regression is the clone signature when the authenticator uses counters.
-    private static bool CounterRegressed(uint storedCount, Fido2VerificationException ex) =>
-        storedCount > 0 && ex.Message.Contains("counter", StringComparison.OrdinalIgnoreCase);
+    // Keyed off the library's typed error code, not its message text, so a Fido2NetLib
+    // upgrade that rewords the message cannot silently turn clone detections into generic
+    // failures in the audit log (review O-4, #414). Log classification only: both branches
+    // reject.
+    internal static bool CounterRegressed(uint storedCount, Fido2VerificationException ex) =>
+        storedCount > 0 && ex.Code == Fido2NetLib.Exceptions.Fido2ErrorCode.InvalidSignCount;
 
     // --- response/request marshalling ---------------------------------------------
 

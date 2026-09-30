@@ -46,7 +46,7 @@ export const NODE_CONFIG: NodeConfig = {
     telnet: { enabled: true, bind: "127.0.0.1", port: 8011 },
     http: { bind: "0.0.0.0", port: 8080 },
     https: { enabled: false, bind: "0.0.0.0", port: 8443, certificatePath: null, certificatePassword: null, generateSelfSignedOnMissing: true },
-    auth: { enabled: false, accessTokenMinutes: null, refreshTokenMinutes: null, sysopElevationMinutes: null, webAuthn: { relyingPartyId: "localhost", relyingPartyName: "pdn node", allowedOrigins: [] } },
+    auth: { enabled: false, accessTokenMinutes: null, refreshTokenMinutes: null, sysopElevationMinutes: null, webAuthn: { relyingPartyId: "localhost", relyingPartyName: "pdn node", allowedOrigins: [], requireUserVerification: false } },
     mdns: { enabled: true, instanceName: null },
     console: { idleTimeoutMinutes: 30 },
   },

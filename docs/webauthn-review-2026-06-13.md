@@ -169,3 +169,11 @@ expiry, key-binding, Host-spoof resistance, ownership-scoped delete, and the no-
 generic rejection. The owner may wish to act on O-1 (a `requireUserVerification` knob) and
 O-2 (correct the over-strong comment at `PdnWebAuthnApi.cs:96-98`); both are policy/clarity,
 not defects.
+
+**Follow-up (2026-09-30, #414).** All four observations were acted on: O-1 is the
+`management.auth.webAuthn.requireUserVerification` knob (default off, so the behaviour
+reviewed here is unchanged until an owner turns it on); O-2's comment now says what the
+username-scoped flow discloses; O-3's `GetAllCredentialIds` is deleted, since registration
+already enforces global credential-id uniqueness through `GetByCredentialId`; O-4's
+clone-versus-generic log classification keys off Fido2NetLib's typed
+`Fido2VerificationException.Code` rather than the exception message. See plan §17.
