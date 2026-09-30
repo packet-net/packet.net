@@ -96,8 +96,38 @@ public sealed class Ax25NodeConnection : INodeConnection
             case DataLinkDisconnectConfirm:
                 Complete();
                 break;
+            case DataLinkErrorIndication { Code: "F" or "J" or "K" or "N" } err:
+                // The link is being reset (packet.net#885): the peer's SABM(E) on the up link
+                // (F), or this end re-establishing after an N(R) error (J), an unexpected UA or
+                // FRMR in Connected (K) or in Timer Recovery (N). §6.5: the reset "initializes
+                // both directions of data flow"; the SDL discards the I-frame queue and starts
+                // both ends from zero. The figures raise this indication before they touch the
+                // sequence variables, so V(s) and V(a) still say whether anything of ours was
+                // in flight. If it was, the stream's in-order delivery promise is broken and the
+                // owner must know now, not after its own timers: end the connection as the peer
+                // disconnecting would. If nothing was outstanding, the reset lost nothing of ours
+                // (the peer's own losses are the peer's node's to report) and the stream carries
+                // on over the re-established link.
+                if (session.Context.VS != session.Context.VA && Volatile.Read(ref disposed) == 0)
+                {
+                    int lost = (session.Context.VS - session.Context.VA + session.Context.Modulus) % session.Context.Modulus;
+                    EndReason = err.Code switch
+                    {
+                        "F" => $"link reset by {session.Context.Remote} with {lost} frame(s) of ours unacknowledged",
+                        "J" => $"link re-established after an N(R) error with {lost} frame(s) of ours unacknowledged",
+                        _ => $"link re-established after an unexpected UA or FRMR with {lost} frame(s) of ours unacknowledged",
+                    };
+                    Complete();
+                }
+                break;
         }
     }
+
+    /// <summary>
+    /// Why the connection ended, when it was the link and not the owner or the peer's
+    /// disconnect: a reset that discarded frames of ours (packet.net#885). Null otherwise.
+    /// </summary>
+    public string? EndReason { get; private set; }
 
     /// <inheritdoc/>
     public async ValueTask<ReadOnlyMemory<byte>> ReadAsync(CancellationToken cancellationToken = default)
