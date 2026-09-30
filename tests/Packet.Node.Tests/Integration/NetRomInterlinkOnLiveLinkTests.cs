@@ -68,10 +68,10 @@ public sealed class NetRomInterlinkOnLiveLinkTests
         var generous = TimeSpan.FromSeconds(60);
 
         // Everything on the air, so the SABMs A sends B can be counted.
-        var monitor = bus.Attach();
+        await using var monitor = bus.Attach();
         int sabmsAtoB = 0;
         using var stop = new CancellationTokenSource();
-        _ = Task.Run(async () =>
+        var watching = Task.Run(async () =>
         {
             try
             {
@@ -89,40 +89,45 @@ public sealed class NetRomInterlinkOnLiveLinkTests
             {
             }
         });
+        try
+        {
+            await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+            await using var b = await StartNodeAsync(bus, BNodeCall, "BNODE");
+            a.NetRom.BroadcastNodes();
+            b.NetRom.BroadcastNodes();
+            await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("BNODE") is not null, "A learns BNODE", generous);
+            await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination("ANODE") is not null, "B learns ANODE", generous);
 
-        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
-        await using var b = await StartNodeAsync(bus, BNodeCall, "BNODE");
-        a.NetRom.BroadcastNodes();
-        b.NetRom.BroadcastNodes();
-        await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("BNODE") is not null, "A learns BNODE", generous);
-        await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination("ANODE") is not null, "B learns ANODE", generous);
+            // A user at B has B's node call A's console over AX.25: the link B -> A is up, and at A
+            // it is a console session for GB7BBB, carrying no NET/ROM.
+            await using var userAtB = new RemoteStation(bus.Attach(), UserAtB);
+            await userAtB.StartAsync();
+            await userAtB.ConnectAsync(BNodeCall);
+            await Wait.ForAsync(() => userAtB.Saw("BNODE"), "B's banner reaches its user", generous);
+            userAtB.SendLine($"C 1 {ANodeCall}");
+            await Wait.ForAsync(() => userAtB.Saw("ANODE"), "A's banner reaches B's user through B's console", generous);
+            Volatile.Read(ref sabmsAtoB).Should().Be(0, "B dialled A, not the other way");
 
-        // A user at B has B's node call A's console over AX.25: the link B -> A is up, and at A
-        // it is a console session for GB7BBB, carrying no NET/ROM.
-        await using var userAtB = new RemoteStation(bus.Attach(), UserAtB);
-        await userAtB.StartAsync();
-        await userAtB.ConnectAsync(BNodeCall);
-        await Wait.ForAsync(() => userAtB.Saw("BNODE"), "B's banner reaches its user", generous);
-        userAtB.SendLine($"C 1 {ANodeCall}");
-        await Wait.ForAsync(() => userAtB.Saw("ANODE"), "A's banner reaches B's user through B's console", generous);
-        Volatile.Read(ref sabmsAtoB).Should().Be(0, "B dialled A, not the other way");
+            // Now a user at A routes to BNODE: A needs an interlink to B, and the link is already up.
+            await using var userAtA = new RemoteStation(bus.Attach(), UserAtA);
+            await userAtA.StartAsync();
+            await userAtA.ConnectAsync(ANodeCall);
+            await Wait.ForAsync(() => userAtA.Saw("ANODE"), "A's banner reaches its user", generous);
+            userAtA.SendLine("C BNODE");
+            await Wait.ForAsync(() => userAtA.Saw("BNODE") && userAtA.Saw("Connected"),
+                "A's user is routed over an L4 circuit to B's prompt", generous);
 
-        // Now a user at A routes to BNODE: A needs an interlink to B, and the link is already up.
-        await using var userAtA = new RemoteStation(bus.Attach(), UserAtA);
-        await userAtA.StartAsync();
-        await userAtA.ConnectAsync(ANodeCall);
-        await Wait.ForAsync(() => userAtA.Saw("ANODE"), "A's banner reaches its user", generous);
-        userAtA.SendLine("C BNODE");
-        await Wait.ForAsync(() => userAtA.Saw("BNODE") && userAtA.Saw("Connected"),
-            "A's user is routed over an L4 circuit to B's prompt", generous);
+            Volatile.Read(ref sabmsAtoB).Should().Be(0, "the interlink took the link B's call brought up; nothing was dialled");
+            userAtB.Saw("Disconnected from").Should().BeFalse("B's console on A rode on; the link was not reset under it");
 
-        Volatile.Read(ref sabmsAtoB).Should().Be(0, "the interlink took the link B's call brought up; nothing was dialled");
-        userAtB.Saw("Disconnected from").Should().BeFalse("B's console on A rode on; the link was not reset under it");
-
-        // The console link still works for B's user: a command runs on A and its reply comes back.
-        userAtB.SendLine("I");
-        await Wait.ForAsync(() => userAtB.Saw("Software: Packet.NET"), "B's user still has A's console over the same link", generous);
-
-        await stop.CancelAsync();
+            // The console link still works for B's user: a command runs on A and its reply comes back.
+            userAtB.SendLine("I");
+            await Wait.ForAsync(() => userAtB.Saw("Software: Packet.NET"), "B's user still has A's console over the same link", generous);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await watching;
+        }
     }
 }

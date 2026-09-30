@@ -552,6 +552,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                     interlinks.TryRemove(key, out Interlink? _);
                 }
             }
+            ForgetAcceptedOn(portId);
             DropPortRoutes(portId);
             LogDetached(portId);
         }
@@ -601,8 +602,23 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             interlinks.TryRemove(key, out Interlink? _);
             await CloseInterlinkAsync(link, ct).ConfigureAwait(false);
         }
+        ForgetAcceptedOn(portId);
         DropPortRoutes(portId);
         LogDetached(portId);
+    }
+
+    // The sessions accepted on a port that is going: its listener stops without disconnecting
+    // them, so they would stay "Connected" for ever, and a dial after the port comes back must
+    // not take one the new listener does not own (packet.net#889, review).
+    private void ForgetAcceptedOn(string portId)
+    {
+        foreach (var key in accepted.Keys)
+        {
+            if (string.Equals(key.PortId, portId, StringComparison.Ordinal))
+            {
+                accepted.TryRemove(key, out Ax25Session? _);
+            }
+        }
     }
 
     // ─── L4: interlink teardown ─────────────────────────────────────────
@@ -1356,10 +1372,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // A link to the neighbour that is already up (it called our console, say) is the
         // interlink: take it, with nothing sent. A DL-CONNECT request on it would re-establish
         // the link (figc4.4 / figc4.5: SABM(E) on an up link, a §6.5 reset), discarding what
-        // is in flight at both ends for no reason (packet.net#889). A session a close is
-        // draining is left alone: its DISC is coming.
+        // is in flight at both ends for no reason (packet.net#889). Only a session the port's
+        // listener still serves (not one evicted, or left over from before a port restart),
+        // and not one a close is draining: its DISC is coming.
         if (accepted.TryGetValue(key, out var live)
             && live.CurrentState is "Connected" or "TimerRecovery"
+            && attachment.Listener.ActiveSessions.Contains(live)
             && !Ax25GracefulClose.IsClosing(live))
         {
             OnSessionAccepted(attachment.PortId, live);
