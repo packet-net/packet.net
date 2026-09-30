@@ -106,10 +106,16 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     // never from a first-match scan.
     private readonly ConcurrentDictionary<NeighbourKey, Interlink> interlinks = new();
 
-    // Adjacencies whose interlink dial is in flight: the dial lands on the neighbour's live
-    // inbound session when there is one (a DL-CONNECT request on it, a reset), and the link is
-    // recorded as an interlink only once the dial returns.
+    // Adjacencies whose interlink dial is in flight. The link is recorded as an interlink only
+    // once the dial returns, and a session of the neighbour's that comes up meanwhile (its own
+    // call crossing ours) is the one the dial lands on.
     private readonly ConcurrentDictionary<NeighbourKey, byte> interlinkDials = new();
+
+    // The session most recently accepted on each adjacency from the node's own callsign (a
+    // neighbour calling our console, or our own dial's confirm). An interlink dial that finds
+    // one up takes it instead of sending SABM(E) on a live link, which would reset it
+    // (packet.net#889): the rule #862 gives app and console dials, applied here.
+    private readonly ConcurrentDictionary<NeighbourKey, Ax25Session> accepted = new();
 
     /// <summary>Whether <paramref name="session"/> on <paramref name="portId"/> carries a
     /// NET/ROM interlink right now, or is the neighbour's session an interlink dial is landing
@@ -895,6 +901,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // calling in on a second port opens a second interlink instead of losing the race to
         // whichever port carried the first 0xCF datagram.
         var key = new NeighbourKey(portId, peer);
+        if (a is not null && session.Context.Local.Equals(a.MyCall))
+        {
+            accepted[key] = session;
+        }
 
         // The tap is declared as a self-referencing local so it can DETACH itself on
         // disconnect. A cached Ax25Session is reused across disconnect/reconnect (the
@@ -923,6 +933,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             {
                 session.DataLinkSignalEmitted -= tap;
                 tapped.TryRemove(session, out byte _);
+                accepted.TryRemove(KeyValuePair.Create(key, session));
                 if (interlinks.TryGetValue(key, out var link) && ReferenceEquals(link.Session, session))
                 {
                     interlinks.TryRemove(key, out Interlink? _);
@@ -1341,6 +1352,23 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             throw new InvalidOperationException(
                 $"NET/ROM port '{key.PortId}' is not attached; cannot open an interlink to {neighbour} on it.");
         }
+
+        // A link to the neighbour that is already up (it called our console, say) is the
+        // interlink: take it, with nothing sent. A DL-CONNECT request on it would re-establish
+        // the link (figc4.4 / figc4.5: SABM(E) on an up link, a §6.5 reset), discarding what
+        // is in flight at both ends for no reason (packet.net#889). A session a close is
+        // draining is left alone: its DISC is coming.
+        if (accepted.TryGetValue(key, out var live)
+            && live.CurrentState is "Connected" or "TimerRecovery"
+            && !Ax25GracefulClose.IsClosing(live))
+        {
+            OnSessionAccepted(attachment.PortId, live);
+            interlinks[key] = new Interlink(attachment.Listener, live);
+            var liveText = key.ToString();
+            LogInterlinkTakesLiveLink(liveText);
+            return;
+        }
+
         LogInterlinkEgress(neighbour, attachment.PortId);
 
         // Consult the port's declared link policy, then the per-peer capability cache, for this
@@ -1566,6 +1594,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: interlink to {Neighbour} up.")]
     private partial void LogInterlinkUp(string neighbour);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: interlink to {Neighbour} uses the link already up; nothing dialled.")]
+    private partial void LogInterlinkTakesLiveLink(string neighbour);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: interlink to {Neighbour} disconnected (clean teardown).")]
     private partial void LogInterlinkClosed(string neighbour);

@@ -96,6 +96,11 @@ internal sealed class Ax25GracefulClose
     /// kill and shutdown. If a close is pending on the session it is cut short. A link in the
     /// middle of a reset, or still being dialled, is disconnected as soon as it is up.
     /// </summary>
+    /// <summary>Whether a close is draining <paramref name="session"/> right now: the link
+    /// is still up, but DISC follows once the peer has everything, so it is no link to take
+    /// for new work (packet.net#889).</summary>
+    internal static bool IsClosing(Ax25Session session) => Pending.TryGetValue(session, out _);
+
     public static void DisconnectNow(Ax25Session session)
     {
         if (Pending.TryGetValue(session, out var close))
