@@ -411,13 +411,18 @@ public sealed class Ax25Session
 
         // A DL-DATA request is bounded by N1 (the peer rejects a longer I frame and
         // re-establishes the link, packet.net#808). Posted raw, an over-N1 byte-stream
-        // payload is split into N1-sized requests here, and an over-N1 datagram is refused;
-        // the segmenter, when negotiated, has already produced PID-0x08 segments within N1.
-        if (evt is DlDataRequest dr && dr.Data.Length > Context.N1 && dr.Pid != Ax25Frame.PidSegmented)
+        // payload is split into N1-sized requests here, and an over-N1 datagram is refused
+        // (a segment the negotiated segmenter produced is within N1 by construction, so one
+        // over N1 is malformed and refused like any datagram). Under the gate, so the pieces
+        // of one request are not interleaved with another poster's, and N1 is read once.
+        if (evt is DlDataRequest dr && dr.Data.Length > Context.N1)
         {
-            foreach (var part in SegmentationLayer.SplitAtN1(dr.Data, dr.Pid, Context.N1))
+            lock (dispatchGate)
             {
-                PostEvent(part);
+                foreach (var part in SegmentationLayer.SplitAtN1(dr.Data, dr.Pid, Context.N1))
+                {
+                    PostEvent(part);
+                }
             }
             return;
         }

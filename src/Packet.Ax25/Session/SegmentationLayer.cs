@@ -153,11 +153,19 @@ public sealed class SegmentationLayer
             return new[] { new DlDataRequest(data, pid) };
         }
 
+        if (n1 <= 0)
+        {
+            // Reachable from the wire: a peer's XID can advertise an I-field length under
+            // eight bits. A link that carries no information field cannot carry this.
+            throw new InvalidOperationException(
+                $"payload of {data.Length} bytes cannot be sent: the link's N1 is {n1}, so no I frame can carry information.");
+        }
+
         if (pid != Ax25Frame.PidNoLayer3)
         {
             throw new InvalidOperationException(
                 $"payload of {data.Length} bytes with PID 0x{pid:X2} exceeds N1={n1} and the segmenter/reassembler " +
-                "has not been negotiated (AX.25 v2.2 §6.6 — segmentation requires both peers to advertise " +
+                "has not been negotiated (AX.25 v2.2 §6.6 - segmentation requires both peers to advertise " +
                 "the XID HDLC-Optional-Functions segmenter bit). A datagram cannot be split without breaking " +
                 "it, and sent whole the peer would reject the frame; rejecting the request instead.");
         }

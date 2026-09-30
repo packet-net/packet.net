@@ -96,6 +96,28 @@ public class SegmentationLayerTests
     }
 
     [Fact]
+    public void An_N1_of_zero_refuses_rather_than_looping()
+    {
+        // A peer's XID can advertise an I-field length under eight bits. Before the split
+        // the request was refused; the split must refuse too, not spin on zero-length pieces.
+        var seg = new SegmentationLayer(Ctx(n1: 0, segmenterEnabled: false));
+        var act = () => seg.BuildSendRequests(new byte[10]);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*N1 is 0*");
+    }
+
+    [Fact]
+    public void An_oversize_segment_posted_raw_is_refused_like_a_datagram()
+    {
+        // A segment the negotiated segmenter produced is within N1 by construction, so one
+        // over N1 is malformed; the split rule refuses it rather than putting it on the air.
+        var seg = new SegmentationLayer(Ctx(n1: 256, segmenterEnabled: false));
+        var act = () => seg.BuildSendRequests(new byte[300], Ax25Frame.PidSegmented);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*PID 0x08*");
+    }
+
+    [Fact]
     public void Send_passes_a_within_N1_payload_even_when_the_segmenter_is_off()
     {
         var seg = new SegmentationLayer(Ctx(n1: 256, segmenterEnabled: false));
