@@ -6,6 +6,7 @@
 
 **As of:** 2026-09-30
 **Current phase:** Phases 0-5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete - mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 - `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) - see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces); Phase 7's channel-aware in-app self-update is shipped for the two channels that remain - the apt repo is maintainer-owned and out of scope, and the self-contained installer + distribution feed were withdrawn 2026-08-05, leaving a `.deb` and a `.tar.gz` as the whole of what pdn distributes ([`docs/node-self-update-design.md`](node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-09-30 - **node: `pdn flash-tnc` flashes a NinoTNC from the packaged binary (#175)** - the Phase 10 exit criterion's node-host wiring: `packet-tune flash-tnc` ported as a `pdn` verb, same pre-flight, confirmation and post-flash GETVER, refusing while the node holds the port; node only, ships with the next node release](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-30 - **traffic: the record/replay harness (SP-003, #178)** - a JSON-lines capture format, `pdn traffic export` from the persisted traffic log, and `pdn traffic replay` that runs a capture through the parser (Strict, then Lenient) and the link observer and prints the reading; node only, ships with the next node release](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-30 - **MCP OAuth: refresh tokens, rotated per grant (#428, second slice)** - the code exchange mints a refresh token in a `RefreshTokenService` family with the grant (client, scope) recorded against it in `oauth_grant`; `grant_type=refresh_token` rotates it and re-issues that grant, bound to the presenting client and the owner's current scope; `/oauth/revoke` ends a presented refresh token's family; node only, ships with the next node release](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-09-30 - **auth: one token can be revoked on its own (#428, first slice)** - every JWT carries a `jti`, `/oauth/revoke` lists a presented token's id in `revoked_token` until its expiry, and the bearer path refuses a listed id for panel and MCP tokens alike; refresh rotation and the connected-apps panel stay open on #428; node only, ships with the next node release](#17-amendment-log)
@@ -714,7 +715,7 @@ The differentiator no other TNC stack does well: treat the radio + modem as firs
 - Per-link quality index visible in web UI + persisted to time-series.
 - At least one adaptive parameter (T1 or k) wired to quality feedback under a `--adaptive` flag.
 - NinoTNC mode-change demonstrated end-to-end (manual trigger, no auto-negotiation needed for exit).
-- `packetnet ctl flash-tnc` working from CLI; web UI integration optional.
+- `packetnet ctl flash-tnc` working from CLI; web UI integration optional. ✅ (2026-09-30, #175: `pdn flash-tnc <port> <hex> [--yes]` in the node's own binary, the same pre-flight, confirmation and post-flash GETVER as `packet-tune flash-tnc`; web UI still optional)
 
 ### 5.11 Phase 11 — Close the loop: a self-measuring, self-reconfiguring network ⬜ (post-v1)
 
@@ -1442,6 +1443,14 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-09-30 - node: `pdn flash-tnc` flashes a NinoTNC from the packaged binary (#175)
+
+Phase 10's exit criterion "`packetnet ctl flash-tnc` working from CLI" had everything but the node-host wiring: `BootloaderNinoTncFirmwareFlasher` is hardware-proven (OQ-010) and `packet-tune flash-tnc` drives it, but `packet-tune` is a checkout tool, not part of the `.deb`, so an operator on a packaged node had no way to flash without this repo.
+
+- **What ships.** `pdn flash-tnc <tncPort> <hexFile> [--yes]` (`PdnFlashTncCli`), a port of the `packet-tune` command that short-circuits before the web host like `pdn auth` and `pdn config`: the image's target chip is classified, the port is refused while another process holds it (the running node, most likely; stop `packetnet.service` or disable the port first), the running firmware version is read over GETVER, the operator confirms unless `--yes`, and after the flash the TNC's reboot is waited out and re-verified. The reminder about the RAM mode resetting to 0 now says the node re-applies the port's configured mode at bring-up, since that is what the node does; `packet-tune`'s copy still points at `set-mode`.
+- **Evidence.** `PdnFlashTncCliTests`: the argument and image pre-flight (missing arguments, a missing or malformed image) fail before any port is opened. The flash path itself is unchanged code, hardware-validated through `packet-tune` (§17 2026-07-03). `Packet.Node.Tests` green.
+- **Release impact.** Node only, ships with the next node release. `operating/07-advanced-tooling.md` names the packaged spelling.
 
 ### 2026-09-30 - traffic: the record/replay harness (SP-003, #178)
 
