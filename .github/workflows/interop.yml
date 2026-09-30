@@ -87,8 +87,14 @@ jobs:
       # Runs FIRST on a pristine stack so no NET/ROM residue can precede it.
       # Excludes the NET/ROM scenarios (Group=NetRom) — they run isolated in
       # phase C.
-      - name: recreate stack (phase A — AX.25 + general)
-        run: scripts/interop-recreate-stack.sh
+      - name: interop tests (C#) — AX.25 + general (Group!=NetRom)
+        # Exclusive box-wide flock: hold the host to ourselves while the AFSK
+        # net-sim stack + interop tests run, so a concurrent `ci` leg can't
+        # oversubscribe the CPU. Command-wrapped → auto-releases on exit (§7.2.2).
+        # The stack is recreated INSIDE the lock, not before taking it (#736): the
+        # soft modems must not spend the lock wait competing for CPU with whatever
+        # job holds the box, and the health check must run on a box we own.
+        run: flock -x /tmp/pdn-ci-heavy.lock bash -c 'scripts/interop-recreate-stack.sh && dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group!=NetRom"'
         env:
           COMPOSE_PROJECT_NAME: packetnet-interop
 
@@ -97,12 +103,6 @@ jobs:
         run: |
           docker compose -f docker/compose.interop.yml ps
           docker compose -f docker/compose.interop.yml logs --tail=200
-
-      - name: interop tests (C#) — AX.25 + general (Group!=NetRom)
-        # Exclusive box-wide flock: hold the host to ourselves while the AFSK
-        # net-sim stack + interop tests run, so a concurrent `ci` leg can't
-        # oversubscribe the CPU. Command-wrapped → auto-releases on exit (§7.2.2).
-        run: flock -x /tmp/pdn-ci-heavy.lock dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group!=NetRom"
 
       # ── Phase B: ax25-ts integration suite ────────────────────────────────
       # ax25-ts (packet-net/ax25-ts) ships its own integration suite against LinBPQ
@@ -128,18 +128,6 @@ jobs:
       # and parity-exceptions.json — is all the drift guard needs, so a blobless
       # sparse checkout of the parity artifacts is enough.
 
-      - name: recreate stack (phase B — ax25-ts)
-        if: ${{ !cancelled() }}
-        run: scripts/interop-recreate-stack.sh
-        env:
-          COMPOSE_PROJECT_NAME: packetnet-interop
-
-      - name: dump container state (phase B)
-        if: failure()
-        run: |
-          docker compose -f docker/compose.interop.yml ps
-          docker compose -f docker/compose.interop.yml logs --tail=200
-
       - name: ax25-ts integration tests
         if: ${{ !cancelled() }}
         # `npm run test:integration` uses the integration vitest config,
@@ -149,8 +137,17 @@ jobs:
           cd "${RUNNER_TEMP}/ax25-ts"
           npm ci
           npm run build
-          # Exclusive box-wide flock around the AFSK-stack test run (§7.2.2).
-          flock -x /tmp/pdn-ci-heavy.lock npm run test:integration
+          # Exclusive box-wide flock around the stack recreate + the AFSK-stack
+          # test run (§7.2.2); the recreate is inside the lock (#736).
+          flock -x /tmp/pdn-ci-heavy.lock bash -c "\"${GITHUB_WORKSPACE}/scripts/interop-recreate-stack.sh\" && npm run test:integration"
+        env:
+          COMPOSE_PROJECT_NAME: packetnet-interop
+
+      - name: dump container state (phase B)
+        if: failure()
+        run: |
+          docker compose -f docker/compose.interop.yml ps
+          docker compose -f docker/compose.interop.yml logs --tail=200
 
       # Every phase below carries `!cancelled()` for the same reason the parity guard
       # does: one phase failing must not hide what the others would have told us. Each
@@ -165,9 +162,10 @@ jobs:
       # timing-sensitive AX.25 test. Each scenario also tears down its own state
       # (NetRomService.DisposeAsync DISCs its interlinks), so it leaves the stack
       # clean even within the group.
-      - name: recreate stack (phase C — NET/ROM)
+      - name: interop tests (C#) — NET/ROM (Group=NetRom)
         if: ${{ !cancelled() }}
-        run: scripts/interop-recreate-stack.sh
+        # Exclusive box-wide flock (§7.2.2), the recreate inside it (#736).
+        run: flock -x /tmp/pdn-ci-heavy.lock bash -c 'scripts/interop-recreate-stack.sh && dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group=NetRom"'
         env:
           COMPOSE_PROJECT_NAME: packetnet-interop
 
@@ -176,11 +174,6 @@ jobs:
         run: |
           docker compose -f docker/compose.interop.yml ps
           docker compose -f docker/compose.interop.yml logs --tail=200
-
-      - name: interop tests (C#) — NET/ROM (Group=NetRom)
-        if: ${{ !cancelled() }}
-        # Exclusive box-wide flock (§7.2.2).
-        run: flock -x /tmp/pdn-ci-heavy.lock dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group=NetRom"
 
       # ── The cross-stack parity drift guard — LAST, and never a gate on coverage ──
       # This is a TRUE 3-way mirror: ax25-ts ships scripts/parity-check.mjs, which
