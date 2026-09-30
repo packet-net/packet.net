@@ -56,6 +56,14 @@ if (args.Length > 0 && args[0] == "auth")
     return await PdnAuthCli.RunAsync(args);
 }
 
+// `pdn traffic export` / `pdn traffic replay <capture>` - the record/replay harness (SP-003,
+// #178): the persisted traffic log out as a portable JSON-lines capture, and a capture back
+// through the parser and the link observer. Offline like the verbs above. See PdnTrafficCli.
+if (args.Length > 0 && args[0] == "traffic")
+{
+    return await PdnTrafficCli.RunAsync(args);
+}
+
 var configPath = ResolveConfigPath(args);
 var dbPath = ResolveDbPath(args);
 var seedPath = ResolveSeedPath();
