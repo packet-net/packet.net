@@ -107,7 +107,9 @@ public enum StatusFlags
 /// Codes 0-16 come from the published spec (PWP-0222 / PWP-0245).
 /// <see cref="NotConnected"/> (17) is XRouter-observed only: real XRouter
 /// returns it from <c>send</c> on a stream socket whose downlink hasn't
-/// (or has stopped) being connected. Ints rather than an enum so an
+/// (or has stopped) being connected. <see cref="AlreadyConnected"/> (18) is
+/// pdn's own: an <c>open</c> to a peer the calling callsign already has a link
+/// up with (packet-net/packet.net#862). Ints rather than an enum so an
 /// unrecognised future code still flows through DTOs unchanged.
 /// </remarks>
 public static class RhpErrorCode

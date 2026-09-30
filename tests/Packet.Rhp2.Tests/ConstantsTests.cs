@@ -97,6 +97,7 @@ public class ConstantsTests
     [InlineData(RhpErrorCode.OperationNotSupported, "Operation not supported")]
     // 17 is XRouter-observed, not in the published spec.
     [InlineData(RhpErrorCode.NotConnected, "Not connected")]
+    [InlineData(RhpErrorCode.AlreadyConnected, "Already connected")]
     public void Error_code_canonical_text_matches_the_spec(int code, string expected)
     {
         RhpErrorCode.Text(code).Should().Be(expected);
@@ -123,6 +124,7 @@ public class ConstantsTests
         RhpErrorCode.NoRoute.Should().Be(15);
         RhpErrorCode.OperationNotSupported.Should().Be(16);
         RhpErrorCode.NotConnected.Should().Be(17);
+        RhpErrorCode.AlreadyConnected.Should().Be(18);
     }
 
     [Fact]

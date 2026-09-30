@@ -331,11 +331,18 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         var port = TryGetRunning(portId);
 
-        return port is null
-            ? null
-            : new Ax25OutboundConnector(
-                port.Id, port.Listener, r => ClaimOutbound(port.Id, localOverride ?? port.Listener.MyCall, r), localOverride, capabilityCache, LinkPolicyFor(port.Id),
-                timeProvider);
+        if (port is null)
+        {
+            return null;
+        }
+
+        // The restart hand-over (#850) for the links this connector makes: the supervisor offers
+        // a restarted link to a console, an app's accept, or a dial whose claim covers it (#862).
+        Ax25OutboundConnector? made = null;
+        made = new Ax25OutboundConnector(
+            port.Id, port.Listener, r => ClaimOutbound(port.Id, localOverride ?? port.Listener.MyCall, r), localOverride, capabilityCache, LinkPolicyFor(port.Id),
+            timeProvider, peerRestarted: s => TryAcceptInbound(port.Id, port.Listener, made!, s));
+        return made;
     }
 
     /// <summary>
@@ -667,11 +674,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         var serving = CanonicalServingPortIds();
         var first = serving.Count == 0 ? null : TryGetRunning(serving[0]);
-        var ax25 = first is null
-            ? null
-            : new Ax25OutboundConnector(
+        Ax25OutboundConnector? ax25 = null;
+        if (first is not null)
+        {
+            ax25 = new Ax25OutboundConnector(
                 first.Id, first.Listener, r => ClaimOutbound(first.Id, first.Listener.MyCall, r), localOverride: null, cache: capabilityCache,
-                linkPolicy: LinkPolicyFor(first.Id), timeProvider: timeProvider);
+                linkPolicy: LinkPolicyFor(first.Id), timeProvider: timeProvider,
+                peerRestarted: s => TryAcceptInbound(first.Id, first.Listener, ax25!, s));
+        }
 
         // A telnet dial-in has no callsign of its own; a NET/ROM-routed `connect`
         // originates on behalf of this node. Wrap with NET/ROM routing when enabled
@@ -755,9 +765,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             get { lock (owner.outboundGate) { return state.AcceptSuppressed && !state.Delivered && state.Count == 1; } }
         }
 
+        // Null once a dial on the key has been handed the link: the accept the dial's own
+        // DL-CONNECT confirm raises is suppressed and recorded too, and a second dial
+        // overlapping on the same key must not take a link the first now owns.
         public Ax25Session? LinkUnderClaim
         {
-            get { lock (owner.outboundGate) { return state.Session; } }
+            get { lock (owner.outboundGate) { return state.Delivered ? null : state.Session; } }
         }
 
         public void MarkDelivered()
@@ -1997,7 +2010,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // calling another callsign of ours, from being swallowed.
         if (SuppressIfOutbound(portId, session.Context.Local, session.Context.Remote, session))
         {
-            return false;
+            // Taken, by the dial that holds the claim: it reads the session off the claim and
+            // hands the link to its caller (#862), or, failing, ends the link (#867). So a
+            // graceful close asking whether a restarted link found an owner hears yes, and
+            // does not DISC the link the dial is about to take.
+            return true;
         }
 
         // Cutover observability: a genuine inbound caller (the outbound guard above ruled out

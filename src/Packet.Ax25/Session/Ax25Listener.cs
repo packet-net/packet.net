@@ -2231,7 +2231,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     [LoggerMessage(EventId = 5208, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} waits for the previous link to finish disconnecting")]
     private partial void LogConnectWaitsForRelease(string port, string local, string remote);
 
-    [LoggerMessage(EventId = 5209, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} <-> {Remote} ({Version}) by the peer's own call during the pre-connect XID; not re-dialling")]
+    [LoggerMessage(EventId = 5209, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} <-> {Remote} ({Version}) by the peer's own call during the dial; not re-dialling")]
     private partial void LogConnectedByPeerDuringXid(string port, string local, string remote, string version);
 
     [LoggerMessage(EventId = 5222, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} -> {Local}: XID command with no session - answering it before any connection")]

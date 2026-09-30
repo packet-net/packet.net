@@ -93,8 +93,8 @@ rhp-message = auth / auth-reply
 
 ; ─── Shared fragments ─────────────────────────────────────────────────────────
 
-; Error codes 0–18 (row 8: 17 is XRouter-observed, 18 is pdn's own; neither is
-; in the published spec)
+; Error codes 0 to 18 (row 8: 17 is XRouter-observed, 18 is pdn's own; neither
+; is in the published spec)
 err-code = 0..18
 
 ; NOTE on the "-val" suffixes below: a rule name must never collide with a

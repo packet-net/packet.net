@@ -80,6 +80,50 @@ public sealed class RhpOpenCrossedCallTests
     }
 
     [Fact]
+    public async Task A_dial_waiting_behind_a_closing_link_takes_the_link_the_stations_call_brings_up_under_it()
+    {
+        // #862 through the real supervisor and claim. The client opened to the station and
+        // closed the handle with a line the station never acknowledged, so the close is still
+        // draining (#850) when the client opens again; the new dial waits for it (#844). The
+        // station then calls the app callsign: the draining link is restarted, the supervisor
+        // is asked for an owner and records the session on the new dial's claim instead of
+        // starting a console, and the dial takes that link as its own, crossed, with no SABME
+        // of ours and no DL-CONNECT request onto it.
+        await using var rig = await Rig.StartAsync(Config(probe: true), callsBack: false);
+
+        await rig.Client.SendRawAsync(OpenToStation);
+        var first = await rig.Client.ReadUntilAsync("openReply");
+        first.Should().Contain("\"errCode\":0");
+        int h1 = JsonInt(first, "handle");
+        await rig.Client.ReadUntilAsync("status");
+        int sabmesForFirstDial = rig.Station.SabmesHeard;
+
+        rig.Station.AcksData = false;
+        await rig.Client.SendRawAsync($$"""{"type":"send","id":20,"handle":{{h1}},"data":"unacknowledged\r"}""");
+        (await rig.Client.ReadUntilAsync("sendReply")).Should().Contain("\"errCode\":0");
+        await rig.Station.WaitForDataAsync("unacknowledged");
+        await rig.Client.SendRawAsync($$"""{"type":"close","id":21,"handle":{{h1}}}""");
+        (await rig.Client.ReadUntilAsync("closeReply")).Should().Contain("\"errCode\":0");
+
+        // The second open waits behind the draining close; the station's call lands meanwhile.
+        await rig.Client.SendRawAsync("""{"type":"open","id":22,"pfam":"ax25","mode":"stream","port":"p1","local":"N0BBB-3","remote":"N0AAA-3","flags":128}""");
+        await Task.Delay(300);
+        await rig.Station.CallAsync();
+
+        var json = await rig.Client.ReadUntilAsync("openReply");
+        json.Should().Contain("\"errCode\":0");
+        json.Should().EndWith(",\"crossed\":true}");
+        rig.Station.SabmesHeard.Should().Be(sabmesForFirstDial, "the dial took the link the station's call brought up rather than dialling onto it");
+
+        // And it is a working link: the client's next line arrives.
+        rig.Station.AcksData = true;
+        int h2 = JsonInt(json, "handle");
+        await rig.Client.SendRawAsync($$"""{"type":"send","id":23,"handle":{{h2}},"data":"on the new link\r"}""");
+        (await rig.Client.ReadUntilAsync("sendReply")).Should().Contain("\"errCode\":0");
+        await rig.Station.WaitForDataAsync("on the new link");
+    }
+
+    [Fact]
     public async Task A_dial_on_a_link_an_accept_already_holds_is_refused_with_already_connected()
     {
         // The station reached our app callsign first (the RHP listener got its accept), then
@@ -180,6 +224,8 @@ public sealed class RhpOpenCrossedCallTests
         private readonly Task loop;
         private int calledBack;
 
+        private int acksData = 1;
+
         public ScriptedStation(IAx25Transport wire, Callsign me, Callsign caller, bool callsBack)
         {
             this.wire = wire;
@@ -188,6 +234,10 @@ public sealed class RhpOpenCrossedCallTests
             this.callsBack = callsBack;
             loop = Task.Run(RunAsync);
         }
+
+        /// <summary>While false, the node's I frames are taken but never acknowledged, so a
+        /// graceful close of the node's handle keeps draining.</summary>
+        public bool AcksData { set => Volatile.Write(ref acksData, value ? 1 : 0); }
 
         public bool CalledBack => Volatile.Read(ref calledBack) != 0;
 
@@ -252,7 +302,15 @@ public sealed class RhpOpenCrossedCallTests
                             {
                                 received.Append(System.Text.Encoding.ASCII.GetString(frame.Info.Span));
                             }
-                            await SendAsync(Ax25Frame.Rr(caller, me, nr: (byte)((frame.Ns + 1) % 128), isCommand: false, pollFinal: frame.PollFinal, extended: true));
+                            if (Volatile.Read(ref acksData) != 0)
+                            {
+                                await SendAsync(Ax25Frame.Rr(caller, me, nr: (byte)((frame.Ns + 1) % 128), isCommand: false, pollFinal: frame.PollFinal, extended: true));
+                            }
+                            break;
+                        case Ax25FrameType.Rr or Ax25FrameType.Rnr or Ax25FrameType.Rej when frame.PollFinal && Volatile.Read(ref acksData) == 0:
+                            // A poll while we withhold acknowledgements: answer it with the
+                            // N(R) we last acknowledged (nothing), so the node keeps waiting.
+                            await SendAsync(Ax25Frame.Rr(caller, me, nr: 0, isCommand: false, pollFinal: true, extended: true));
                             break;
                         case Ax25FrameType.Disc:
                             await SendAsync(Ax25Frame.Ua(caller, me, finalBit: frame.PollFinal));
