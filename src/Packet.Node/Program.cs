@@ -281,6 +281,11 @@ builder.Services.AddSingleton<Packet.Node.Core.Auth.Oauth.IOauthClientStore>(
 builder.Services.AddSingleton<Packet.Node.Core.Auth.Oauth.IOauthCodeStore>(
     new Packet.Node.Core.Auth.Oauth.SqliteOauthCodeStore(
         dbPath, bootstrapLoggers.CreateLogger<Packet.Node.Core.Auth.Oauth.SqliteOauthCodeStore>()));
+// What each OAuth refresh-token family was granted for (client + scope), so a refresh
+// re-issues that grant and nothing wider (#428).
+builder.Services.AddSingleton<Packet.Node.Core.Auth.Oauth.IOauthGrantStore>(
+    new Packet.Node.Core.Auth.Oauth.SqliteOauthGrantStore(
+        dbPath, bootstrapLoggers.CreateLogger<Packet.Node.Core.Auth.Oauth.SqliteOauthGrantStore>()));
 
 var signingKey = userStore.GetOrCreateSigningKey();
 var accessTokenLifetime = TimeSpan.FromMinutes(configProvider.Current.Management.Auth.AccessTokenMinutes ?? 60);
