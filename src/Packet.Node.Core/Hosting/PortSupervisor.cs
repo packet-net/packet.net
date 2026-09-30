@@ -736,8 +736,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             if (outboundInProgress.TryGetValue((portId, local, remote), out var state))
             {
-                state.AcceptSuppressed = true;
-                state.Session = session;
+                state.Undelivered = session;
                 return true;
             }
 
@@ -748,9 +747,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private sealed class OutboundClaimState
     {
         public int Count;
-        public bool AcceptSuppressed;
-        public bool Delivered;
-        public Ax25Session? Session;
+        // The link a suppressed accept brought up under the claim and no dial has taken yet:
+        // recorded by SuppressIfOutbound, cleared by MarkDelivered. A dial's own connect raises
+        // a suppressed accept too, which it then takes; a peer's call under a claim whose
+        // earlier dial was already handed its link is recorded afresh for the next dial (#862).
+        public Ax25Session? Undelivered;
     }
 
     private sealed class OutboundTicket(
@@ -758,26 +759,27 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         private int released;
 
-        // The peer's call set the link up under the claim (its accept was dropped), no dial on
-        // the key has handed the link over, and no other dial on the key is still running.
+        // A call set a link up under the claim (its accept was dropped), no dial has taken it,
+        // and this is the last dial on the key: nobody will.
         public bool LeavesALinkNobodyHolds
         {
-            get { lock (owner.outboundGate) { return state.AcceptSuppressed && !state.Delivered && state.Count == 1; } }
+            get { lock (owner.outboundGate) { return state.Undelivered is not null && state.Count == 1; } }
         }
 
-        // Null once a dial on the key has been handed the link: the accept the dial's own
-        // DL-CONNECT confirm raises is suppressed and recorded too, and a second dial
-        // overlapping on the same key must not take a link the first now owns.
+        // The link a call brought up under the claim that no dial has taken yet. The accept a
+        // dial's own DL-CONNECT confirm raises is recorded here too, and taken by that dial; a
+        // second dial overlapping on the key cannot take a link the first was handed, since
+        // handing it over clears it.
         public Ax25Session? LinkUnderClaim
         {
-            get { lock (owner.outboundGate) { return state.Delivered ? null : state.Session; } }
+            get { lock (owner.outboundGate) { return state.Undelivered; } }
         }
 
         public void MarkDelivered()
         {
             lock (owner.outboundGate)
             {
-                state.Delivered = true;
+                state.Undelivered = null;
             }
         }
 

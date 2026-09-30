@@ -14,12 +14,12 @@ public interface IOutboundClaim : IDisposable
     bool LeavesALinkNobodyHolds { get; }
 
     /// <summary>
-    /// The session a call brought up under this claim (its accept was suppressed), if that has
-    /// happened and no dial on the key has been handed the link yet: the link this dial is for,
-    /// set up by the peer's call instead of ours (packet-net/packet.net#862). Null until then,
-    /// and null again once <see cref="MarkDelivered"/> has run, since the dial's own connect
-    /// raises a suppressed accept too and a second dial overlapping on the key must not take a
-    /// link the first now owns.
+    /// The session a call brought up under this claim (its accept was suppressed) that no dial
+    /// has taken yet: the link this dial is for, set up by the peer's call instead of ours
+    /// (packet-net/packet.net#862). Null until then, and null again once
+    /// <see cref="MarkDelivered"/> has taken it, since the dial's own connect raises a suppressed
+    /// accept too and a second dial overlapping on the key must not take a link the first was
+    /// handed. A later call under the same claim is recorded afresh.
     /// </summary>
     Packet.Ax25.Session.Ax25Session? LinkUnderClaim { get; }
 
