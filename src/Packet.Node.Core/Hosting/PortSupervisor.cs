@@ -2051,8 +2051,15 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             var connection = new Ax25NodeConnection(listener, session, timeProvider)
             {
                 // A caller who starts the link over (SABM) while the console's close is still
-                // delivering its tail gets a fresh console, as a new connect would.
-                PeerRestartedAfterClose = () => TryAcceptInbound(portId, listener, connector, session),
+                // delivering its tail, or while the console is still running and has output the
+                // caller never acknowledged (#885), gets a fresh console, as a new connect would.
+                // This owner's dedupe entry goes first: on a reset the console loop is still
+                // inside RunAsync and its finally has not cleared the entry yet.
+                PeerRestartedAfterClose = () =>
+                {
+                    consoleSessions.TryRemove(KeyValuePair.Create(session, owner));
+                    return TryAcceptInbound(portId, listener, connector, session);
+                },
                 // A neighbour's session NET/ROM is using rides out a reset: L4 recovers its
                 // own frames, and ending the console here would DISC the interlink (#885).
                 KeepOnLinkReset = () => netRom?.UsesAsInterlink(portId, session) == true,

@@ -854,7 +854,6 @@ public sealed class Ax25Session
             // request): the send window is abandoned now, whatever the peer answers, so it is
             // counted now and named after this arm, not after the UA that later zeroes V(s).
             windowLost = inFlight;
-            windowReported = windowLost > 0;
         }
         else if (vsBefore != vaBefore && Context.VS == 0 && Context.VA == 0
             && stateBefore is "Connected" or "TimerRecovery"
@@ -866,11 +865,6 @@ public sealed class Ax25Session
             windowLost = inFlight;
         }
 
-        if (CurrentState is "Connected" or "Disconnected")
-        {
-            windowReported = false;
-        }
-
         // Only where the link carries on: a reset, or this end re-establishing. The arms that
         // end the link (a DL-DISCONNECT request, a DISC or DM received, the N2 give-up) discard
         // the queue too, but they are disconnects, and they say so themselves.
@@ -880,10 +874,6 @@ public sealed class Ax25Session
             RaiseDataLinkSignal(new DataLinkResetIndication(queuedDiscarded, windowLost, match.Id));
         }
     }
-
-    // True from this end re-establishing with frames in flight until the link is up or down
-    // again: the window was counted at the arm that started it, not at the UA that zeroes it.
-    private bool windowReported;
 
     // The events the classifier and the listener make from a frame the peer sent, as opposed to
     // upper-layer primitives, timers and the session's own internal events.
