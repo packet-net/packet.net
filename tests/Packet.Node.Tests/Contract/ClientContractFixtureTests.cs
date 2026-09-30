@@ -454,7 +454,7 @@ public sealed class ClientContractFixtureTests
         Beacon = new BeaconConfig { Enabled = true, IntervalMinutes = 30, Text = "{node} pdn node" },
         Tailscale = new TailscaleConfig { Enabled = false, AuthKey = null, AuthKeyFile = null, Hostname = "pdn", Tags = ["tag:pdn"], StateDir = "/var/lib/packetnet/tsnet", Target = "127.0.0.1:8080", Funnel = false },
         Oarc = new OarcConfig { Enabled = false },
-        Mcp = new McpConfig { Oauth = new McpOauthConfig { Issuer = "https://pdn.m0lte.uk" } },
+        Mcp = new McpConfig { Oauth = new McpOauthConfig { Issuer = "https://pdn.m0lte.uk", AllowDynamicRegistration = false } },
         Ardop = new ArdopConfig { Enabled = false, Flex = null },
         Paging = new PagingConfig { Enabled = false, Flex = null },
         HeadEnds = [new HeadEndConfig { Id = "shack-pi", Address = "192.168.1.44:8080" }],

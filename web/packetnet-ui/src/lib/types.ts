@@ -418,7 +418,9 @@ export interface RhpConfig {
 }
 export interface McpSseConfig { enabled: boolean; path: string }
 // issuer: the canonical base URL discovery advertises; null derives it from each request (#427).
-export interface McpOauthConfig { enabled: boolean; accessTokenLifetimeMinutes: number; issuer: string | null }
+// allowDynamicRegistration: whether POST /oauth/register is open (#426); off means the operator
+// registers clients by hand.
+export interface McpOauthConfig { enabled: boolean; accessTokenLifetimeMinutes: number; issuer: string | null; allowDynamicRegistration: boolean }
 // The Model Context Protocol server (server: McpConfig).
 export interface McpConfig {
   enabled: boolean; sse: McpSseConfig; tokenLifetimeDays: number; oauth: McpOauthConfig;
