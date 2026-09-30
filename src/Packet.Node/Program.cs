@@ -56,12 +56,21 @@ if (args.Length > 0 && args[0] == "auth")
     return await PdnAuthCli.RunAsync(args);
 }
 
+<<<<<<< HEAD
 // `pdn flash-tnc <port> <hex> [--yes]` - flash a NinoTNC from the node's own binary (Phase 10,
 // #175). Short-circuits like the verbs above: it opens the serial port and nothing else, and
 // refuses when another process (a running node) holds it. See PdnFlashTncCli.
 if (args.Length > 0 && args[0] == "flash-tnc")
 {
     return await PdnFlashTncCli.RunAsync(args);
+=======
+// `pdn traffic export` / `pdn traffic replay <capture>` - the record/replay harness (SP-003,
+// #178): the persisted traffic log out as a portable JSON-lines capture, and a capture back
+// through the parser and the link observer. Offline like the verbs above. See PdnTrafficCli.
+if (args.Length > 0 && args[0] == "traffic")
+{
+    return await PdnTrafficCli.RunAsync(args);
+>>>>>>> origin/main
 }
 
 var configPath = ResolveConfigPath(args);
