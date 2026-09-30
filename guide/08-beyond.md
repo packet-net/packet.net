@@ -15,7 +15,10 @@ fragments that the far end reassembles. The engine does this transparently:
 - **Sending:** `listener.SendData(session, data, pid)` runs the payload through
   the session's segmenter when it exceeds N1 *and* the segmenter was negotiated
   (via XID). If it's over-size on a session that didn't negotiate the segmenter,
-  `SendData` throws `InvalidOperationException` rather than silently truncating.
+  a byte stream (PID `0xF0`) is split into N1-sized I frames, and a datagram (any
+  other PID) makes `SendData` throw `InvalidOperationException` rather than
+  silently truncating or sending a frame the peer would reject. A `DlDataRequest`
+  posted straight to the session follows the same rule.
 - **Receiving:** reassembly is wired into every session's inbound path, so a
   `DataLinkDataIndication` you receive already carries the reassembled whole.
 

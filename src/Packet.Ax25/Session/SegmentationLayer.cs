@@ -28,9 +28,9 @@ namespace Packet.Ax25.Session;
 /// layer gates the send side on
 /// <see cref="Ax25SessionContext.SegmenterReassemblerEnabled"/>. If a payload
 /// exceeds N1−1 (the max segment-free info-field size) and the segmenter is
-/// <em>not</em> enabled, <see cref="BuildSendRequests"/> throws - the request
-/// is rejected cleanly rather than silently truncated or sent as an
-/// oversize frame.
+/// <em>not</em> enabled, <see cref="BuildSendRequests"/> splits a byte-stream
+/// payload (PID 0xF0) into N1-sized I frames and rejects an over-N1 datagram
+/// (any other PID) cleanly, so no oversize frame is ever sent (packet.net#808).
 /// </para>
 /// <para>
 /// <b>Inner PID on reassembly - gated by
@@ -98,10 +98,11 @@ public sealed class SegmentationLayer
     /// </summary>
     /// <param name="data">The upper-layer payload.</param>
     /// <param name="pid">The Layer-3 PID for the (un-segmented) request.</param>
-    /// <exception cref="InvalidOperationException">If the payload exceeds N1−1
-    /// and the segmenter has not been negotiated (v2.0 / not enabled) - the
-    /// request can't be honoured without violating N1, so it's rejected
-    /// cleanly.</exception>
+    /// <exception cref="InvalidOperationException">If the payload exceeds N1,
+    /// carries a Layer-3 PID and the segmenter has not been negotiated (v2.0 / not
+    /// enabled) - a datagram can't be honoured without violating N1 or breaking it,
+    /// so it's rejected cleanly. A byte-stream payload (PID 0xF0) is split at N1
+    /// instead.</exception>
     public IReadOnlyList<DlDataRequest> BuildSendRequests(ReadOnlyMemory<byte> data, byte pid = Ax25Frame.PidNoLayer3)
     {
         // N1 is the max info-field octet count. An un-segmented info field is
@@ -117,11 +118,7 @@ public sealed class SegmentationLayer
 
         if (!context.SegmenterReassemblerEnabled)
         {
-            throw new InvalidOperationException(
-                $"payload of {data.Length} bytes exceeds N1={context.N1} and the segmenter/reassembler " +
-                "has not been negotiated (AX.25 v2.2 §6.6 — segmentation requires both peers to advertise " +
-                "the XID HDLC-Optional-Functions segmenter bit). Cannot send without segmenting; rejecting " +
-                "the request rather than truncating or producing an oversize frame.");
+            return SplitAtN1(data, pid, context.N1);
         }
 
         // Segment into PID-0x08 info fields and post each as its own I-frame
@@ -134,6 +131,49 @@ public sealed class SegmentationLayer
         for (int i = 0; i < segments.Count; i++)
         {
             requests[i] = new DlDataRequest(segments[i], Ax25Frame.PidSegmented);
+        }
+        return requests;
+    }
+
+    /// <summary>
+    /// The over-N1 rule for a link without the negotiated segmenter (packet.net#808). A
+    /// byte stream (<see cref="Ax25Frame.PidNoLayer3"/>) has no message boundaries, so it is
+    /// split into N1-sized I frames and the peer sees the same bytes in the same order; the
+    /// spec's DL-DATA request is bounded by N1 and every frame sent stays within it. A payload
+    /// with a Layer-3 PID is a datagram whose boundary matters (NET/ROM, IP, APRS): split it
+    /// and the peer decodes two broken packets, send it whole and the peer rejects the frame
+    /// and re-establishes the link (figc4.4 t26, DL-ERROR N), so it is refused here instead.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The payload exceeds N1, carries a Layer-3
+    /// PID and the segmenter is not negotiated.</exception>
+    internal static IReadOnlyList<DlDataRequest> SplitAtN1(ReadOnlyMemory<byte> data, byte pid, int n1)
+    {
+        if (data.Length <= n1)
+        {
+            return new[] { new DlDataRequest(data, pid) };
+        }
+
+        if (n1 <= 0)
+        {
+            // Reachable from the wire: a peer's XID can advertise an I-field length under
+            // eight bits. A link that carries no information field cannot carry this.
+            throw new InvalidOperationException(
+                $"payload of {data.Length} bytes cannot be sent: the link's N1 is {n1}, so no I frame can carry information.");
+        }
+
+        if (pid != Ax25Frame.PidNoLayer3)
+        {
+            throw new InvalidOperationException(
+                $"payload of {data.Length} bytes with PID 0x{pid:X2} exceeds N1={n1} and the segmenter/reassembler " +
+                "has not been negotiated (AX.25 v2.2 §6.6 - segmentation requires both peers to advertise " +
+                "the XID HDLC-Optional-Functions segmenter bit). A datagram cannot be split without breaking " +
+                "it, and sent whole the peer would reject the frame; rejecting the request instead.");
+        }
+
+        var requests = new List<DlDataRequest>((data.Length + n1 - 1) / n1);
+        for (int offset = 0; offset < data.Length; offset += n1)
+        {
+            requests.Add(new DlDataRequest(data.Slice(offset, Math.Min(n1, data.Length - offset)), pid));
         }
         return requests;
     }
