@@ -162,6 +162,47 @@ public sealed class OauthApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Registration_has_a_per_address_budget()
+    {
+        // Open registration is what the MCP connector flow needs, so the guard is a budget,
+        // not a gate (#426): the login throttle's count and window, under a key of its own.
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        for (int i = 0; i < LoginThrottle.DefaultMaxFailures; i++)
+        {
+            await RegisterClientAsync(client);
+        }
+
+        var over = await client.PostAsJsonAsync("/oauth/register", new { client_name = "one more", redirect_uris = new[] { RedirectUri } });
+        over.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        using var doc = JsonDocument.Parse(await over.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("error").GetString().Should().Be("temporarily_unavailable");
+
+        // A registrant's budget and a login's never touch: the login throttle is not tripped.
+        var login = await client.PostAsJsonAsync("/api/v1/auth/login", new { username = "nobody", password = "x" }, Web);
+        login.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public async Task The_operator_can_close_registration_and_discovery_stops_advertising_it()
+    {
+        WriteConfig("    allowDynamicRegistration: false");
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsJsonAsync("/oauth/register", new { client_name = "Claude", redirect_uris = new[] { RedirectUri } });
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        using var err = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        err.RootElement.GetProperty("error").GetString().Should().Be("access_denied");
+
+        using var asDoc = JsonDocument.Parse(await client.GetStringAsync("/.well-known/oauth-authorization-server"));
+        asDoc.RootElement.TryGetProperty("registration_endpoint", out _).Should().BeFalse(
+            "RFC 8414 makes registration_endpoint optional, and a closed one is not advertised");
+        asDoc.RootElement.GetProperty("token_endpoint").GetString().Should().EndWith("/oauth/token");
+    }
+
+    [Fact]
     public async Task Authorize_get_shows_consent_for_a_registered_client_and_rejects_an_unknown_one()
     {
         await using var factory = new NodeAppFactory();
@@ -173,6 +214,9 @@ public sealed class OauthApiTests : IDisposable
             + $"&code_challenge={challenge}&code_challenge_method=S256&scope=mcp:read&state=xyz";
         var html = await client.GetStringAsync(url);
         html.Should().Contain("Approve").And.Contain("Claude");
+        // The name is the registrant's own claim (#426): the page says so and shows the
+        // registered redirect target, which is what the owner can actually judge.
+        html.Should().Contain("has not been verified").And.Contain(RedirectUri);
 
         var unknown = await client.GetAsync($"/oauth/authorize?response_type=code&client_id=nope&redirect_uri={Uri.EscapeDataString(RedirectUri)}&code_challenge={challenge}&code_challenge_method=S256");
         unknown.StatusCode.Should().Be(HttpStatusCode.BadRequest);

@@ -38,6 +38,10 @@ public sealed class SystemctlUpdateLauncher : ISystemUpdateLauncher
     /// <summary>The github-channel request file (<c>{ targetVersion, arch, debUrl, sha256 }</c>).</summary>
     public static string GithubRequestFile => Path.Combine(SpoolDir, "github-update.json");
 
+    /// <summary>The node's loopback health URL, one line, for whichever helper runs: the apt
+    /// helper has no request file of its own and read nothing before #471.</summary>
+    public static string HealthUrlFile => Path.Combine(SpoolDir, "health.url");
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = false,
@@ -111,6 +115,19 @@ public sealed class SystemctlUpdateLauncher : ISystemUpdateLauncher
         else
         {
             TryDelete(GithubRequestFile);
+        }
+
+        // The health URL rides alongside for every channel (the github request carries its own
+        // copy as well, for helpers predating the file). Written, like the request, before the
+        // channel file the oneshot keys on; a stale one from a prior run is overwritten or removed.
+        var healthUrl = request.HealthUrl ?? request.GithubRequest?.HealthUrl;
+        if (healthUrl is { Length: > 0 })
+        {
+            File.WriteAllText(HealthUrlFile, healthUrl + "\n");
+        }
+        else
+        {
+            TryDelete(HealthUrlFile);
         }
 
         File.WriteAllText(ChannelFile, request.Channel + "\n");

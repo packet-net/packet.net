@@ -16,6 +16,13 @@ namespace Packet.Node.Core.Auth.Oauth;
 /// </summary>
 public sealed partial class SqliteOauthClientStore : IOauthClientStore
 {
+    /// <summary>Maximum registered clients retained; the oldest are pruned on registration.
+    /// Registration is open and unauthenticated (RFC 7591, the MCP connector flow), so without
+    /// a cap a caller in a loop grows <c>pdn.db</c> without bound (security review M1, #426).
+    /// A node has a handful of real clients; a flood past the cap evicts the oldest, and an
+    /// evicted real client simply registers again, as the flow already allows.</summary>
+    public const int RowCap = 256;
+
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS oauth_client (
             client_id     TEXT PRIMARY KEY,
@@ -26,11 +33,17 @@ public sealed partial class SqliteOauthClientStore : IOauthClientStore
 
     private readonly string connectionString;
     private readonly ILogger<SqliteOauthClientStore> logger;
+    private readonly int rowCap;
 
-    public SqliteOauthClientStore(string dbPath, ILogger<SqliteOauthClientStore>? logger = null)
+    /// <summary>Open (creating if absent) the client store at <paramref name="dbPath"/>.
+    /// <paramref name="rowCap"/> bounds retained clients (defaults to <see cref="RowCap"/>;
+    /// lower values are for tests).</summary>
+    public SqliteOauthClientStore(string dbPath, ILogger<SqliteOauthClientStore>? logger = null, int rowCap = RowCap)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dbPath);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rowCap, 1);
         this.logger = logger ?? NullLogger<SqliteOauthClientStore>.Instance;
+        this.rowCap = rowCap;
         connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
         EnsureSchema();
     }
@@ -59,6 +72,14 @@ public sealed partial class SqliteOauthClientStore : IOauthClientStore
                     RedirectUris = JsonSerializer.Serialize(redirectUris),
                     CreatedUtc = SqliteStamps.Stamp(now),
                 });
+            // Keep the newest rowCap clients. The stamp sorts lexically as time; the id breaks a
+            // same-instant tie so the prune is deterministic.
+            conn.Execute(
+                """
+                DELETE FROM oauth_client WHERE client_id NOT IN (
+                    SELECT client_id FROM oauth_client ORDER BY created_utc DESC, client_id DESC LIMIT @Cap);
+                """,
+                new { Cap = rowCap });
             return client;
         }
         catch (SqliteException ex)

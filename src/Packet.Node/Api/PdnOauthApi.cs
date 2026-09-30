@@ -82,28 +82,56 @@ public static class PdnOauthApi
             }
 
             var b = BaseUrl(ctx, config);
-            return Results.Json(new Dictionary<string, object?>
+            var metadata = new Dictionary<string, object?>
             {
                 ["issuer"] = b,
                 ["authorization_endpoint"] = $"{b}/oauth/authorize",
                 ["token_endpoint"] = $"{b}/oauth/token",
-                ["registration_endpoint"] = $"{b}/oauth/register",
                 ["revocation_endpoint"] = $"{b}/oauth/revoke",
                 ["scopes_supported"] = ScopesSupported,
                 ["response_types_supported"] = ResponseTypes,
                 ["grant_types_supported"] = GrantTypes,
                 ["code_challenge_methods_supported"] = ChallengeMethods,
                 ["token_endpoint_auth_methods_supported"] = AuthMethods,
-            });
+            };
+            // registration_endpoint is optional in RFC 8414; an operator who closed dynamic
+            // registration (#426) does not advertise it.
+            if (config.Current.Mcp.Oauth.AllowDynamicRegistration)
+            {
+                metadata["registration_endpoint"] = $"{b}/oauth/register";
+            }
+            return Results.Json(metadata);
         });
 
         // ---- Dynamic client registration (RFC 7591, public) ---------------------
 
-        app.MapPost("/oauth/register", async (HttpContext ctx, IConfigProvider config, IOauthClientStore clients, IAuditLog audit, TimeProvider clock) =>
+        app.MapPost("/oauth/register", async (HttpContext ctx, IConfigProvider config, IOauthClientStore clients, IAuditLog audit, [FromServices] LoginThrottle? throttle, TimeProvider clock) =>
         {
             if (!Enabled(config))
             {
                 return Results.NotFound();
+            }
+
+            if (!config.Current.Mcp.Oauth.AllowDynamicRegistration)
+            {
+                audit.RecordRest(ctx, clock, "oauth_register", "-", "closed", "");
+                return OauthError(StatusCodes.Status403Forbidden, "access_denied",
+                    "Dynamic client registration is closed on this node; ask the operator to register the client.");
+            }
+
+            // Registration is open and unauthenticated by design (the MCP connector flow), so it
+            // has a budget per address: the login throttle's window and count, under a key of
+            // its own so a registrant's budget and a login's never touch (#426). A real client
+            // registers once; only a loop meets the budget.
+            // Keyed as the consent POST keys its login budget, so a missing RemoteIpAddress
+            // (a test server, a unix socket) lands on the same one bucket there and here.
+            var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var budgetKey = RegistrationKey(ip);
+            if (throttle is not null && throttle.IsLocked(budgetKey))
+            {
+                audit.RecordRest(ctx, clock, "oauth_register", "-", "throttled", $"ip={ip}");
+                return OauthError(StatusCodes.Status429TooManyRequests, "temporarily_unavailable",
+                    "Too many client registrations from this address; try again later.");
             }
 
             DcrRequest? body;
@@ -130,6 +158,7 @@ public static class PdnOauthApi
             {
                 return Results.Problem("Client registration store is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable);
             }
+            throttle?.RecordFailure(budgetKey);   // one registration spent from the address's budget
 
             audit.RecordRest(ctx, clock, "oauth_register", client.ClientId, "ok", $"name={name}");
             return Results.Json(new Dictionary<string, object?>
@@ -365,6 +394,10 @@ public static class PdnOauthApi
 
     private static bool Enabled(IConfigProvider config) => config.Current.Mcp.Oauth.Enabled;
 
+    // The registration budget's key: its own prefix, so it never shares a bucket with the
+    // login throttle's "ip:" key for the same address.
+    private static string RegistrationKey(string ip) => "dcr:" + ip;
+
     // The issuer and every URL discovery advertises. Pinned by mcp.oauth.issuer when set;
     // otherwise the request's own scheme and host, which the forwarded-headers middleware
     // has already corrected for a loopback proxy and which is otherwise the client's Host
@@ -430,8 +463,11 @@ public static class PdnOauthApi
             <title>Connect {Enc(clientName)}</title></head>
             <body style="font-family:system-ui;max-width:28rem;margin:3rem auto;line-height:1.5">
               <h1>Authorize MCP access</h1>
-              <p><strong>{Enc(clientName)}</strong> wants to connect to this packet node's MCP endpoint with scope:
+              <p>A client calling itself <strong>{Enc(clientName)}</strong> wants to connect to this packet node's MCP endpoint with scope:
                  <strong>{scopeText}</strong>.</p>
+              <p>The name is the client's own claim and has not been verified. What you can judge is where the
+                 node will send the authorization: <code>{Enc(req.RedirectUri)}</code>. Approve only if that
+                 address belongs to a service you trust.</p>
               {errBlock}
               <form method="post" action="/oauth/authorize">
                 {hidden("csrf", csrfToken)}
@@ -444,7 +480,7 @@ public static class PdnOauthApi
                 <p><button type="submit" name="action" value="approve">Approve</button>
                    <button type="submit" name="action" value="deny" formnovalidate>Deny</button></p>
               </form>
-              <p style="color:#666;font-size:.85rem">Log in as a node user to approve. Only approve clients you trust.</p>
+              <p style="color:#666;font-size:.85rem">Log in as a node user to approve. Only approve clients you trust, judged by their redirect address.</p>
             </body></html>
             """;
     }

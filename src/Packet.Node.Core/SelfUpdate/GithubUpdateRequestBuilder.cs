@@ -141,7 +141,7 @@ public sealed partial class GithubUpdateRequestBuilder
     /// address only - the probe then fails and the helper falls back to
     /// <c>systemctl is-active packetnet.service</c>, exactly as the apt helper gates.
     /// </remarks>
-    internal static string HealthUrlFor(HttpConfig http)
+    public static string HealthUrlFor(HttpConfig http)
     {
         ArgumentNullException.ThrowIfNull(http);
         // Mirrors Program.cs's Kestrel bind: an unparseable address there falls back to IPv4
