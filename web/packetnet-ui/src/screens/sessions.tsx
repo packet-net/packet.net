@@ -51,10 +51,16 @@ export function Sessions() {
 
   // Sync the local working copy when the query resolves. Connect/disconnect call the live
   // API and then reload(), which refetches /sessions; the local copy keeps the table
-  // responsive between the action and the refetch.
-  useEffect(() => {
-    if (data) setSessions(data);
-  }, [data]);
+  // responsive between the action and the refetch. The copy is taken DURING the render that
+  // first sees a new result, not in an effect after it: an effect runs after the commit, so
+  // the frame in which `loading` had already gone false but `sessions` was still the previous
+  // (initially empty) list painted "No active sessions" once on every load (#806, where a
+  // test that opened the connect-out modal straight after mount found that frame).
+  const [synced, setSynced] = useState<SessionInfo[] | null>(null);
+  if (data && data !== synced) {
+    setSynced(data);
+    setSessions(data);
+  }
 
   // Routes → Sessions hand-off: ?connect=<call>&port=<portId> auto-opens the connect-out
   // modal prefilled, then clears the params. The hand-off is CAPTURED INTO STATE first:
