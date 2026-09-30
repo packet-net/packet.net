@@ -1,0 +1,29 @@
+A large release for one day's work: two new `pdn` verbs, the MCP OAuth hardening from the security review, a real `/healthz` gate on apt self-updates, the MQTT client moved to MQTTnet 5, and two panel fixes. Nothing here changes a default; every new knob is off or unset until you set it.
+
+### New
+
+- **`pdn traffic export` / `pdn traffic replay <capture>`** (#178). Export the node's persisted traffic log as a portable JSON-lines capture (one frame per line: timestamp, port, direction, KISS-form hex, and the per-frame RSSI/SNR/noise where the modem reported them), filtered by port and time; replay a capture back through the parser and the link observer to get the same per-frame narration and per-link tally the links pane gives, offline. For reproducing a bug from a station's own wire bytes, or building a regression set of frames seen in the wild. Format and usage in [`docs/observability.md`](https://github.com/packet-net/packet.net/blob/main/docs/observability.md).
+- **`pdn flash-tnc <port> <hex> [--yes]`** (#175). Flash a NinoTNC from the packaged node binary, no checkout needed. It classifies the image's target chip, refuses a port another process holds (stop `packetnet.service` or disable the port first), reads the running firmware version, asks for confirmation unless `--yes`, and re-verifies after the TNC reboots. Same hardware-proven flasher `packet-tune` drives.
+- **MCP OAuth refresh tokens** (#428). The token endpoint now issues a refresh token with every grant and accepts `grant_type=refresh_token`, so a connector no longer re-runs the whole authorize flow every hour. Refresh tokens are one-time-use and rotated; reuse ends the family; a refresh presented by a different client, or for a user or scope that no longer exists, is refused with `invalid_grant`.
+- **Per-token revocation** (#428). Every panel and MCP token carries an id, and `POST /oauth/revoke` now revokes exactly the token presented (an access token by id, a refresh token with its whole family) instead of answering 200 and doing nothing. `pdn auth rotate-signing-key` remains the everything-at-once kill.
+- **`mcp.oauth.issuer`** (#427). Pin the canonical base URL that OAuth discovery, the endpoint URLs and the RFC 9207 `iss` carry, so they no longer follow whatever `Host` header a client sends. Unset by default, which keeps the request-derived behaviour the loopback Tailscale sidecar case needs.
+- **`mcp.oauth.allowDynamicRegistration`** (#426). Default `true`. Set `false` to close `POST /oauth/register` (403) and drop `registration_endpoint` from discovery, for an operator who registers clients by hand on a hostile network. Clients already registered keep working.
+- **`management.auth.webAuthn.requireUserVerification`** (#414). Default `false`. Set `true` to make both passkey ceremonies demand a PIN, biometric or device unlock rather than a touch; a bare U2F key that cannot verify is then refused.
+
+### Fixed
+
+- **Ports screen: a port that was still restarting no longer shows a stale error until you refresh** (#777). Enabling radio control restarts the port, and the restart's first open of the serial device can be refused while its previous holder lets go; the supervisor retries and the port comes up, but the screen's one fetch after the save could land on that retry and keep "Access to the port ... is denied" on the card. The screen now re-fetches while any port is starting, stopping or retrying and stops once every port has settled.
+- **Sessions screen: no more one-frame flash of "No active sessions" on every load** (#806).
+- **AX.25: a peer whose XID advertises an I-field limit under one octet** (#894). Such a peer has said it handles no information field, so N1 is kept at the zero it negotiates to rather than floored: the link comes up, every send on it is refused with the reason, and the node warns once at negotiation (event 5223) so an operator whose link is up but carries nothing can see why. Nothing changes on the wire.
+
+### Changed
+
+- **MCP OAuth dynamic client registration is bounded** (#426). Registrations from one address spend the login throttle's budget under a key of their own (5 in 5 minutes, then 429), the client table is capped at 256 rows with the oldest pruned, and the consent page now says the client's name is its own unverified claim and shows the registered redirect target as the thing to judge. A real client registers once and is unaffected.
+- **apt self-update health-gates on `/healthz`** (#471). The apt channel's post-upgrade check now probes the node's own loopback `/healthz`, as the GitHub channel already does, and rolls back on a failed probe rather than trusting `systemctl is-active` alone. On both channels a node that answers `/healthz` with an HTTP error is now treated as unhealthy even while its unit is active. The helper that runs an upgrade is the one already installed, so this gate first applies to the upgrade *after* this one.
+- **MQTT frame emitter on MQTTnet 5** (#882). The v4 managed-client extension the emitter relied on has no v5, so the publish sink now carries its own bounded queue (10,000 messages, oldest dropped past that, as before) and reconnect loop (retry every 5 s with the queue intact). Topics and payloads are byte-for-byte unchanged, so `kiss-collector` and anything else reading the feed sees no difference. No configuration change.
+- **Passkey clone detection** is now classified from Fido2NetLib's typed error code rather than the exception text; both outcomes still reject the assertion as before (#414).
+
+### Internal
+
+- Interop CI runs against the current LinBPQ image (6.0.25.41, 2026-09-29); the SREJ-probe XID rejection in #805 does not reproduce on it.
+- Two timing-sensitive tests moved onto fake clocks (#626, #902) and one waits for the broker's disconnect to be observed before asserting; a merge slip in `Program.cs` that never reached a release was corrected (#909).

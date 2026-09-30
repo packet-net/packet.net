@@ -205,7 +205,24 @@ fi
 
 # ---- render -----------------------------------------------------------------
 
-if [ -z "$prev" ]; then
+# A hand-curated body for this one release, when the commit subjects do not tell
+# the story (a day of many small merges, a test-only run mixed with a port, a
+# hotfix that never reached anyone). It replaces the bucketed bullets only: the
+# compare link, the commit count and the install footer are still generated, so a
+# curated release reads like every other one below the line. The file is named
+# after the tag and lives beside the series footers; write it before tagging.
+root="$(git rev-parse --show-toplevel)"
+curated="${root}/.github/release-notes/${tag}.md"
+
+if [ -f "$curated" ]; then
+  cat "$curated"
+  echo
+  if [ -n "$prev" ]; then
+    plural="s"; [ "$count" -eq 1 ] && plural=""
+    echo "**Full changelog:** [\`${prev}...${tag}\`](https://github.com/${repo}/compare/${prev}...${tag}) (${count} commit${plural})"
+    echo
+  fi
+elif [ -z "$prev" ]; then
   echo "First \`${prefix}\` release - there is no earlier tag in this series to compare against."
   echo
 elif [ "$count" -eq 0 ]; then
@@ -225,7 +242,6 @@ else
 fi
 
 footer=".github/release-notes/${series}.md"
-root="$(git rev-parse --show-toplevel)"
 if [ -f "${root}/${footer}" ]; then
   echo "---"
   echo
