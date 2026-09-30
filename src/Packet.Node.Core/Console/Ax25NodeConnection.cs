@@ -96,8 +96,90 @@ public sealed class Ax25NodeConnection : INodeConnection
             case DataLinkDisconnectConfirm:
                 Complete();
                 break;
+            case DataLinkResetIndication reset:
+                // The link was reset and the reset threw frames of ours away (packet.net#885):
+                // the peer's SABM(E) on the up link, or this end re-establishing after an
+                // unexpected UA, an FRMR, an N(R) error or a frame error, or a new dial on the
+                // live link. §6.5: the reset "initializes both directions of data flow"; the
+                // session counts what went (queued frames the figures discarded, and the send
+                // window they abandoned) and says so once the arm is done. The stream's in-order
+                // promise is broken, so the owner must know now, not after its own timers: end
+                // the connection as the peer disconnecting would. A reset that lost nothing of
+                // ours raises no such signal, and the stream carries on over the re-established
+                // link. An interlink that NET/ROM is using is left alone: L4 recovers its own
+                // frames, and ending the console's connection would DISC the neighbour.
+                if (Volatile.Read(ref disposed) != 0 || completion.Task.IsCompleted || KeepOnLinkReset?.Invoke() == true)
+                {
+                    break;
+                }
+
+                EndReason = DescribeReset(reset);
+                // A caller who started the link over (SABM(E)) gets the same hand-over a
+                // restart during a graceful close gets (#850): a fresh console, an app's
+                // accept, or a dial whose claim covers it. Decided here, on the reset's own
+                // signal, so it does not race the owner's close. If nobody takes it, the
+                // owner's close disconnects it.
+                bool handedOver = session.CurrentTrigger is SabmReceived or SabmeReceived
+                    && PeerRestartedAfterClose?.Invoke() == true;
+                Volatile.Write(ref endedByReset, handedOver ? 2 : 1);
+                Complete();
+                break;
         }
     }
+
+    private int endedByReset;
+
+    /// <summary>
+    /// Asked, when a reset that lost frames lands, whether this connection should ride it out
+    /// rather than end: the supervisor answers yes for a session NET/ROM is using as an
+    /// interlink (packet.net#885). Null means end.
+    /// </summary>
+    internal Func<bool>? KeepOnLinkReset { get; set; }
+
+    private string DescribeReset(DataLinkResetIndication reset)
+    {
+        var t = reset.Transition;
+        string cause;
+        if (t.Contains("sabm", StringComparison.Ordinal))
+        {
+            cause = $"link reset by {session.Context.Remote}";
+        }
+        else if (t.Contains("dl_connect_request", StringComparison.Ordinal))
+        {
+            cause = "link re-established by a new dial on it";
+        }
+        else if (t.Contains("ua_received", StringComparison.Ordinal) || t.Contains("frmr", StringComparison.Ordinal))
+        {
+            cause = "link re-established after an unexpected UA or FRMR";
+        }
+        else if (t.Contains("control_field", StringComparison.Ordinal) || t.Contains("info_not", StringComparison.Ordinal)
+            || t.Contains("length_error", StringComparison.Ordinal))
+        {
+            cause = "link re-established after a frame error";
+        }
+        else if (t.Contains("_received", StringComparison.Ordinal))
+        {
+            // An I or S frame received can only take a connected link back to establishment
+            // through the N(R) error recovery (figc4.4 / figc4.5 Check N(R)).
+            cause = "link re-established after an N(R) error";
+        }
+        else if (t.Contains("t1_expiry", StringComparison.Ordinal))
+        {
+            cause = "link gave up after N2 retries";
+        }
+        else
+        {
+            cause = $"link reset ({t})";
+        }
+
+        return $"{cause} with {reset.WindowLost + reset.QueuedDiscarded} frame(s) of ours undelivered ({reset.WindowLost} sent and unacknowledged, {reset.QueuedDiscarded} queued)";
+    }
+
+    /// <summary>
+    /// Why the connection ended, when it was the link and not the owner or the peer's
+    /// disconnect: a reset that discarded frames of ours (packet.net#885). Null otherwise.
+    /// </summary>
+    public string? EndReason { get; private set; }
 
     /// <inheritdoc/>
     public async ValueTask<ReadOnlyMemory<byte>> ReadAsync(CancellationToken cancellationToken = default)
@@ -120,7 +202,10 @@ public sealed class Ax25NodeConnection : INodeConnection
     /// <inheritdoc/>
     public ValueTask WriteAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
     {
-        if (Volatile.Read(ref disposed) != 0)
+        // Nothing goes out once the connection is closed or a reset has ended it (#885): the
+        // link may be a fresh owner's by then, and an old owner's tail must not land in the
+        // new console's output.
+        if (Volatile.Read(ref disposed) != 0 || Volatile.Read(ref endedByReset) != 0)
         {
             return ValueTask.CompletedTask;
         }
@@ -188,7 +273,24 @@ public sealed class Ax25NodeConnection : INodeConnection
 
         try
         {
-            Volatile.Write(ref closing, Ax25GracefulClose.Begin(session, timeProvider, PeerRestartedAfterClose));
+            if (Volatile.Read(ref endedByReset) == 2)
+            {
+                // The peer's restart was handed to a fresh owner when the reset landed: the
+                // link is theirs now, and this owner's close ends only its own connection.
+            }
+            else if (Volatile.Read(ref endedByReset) == 1)
+            {
+                // The link was reset under this connection and the stream ended for it; the
+                // owner's close now is not a drain (nothing of its is queued any more) but the
+                // end of a link that already lost data and nobody took. Disconnect it now,
+                // rather than start a graceful close whose restart hand-over would race the
+                // reset's own signals.
+                Ax25GracefulClose.DisconnectNow(session);
+            }
+            else
+            {
+                Volatile.Write(ref closing, Ax25GracefulClose.Begin(session, timeProvider, PeerRestartedAfterClose));
+            }
         }
         catch
         {

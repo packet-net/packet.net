@@ -108,6 +108,26 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <summary>Default response-delay timer (T2).</summary>
     public TimeSpan T2Duration { get; init; } = DefaultT2;
 
+    // I frames the discard verbs threw away since the session last asked: the figures' Discard I
+    // Frame Queue / Discard I Queue Entries (also inside Clear Exception Conditions and Establish
+    // Data Link). The session reads it after a transition commits to raise
+    // DataLinkResetIndication (packet-net/packet.net#885).
+    private int discardedSinceTaken;
+
+    /// <summary>The number of queued I frames discarded since the last call, and reset it.</summary>
+    public int TakeDiscardedCount()
+    {
+        int n = discardedSinceTaken;
+        discardedSinceTaken = 0;
+        return n;
+    }
+
+    private void DiscardQueue(Ax25SessionContext ctx)
+    {
+        discardedSinceTaken += ctx.IFrameQueue.Count;
+        ctx.IFrameQueue.Clear();
+    }
+
     /// <summary>Default inactive-link timer (T3).</summary>
     public TimeSpan T3Duration { get; init; } = DefaultT3;
 
@@ -727,10 +747,10 @@ public sealed class ActionDispatcher : IActionDispatcher
             // (discard_frame_queue, discard_queue, discard_I_frame_queue,
             // Discard I Queue Entries) - all clear the I-frame transmit
             // queue.
-            Ax25ActionVerb.DiscardFrameQueue => Do(() => ctx.IFrameQueue.Clear()),
-            Ax25ActionVerb.DiscardQueue => Do(() => ctx.IFrameQueue.Clear()),
-            Ax25ActionVerb.DiscardIFrameQueue => Do(() => ctx.IFrameQueue.Clear()),
-            Ax25ActionVerb.DiscardIQueueEntries => Do(() => ctx.IFrameQueue.Clear()),
+            Ax25ActionVerb.DiscardFrameQueue => Do(() => DiscardQueue(ctx)),
+            Ax25ActionVerb.DiscardQueue => Do(() => DiscardQueue(ctx)),
+            Ax25ActionVerb.DiscardIFrameQueue => Do(() => DiscardQueue(ctx)),
+            Ax25ActionVerb.DiscardIQueueEntries => Do(() => DiscardQueue(ctx)),
 
             // discard_I_frame / discard_contents_of_I_frame drop the current
             // incoming frame's payload - explicit "we are not delivering this

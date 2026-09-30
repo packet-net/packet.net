@@ -303,7 +303,9 @@ public sealed partial class NodeCommandService : INodeApplication
                 ? new LineBufferingNodeConnection(inbound)
                 : inbound;
             await ConsoleRelay.PipeAsync(relayInbound, outbound, ct).ConfigureAwait(false);
-            await WriteLineAsync(inbound, $"Disconnected from {connect.Target}.", ct).ConfigureAwait(false);
+            await WriteLineAsync(inbound, outbound is Ax25NodeConnection { EndReason: { } why }
+                ? $"Disconnected from {connect.Target}: {why}."
+                : $"Disconnected from {connect.Target}.", ct).ConfigureAwait(false);
         }
     }
 
