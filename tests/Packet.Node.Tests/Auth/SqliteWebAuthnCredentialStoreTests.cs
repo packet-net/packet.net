@@ -53,19 +53,6 @@ public sealed class SqliteWebAuthnCredentialStoreTests : IDisposable
     }
 
     [Fact]
-    public void Get_all_credential_ids_returns_every_id_across_users()
-    {
-        var store = Open();
-        store.Add(NewCred(new byte[] { 1 }, "alice")).Should().BeTrue();
-        store.Add(NewCred(new byte[] { 2 }, "alice")).Should().BeTrue();
-        store.Add(NewCred(new byte[] { 3 }, "bob")).Should().BeTrue();
-
-        var ids = store.GetAllCredentialIds();
-        ids.Should().HaveCount(3);
-        ids.Select(b => b[0]).Should().BeEquivalentTo(new byte[] { 1, 2, 3 });
-    }
-
-    [Fact]
     public void Duplicate_credential_id_is_rejected()
     {
         var store = Open();
@@ -73,7 +60,8 @@ public sealed class SqliteWebAuthnCredentialStoreTests : IDisposable
         store.Add(NewCred(id, "alice")).Should().BeTrue();
         // Same id again (even for a different user) → rejected by the PRIMARY KEY.
         store.Add(NewCred(id, "bob")).Should().BeFalse();
-        store.GetAllCredentialIds().Should().HaveCount(1);
+        store.GetByCredentialId(id)!.Username.Should().Be("alice");
+        store.GetByUser("bob").Should().BeEmpty();
     }
 
     [Fact]
@@ -160,7 +148,6 @@ public sealed class SqliteWebAuthnCredentialStoreTests : IDisposable
         broken.Add(NewCred(new byte[] { 1 }, "alice")).Should().BeFalse();
         broken.GetByUser("alice").Should().BeEmpty();
         broken.GetByCredentialId(new byte[] { 1 }).Should().BeNull();
-        broken.GetAllCredentialIds().Should().BeEmpty();
         broken.Delete(new byte[] { 1 }, "alice").Should().BeFalse();
         broken.DeleteByUser("alice").Should().Be(0);
         // UpdateSignCount swallows the fault (best-effort) - must not throw.

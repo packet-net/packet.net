@@ -34,11 +34,6 @@ public interface IWebAuthnCredentialStore
     /// against.</summary>
     WebAuthnCredentialRecord? GetByCredentialId(byte[] credentialId);
 
-    /// <summary>Every enrolled credential id across all users (empty on fault). Used to
-    /// build the allow-list for a <em>username-less</em> (discoverable-credential)
-    /// assertion, and to enforce global credential-id uniqueness at registration.</summary>
-    IReadOnlyList<byte[]> GetAllCredentialIds();
-
     /// <summary>Advance a credential's signature counter + stamp its last-used time
     /// after a successful assertion. Best-effort: a fault is swallowed (a failed stamp
     /// must never fail an otherwise-good assertion - but see the clone-detection note

@@ -309,7 +309,8 @@
         "relyingPartyName": "pdn node",
         "allowedOrigins": [
           "https://pdn.m0lte.uk"
-        ]
+        ],
+        "requireUserVerification": true
       },
       "sysopElevationMinutes": 30
     },
