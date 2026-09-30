@@ -100,11 +100,20 @@ public sealed class RefreshTokenService
     /// persist it (the caller then declines to hand out a refresh token, but the
     /// login itself can still succeed with just the access token).
     /// </summary>
-    public string? Issue(string username)
+    public string? Issue(string username) => IssueWithFamily(username)?.Token;
+
+    /// <summary>
+    /// Mint a refresh token in a fresh family and say which family, for a caller that keeps
+    /// state of its own per family: the OAuth token endpoint records the client and scope a
+    /// family was granted for (#428), so a rotation can re-issue the same grant. Null if the
+    /// store rejected the write.
+    /// </summary>
+    public (string Token, string Family)? IssueWithFamily(string username)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
         var family = NewOpaque();   // a random family id (also a 256-bit value)
-        return MintInFamily(username, family);
+        var token = MintInFamily(username, family);
+        return token is null ? null : (token, family);
     }
 
     /// <summary>

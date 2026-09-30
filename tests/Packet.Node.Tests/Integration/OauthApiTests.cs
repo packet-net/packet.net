@@ -385,6 +385,90 @@ public sealed class OauthApiTests : IDisposable
     }
 
     [Fact]
+    public async Task The_token_response_carries_a_refresh_token_that_rotates_the_grant()
+    {
+        // #428, second slice: the code exchange mints a refresh token in a family recorded
+        // against the client and consented scope; grant_type=refresh_token rotates it and
+        // re-issues that grant, and the successor works where the presented one did.
+        await using var factory = new NodeAppFactory();
+        SeedUser(factory, "op", "correct horse battery staple", AuthScopes.Operate);
+        using var client = NoRedirect(factory);
+        var clientId = await RegisterClientAsync(client);
+
+        using var first = JsonDocument.Parse(await ExchangeCodeAsync(client, clientId, "mcp:operate"));
+        var refreshToken = first.RootElement.GetProperty("refresh_token").GetString()!;
+        refreshToken.Should().NotBeNullOrEmpty();
+
+        using var rotated = JsonDocument.Parse(await RefreshAsync(client, clientId, refreshToken, HttpStatusCode.OK));
+        rotated.RootElement.GetProperty("scope").GetString().Should().Be("mcp:operate", "the grant's scope, not the user's whole scope");
+        AudienceOf(rotated.RootElement.GetProperty("access_token").GetString()!).Should().Be(JwtTokenService.McpAudience);
+        var next = rotated.RootElement.GetProperty("refresh_token").GetString()!;
+        next.Should().NotBe(refreshToken, "a refresh token is one-time use");
+        rotated.RootElement.GetProperty("access_token").GetString().Should().NotBe(first.RootElement.GetProperty("access_token").GetString());
+
+        using var again = JsonDocument.Parse(await RefreshAsync(client, clientId, next, HttpStatusCode.OK));
+        again.RootElement.GetProperty("refresh_token").GetString().Should().NotBe(next);
+
+        using var asDoc = JsonDocument.Parse(await client.GetStringAsync("/.well-known/oauth-authorization-server"));
+        asDoc.RootElement.GetProperty("grant_types_supported").EnumerateArray().Select(e => e.GetString()).Should().Contain("refresh_token");
+    }
+
+    [Fact]
+    public async Task A_refresh_token_is_bound_to_its_client_and_a_revoked_one_ends_its_family()
+    {
+        await using var factory = new NodeAppFactory();
+        SeedUser(factory, "op", "correct horse battery staple", AuthScopes.Operate);
+        using var client = NoRedirect(factory);
+        var clientId = await RegisterClientAsync(client);
+        var otherClient = await RegisterClientAsync(client);
+
+        using var issued = JsonDocument.Parse(await ExchangeCodeAsync(client, clientId, "mcp:read"));
+        var refreshToken = issued.RootElement.GetProperty("refresh_token").GetString()!;
+
+        // Presented by another registered client: refused, and the family is ended, so the
+        // rightful client cannot use it either.
+        var wrong = await RefreshAsync(client, otherClient, refreshToken, HttpStatusCode.BadRequest);
+        JsonDocument.Parse(wrong).RootElement.GetProperty("error").GetString().Should().Be("invalid_grant");
+        await RefreshAsync(client, clientId, refreshToken, HttpStatusCode.BadRequest);
+
+        // A fresh grant, revoked through /oauth/revoke with the refresh token: over from then on.
+        using var second = JsonDocument.Parse(await ExchangeCodeAsync(client, clientId, "mcp:read"));
+        var live = second.RootElement.GetProperty("refresh_token").GetString()!;
+        (await client.PostAsync("/oauth/revoke", new FormUrlEncodedContent(new Dictionary<string, string> { ["token"] = live })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        await RefreshAsync(client, clientId, live, HttpStatusCode.BadRequest);
+    }
+
+    // Run the whole authorize flow for `scope` and return the token endpoint's JSON body.
+    private static async Task<string> ExchangeCodeAsync(HttpClient client, string clientId, string scope)
+    {
+        const string verifier = "the-quick-brown-fox-jumps-over-the-lazy-dog-pkce-verifier";
+        var code = await ApproveAsync(client, clientId, OauthPkce.ChallengeFor(verifier), "op", "correct horse battery staple", scope);
+        var resp = await client.PostAsync("/oauth/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["code"] = code!,
+            ["client_id"] = clientId,
+            ["redirect_uri"] = RedirectUri,
+            ["code_verifier"] = verifier,
+        }));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await resp.Content.ReadAsStringAsync();
+    }
+
+    private static async Task<string> RefreshAsync(HttpClient client, string clientId, string refreshToken, HttpStatusCode expected)
+    {
+        var resp = await client.PostAsync("/oauth/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "refresh_token",
+            ["refresh_token"] = refreshToken,
+            ["client_id"] = clientId,
+        }));
+        resp.StatusCode.Should().Be(expected);
+        return await resp.Content.ReadAsStringAsync();
+    }
+
+    [Fact]
     public async Task Revoke_refuses_the_presented_token_from_the_next_request()
     {
         // #428: every token carries a jti, /oauth/revoke lists a presented token's id, and the

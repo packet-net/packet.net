@@ -47,7 +47,7 @@ public static class PdnOauthApi
     private static readonly string[] ScopesSupported = [ScopeRead, ScopeOperate];
     private static readonly string[] BearerMethods = ["header"];
     private static readonly string[] ResponseTypes = ["code"];
-    private static readonly string[] GrantTypes = ["authorization_code"];
+    private static readonly string[] GrantTypes = ["authorization_code", "refresh_token"];
     private static readonly string[] ChallengeMethods = [OauthPkce.MethodS256];
     private static readonly string[] AuthMethods = ["none"];
 
@@ -286,7 +286,7 @@ public static class PdnOauthApi
 
         // ---- Token (code → access token) ----------------------------------------
 
-        app.MapPost("/oauth/token", async (HttpContext ctx, IConfigProvider config, IOauthClientStore clients, IOauthCodeStore codes, IAuditLog audit, [FromServices] JwtTokenService? tokens, TimeProvider clock) =>
+        app.MapPost("/oauth/token", async (HttpContext ctx, IConfigProvider config, IOauthClientStore clients, IOauthCodeStore codes, IOauthGrantStore grants, IUserStore users, IAuditLog audit, [FromServices] JwtTokenService? tokens, [FromServices] RefreshTokenService? refresh, TimeProvider clock) =>
         {
             if (!Enabled(config))
             {
@@ -299,13 +299,21 @@ public static class PdnOauthApi
             }
 
             var form = await ctx.Request.ReadFormAsync();
-            if (!string.Equals(form["grant_type"], "authorization_code", StringComparison.Ordinal))
+            string grantType = form["grant_type"].ToString();
+            string clientId = form["client_id"].ToString();
+            var lifetime = TimeSpan.FromMinutes(Math.Clamp(config.Current.Mcp.Oauth.AccessTokenLifetimeMinutes, 1, 1440));
+
+            if (string.Equals(grantType, "refresh_token", StringComparison.Ordinal))
             {
-                return OauthError(StatusCodes.Status400BadRequest, "unsupported_grant_type", "Only authorization_code is supported.");
+                return RefreshGrant(ctx, form["refresh_token"].ToString(), clientId, lifetime, grants, users, audit, tokens, refresh, clock);
+            }
+
+            if (!string.Equals(grantType, "authorization_code", StringComparison.Ordinal))
+            {
+                return OauthError(StatusCodes.Status400BadRequest, "unsupported_grant_type", "Only authorization_code and refresh_token are supported.");
             }
 
             string code = form["code"].ToString();
-            string clientId = form["client_id"].ToString();
             string redirectUri = form["redirect_uri"].ToString();
             string verifier = form["code_verifier"].ToString();
 
@@ -319,23 +327,34 @@ public static class PdnOauthApi
                 return OauthError(StatusCodes.Status400BadRequest, "invalid_grant", "The authorization code is invalid, expired, already used, or the PKCE verifier does not match.");
             }
 
-            var lifetime = TimeSpan.FromMinutes(Math.Clamp(config.Current.Mcp.Oauth.AccessTokenLifetimeMinutes, 1, 1440));
             // MCP audience: the connector token reaches /mcp only, never the wider control API.
             var (token, expiresAt) = tokens.Issue(stored.Username, stored.Scope, lifetime, JwtTokenService.McpAudience);
-            audit.RecordRest(ctx, clock, "oauth_token", clientId, "ok", $"user={stored.Username} scope={stored.Scope}");
 
-            return Results.Json(new Dictionary<string, object?>
+            // A refresh token in a fresh family, with the grant (client + scope) recorded against
+            // the family so a rotation re-issues exactly this and nothing wider (#428). The panel's
+            // RefreshTokenService does the rotation and reuse detection; with it unavailable the
+            // response is access-token-only, as before, and the connector re-runs authorize.
+            string? refreshToken = null;
+            var now = clock.GetUtcNow();
+            if (refresh is not null && refresh.IssueWithFamily(stored.Username) is { } issued)
             {
-                ["access_token"] = token,
-                ["token_type"] = "Bearer",
-                ["expires_in"] = (int)(expiresAt - clock.GetUtcNow()).TotalSeconds,
-                ["scope"] = stored.Scope == AuthScopes.Operate ? ScopeOperate : ScopeRead,
-            });
+                if (grants.Add(new OauthGrant(issued.Family, clientId, stored.Username, stored.Scope, now)))
+                {
+                    refreshToken = issued.Token;
+                }
+                else
+                {
+                    refresh.LogoutFamily(issued.Family);   // a token with no grant behind it must not go out
+                }
+            }
+            audit.RecordRest(ctx, clock, "oauth_token", clientId, "ok", $"user={stored.Username} scope={stored.Scope} refresh={(refreshToken is null ? "no" : "yes")}");
+
+            return Results.Json(TokenResponse(token, expiresAt, refreshToken, stored.Scope, now));
         });
 
         // ---- Revoke (RFC 7009) --------------------------------------------------
 
-        app.MapPost("/oauth/revoke", async (HttpContext ctx, IConfigProvider config, IAuditLog audit, [FromServices] JwtTokenService? tokens, [FromServices] IRevokedTokenStore? revoked, TimeProvider clock) =>
+        app.MapPost("/oauth/revoke", async (HttpContext ctx, IConfigProvider config, IOauthGrantStore grants, IAuditLog audit, [FromServices] JwtTokenService? tokens, [FromServices] IRevokedTokenStore? revoked, [FromServices] RefreshTokenService? refresh, TimeProvider clock) =>
         {
             if (!Enabled(config))
             {
@@ -356,12 +375,80 @@ public static class PdnOauthApi
                 revoked.PruneExpired(now);
                 outcome = revoked.Revoke(live.Jti, live.ExpiresAt, now) ? "revoked" : "revoked-unpersisted";
             }
+            else if (refresh is not null && !string.IsNullOrEmpty(token) && refresh.Logout(token) is (_, { } family))
+            {
+                // A refresh token: its whole family is logged out and the grant behind it forgotten,
+                // so neither it nor any successor mints another access token (#428).
+                grants.Delete(family);
+                outcome = "revoked-refresh";
+            }
             audit.RecordRest(ctx, clock, "oauth_revoke", "", outcome, "");
             return Results.Ok();
         });
     }
 
     // ---- helpers -------------------------------------------------------------
+
+    // grant_type=refresh_token (RFC 6749 s6, a public client so client_id names it): rotate the
+    // presented token through the panel's RefreshTokenService (one-time use, reuse burns the
+    // family), then re-issue the grant recorded against the family, checked against the client
+    // that presents it and the owner's current scope (#428).
+    private static IResult RefreshGrant(HttpContext ctx, string presented, string clientId, TimeSpan lifetime,
+        IOauthGrantStore grants, IUserStore users, IAuditLog audit, JwtTokenService tokens, RefreshTokenService? refresh, TimeProvider clock)
+    {
+        if (refresh is null)
+        {
+            return OauthError(StatusCodes.Status400BadRequest, "unsupported_grant_type", "Refresh tokens are not available on this node.");
+        }
+
+        var result = refresh.Rotate(presented);
+        if (!result.IsSuccess)
+        {
+            if (result.Family is { } burned)
+            {
+                grants.Delete(burned);   // a burned or expired family's grant is over
+            }
+            audit.RecordRest(ctx, clock, "oauth_token", clientId, "denied", $"refresh {result.Outcome}");
+            return OauthError(StatusCodes.Status400BadRequest, "invalid_grant", "The refresh token is invalid, expired, or has been used already.");
+        }
+
+        var family = result.Family!;
+        var grant = grants.FindByFamily(family);
+        var user = grant is null ? null : users.FindByUsername(grant.Username);
+        if (grant is null
+            || !string.Equals(grant.ClientId, clientId, StringComparison.Ordinal)
+            || user is null
+            || !AuthScopes.Satisfies(user.Scope, grant.Scope))
+        {
+            // A token presented by another client, or a grant the owner can no longer cover
+            // (scope lowered, user gone): end the family rather than hand out anything.
+            refresh.LogoutFamily(family);
+            grants.Delete(family);
+            audit.RecordRest(ctx, clock, "oauth_token", clientId, "denied",
+                grant is null ? "refresh no-grant" : user is null ? "refresh user-gone" : grant.ClientId != clientId ? "refresh wrong-client" : "refresh scope-lost");
+            return OauthError(StatusCodes.Status400BadRequest, "invalid_grant", "The refresh token does not belong to this client, or the grant is no longer valid.");
+        }
+
+        var (token, expiresAt) = tokens.Issue(grant.Username, grant.Scope, lifetime, JwtTokenService.McpAudience);
+        audit.RecordRest(ctx, clock, "oauth_token", clientId, "ok", $"user={grant.Username} scope={grant.Scope} refresh=rotated");
+        return Results.Json(TokenResponse(token, expiresAt, result.NewToken, grant.Scope, clock.GetUtcNow()));
+    }
+
+    private static Dictionary<string, object?> TokenResponse(string accessToken, DateTimeOffset expiresAt, string? refreshToken, string scope, DateTimeOffset now)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["access_token"] = accessToken,
+            ["token_type"] = "Bearer",
+            ["expires_in"] = (int)(expiresAt - now).TotalSeconds,
+            ["scope"] = scope == AuthScopes.Operate ? ScopeOperate : ScopeRead,
+        };
+        if (refreshToken is not null)
+        {
+            body["refresh_token"] = refreshToken;
+        }
+        return body;
+    }
 
     private static bool Enabled(IConfigProvider config) => config.Current.Mcp.Oauth.Enabled;
 
