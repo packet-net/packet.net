@@ -96,31 +96,70 @@ public sealed class Ax25NodeConnection : INodeConnection
             case DataLinkDisconnectConfirm:
                 Complete();
                 break;
-            case DataLinkErrorIndication { Code: "F" or "J" or "K" or "N" } err:
-                // The link is being reset (packet.net#885): the peer's SABM(E) on the up link
-                // (F), or this end re-establishing after an N(R) error (J), an unexpected UA or
-                // FRMR in Connected (K) or in Timer Recovery (N). §6.5: the reset "initializes
-                // both directions of data flow"; the SDL discards the I-frame queue and starts
-                // both ends from zero. The figures raise this indication before they touch the
-                // sequence variables, so V(s) and V(a) still say whether anything of ours was
-                // in flight. If it was, the stream's in-order delivery promise is broken and the
-                // owner must know now, not after its own timers: end the connection as the peer
-                // disconnecting would. If nothing was outstanding, the reset lost nothing of ours
-                // (the peer's own losses are the peer's node's to report) and the stream carries
-                // on over the re-established link.
-                if (session.Context.VS != session.Context.VA && Volatile.Read(ref disposed) == 0)
+            case DataLinkResetIndication reset:
+                // The link was reset and the reset threw frames of ours away (packet.net#885):
+                // the peer's SABM(E) on the up link, or this end re-establishing after an
+                // unexpected UA, an FRMR, an N(R) error or a frame error, or a new dial on the
+                // live link. §6.5: the reset "initializes both directions of data flow"; the
+                // session counts what went (queued frames the figures discarded, and the send
+                // window they abandoned) and says so once the arm is done. The stream's in-order
+                // promise is broken, so the owner must know now, not after its own timers: end
+                // the connection as the peer disconnecting would. A reset that lost nothing of
+                // ours raises no such signal, and the stream carries on over the re-established
+                // link. An interlink that NET/ROM is using is left alone: L4 recovers its own
+                // frames, and ending the console's connection would DISC the neighbour.
+                if (Volatile.Read(ref disposed) != 0 || completion.Task.IsCompleted || KeepOnLinkReset?.Invoke() == true)
                 {
-                    int lost = (session.Context.VS - session.Context.VA + session.Context.Modulus) % session.Context.Modulus;
-                    EndReason = err.Code switch
-                    {
-                        "F" => $"link reset by {session.Context.Remote} with {lost} frame(s) of ours unacknowledged",
-                        "J" => $"link re-established after an N(R) error with {lost} frame(s) of ours unacknowledged",
-                        _ => $"link re-established after an unexpected UA or FRMR with {lost} frame(s) of ours unacknowledged",
-                    };
-                    Complete();
+                    break;
                 }
+
+                EndReason = DescribeReset(reset);
+                Volatile.Write(ref endedByReset, 1);
+                Complete();
                 break;
         }
+    }
+
+    private int endedByReset;
+
+    /// <summary>
+    /// Asked, when a reset that lost frames lands, whether this connection should ride it out
+    /// rather than end: the supervisor answers yes for a session NET/ROM is using as an
+    /// interlink (packet.net#885). Null means end.
+    /// </summary>
+    internal Func<bool>? KeepOnLinkReset { get; set; }
+
+    private string DescribeReset(DataLinkResetIndication reset)
+    {
+        var t = reset.Transition;
+        string cause;
+        if (t.Contains("sabm", StringComparison.Ordinal))
+        {
+            cause = $"link reset by {session.Context.Remote}";
+        }
+        else if (t.Contains("dl_connect_request", StringComparison.Ordinal))
+        {
+            cause = "link re-established by a new dial on it";
+        }
+        else if (t.Contains("ua_received", StringComparison.Ordinal) || t.Contains("frmr", StringComparison.Ordinal))
+        {
+            cause = "link re-established after an unexpected UA or FRMR";
+        }
+        else if (t.Contains("control_field", StringComparison.Ordinal) || t.Contains("info_not", StringComparison.Ordinal)
+            || t.Contains("length_error", StringComparison.Ordinal))
+        {
+            cause = "link re-established after a frame error";
+        }
+        else if (t.Contains("t1_expiry", StringComparison.Ordinal))
+        {
+            cause = "link gave up after N2 retries";
+        }
+        else
+        {
+            cause = $"link reset ({t})";
+        }
+
+        return $"{cause} with {reset.WindowLost + reset.QueuedDiscarded} frame(s) of ours undelivered ({reset.WindowLost} sent and unacknowledged, {reset.QueuedDiscarded} queued)";
     }
 
     /// <summary>
@@ -218,7 +257,18 @@ public sealed class Ax25NodeConnection : INodeConnection
 
         try
         {
-            Volatile.Write(ref closing, Ax25GracefulClose.Begin(session, timeProvider, PeerRestartedAfterClose));
+            if (Volatile.Read(ref endedByReset) != 0)
+            {
+                // The link was reset under this connection and the stream ended for it; the
+                // owner's close now is not a drain (nothing of its is queued any more) but the
+                // end of a link that already lost data. Disconnect it now, rather than start a
+                // graceful close whose restart hand-over would race the reset's own signals.
+                Ax25GracefulClose.DisconnectNow(session);
+            }
+            else
+            {
+                Volatile.Write(ref closing, Ax25GracefulClose.Begin(session, timeProvider, PeerRestartedAfterClose));
+            }
         }
         catch
         {

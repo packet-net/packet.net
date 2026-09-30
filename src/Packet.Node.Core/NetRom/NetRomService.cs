@@ -106,6 +106,22 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     // never from a first-match scan.
     private readonly ConcurrentDictionary<NeighbourKey, Interlink> interlinks = new();
 
+    /// <summary>Whether <paramref name="session"/> carries a NET/ROM interlink right now: L4
+    /// recovers its own frames over a reset, so the console connection sharing the session
+    /// must not end on one (packet.net#885).</summary>
+    internal bool UsesAsInterlink(Ax25Session session)
+    {
+        foreach (var link in interlinks.Values)
+        {
+            if (ReferenceEquals(link.Session, session))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // Sessions we have already tapped for inbound 0xCF (so we attach the tap once).
     private readonly ConcurrentDictionary<Ax25Session, byte> tapped = new();
 

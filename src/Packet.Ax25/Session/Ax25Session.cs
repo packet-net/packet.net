@@ -564,7 +564,9 @@ public sealed class Ax25Session
             // CurrentState is only advanced on success. (packet-net/packet.net#225)
             var timerState = scheduler.CaptureState();
             var vaBefore = Context.VA;
+            var vsBefore = Context.VS;
             var stateBefore = CurrentState;
+            (dispatcher as ActionDispatcher)?.TakeDiscardedCount();
             try
             {
                 var tx = new TransitionContext(Context, scheduler, evt);
@@ -611,6 +613,7 @@ public sealed class Ax25Session
             NoteConnectingUa(evt, stateBefore);
             NotePeerCall(evt, stateBefore);
             NoteFrameZero(evt, stateBefore);
+            NoteReset(match, stateBefore, vsBefore, vaBefore);
 
             // Transition committed (state advanced, timers kept) - notify
             // observers. Raised here rather than inside the try so a throwing
@@ -829,6 +832,51 @@ public sealed class Ax25Session
             peerCallAnswered = false;
         }
     }
+
+    /// <summary>
+    /// Raise <see cref="DataLinkResetIndication"/> when the transition that has just committed
+    /// threw frames of ours away: queued I frames the discard verbs cleared, or the send window
+    /// (sent, unacknowledged) that a reset's V(s) := V(a) := 0 abandoned. Counted here, after the
+    /// arm, because the figures raise their DL-ERROR / DL-CONNECT indications at different points
+    /// of the arm relative to the discard, and never with a count (packet-net/packet.net#885).
+    /// </summary>
+    private void NoteReset(TransitionSpec match, string stateBefore, int vsBefore, int vaBefore)
+    {
+        int queuedDiscarded = (dispatcher as ActionDispatcher)?.TakeDiscardedCount() ?? 0;
+        int inFlight = (vsBefore - vaBefore + Context.Modulus) % Context.Modulus;
+        bool leavingToEstablish = stateBefore is "Connected" or "TimerRecovery"
+            && CurrentState is "AwaitingConnection" or "AwaitingV22Connection";
+        int windowLost = 0;
+        if (leavingToEstablish)
+        {
+            // This end re-establishing (Establish Data Link out of Connected or Timer Recovery,
+            // on an unexpected UA, an FRMR, an N(R) error, a frame error or a DL-CONNECT
+            // request): the send window is abandoned now, whatever the peer answers, so it is
+            // counted now and named after this arm, not after the UA that later zeroes V(s).
+            windowLost = inFlight;
+            windowReported = windowLost > 0;
+        }
+        else if (vsBefore != vaBefore && Context.VS == 0 && Context.VA == 0
+            && !(stateBefore is "AwaitingConnection" or "AwaitingV22Connection" && windowReported))
+        {
+            // Zeroed in place: the peer's SABM(E) on the up link.
+            windowLost = inFlight;
+        }
+
+        if (CurrentState is "Connected" or "Disconnected")
+        {
+            windowReported = false;
+        }
+
+        if (queuedDiscarded > 0 || windowLost > 0)
+        {
+            RaiseDataLinkSignal(new DataLinkResetIndication(queuedDiscarded, windowLost, match.Id));
+        }
+    }
+
+    // True from this end re-establishing with frames in flight until the link is up or down
+    // again: the window was counted at the arm that started it, not at the UA that zeroes it.
+    private bool windowReported;
 
     // The events the classifier and the listener make from a frame the peer sent, as opposed to
     // upper-layer primitives, timers and the session's own internal events.

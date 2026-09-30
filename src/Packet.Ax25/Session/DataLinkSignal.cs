@@ -42,6 +42,20 @@ public sealed record DataLinkErrorIndication(string Code)
     : DataLinkSignal("DL_ERROR_indication");
 
 /// <summary>
+/// Raised by the runtime, after a transition that reset the link has committed, when that reset
+/// threw frames of ours away: <see cref="QueuedDiscarded"/> I frames still queued (the figures'
+/// <c>Discard I Frame Queue</c> / <c>Discard I Queue Entries</c>, which also run inside
+/// <c>Clear Exception Conditions</c> and <c>Establish Data Link</c>), and <see cref="WindowLost"/>
+/// frames sent and not yet acknowledged when V(s) and V(a) went back to zero. §6.5's reset
+/// "initializes both directions of data flow"; the figures tell layer 3 with DL-ERROR indication
+/// and, sometimes, DL-CONNECT indication, but neither says what was lost, and the transcription
+/// raises them before or after the discard depending on the arm. This signal is the count, once
+/// the arm is done (packet-net/packet.net#885). Not raised when a reset lost nothing.
+/// </summary>
+public sealed record DataLinkResetIndication(int QueuedDiscarded, int WindowLost, string Transition)
+    : DataLinkSignal("DL_RESET_indication");
+
+/// <summary>
 /// Connectionless data received via a valid UI frame (§5.5.6). Distinct
 /// from <see cref="DataLinkDataIndication"/> which carries connected-mode
 /// I-frame payloads. Emitted by figc4.7's <c>UI_Check</c> subroutine
