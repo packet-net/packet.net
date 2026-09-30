@@ -20,14 +20,23 @@ namespace Packet.Node.Tests.Integration;
 public sealed class OauthApiTests : IDisposable
 {
     private readonly string dir;
+    private readonly string configPath;
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     public OauthApiTests()
     {
         dir = TestPaths.NewPath("packetnet-oauth");
         Directory.CreateDirectory(dir);
-        var configPath = Path.Combine(dir, "node.yaml");
-        File.WriteAllText(configPath, """
+        configPath = Path.Combine(dir, "node.yaml");
+        WriteConfig("");
+        Environment.SetEnvironmentVariable("PACKETNET_CONFIG", configPath);
+        Environment.SetEnvironmentVariable("PACKETNET_DB", Path.Combine(dir, "pdn.db"));
+    }
+
+    // The node's config, read once at first boot; `extraOauth` is appended under mcp.oauth
+    // (two-space indented lines, e.g. an issuer), so a test can boot with a variant.
+    private void WriteConfig(string extraOauth) =>
+        File.WriteAllText(configPath, $"""
             schemaVersion: 1
             identity:
               callsign: M0LTE-1
@@ -44,10 +53,8 @@ public sealed class OauthApiTests : IDisposable
             mcp:
               oauth:
                 enabled: true
+            {extraOauth}
             """);
-        Environment.SetEnvironmentVariable("PACKETNET_CONFIG", configPath);
-        Environment.SetEnvironmentVariable("PACKETNET_DB", Path.Combine(dir, "pdn.db"));
-    }
 
     private sealed class NodeAppFactory : WebApplicationFactory<Program> { }
 
@@ -90,6 +97,54 @@ public sealed class OauthApiTests : IDisposable
         asDoc.RootElement.GetProperty("registration_endpoint").GetString().Should().EndWith("/oauth/register");
         asDoc.RootElement.GetProperty("code_challenge_methods_supported").EnumerateArray()
             .Select(e => e.GetString()).Should().Contain("S256");
+    }
+
+    [Fact]
+    public async Task By_default_the_issuer_follows_the_request_host()
+    {
+        // The documented default (#427): with no pinned issuer, discovery is built on the
+        // request's scheme and host. Behind the loopback-trusted forwarded headers that is
+        // the sidecar's public address; from anyone else it is whatever Host they sent.
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/.well-known/oauth-authorization-server");
+        req.Headers.Host = "node.lan:8080";
+        using var doc = JsonDocument.Parse(await (await client.SendAsync(req)).Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("issuer").GetString().Should().Be("http://node.lan:8080");
+        doc.RootElement.GetProperty("token_endpoint").GetString().Should().Be("http://node.lan:8080/oauth/token");
+    }
+
+    [Fact]
+    public async Task A_pinned_issuer_is_what_discovery_and_iss_carry_whatever_the_host_header_says()
+    {
+        // mcp.oauth.issuer (#427): the operator's canonical address, for a node behind a
+        // TLS proxy that is not the loopback sidecar, or wherever the issuer must not
+        // follow the client's Host header. A trailing slash is ignored.
+        WriteConfig("    issuer: https://pdn.example:8443/");
+        await using var factory = new NodeAppFactory();
+        SeedUser(factory, "op", "correct horse battery staple", AuthScopes.Operate);
+        using var client = NoRedirect(factory);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/.well-known/oauth-authorization-server");
+        req.Headers.Host = "evil.example:9999";
+        using var asDoc = JsonDocument.Parse(await (await client.SendAsync(req)).Content.ReadAsStringAsync());
+        asDoc.RootElement.GetProperty("issuer").GetString().Should().Be("https://pdn.example:8443");
+        asDoc.RootElement.GetProperty("authorization_endpoint").GetString().Should().Be("https://pdn.example:8443/oauth/authorize");
+        asDoc.RootElement.GetProperty("registration_endpoint").GetString().Should().Be("https://pdn.example:8443/oauth/register");
+
+        using var prReq = new HttpRequestMessage(HttpMethod.Get, "/.well-known/oauth-protected-resource");
+        prReq.Headers.Host = "evil.example:9999";
+        using var prDoc = JsonDocument.Parse(await (await client.SendAsync(prReq)).Content.ReadAsStringAsync());
+        prDoc.RootElement.GetProperty("resource").GetString().Should().Be("https://pdn.example:8443/mcp");
+        prDoc.RootElement.GetProperty("authorization_servers")[0].GetString().Should().Be("https://pdn.example:8443");
+
+        // The RFC 9207 iss on the authorization response says the same.
+        var clientId = await RegisterClientAsync(client);
+        var challenge = OauthPkce.ChallengeFor("the-quick-brown-fox-jumps-over-the-lazy-dog-pkce-verifier");
+        var resp = await PostApproveAsync(client, clientId, challenge, "op", "correct horse battery staple", "mcp:operate");
+        resp.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        resp.Headers.Location!.ToString().Should().Contain("iss=" + Uri.EscapeDataString("https://pdn.example:8443"));
     }
 
     [Fact]

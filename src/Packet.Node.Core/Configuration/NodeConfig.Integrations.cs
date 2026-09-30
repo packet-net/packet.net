@@ -260,6 +260,16 @@ public sealed record McpOauthConfig
     /// because the connector re-runs the authorize flow when it expires (no refresh token in
     /// this cut; refresh is a documented follow-up).</summary>
     public int AccessTokenLifetimeMinutes { get; init; } = 60;
+
+    /// <summary>The canonical base URL the OAuth discovery documents, the endpoint URLs
+    /// they advertise and the RFC 9207 <c>iss</c> are built on, e.g.
+    /// <c>https://pdn.example:8443</c>. Default <c>null</c>: derived from each request's
+    /// scheme and host, which honours forwarded headers from a loopback proxy (the tsnet
+    /// sidecar) but is otherwise whatever <c>Host</c> header the client sent. Set it behind
+    /// any other TLS-terminating proxy, or wherever the issuer must not follow the request
+    /// (security review M2, #427). An absolute http(s) URL, no query or fragment; a
+    /// trailing slash is ignored.</summary>
+    public string? Issuer { get; init; }
 }
 
 /// <summary>

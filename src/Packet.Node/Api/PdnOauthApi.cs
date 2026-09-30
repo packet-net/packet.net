@@ -64,7 +64,7 @@ public static class PdnOauthApi
                 return Results.NotFound();
             }
 
-            var b = BaseUrl(ctx);
+            var b = BaseUrl(ctx, config);
             return Results.Json(new Dictionary<string, object?>
             {
                 ["resource"] = $"{b}/mcp",
@@ -81,7 +81,7 @@ public static class PdnOauthApi
                 return Results.NotFound();
             }
 
-            var b = BaseUrl(ctx);
+            var b = BaseUrl(ctx, config);
             return Results.Json(new Dictionary<string, object?>
             {
                 ["issuer"] = b,
@@ -280,7 +280,7 @@ public static class PdnOauthApi
             }
             // RFC 9207: identify the issuer in the authorization response so the client can
             // detect a mix-up attack (a code minted by a different AS than it expected).
-            sb.Append("&iss=").Append(Uri.EscapeDataString(BaseUrl(ctx)));
+            sb.Append("&iss=").Append(Uri.EscapeDataString(BaseUrl(ctx, config)));
             return Results.Redirect(sb.ToString());
         });
 
@@ -356,7 +356,15 @@ public static class PdnOauthApi
 
     private static bool Enabled(IConfigProvider config) => config.Current.Mcp.Oauth.Enabled;
 
-    private static string BaseUrl(HttpContext ctx) => $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}";
+    // The issuer and every URL discovery advertises. Pinned by mcp.oauth.issuer when set;
+    // otherwise the request's own scheme and host, which the forwarded-headers middleware
+    // has already corrected for a loopback proxy and which is otherwise the client's Host
+    // header (#427: a spoofed Host shapes the metadata, bounded by redirect_uri being
+    // matched against the registered set).
+    private static string BaseUrl(HttpContext ctx, IConfigProvider config) =>
+        config.Current.Mcp.Oauth.Issuer is { } issuer
+            ? issuer.TrimEnd('/')
+            : $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}";
 
     // https anywhere; http only for loopback (local dev / Claude Code on the same box).
     private static bool IsAllowedRedirect(Uri uri) =>
