@@ -270,6 +270,14 @@ public sealed record McpOauthConfig
     /// (security review M2, #427). An absolute http(s) URL, no query or fragment; a
     /// trailing slash is ignored.</summary>
     public string? Issuer { get; init; }
+
+    /// <summary>Whether <c>POST /oauth/register</c> (RFC 7591 dynamic client registration) is
+    /// open. Default <c>true</c>: the MCP spec expects a client such as claude.ai to register
+    /// itself, and the endpoint is bounded (a per-address budget and a capped client table).
+    /// <c>false</c> closes it and drops <c>registration_endpoint</c> from discovery, for an
+    /// operator who would rather register clients by hand than accept any registrant on a
+    /// hostile network (security review M1, #426). Clients already registered keep working.</summary>
+    public bool AllowDynamicRegistration { get; init; } = true;
 }
 
 /// <summary>
