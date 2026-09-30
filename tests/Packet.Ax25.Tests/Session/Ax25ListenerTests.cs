@@ -366,6 +366,13 @@ public class Ax25ListenerTests
         // spurious timeout. The budget runs on the listener's FakeTimeProvider, so
         // we expire it deterministically with the confirm freshly queued and the
         // real 25 ms poll loop parked.
+        //
+        // "Freshly queued" is observed, not assumed (#626): the listener offers each
+        // upward signal to the waiting dial's queue and then raises the session's
+        // DataLinkSignalEmitted, so a handler on that event runs with the confirm
+        // already queued. A wall-clock settle in its place was too short under load
+        // and the budget then expired with nothing queued - a real timeout, and a
+        // test failing on the box's speed rather than on the code.
         var time = new FakeTimeProvider();
         var modem = new LoopbackModem();
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions
@@ -382,13 +389,23 @@ public class Ax25ListenerTests
 
         var connectTask = listener.ConnectAsync(PeerCallA);
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2)); // SABM out; loop now polling
+        var dialling = listener.ActiveSessions.Should().ContainSingle().Subject;
+        var confirmQueued = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialling.DataLinkSignalEmitted += (_, sig) =>
+        {
+            if (sig is DataLinkConnectConfirm)
+            {
+                confirmQueued.TrySetResult();
+            }
+        };
 
-        // Deliver the UA and let the inbound pump enqueue the DL-CONNECT-confirm (a
-        // brief settle, far under the 25 ms poll cadence so the loop hasn't drained
-        // it yet), then expire the fake-clock budget so the poll loop breaks with
-        // the confirm still queued - the exact lost-wakeup window.
+        // Deliver the UA, wait until the inbound pump has queued the DL-CONNECT-confirm
+        // for the dial, then expire the fake-clock budget so the poll loop breaks with
+        // the confirm still queued - the exact lost-wakeup window. (Should the 25 ms
+        // poll happen to run between the two, it drains the confirm itself and the
+        // connect completes the ordinary way; the assertion holds either way.)
         modem.InjectInbound(Ax25Frame.Ua(LocalCall, PeerCallA, finalBit: true));
-        await Task.Delay(5);
+        await confirmQueued.Task.WithTimeout(TimeSpan.FromSeconds(2));
         time.Advance(TimeSpan.FromSeconds(16));
 
         var session = await connectTask.WithTimeout(TimeSpan.FromSeconds(2));
