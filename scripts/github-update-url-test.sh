@@ -78,6 +78,11 @@ expect_accept --check-url 'https://GitHub.com/packet-net/packet.net/releases/dow
     'hostnames are case-insensitive'
 
 echo "== health URL guard (C101): loopback /healthz only =="
+# The apt helper carries the same guard over its own spooled health URL (#471), so the same
+# table runs against both helpers.
+for helper in "$here/../packaging/packetnet-github-update" "$here/../packaging/packetnet-apt-update"; do
+[ -x "$helper" ] || { echo "not executable: $helper" >&2; exit 2; }
+echo "-- $(basename "$helper")"
 expect_accept --check-health-url 'http://127.0.0.1:8080/healthz' 'the default'
 expect_accept --check-health-url 'http://127.0.0.1:9999/healthz' 'a non-8080 port - the whole point of C101'
 expect_accept --check-health-url 'http://[::1]:8080/healthz'     'the IPv6 loopback form'
@@ -88,6 +93,7 @@ expect_reject --check-health-url 'http://127.0.0.1:0/healthz'      'port 0'
 expect_reject --check-health-url 'http://127.0.0.1:99999/healthz'  'port out of range'
 expect_reject --check-health-url 'http://127.0.0.1:80x0/healthz'   'non-numeric port'
 expect_reject --check-health-url 'http://127.0.0.2:8080/healthz'   'loopback range but not the loopback address'
+done
 
 if [ "$fails" -eq 0 ]; then
     echo "URL_GUARD_PASS"

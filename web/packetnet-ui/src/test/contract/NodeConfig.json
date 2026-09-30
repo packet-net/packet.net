@@ -379,7 +379,8 @@
     "oauth": {
       "enabled": false,
       "accessTokenLifetimeMinutes": 60,
-      "issuer": "https://pdn.m0lte.uk"
+      "issuer": "https://pdn.m0lte.uk",
+      "allowDynamicRegistration": false
     }
   },
   "applications": [],
