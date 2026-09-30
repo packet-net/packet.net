@@ -176,6 +176,7 @@ management:
     # webAuthn:
     #   relyingPartyId: pdn.example
     #   allowedOrigins: [ "https://pdn.example:8443" ]
+    #   requireUserVerification: false  # true: a PIN, biometric or unlock on every passkey use, not just a touch
 
 # Embedded Tailscale (the tsnet sidecar) - the blessed remote + passkey path. Off by
 # default; pdn stays HTTP-only until you opt in. When enabled, pdn joins your tailnet, gets

@@ -255,6 +255,9 @@ export interface WebAuthnConfig {
   relyingPartyId: string;
   relyingPartyName: string;
   allowedOrigins: string[];
+  // Ask the authenticator to verify the user (PIN, biometric, unlock) rather than only to
+  // check they are present. Off by default (#414 O-1).
+  requireUserVerification: boolean;
 }
 // Web control-API auth (server: AuthConfig). Only the fields the UI touches are typed; the
 // rest round-trip untouched through the structured PUT.

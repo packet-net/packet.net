@@ -125,6 +125,7 @@ public class ConfigCollectionEqualityTests
         b.Should().Be(a);
         b.GetHashCode().Should().Be(a.GetHashCode());
         (a with { AllowedOrigins = ["https://pdn.example"] }).Should().NotBe(a);
+        (a with { RequireUserVerification = true }).Should().NotBe(a);
     }
 
     [Fact]

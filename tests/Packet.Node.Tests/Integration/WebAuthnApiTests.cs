@@ -34,7 +34,7 @@ public sealed class WebAuthnApiTests : IDisposable
         dbPath = Path.Combine(dir, "pdn.db");
     }
 
-    private static string ConfigYaml(bool authEnabled) => $"""
+    private static string ConfigYaml(bool authEnabled, bool requireUserVerification = false) => $"""
         schemaVersion: 1
         identity:
           callsign: M0LTE-1
@@ -51,17 +51,19 @@ public sealed class WebAuthnApiTests : IDisposable
             webAuthn:
               relyingPartyId: localhost
               relyingPartyName: pdn test node
+              requireUserVerification: {(requireUserVerification ? "true" : "false")}
         """;
 
-    private void WriteConfig(bool authEnabled) => File.WriteAllText(configPath, ConfigYaml(authEnabled));
+    private void WriteConfig(bool authEnabled, bool requireUserVerification = false) =>
+        File.WriteAllText(configPath, ConfigYaml(authEnabled, requireUserVerification));
 
     // Config now lives in pdn.db (config-in-DB, #473): flipping auth on between boots is a
     // write through the live seam (PUT /config/raw, ungated while auth is off), not a YAML
     // rewrite (the file is read once on first boot, then vestigial). Persists to the DB so the
     // next boot loads it.
-    private static async Task FlipAuthOnViaApi(HttpClient client) =>
+    private static async Task FlipAuthOnViaApi(HttpClient client, bool requireUserVerification = false) =>
         (await client.PutAsync("/api/v1/config/raw",
-            new StringContent(ConfigYaml(authEnabled: true)))).StatusCode.Should().Be(HttpStatusCode.OK);
+            new StringContent(ConfigYaml(authEnabled: true, requireUserVerification)))).StatusCode.Should().Be(HttpStatusCode.OK);
 
     private sealed class NodeAppFactory(string configPath, string dbPath) : WebApplicationFactory<Program>
     {
@@ -93,6 +95,53 @@ public sealed class WebAuthnApiTests : IDisposable
         var options = body.GetProperty("options");
         options.GetProperty("challenge").GetString().Should().NotBeNullOrEmpty();
         options.GetProperty("rpId").GetString().Should().Be("localhost");
+    }
+
+    [Fact]
+    public async Task User_verification_is_preferred_by_default_and_required_when_the_owner_says_so()
+    {
+        // Review O-1 (#414): presence is enough for the localhost-first node; an owner who
+        // wants a PIN, a biometric or an unlock on every ceremony sets
+        // management.auth.webAuthn.requireUserVerification, and both ceremonies then ask
+        // the authenticator for it (the verifier holds /complete to what /begin asked).
+        WriteConfig(authEnabled: false);
+        await using (var factory = Factory())
+        using (var client = factory.CreateClient())
+        {
+            var resp = await client.PostAsJsonAsync("/api/v1/auth/webauthn/assert/begin", new { }, Web);
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>(Web);
+            body.GetProperty("options").GetProperty("userVerification").GetString().Should().Be("preferred");
+        }
+
+        // The knob on, written through the live seam (the YAML is vestigial once the first
+        // boot has imported it to pdn.db), with an admin to enrol so register/begin can be
+        // asked as well.
+        await using (var setupFactory = Factory())
+        using (var setupClient = setupFactory.CreateClient())
+        {
+            (await setupClient.PostAsJsonAsync("/api/v1/setup", new
+            {
+                identity = new { callsign = "M0LTE-1", alias = "LONDON" },
+                admin = new { username = "sysop", password = "hunter2hunter2" },
+            }, Web)).StatusCode.Should().Be(HttpStatusCode.OK);
+            await FlipAuthOnViaApi(setupClient, requireUserVerification: true);
+        }
+
+        await using var required = Factory();
+        using var requiredClient = required.CreateClient();
+
+        var assertResp = await requiredClient.PostAsJsonAsync("/api/v1/auth/webauthn/assert/begin", new { }, Web);
+        assertResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var assertBody = await assertResp.Content.ReadFromJsonAsync<JsonElement>(Web);
+        assertBody.GetProperty("options").GetProperty("userVerification").GetString().Should().Be("required");
+
+        var token = await Login(requiredClient, "sysop", "hunter2hunter2");
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/webauthn/register/begin");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var registerResp = await requiredClient.SendAsync(req);
+        registerResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var registerOptions = await registerResp.Content.ReadFromJsonAsync<JsonElement>(Web);
+        registerOptions.GetProperty("authenticatorSelection").GetProperty("userVerification").GetString().Should().Be("required");
     }
 
     [Fact]

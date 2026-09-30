@@ -436,7 +436,7 @@ public sealed class ClientContractFixtureTests
             Auth = new AuthConfig
             {
                 Enabled = true, AccessTokenMinutes = 60, RefreshTokenMinutes = 43_200, SysopElevationMinutes = 30,
-                WebAuthn = new WebAuthnConfig { RelyingPartyId = "pdn.m0lte.uk", RelyingPartyName = "pdn node", AllowedOrigins = ["https://pdn.m0lte.uk"] },
+                WebAuthn = new WebAuthnConfig { RelyingPartyId = "pdn.m0lte.uk", RelyingPartyName = "pdn node", AllowedOrigins = ["https://pdn.m0lte.uk"], RequireUserVerification = true },
             },
             Mdns = new MdnsConfig { Enabled = true, InstanceName = "london" },
             Console = new SysopConsoleConfig { IdleTimeoutMinutes = 30 },
