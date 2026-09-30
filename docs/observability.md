@@ -182,3 +182,17 @@ scrape_configs:
     static_configs:
       - targets: ["127.0.0.1:8080"]
 ```
+
+## Traffic capture: export and replay
+
+The persistent traffic log (`traffic.enabled`, `traffic.db` beside `pdn.db` unless `traffic.path` says otherwise) keeps every traced frame with its timestamp, port, direction, decoded columns, the raw AX.25 bytes (capped at 2048) and the radio's per-frame RSSI, SNR and noise floor. Two offline verbs turn it into the record/replay harness of plan §5.X SP-003 (#178):
+
+```
+pdn traffic export [--traffic-db <traffic.db>] [--db <pdn.db>] [--port <id>] [--since <utc>] [--until <utc>] [--limit <n>] [--out <file>]
+pdn traffic replay <capture.jsonl> [--port <id>]
+```
+
+`export` writes JSON lines, oldest first, one object per frame: `ts` (ISO 8601 UTC, milliseconds), `port`, `dir` (`rx` or `tx`), `frame` (the AX.25 bytes as hex, KISS form, no FCS) and, when the radio gave them, `rssi`, `snr` and `noise`; a row the log capped carries `truncated: true`. A blank line or one starting with `#` is a note, so a capture can be annotated and cut with ordinary text tools, and anything can write one.
+
+`replay` runs a capture through the AX.25 parser, `Strict` first and `Lenient` second, then through `Ax25LinkObserver`, and prints one line per frame with the observer's narration (the same reading a third party would give the link: calls, answers, resends, polls, rejects), the parse verdict of every frame, the links and their states, and a tally of frames the spec rejects outright against frames only a preset accepts. Its use is the one the spike named: a strange frame seen on the air, or a link that behaved oddly, replayed off the log after the fact. The library side is `Packet.Node.Core.Traffic.TrafficCapture` (the format) and `TrafficReplay` (the run and its report), so a capture can also be a test fixture: a regression library of frames seen in the wild, replayed by a test.
+
