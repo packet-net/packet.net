@@ -58,8 +58,9 @@ public sealed class ManagedMqttPublishSinkTests
         await server.StartAsync();
 
         var clock = new FakeTimeProvider();
+        var client = new MqttClientFactory().CreateMqttClient();
         await using var sink = new ManagedMqttPublishSink(
-            new MqttClientFactory().CreateMqttClient(), ManagedMqttPublishSink.BuildOptions(Cfg(port) with { Username = null }, "pdn-test"), clock);
+            client, ManagedMqttPublishSink.BuildOptions(Cfg(port) with { Username = null }, "pdn-test"), clock);
 
         await sink.PublishAsync("t", "one"u8.ToArray(), 0, false, CancellationToken.None);
         await sink.PublishAsync("t", "two"u8.ToArray(), 0, false, CancellationToken.None);
@@ -72,7 +73,15 @@ public sealed class ManagedMqttPublishSinkTests
 
         // The broker goes away: the sink keeps what it is given and retries after its delay
         // once the broker is back, with nothing lost and the order kept.
+        // QoS 0 is at-most-once: a publish that lands on the socket before the client has seen
+        // the broker's close is gone, by contract (CI's slower runner hit that window once). So
+        // wait for the client to notice before offering more; from here on nothing may be lost.
         await server.StopAsync();
+        for (int i = 0; i < 200 && client.IsConnected; i++)
+        {
+            await Task.Delay(50);
+        }
+        client.IsConnected.Should().BeFalse("the client sees the broker go away");
         await sink.PublishAsync("t", "four"u8.ToArray(), 0, false, CancellationToken.None);
         await sink.PublishAsync("t", "five"u8.ToArray(), 0, false, CancellationToken.None);
         await Task.Delay(300);
