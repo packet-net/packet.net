@@ -378,7 +378,8 @@
     "tokenLifetimeDays": 90,
     "oauth": {
       "enabled": false,
-      "accessTokenLifetimeMinutes": 60
+      "accessTokenLifetimeMinutes": 60,
+      "issuer": "https://pdn.m0lte.uk"
     }
   },
   "applications": [],
