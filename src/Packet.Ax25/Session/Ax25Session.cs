@@ -409,6 +409,19 @@ public sealed class Ax25Session
     {
         ArgumentNullException.ThrowIfNull(evt);
 
+        // A DL-DATA request is bounded by N1 (the peer rejects a longer I frame and
+        // re-establishes the link, packet.net#808). Posted raw, an over-N1 byte-stream
+        // payload is split into N1-sized requests here, and an over-N1 datagram is refused;
+        // the segmenter, when negotiated, has already produced PID-0x08 segments within N1.
+        if (evt is DlDataRequest dr && dr.Data.Length > Context.N1 && dr.Pid != Ax25Frame.PidSegmented)
+        {
+            foreach (var part in SegmentationLayer.SplitAtN1(dr.Data, dr.Pid, Context.N1))
+            {
+                PostEvent(part);
+            }
+            return;
+        }
+
         // Cross-thread serialisation. Real posters genuinely race: the
         // listener's inbound pump (frame events), timer-expiry callbacks
         // (SystemTimerScheduler fires them on TimeProvider timer threads), and

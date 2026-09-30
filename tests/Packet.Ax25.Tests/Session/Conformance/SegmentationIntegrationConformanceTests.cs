@@ -145,18 +145,63 @@ public class SegmentationIntegrationConformanceTests
     }
 
     [Fact]
-    public void Over_N1_payload_on_a_session_without_the_negotiated_segmenter_is_rejected()
+    public void Over_N1_byte_stream_on_a_session_without_the_negotiated_segmenter_goes_as_N1_sized_I_frames()
     {
-        // v2.0 / not-negotiated: an over-N1 payload must be rejected cleanly at the
-        // shim, never truncated or sent oversize.
+        // v2.0 / not-negotiated (packet.net#808): a byte-stream payload over N1 is split at
+        // N1, so every I frame stays within what the peer accepts, and the peer sees the same
+        // bytes in order across two indications. Before, one oversize I frame went out and the
+        // peer re-established the link (figc4.4 t26, DL-ERROR N), losing the data.
+        var h = TwoStationHarness.Build(k: 8, segmenter: false);
+        h.Connect();
+
+        int n1 = h.A.Context.N1;
+        var payload = Enumerable.Range(0, n1 + 50).Select(i => (byte)i).ToArray();
+        h.Submit(h.A, payload[..n1]);
+        h.Submit(h.A, payload[n1..]);
+        h.FlushAcks();
+
+        h.B.Delivered.Should().HaveCount(2, "two I frames, N1 bytes and the remainder");
+        h.B.Delivered.SelectMany(d => d).Should().Equal(payload);
+        h.A.State.Should().Be("Connected", "no oversize frame, so no re-establishment");
+        h.AssertConverged();
+    }
+
+    [Fact]
+    public void Over_N1_byte_stream_posted_raw_is_split_by_the_session_itself()
+    {
+        // The raw path (a DlDataRequest posted straight to the session, as axcall did in
+        // packet.net#808) gets the same rule, so no caller can put an oversize I frame on the air.
+        var h = TwoStationHarness.Build(k: 8, segmenter: false);
+        h.Connect();
+
+        int n1 = h.A.Context.N1;
+        var payload = Enumerable.Range(0, n1 + 50).Select(i => (byte)(i * 7)).ToArray();
+        h.A.Submitted.Add(payload[..n1]);
+        h.A.Submitted.Add(payload[n1..]);
+        h.A.Session.PostEvent(new DlDataRequest(payload));
+        h.FlushAcks();
+
+        h.B.Delivered.Should().HaveCount(2);
+        h.B.Delivered.SelectMany(d => d).Should().Equal(payload);
+        h.A.State.Should().Be("Connected");
+        h.AssertConverged();
+    }
+
+    [Fact]
+    public void Over_N1_datagram_on_a_session_without_the_negotiated_segmenter_is_rejected()
+    {
+        // A Layer-3 datagram over N1 cannot be split without breaking it and cannot be sent
+        // whole, so it is rejected cleanly at the shim and at the session alike.
         var h = TwoStationHarness.Build(k: 8, segmenter: false);
         h.Connect();
 
         var payload = new byte[h.A.Context.N1 + 50];
-        var act = () => h.SubmitLarge(h.A, payload);
+        var viaShim = () => h.SubmitLarge(h.A, payload, Ax25Frame.PidNetRom);
+        viaShim.Should().Throw<InvalidOperationException>().WithMessage("*segmenter/reassembler has not been negotiated*");
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*segmenter/reassembler has not been negotiated*");
+        var raw = () => h.A.Session.PostEvent(new DlDataRequest(payload, Ax25Frame.PidNetRom));
+        raw.Should().Throw<InvalidOperationException>().WithMessage("*segmenter/reassembler has not been negotiated*");
+        h.A.State.Should().Be("Connected", "nothing went on the air");
     }
 
     // Default format (SegmentFirstCarriesL3Pid on) - the wired round-trip must

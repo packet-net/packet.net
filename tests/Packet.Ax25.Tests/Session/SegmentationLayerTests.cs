@@ -64,16 +64,34 @@ public class SegmentationLayerTests
     }
 
     [Fact]
-    public void Send_rejects_an_over_N1_payload_when_the_segmenter_is_not_negotiated()
+    public void Send_splits_an_over_N1_byte_stream_at_N1_when_the_segmenter_is_not_negotiated()
     {
+        // packet.net#808: a byte stream has no message boundary, so it goes as N1-sized I
+        // frames rather than one oversize frame the peer would reject.
         var seg = new SegmentationLayer(Ctx(n1: 256, segmenterEnabled: false));
-        var payload = new byte[300];   // > N1, segmenter off
+        var payload = Enumerable.Range(0, 600).Select(i => (byte)i).ToArray();   // > 2 N1, segmenter off
 
-        var act = () => seg.BuildSendRequests(payload);
+        var requests = seg.BuildSendRequests(payload);
+
+        requests.Should().HaveCount(3);
+        requests.Select(r => r.Data.Length).Should().Equal(new[] { 256, 256, 88 }, "N1-sized pieces and the remainder");
+        requests.Should().OnlyContain(r => r.Pid == Ax25Frame.PidNoLayer3, "the pieces keep the stream PID; nothing is segmented");
+        requests.SelectMany(r => r.Data.ToArray()).Should().Equal(payload, "the same bytes in the same order");
+    }
+
+    [Fact]
+    public void Send_rejects_an_over_N1_datagram_when_the_segmenter_is_not_negotiated()
+    {
+        // A payload with a Layer-3 PID is a datagram: split, the peer decodes two broken
+        // packets; sent whole, the peer rejects the frame. So it is refused cleanly.
+        var seg = new SegmentationLayer(Ctx(n1: 256, segmenterEnabled: false));
+        var payload = new byte[300];
+
+        var act = () => seg.BuildSendRequests(payload, Ax25Frame.PidNetRom);
 
         act.Should().Throw<InvalidOperationException>(
-            "an over-N1 payload cannot be sent without segmentation; it must be rejected cleanly, " +
-            "never truncated or sent as an oversize frame")
+            "an over-N1 datagram cannot be sent without segmentation; it must be rejected cleanly, " +
+            "never truncated, split or sent as an oversize frame")
             .WithMessage("*segmenter/reassembler has not been negotiated*");
     }
 

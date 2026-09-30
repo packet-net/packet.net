@@ -366,8 +366,9 @@ public sealed class TwoStationHarness
     /// <paramref name="pid"/>. Records the WHOLE payload as a single logical
     /// submission (so the oracle expects one reassembled delivery), then posts each
     /// segment-request the shim produces as its own I-frame. With the segmenter
-    /// disabled this posts a single un-segmented request (and throws if the payload
-    /// exceeds N1, per the shim's strict reject).</summary>
+    /// disabled this posts a single un-segmented request (an over-N1 byte stream is
+    /// split at N1 by the shim, which this oracle does not model: use Submit per piece;
+    /// an over-N1 datagram throws, per the shim's reject).</summary>
     public void SubmitLarge(Endpoint from, byte[] payload, byte pid = Ax25Frame.PidNoLayer3)
     {
         from.Submitted.Add(payload);

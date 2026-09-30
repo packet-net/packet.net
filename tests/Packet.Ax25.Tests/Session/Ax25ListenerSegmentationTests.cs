@@ -177,8 +177,10 @@ public class Ax25ListenerSegmentationTests
     }
 
     [Fact]
-    public async Task SendData_rejects_an_over_N1_payload_when_the_segmenter_is_not_negotiated()
+    public async Task SendData_splits_an_over_N1_byte_stream_when_the_segmenter_is_not_negotiated()
     {
+        // packet.net#808: a byte stream over N1 goes as N1-sized I frames, never as one
+        // oversize frame the peer would reject.
         var (listener, _, session) = await AcceptedSession(ctx =>
         {
             ctx.N1 = 256;
@@ -188,8 +190,23 @@ public class Ax25ListenerSegmentationTests
 
         var act = () => listener.SendData(session, new byte[300]);
 
+        act.Should().NotThrow("a byte stream is split at N1 rather than refused");
+    }
+
+    [Fact]
+    public async Task SendData_rejects_an_over_N1_datagram_when_the_segmenter_is_not_negotiated()
+    {
+        var (listener, _, session) = await AcceptedSession(ctx =>
+        {
+            ctx.N1 = 256;
+            ctx.SegmenterReassemblerEnabled = false;   // v2.0 / not negotiated
+        });
+        await using var _ = listener;
+
+        var act = () => listener.SendData(session, new byte[300], Ax25Frame.PidNetRom);
+
         act.Should().Throw<InvalidOperationException>(
-            "an over-N1 payload on a non-segmenter session must be rejected cleanly")
+            "an over-N1 datagram on a non-segmenter session must be rejected cleanly, not split or sent oversize")
             .WithMessage("*segmenter/reassembler has not been negotiated*");
     }
 
