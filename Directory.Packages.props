@@ -89,17 +89,13 @@
     <!-- Serial / IO -->
     <PackageVersion Include="System.IO.Ports" Version="10.0.11" />
 
-    <!-- MQTT (SP-001 spike — LinBPQ feed ingestion; the node's kissproxy-compatible
-         frame emitter uses the ManagedClient extension for auto-reconnect).
-         HELD at 4.3.7 (#673): MQTTnet 5 exists, but MQTTnet.Extensions.ManagedClient
-         does NOT — it stops at 4.3.7.1207, the managed client having been dropped in
-         v5. ManagedMqttPublishSink is built on IManagedMqttClient /
-         ManagedMqttClientOptionsBuilder for auto-reconnect, so this is a PORT onto v5's
-         own reconnect story, not a version bump — and the emitter's topic/payload output
-         is byte-exact by contract (kiss-collector ingests it), so it also needs proving
-         against a capture. -->
-    <PackageVersion Include="MQTTnet" Version="4.3.7.1207" />
-    <PackageVersion Include="MQTTnet.Extensions.ManagedClient" Version="4.3.7.1207" />
+    <!-- MQTT (SP-001 spike - LinBPQ feed ingestion; the node's kissproxy-compatible
+         frame emitter). MQTTnet 5 (#882, 2026-09-30): v5 dropped the ManagedClient
+         extension, so ManagedMqttPublishSink carries its own bounded drop-oldest queue and
+         reconnect loop over the plain client; MQTTnet.Server is a test-only dependency (an
+         in-process broker the sink tests publish into). -->
+    <PackageVersion Include="MQTTnet" Version="5.2.0.1603" />
+    <PackageVersion Include="MQTTnet.Server" Version="5.2.0.1603" />
 
     <!-- mDNS / DNS-SD browsing (split-station Stage 3b — head-end discovery). Zeroconf is a
          cross-platform, Linux-working resolver that binds :5353 with address-reuse so it coexists

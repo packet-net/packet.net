@@ -1,6 +1,6 @@
+using System.Buffers;
 using System.Threading.Channels;
 using MQTTnet;
-using MQTTnet.Client;
 
 namespace Packet.Mqtt.Spike;
 
@@ -91,7 +91,7 @@ public static class CollectMode
             }
         }, CancellationToken.None);
 
-        var factory = new MqttFactory();
+        var factory = new MqttClientFactory();
         var client = factory.CreateMqttClient();
 
         client.ApplicationMessageReceivedAsync += async e =>

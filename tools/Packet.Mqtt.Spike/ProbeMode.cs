@@ -1,6 +1,6 @@
+using System.Buffers;
 using System.Text;
 using MQTTnet;
-using MQTTnet.Client;
 
 namespace Packet.Mqtt.Spike;
 
@@ -30,7 +30,7 @@ public static class ProbeMode
         Console.Error.WriteLine($"# probe: broker={opts.Broker}:{opts.Port} topic={opts.Topic} seconds={opts.Seconds}");
         Console.Error.WriteLine($"# out-dir: {opts.OutDir}");
 
-        var factory = new MqttFactory();
+        var factory = new MqttClientFactory();
         var client = factory.CreateMqttClient();
 
         var clientId = $"packetnet-mqtt-probe-{Environment.MachineName}-{Random.Shared.Next():x}";
@@ -59,7 +59,7 @@ public static class ProbeMode
         {
             messageCount++;
             string topic = e.ApplicationMessage.Topic;
-            var payload = e.ApplicationMessage.Payload;
+            var payload = e.ApplicationMessage.Payload.ToArray();
             int len = (int)payload.Length;
 
             topicCounts.TryGetValue(topic, out int n);
