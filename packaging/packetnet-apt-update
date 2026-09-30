@@ -15,8 +15,56 @@ set -eu
 
 PKG=packetnet
 TAG=packetnet-update
+# The node spools its effective loopback health URL here on Apply (SystemctlUpdateLauncher),
+# so the post-upgrade gate probes the port this node actually serves. The spool is writable by
+# the unprivileged service user, so the value is validated (loopback /healthz only) and never
+# fetched as given; absent or invalid, the default below stands in.
+SPOOL="${PDN_UPDATE_SPOOL:-/run/packetnet}"
+HEALTH_FILE="$SPOOL/health.url"
+HEALTH_URL_DEFAULT="http://127.0.0.1:8080/healthz"
 
 log() { logger -t "$TAG" -- "$*" 2>/dev/null || true; echo "$TAG: $*"; }
+
+# health_url_ok <url> - true iff <url> is exactly a loopback http /healthz on a valid port.
+# The same guard as packetnet-github-update's: a forged spool must not turn the root health
+# gate into a fetch of an arbitrary URL (or an always-200 endpoint that defeats the rollback).
+health_url_ok() {
+    _h="$1"
+    case "$_h" in
+        "http://127.0.0.1:"*"/healthz") _port="${_h#"http://127.0.0.1:"}" ;;
+        "http://[::1]:"*"/healthz") _port="${_h#"http://[::1]:"}" ;;
+        *) return 1 ;;
+    esac
+    _port="${_port%/healthz}"
+    case "$_port" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    [ "$_port" -ge 1 ] && [ "$_port" -le 65535 ]
+}
+
+# Validate-only mode, side-effect free, so the guard is testable on its own
+# (scripts/github-update-url-test.sh drives it for both helpers).
+case "${1:-}" in
+    --check-health-url)
+        [ $# -eq 2 ] || { echo "usage: $0 --check-health-url <url>" >&2; exit 2; }
+        if health_url_ok "$2"; then echo "accept: $2"; exit 0; fi
+        echo "reject: $2" >&2; exit 1
+        ;;
+    '') : ;;
+    *) echo "usage: $0 [--check-health-url <url>]" >&2; exit 2 ;;
+esac
+
+HEALTH_URL="${PDN_HEALTH_URL:-}"
+if [ -z "$HEALTH_URL" ]; then
+    spooled=""
+    [ -r "$HEALTH_FILE" ] && spooled="$(head -1 "$HEALTH_FILE" | tr -d '[:space:]')"
+    if [ -n "$spooled" ] && health_url_ok "$spooled"; then
+        HEALTH_URL="$spooled"
+    else
+        [ -z "$spooled" ] || log "ignoring non-loopback health URL in $HEALTH_FILE: $spooled"
+        HEALTH_URL="$HEALTH_URL_DEFAULT"
+    fi
+fi
 
 prev="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"
 log "starting targeted upgrade of $PKG (current: ${prev:-unknown})"
@@ -38,19 +86,33 @@ fi
 log "upgrade applied ($prev -> $new); waiting for the node to come up"
 
 # The package postinst try-restarts packetnet.service inside the apt run above, so by
-# here the new version is (re)starting. Health-gate on it reaching active; if it won't,
-# roll back to the prior version. (A deeper /healthz probe is a later refinement.)
+# here the new version is (re)starting. Health-gate on the node's own /healthz; if it won't
+# come up healthy, roll back to the prior version.
+log "health gate: $HEALTH_URL"
 healthy=0
+answered=0
 i=0
 while [ "$i" -lt 30 ]; do
-    if systemctl is-active --quiet "$PKG.service"; then healthy=1; break; fi
+    if curl -fsS -o /dev/null --max-time 3 "$HEALTH_URL" 2>/dev/null; then healthy=1; break; fi
+    # curl exit 22 is an HTTP error under -f: the node answered and said it is not healthy,
+    # which is the one verdict the second opinion below must not overrule.
+    [ $? -eq 22 ] && answered=1
     i=$((i + 1))
     sleep 2
 done
 
+# Second opinion before we roll a good install back. The probe can miss for reasons that are
+# not the node being broken - a bind we could not normalise to loopback (a single LAN
+# address), a firewall, no curl - so a probe that never got an answer falls back to the gate
+# this helper used before: the unit being active. A node that ANSWERED unhealthy is unhealthy.
+if [ "$healthy" -ne 1 ] && [ "$answered" -ne 1 ] && systemctl is-active --quiet "$PKG.service" 2>/dev/null; then
+    log "no answer from $HEALTH_URL, but $PKG.service is active - accepting the upgrade"
+    healthy=1
+fi
+
 if [ "$healthy" -ne 1 ]; then
     if [ -n "$prev" ]; then
-        log "node did not become active after the upgrade - rolling back to $prev"
+        log "node unhealthy on $new - rolling back to $prev"
         if apt-get install --allow-downgrades -y "$PKG=$prev"; then
             log "rolled back to $prev"
         else
@@ -62,4 +124,4 @@ if [ "$healthy" -ne 1 ]; then
     exit 1
 fi
 
-log "done; node active on $new"
+log "done; node healthy on $new"

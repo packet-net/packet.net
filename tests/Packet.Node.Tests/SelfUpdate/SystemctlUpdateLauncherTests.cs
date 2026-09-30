@@ -42,6 +42,32 @@ public sealed class SystemctlUpdateLauncherTests : IDisposable
     }
 
     [Fact]
+    public async Task Spools_the_health_url_for_the_apt_channel_and_clears_a_stale_one()
+    {
+        // #471: the apt helper gates on /healthz too, and has no request file of its own, so
+        // the node's loopback health URL rides its own one-line file for every channel.
+        var launcher = new SystemctlUpdateLauncher();
+        await launcher.StartUpdateAsync(new SystemUpdateRequest("apt", HealthUrl: "http://127.0.0.1:9090/healthz"));
+        File.ReadAllText(SystemctlUpdateLauncher.HealthUrlFile).Trim().Should().Be("http://127.0.0.1:9090/healthz");
+
+        // A request with no health URL leaves nothing behind for the helper to trust.
+        await launcher.StartUpdateAsync(new SystemUpdateRequest("apt"));
+        File.Exists(SystemctlUpdateLauncher.HealthUrlFile).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task The_github_request_health_url_is_spooled_to_the_shared_file_too()
+    {
+        var launcher = new SystemctlUpdateLauncher();
+        var req = new GithubUpdateRequest("0.9.0", "amd64",
+            "https://github.com/packet-net/packet.net/releases/download/node-v0.9.0/packetnet_0.9.0_amd64.deb",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "http://[::1]:8443/healthz");
+        await launcher.StartUpdateAsync(new SystemUpdateRequest("github", req));
+        File.ReadAllText(SystemctlUpdateLauncher.HealthUrlFile).Trim().Should().Be("http://[::1]:8443/healthz");
+    }
+
+    [Fact]
     public async Task Writes_the_github_request_file_then_the_channel_file()
     {
         var launcher = new SystemctlUpdateLauncher();
