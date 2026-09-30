@@ -108,6 +108,12 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         {
             throw new RhpGatewayException(RhpErrorCode.NoRoute, $"Connect to {target} timed out.");
         }
+        catch (LinkAlreadyUpException ex)
+        {
+            // pdn extension, error 18 (docs/rhp2-server.md row 8): the link to the peer is up
+            // and held by an accept or a console, so this open would only reset it (#862).
+            throw new RhpGatewayException(RhpErrorCode.AlreadyConnected, ex.Message);
+        }
         catch (Exception ex) when (ex is InvalidOperationException or IOException)
         {
             throw new RhpGatewayException(RhpErrorCode.NoRoute, $"Connect to {target} failed: {ex.Message}");

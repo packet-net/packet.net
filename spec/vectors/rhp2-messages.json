@@ -8,6 +8,7 @@
   {"type":"openReply","id":2,"handle":100,"errCode":0,"errText":"Ok"},
   {"type":"openReply","id":3,"errCode":15,"errText":"No Route"},
   {"type":"openReply","id":7,"handle":104,"errCode":0,"errText":"Ok","crossed":true},
+  {"type":"openReply","id":8,"errCode":18,"errText":"Already connected to N0AAA-3 from N0BBB-3."},
 
   {"type":"socket","id":4,"pfam":"ax25","mode":"stream"},
   {"type":"socket","id":5,"pfam":"ax25","mode":"dgram"},

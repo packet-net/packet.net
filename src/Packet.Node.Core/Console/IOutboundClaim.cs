@@ -13,6 +13,16 @@ public interface IOutboundClaim : IDisposable
     /// the same link has handed it over, and no other dial on it is still running.</summary>
     bool LeavesALinkNobodyHolds { get; }
 
+    /// <summary>
+    /// The session a call brought up under this claim (its accept was suppressed) that no dial
+    /// has taken yet: the link this dial is for, set up by the peer's call instead of ours
+    /// (packet-net/packet.net#862). Null until then, and null again once
+    /// <see cref="MarkDelivered"/> has taken it, since the dial's own connect raises a suppressed
+    /// accept too and a second dial overlapping on the key must not take a link the first was
+    /// handed. A later call under the same claim is recorded afresh.
+    /// </summary>
+    Packet.Ax25.Session.Ax25Session? LinkUnderClaim { get; }
+
     /// <summary>A dial on the claimed link returned it to its caller, who now holds it.</summary>
     void MarkDelivered();
 }

@@ -331,11 +331,18 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         var port = TryGetRunning(portId);
 
-        return port is null
-            ? null
-            : new Ax25OutboundConnector(
-                port.Id, port.Listener, r => ClaimOutbound(port.Id, localOverride ?? port.Listener.MyCall, r), localOverride, capabilityCache, LinkPolicyFor(port.Id),
-                timeProvider);
+        if (port is null)
+        {
+            return null;
+        }
+
+        // The restart hand-over (#850) for the links this connector makes: the supervisor offers
+        // a restarted link to a console, an app's accept, or a dial whose claim covers it (#862).
+        Ax25OutboundConnector? made = null;
+        made = new Ax25OutboundConnector(
+            port.Id, port.Listener, r => ClaimOutbound(port.Id, localOverride ?? port.Listener.MyCall, r), localOverride, capabilityCache, LinkPolicyFor(port.Id),
+            timeProvider, peerRestarted: s => TryAcceptInbound(port.Id, port.Listener, made!, s));
+        return made;
     }
 
     /// <summary>
@@ -667,11 +674,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         var serving = CanonicalServingPortIds();
         var first = serving.Count == 0 ? null : TryGetRunning(serving[0]);
-        var ax25 = first is null
-            ? null
-            : new Ax25OutboundConnector(
+        Ax25OutboundConnector? ax25 = null;
+        if (first is not null)
+        {
+            ax25 = new Ax25OutboundConnector(
                 first.Id, first.Listener, r => ClaimOutbound(first.Id, first.Listener.MyCall, r), localOverride: null, cache: capabilityCache,
-                linkPolicy: LinkPolicyFor(first.Id), timeProvider: timeProvider);
+                linkPolicy: LinkPolicyFor(first.Id), timeProvider: timeProvider,
+                peerRestarted: s => TryAcceptInbound(first.Id, first.Listener, ax25!, s));
+        }
 
         // A telnet dial-in has no callsign of its own; a NET/ROM-routed `connect`
         // originates on behalf of this node. Wrap with NET/ROM routing when enabled
@@ -718,14 +728,15 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
-    // Whether the key is claimed; if it is, note that its accept was suppressed.
-    private bool SuppressIfOutbound(string portId, Callsign local, Callsign remote)
+    // Whether the key is claimed; if it is, note that its accept was suppressed, and which
+    // session the peer's call brought up, for the dial to take (#862).
+    private bool SuppressIfOutbound(string portId, Callsign local, Callsign remote, Ax25Session session)
     {
         lock (outboundGate)
         {
             if (outboundInProgress.TryGetValue((portId, local, remote), out var state))
             {
-                state.AcceptSuppressed = true;
+                state.Undelivered = session;
                 return true;
             }
 
@@ -736,8 +747,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private sealed class OutboundClaimState
     {
         public int Count;
-        public bool AcceptSuppressed;
-        public bool Delivered;
+        // The link a suppressed accept brought up under the claim and no dial has taken yet:
+        // recorded by SuppressIfOutbound, cleared by MarkDelivered. A dial's own connect raises
+        // a suppressed accept too, which it then takes; a peer's call under a claim whose
+        // earlier dial was already handed its link is recorded afresh for the next dial (#862).
+        public Ax25Session? Undelivered;
     }
 
     private sealed class OutboundTicket(
@@ -745,18 +759,27 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         private int released;
 
-        // The peer's call set the link up under the claim (its accept was dropped), no dial on
-        // the key has handed the link over, and no other dial on the key is still running.
+        // A call set a link up under the claim (its accept was dropped), no dial has taken it,
+        // and this is the last dial on the key: nobody will.
         public bool LeavesALinkNobodyHolds
         {
-            get { lock (owner.outboundGate) { return state.AcceptSuppressed && !state.Delivered && state.Count == 1; } }
+            get { lock (owner.outboundGate) { return state.Undelivered is not null && state.Count == 1; } }
+        }
+
+        // The link a call brought up under the claim that no dial has taken yet. The accept a
+        // dial's own DL-CONNECT confirm raises is recorded here too, and taken by that dial; a
+        // second dial overlapping on the key cannot take a link the first was handed, since
+        // handing it over clears it.
+        public Ax25Session? LinkUnderClaim
+        {
+            get { lock (owner.outboundGate) { return state.Undelivered; } }
         }
 
         public void MarkDelivered()
         {
             lock (owner.outboundGate)
             {
-                state.Delivered = true;
+                state.Undelivered = null;
             }
         }
 
@@ -1987,9 +2010,13 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // (port, local, remote) for the duration of the connect; comparing THIS port and
         // THIS local is what keeps a same-callsign caller arriving on another port, or
         // calling another callsign of ours, from being swallowed.
-        if (SuppressIfOutbound(portId, session.Context.Local, session.Context.Remote))
+        if (SuppressIfOutbound(portId, session.Context.Local, session.Context.Remote, session))
         {
-            return false;
+            // Taken, by the dial that holds the claim: it reads the session off the claim and
+            // hands the link to its caller (#862), or, failing, ends the link (#867). So a
+            // graceful close asking whether a restarted link found an owner hears yes, and
+            // does not DISC the link the dial is about to take.
+            return true;
         }
 
         // Cutover observability: a genuine inbound caller (the outbound guard above ruled out

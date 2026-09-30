@@ -107,7 +107,9 @@ public enum StatusFlags
 /// Codes 0-16 come from the published spec (PWP-0222 / PWP-0245).
 /// <see cref="NotConnected"/> (17) is XRouter-observed only: real XRouter
 /// returns it from <c>send</c> on a stream socket whose downlink hasn't
-/// (or has stopped) being connected. Ints rather than an enum so an
+/// (or has stopped) being connected. <see cref="AlreadyConnected"/> (18) is
+/// pdn's own: an <c>open</c> to a peer the calling callsign already has a link
+/// up with (packet-net/packet.net#862). Ints rather than an enum so an
 /// unrecognised future code still flows through DTOs unchanged.
 /// </remarks>
 public static class RhpErrorCode
@@ -170,6 +172,14 @@ public static class RhpErrorCode
     public const int NotConnected = 17;
 
     /// <summary>
+    /// pdn extension (not in the published spec, and not XRouter's): an <c>open</c> to a peer
+    /// this callsign already has a link up with, held by an accept or a console, so the dial
+    /// would only reset it (packet-net/packet.net#862). The client already has, or is about to
+    /// get, that link through its listener.
+    /// </summary>
+    public const int AlreadyConnected = 18;
+
+    /// <summary>
     /// Canonical <c>errText</c> for a code, matching the spec's wording
     /// (including its inconsistent capitalisation - "No Route" but
     /// "Operation not supported").
@@ -194,6 +204,7 @@ public static class RhpErrorCode
         NoRoute => "No Route",
         OperationNotSupported => "Operation not supported",
         NotConnected => "Not connected",
+        AlreadyConnected => "Already connected",
         _ => string.Create(CultureInfo.InvariantCulture, $"Unknown ({code})"),
     };
 }

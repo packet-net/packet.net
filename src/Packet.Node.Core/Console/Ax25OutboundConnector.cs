@@ -43,6 +43,10 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
     // the supervisor built at bring-up. Null ⇒ all-auto.
     private readonly Func<PortLinkConfig?>? linkPolicy;
     private readonly TimeProvider timeProvider;
+    // Asked, when the peer starts a link this connector made over while its owner's close is
+    // still draining (packet.net#850), whether someone takes the restarted link: the supervisor
+    // offers it to a console or an app's accept, or to a dial whose claim covers it (#862).
+    private readonly Func<Ax25Session, bool>? peerRestarted;
 
     public Ax25OutboundConnector(
         string portId,
@@ -51,8 +55,10 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         Callsign? localOverride = null,
         PeerCapabilityCache? cache = null,
         Func<PortLinkConfig?>? linkPolicy = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Func<Ax25Session, bool>? peerRestarted = null)
     {
+        this.peerRestarted = peerRestarted;
         // The clock the connections this connector makes use for their close (packet.net#850);
         // pass the listener's, so it and the link's own timers agree. Null means the system clock.
         this.timeProvider = timeProvider ?? TimeProvider.System;
@@ -116,7 +122,41 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                     // The caller holds the link from here, so a failing dial on the same claim
                     // must not end it.
                     (ticket as IOutboundClaim)?.MarkDelivered();
-                    return new(listener, s, timeProvider) { Crossed = upAlready || crossing.PeerCalledUs };
+                    return new(listener, s, timeProvider)
+                    {
+                        Crossed = upAlready || crossing.PeerCalledUs,
+                        PeerRestartedAfterClose = peerRestarted is null ? null : () => peerRestarted(s),
+                    };
+                }
+
+                if (upAlready)
+                {
+                    // The link to the peer is already up. Whose is it? (packet-net/packet.net#862)
+                    //
+                    // If the peer's call brought it up under this dial's claim (its accept was
+                    // suppressed, so nobody else holds it), it is this dial's link: the two calls
+                    // crossed before ours went out, and §6.3.6.2's outcome for crossed calls is
+                    // one link. Take it as it is, crossed, without a DL-CONNECT request: posting
+                    // one onto a live link is figc4.4 t07, a reset, which would discard whatever
+                    // the peer had queued and cost a round trip. No XID probe has run, so nothing
+                    // could have moved this end's modulus after the link came up, and the version
+                    // the peer opened at is the link's.
+                    //
+                    // Otherwise the link reached its owner before this dial began (a console, or
+                    // an app's accept), and a dial on it would reset a link someone else is using
+                    // and wrap the same session a second time. Refuse it; the app that dialled
+                    // already has, or is about to get, the accepted link.
+                    //
+                    // The session reaches Connected a moment before the listener raises the
+                    // accept that the claim records, so a read that lands between the two would
+                    // refuse a link that is ours. Give the claim that moment.
+                    var ours = await LinkUnderClaimAsync(ticket as IOutboundClaim, cancellationToken).ConfigureAwait(false);
+                    if (ours is { CurrentState: "Connected" or "TimerRecovery" })
+                    {
+                        return Connected(ours);
+                    }
+
+                    throw new LinkAlreadyUpException(local, target);
                 }
 
                 // No cache AND nothing declared => today's exact call: the no-extended-arg overload
@@ -204,11 +244,16 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                 // Record the OUTCOME of this RETURNED dial (plan-aware: pass what we dialled +
                 // what the resulting link observed; the cache decides which dimension to learn).
                 // A throw above never reaches here - no link of either version means no signal,
-                // except the silent-SABME case handled in the catch.
-                cache?.RecordOutcome(
-                    PortId, peer,
-                    dialedExtended: plan.Extended, observedIsExtended: session.Context.IsExtended,
-                    dialedPreConnectXid: plan.PreConnectXid, observedSrejEnabled: session.Context.SrejEnabled);
+                // except the silent-SABME case handled in the catch. A link the peer's own call
+                // brought up at the other version (kept by the listener, #862) says nothing
+                // about what the peer would have answered to our dial, so it is not recorded.
+                if (!(crossing.PeerCalledUs && session.Context.IsExtended != plan.Extended))
+                {
+                    cache?.RecordOutcome(
+                        PortId, peer,
+                        dialedExtended: plan.Extended, observedIsExtended: session.Context.IsExtended,
+                        dialedPreConnectXid: plan.PreConnectXid, observedSrejEnabled: session.Context.SrejEnabled);
+                }
 
                 return Connected(session);
             }
@@ -234,6 +279,29 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         {
             ticket?.Dispose();
         }
+    }
+
+    // The link a call brought up under the claim, waiting a moment for the claim to learn of it:
+    // the listener raises the accept (which the supervisor records on the claim) just after the
+    // session's state has moved, on its own pump, so a read here can be a few microseconds early.
+    private static async Task<Ax25Session?> LinkUnderClaimAsync(IOutboundClaim? claim, CancellationToken ct)
+    {
+        if (claim is null)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < 40; i++)
+        {
+            if (claim.LinkUnderClaim is { } s)
+            {
+                return s;
+            }
+
+            await Task.Delay(5, ct).ConfigureAwait(false);
+        }
+
+        return claim.LinkUnderClaim;
     }
 
     /// <summary>End the (local, remote) link if it is up: a DL-DISCONNECT request, for a link a
