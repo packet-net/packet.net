@@ -17,4 +17,9 @@
     <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- An in-process broker for the MQTT publish sink's tests (#882). -->
+    <PackageReference Include="MQTTnet.Server" />
+  </ItemGroup>
+
 </Project>
