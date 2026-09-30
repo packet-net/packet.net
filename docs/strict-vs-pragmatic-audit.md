@@ -74,6 +74,8 @@ The XID parameter-negotiation TLV codec (added with the v2.2 arc V3, part 1). Th
 
 Note: unrecognised PIs, `PL=0` (PV-absent ⇒ default), and the ISO-8885-only Tx variants (PI=5/7) are **not** leniency - §4.3.3.7 ¶1024 mandates skipping unknown PIs and treating an absent/zero-length parameter as "use the current/default value". The strict parser does all of this; it's spec-compliant behaviour, not a flag.
 
+Nor is an I Field Length Rx under eight bits (#894): the value is a limit a transmitter "may not exceed" (§4.3.3.7, §6.3.2) and the spec sets no minimum, so it negotiates N1 to 0 and the link carries no information field, with sends refused and one warning logged at negotiation. A floor would exceed the peer's limit and ignoring the parameter would keep ours, so neither is offered, even as a flag.
+
 ### XID HDLC-Optional-Functions octet order - MSB-first (conformance bug fix, not a flag)
 
 The 3-octet HDLC Optional Functions parameter value (PI=3, PL=3) is transmitted/parsed **most-significant octet first** (big-endian) - `HdlcOptionalFunctions.ToOctets()` / `FromOctets()` default `lsbOctetFirst: false`. This is a **bug fix**, not a leniency toggle: AX.25 v2.2 **§3.8** ("Order of Octet and Bit Transmission") sends multiple-octet fields "high-order octet first", but the historical codec emitted the value **least-significant octet first**, which is wrong against §3.8 *and* every real implementation, and it broke SREJ negotiation with LinBPQ outright. (Figure 4.6 *prints* the PV LSB-octet first - `82 A8 22` - so the old codec matched the figure's printed bytes but violated §3.8; the figure rendering is itself in error, like the same figure's documented ABM off-by-one below.)

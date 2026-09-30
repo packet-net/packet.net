@@ -119,6 +119,13 @@ public static class XidNegotiator
         // transmitting TNC may not exceed this size"). Our outbound frames must
         // not exceed the peer's advertised Rx N1; take the min. Stored in octets
         // on the context (XidParameters exposes the bits→octets bridge).
+        //
+        // The wire value is bits and N1 is whole octets, so a limit under eight bits is
+        // an N1 of zero: a link that carries no information field. That is kept as it is
+        // (#894): the spec sets no minimum, "may not exceed this size" forbids a floor,
+        // and ignoring the parameter would send frames the peer said it cannot handle.
+        // Sends on such a link are refused (SegmentationLayer.SplitAtN1) and the
+        // listener logs it once at negotiation.
         int? agreedN1 = MinPresent(offered.IFieldLengthRxOctets, response.IFieldLengthRxOctets);
         if (agreedN1 is { } n1)
         {
