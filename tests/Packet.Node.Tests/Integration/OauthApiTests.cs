@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -381,6 +382,39 @@ public sealed class OauthApiTests : IDisposable
             .StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
         (await PostApproveAsync(client, clientId, challenge, "op", "the-right-password", "mcp:read"))
             .StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public async Task Revoke_refuses_the_presented_token_from_the_next_request()
+    {
+        // #428: every token carries a jti, /oauth/revoke lists a presented token's id, and the
+        // bearer path refuses a listed id. The denylist sits below the audiences, so a panel
+        // token and a connector token are revoked the same way; a panel token is the one a
+        // test can present to a gated route here.
+        await using var factory = new NodeAppFactory();
+        SeedUser(factory, "op", "correct horse battery staple", AuthScopes.Operate);
+        using var client = factory.CreateClient();
+
+        var login = await client.PostAsJsonAsync("/api/v1/auth/login", new { username = "op", password = "correct horse battery staple" }, Web);
+        login.StatusCode.Should().Be(HttpStatusCode.OK);
+        var token = (await login.Content.ReadFromJsonAsync<JsonElement>(Web)).GetProperty("token").GetString()!;
+
+        (await GetWith(client, token, "/api/v1/status")).Should().Be(HttpStatusCode.OK);
+
+        var revoke = await client.PostAsync("/oauth/revoke", new FormUrlEncodedContent(new Dictionary<string, string> { ["token"] = token }));
+        revoke.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await GetWith(client, token, "/api/v1/status")).Should().Be(HttpStatusCode.Unauthorized, "the id is listed until the token's own expiry");
+
+        // RFC 7009: an invalid token is 200 as well, and lists nothing.
+        (await client.PostAsync("/oauth/revoke", new FormUrlEncodedContent(new Dictionary<string, string> { ["token"] = "not-a-token" })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private static async Task<HttpStatusCode> GetWith(HttpClient client, string bearer, string path)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, path);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+        return (await client.SendAsync(req)).StatusCode;
     }
 
     [Fact]

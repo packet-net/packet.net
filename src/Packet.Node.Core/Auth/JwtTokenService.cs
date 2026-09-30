@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Claims;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -139,6 +140,9 @@ public sealed class JwtTokenService
             {
                 [JwtRegisteredClaimNames.Sub] = username,
                 [AuthScopes.ScopeClaim] = scope,
+                // A unique id per token, so one token can be revoked on its own (#428): the
+                // bearer path refuses an id the IRevokedTokenStore lists.
+                [JwtRegisteredClaimNames.Jti] = Base64Url(RandomNumberGenerator.GetBytes(16)),
             },
             SigningCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256),
         };
@@ -202,4 +206,24 @@ public sealed class JwtTokenService
         var result = await Handler.ValidateTokenAsync(token, ValidationParameters).ConfigureAwait(false);
         return result.IsValid ? new ClaimsPrincipal(result.ClaimsIdentity) : null;
     }
+
+    /// <summary>
+    /// What a revocation needs from a presented token: its <c>jti</c> and its expiry, so the
+    /// id can be listed for exactly as long as the token would have lived. Null for a token
+    /// that does not validate (forged, expired, another key) or that carries no id (issued
+    /// before ids were minted): neither can be revoked, and neither needs to be listed.
+    /// </summary>
+    public async Task<(string Jti, DateTimeOffset ExpiresAt)?> ReadForRevocationAsync(string token)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+        var result = await Handler.ValidateTokenAsync(token, ValidationParameters).ConfigureAwait(false);
+        if (!result.IsValid || result.SecurityToken is not JsonWebToken jwt || string.IsNullOrEmpty(jwt.Id))
+        {
+            return null;
+        }
+        return (jwt.Id, new DateTimeOffset(jwt.ValidTo, TimeSpan.Zero));
+    }
+
+    private static string Base64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }

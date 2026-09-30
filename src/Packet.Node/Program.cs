@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -305,6 +306,12 @@ if (tokenService is not null)
 // `[FromServices] RefreshTokenService?` resolves to null → 503), node still boots.
 var refreshTokenStore = new SqliteRefreshTokenStore(dbPath, bootstrapLoggers.CreateLogger<SqliteRefreshTokenStore>());
 builder.Services.AddSingleton<IRefreshTokenStore>(refreshTokenStore);
+
+// Per-token revocation (#428): every JWT carries a jti, /oauth/revoke lists a presented
+// token's id until its expiry, and the bearer path below refuses a listed id. The set is
+// mirrored in memory, so the per-request check is a dictionary lookup, not a query.
+builder.Services.AddSingleton<IRevokedTokenStore>(
+    new SqliteRevokedTokenStore(dbPath, bootstrapLoggers.CreateLogger<SqliteRevokedTokenStore>()));
 if (tokenService is not null)
 {
     var refreshLifetime = TimeSpan.FromMinutes(configProvider.Current.Management.Auth.RefreshTokenMinutes ?? 10080);
@@ -417,6 +424,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // where no endpoint is resolved (a host that authenticates before routing).
         options.Events = new JwtBearerEvents
         {
+            // A token that validates but whose id has been revoked is refused here, before
+            // any policy sees it (#428). Tokens minted before ids existed carry none and
+            // remain revocable only by the signing-key rotation.
+            OnTokenValidated = context =>
+            {
+                var jti = context.Principal?.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+                if (!string.IsNullOrEmpty(jti)
+                    && context.HttpContext.RequestServices.GetService<IRevokedTokenStore>() is { } revoked
+                    && revoked.IsRevoked(jti))
+                {
+                    context.Fail("token revoked");
+                }
+                return Task.CompletedTask;
+            },
+
             OnMessageReceived = context =>
             {
                 if (string.IsNullOrEmpty(context.Token))

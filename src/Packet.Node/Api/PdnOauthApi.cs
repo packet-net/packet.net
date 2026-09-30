@@ -335,19 +335,28 @@ public static class PdnOauthApi
 
         // ---- Revoke (RFC 7009) --------------------------------------------------
 
-        app.MapPost("/oauth/revoke", async (HttpContext ctx, IConfigProvider config, IAuditLog audit, TimeProvider clock) =>
+        app.MapPost("/oauth/revoke", async (HttpContext ctx, IConfigProvider config, IAuditLog audit, [FromServices] JwtTokenService? tokens, [FromServices] IRevokedTokenStore? revoked, TimeProvider clock) =>
         {
             if (!Enabled(config))
             {
                 return Results.NotFound();
             }
-            // The MCP access token is a stateless JWT - it cannot be individually revoked (it
-            // expires on its own; `pdn auth rotate-signing-key` + a restart invalidates ALL
-            // tokens, which is the only revocation a stateless token has - see PdnAuthCli).
-            // Per RFC 7009 we still answer 200 for any token. Per-token revocation rides the
-            // refresh-token follow-up. The request is audited for transparency.
-            await ctx.Request.ReadFormAsync();
-            audit.RecordRest(ctx, clock, "oauth_revoke", "", "ok", "");
+            // RFC 7009: the response is 200 whatever the token (an invalid one is not a
+            // secret worth confirming). A token of ours that validates has its jti listed
+            // until its own expiry, and the bearer path refuses it from the next request
+            // (#428); one that does not validate, or predates ids, is left alone. The
+            // signing-key rotation (`pdn auth rotate-signing-key`) remains the global kill.
+            var form = await ctx.Request.ReadFormAsync();
+            string token = form["token"].ToString();
+            string outcome = "ignored";
+            if (tokens is not null && revoked is not null && !string.IsNullOrEmpty(token)
+                && await tokens.ReadForRevocationAsync(token).ConfigureAwait(false) is { } live)
+            {
+                var now = clock.GetUtcNow();
+                revoked.PruneExpired(now);
+                outcome = revoked.Revoke(live.Jti, live.ExpiresAt, now) ? "revoked" : "revoked-unpersisted";
+            }
+            audit.RecordRest(ctx, clock, "oauth_revoke", "", outcome, "");
             return Results.Ok();
         });
     }
