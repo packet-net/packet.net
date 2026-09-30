@@ -45,9 +45,11 @@ function row(peer: string): HTMLElement {
   return screen.getByRole("button", { name: peer }).closest("tr") as HTMLElement;
 }
 
-/** The open modal panel wrapping `title` (the Modal primitive's card). */
-function panel(title: RegExp): HTMLElement {
-  return screen.getByText(title).closest("div.relative") as HTMLElement;
+/** The open modal panel titled `title` (the Modal primitive's card). Found by its heading,
+ *  not by text: the Sessions screen also says "Connect out to a station or alias to start
+ *  one." in its empty state, and a text query matched both (#806). */
+function panel(title: string): HTMLElement {
+  return screen.getByRole("heading", { name: title }).closest("div.relative") as HTMLElement;
 }
 
 /** The open session drawer (the Sheet primitive renders a radix dialog into a portal). */
@@ -68,7 +70,7 @@ describe("Sessions — connect-out", () => {
     await mountSessions("operate");
 
     fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
-    const modal = panel(/Connect out/);
+    const modal = panel("Connect out");
     fireEvent.change(within(modal).getByPlaceholderText(/GB7CIP/), { target: { value: "GB7RDG" } });
     // No waiting for /config any more: auto is a legitimate via-port choice and is postable
     // straight away, so the button is live as soon as there is a target (#727).
@@ -92,7 +94,7 @@ describe("Sessions — connect-out", () => {
     await mountSessions("operate");
 
     fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
-    const modal = panel(/Connect out/);
+    const modal = panel("Connect out");
     fireEvent.change(within(modal).getByPlaceholderText(/GB7CIP/), { target: { value: "GB7RDG" } });
     fireEvent.click(within(modal).getByRole("button", { name: /^Connect$/ }));
 
@@ -112,7 +114,7 @@ describe("Sessions connect-out - the via port (#727)", () => {
   /** Open the connect-out modal from the screen header. */
   function openConnectOut(): HTMLElement {
     fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
-    return panel(/Connect out/);
+    return panel("Connect out");
   }
 
   /** The via-port select, once /config has settled this node's ports into its options. */
@@ -201,14 +203,40 @@ describe("Sessions connect-out - the via port (#727)", () => {
     const destRow = (await screen.findByText("GB7SAN")).closest("tr") as HTMLElement;
     fireEvent.click(within(destRow).getByRole("button", { name: /Connect/ }));
 
-    await screen.findByText(/Connect out/);
-    const modal = panel(/Connect out/);
+    await screen.findByRole("heading", { name: "Connect out" });
+    const modal = panel("Connect out");
     expect((within(modal).getByPlaceholderText(/GB7CIP/) as HTMLInputElement).value).toBe("GB7SAN");
     const select = await viaPort(modal, "vhf-1");
     expect(select.value).toBe("");
 
     fireEvent.click(within(modal).getByRole("button", { name: /^Connect$/ }));
     await waitFor(() => expect(connect).toHaveBeenCalledWith("GB7SAN", ""));
+  });
+});
+
+describe("Sessions — the first paint after /sessions lands (#806)", () => {
+  it("never paints the empty state between the result landing and the table taking it", async () => {
+    // The screen kept a working copy of the query result and took it in an effect, which
+    // runs after the commit: the frame in which `loading` had gone false but the copy was
+    // still the initial empty list painted "No active sessions" once on every load. A
+    // MutationObserver sees every committed node, so it catches that one frame where a
+    // query after mount cannot.
+    const painted: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          const text = node.textContent ?? "";
+          if (text.includes("No active sessions")) painted.push(text);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    try {
+      await mountSessions("read");
+    } finally {
+      observer.disconnect();
+    }
+    expect(painted).toEqual([]);
   });
 });
 
