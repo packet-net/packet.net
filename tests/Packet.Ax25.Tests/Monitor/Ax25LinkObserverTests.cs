@@ -245,11 +245,39 @@ public class Ax25LinkObserverTests
         rej.Narration.Should().Be("asks M0LTE-9 to resend from #1");
 
         var srej = See(Ax25Frame.Srej(User, Node, nr: 2, isCommand: false), 6);
-        srej.Narration.Should().Be("asks M0LTE-9 to resend #2");
+        srej.Narration.Should().Be("asks M0LTE-9 to selectively resend #2");
         Link(Node, User).BtoA.Rejects.Should().Be(2);
 
         var resend = See(Ax25Frame.I(Node, User, nr: 0, ns: 1, "b"u8), 7);
         resend.Flags.Should().Be(Ax25LinkFlags.Resend);
+    }
+
+    /// <summary>
+    /// Heard on air from a BPQ node: with nothing left to send, every keepalive poll drew an
+    /// SREJ for the frame the poller would send next, over and over, for four minutes. The words
+    /// have to say that nothing is actually being asked for, or the transcript reads as a link
+    /// in trouble when the link is idle and fine.
+    /// </summary>
+    [Fact]
+    public void A_Reject_For_A_Frame_The_Other_Side_Has_Not_Sent_Says_Nothing_Is_Outstanding()
+    {
+        Connect();
+        See(Ax25Frame.I(Node, User, nr: 0, ns: 0, "a"u8), 2);
+        See(Ax25Frame.I(Node, User, nr: 0, ns: 1, "b"u8), 3);
+
+        // M0LTE-9's V(S) is 2 and both frames are acknowledged, so #2 is the frame it would
+        // send next, not one it has sent.
+        var srej = See(Ax25Frame.Srej(User, Node, nr: 2, isCommand: false, pollFinal: true), 4);
+        srej.Narration.Should().Be("asks M0LTE-9 to selectively resend #2 (nothing outstanding)");
+        srej.Flags.Should().Be(Ax25LinkFlags.Reject | Ax25LinkFlags.Final);
+
+        var rej = See(Ax25Frame.Rej(User, Node, nr: 2, isCommand: false), 5);
+        rej.Narration.Should().Be("asks M0LTE-9 to resend from #2 (nothing outstanding)");
+
+        // A resend does not advance V(S), so the note still holds after one.
+        See(Ax25Frame.I(Node, User, nr: 0, ns: 1, "b"u8), 6);
+        var again = See(Ax25Frame.Srej(User, Node, nr: 2, isCommand: false, pollFinal: true), 7);
+        again.Narration.Should().Be("asks M0LTE-9 to selectively resend #2 (nothing outstanding)");
     }
 
     [Fact]

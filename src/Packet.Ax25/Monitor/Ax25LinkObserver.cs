@@ -300,9 +300,28 @@ public sealed class Ax25LinkObserver
                 var numbered = NumberedTraffic(link);
                 sender.Rejects++;
                 sender.LastNr = frame.Nr;
-                var what = frame.FrameType == Ax25FrameType.Rej ? $"resend from #{frame.Nr}" : $"resend #{frame.Nr}";
+
+                // REJ asks for N(R) and everything after it; SREJ asks for that one frame and
+                // nothing else. Worth saying which, because the two read very differently in a
+                // transcript: a repeated REJ is the whole window going back every time, a
+                // repeated SREJ is one frame being chased.
+                var what = frame.FrameType == Ax25FrameType.Rej
+                    ? $"resend from #{frame.Nr}"
+                    : $"selectively resend #{frame.Nr}";
+
+                // A reject naming the frame the other side has not sent yet is asking for
+                // something that does not exist: the other side's V(S) is already this N(R), so
+                // this acknowledges everything and asks for nothing. §4.3.2.4 clears a sent-SREJ
+                // exception only "upon receipt of the I frame with an N(S) equal to the N(R) of
+                // the SREJ frame", so a reject naming an unsent frame can never clear, and
+                // §4.4.4 has every subsequent poll answered with it again - seen on air from a
+                // BPQ node for four minutes (ax25spec#40: figc4.4 has no receive-window guard,
+                // so a duplicate takes the gap path). Said plainly because the frames alone look
+                // like a busy link recovering from errors.
+                var nothingOutstanding = receiver.NextNs == frame.Nr;
                 var flags = Ax25LinkFlags.Reject | (poll ? Ax25LinkFlags.Poll : final ? Ax25LinkFlags.Final : 0);
-                return ($"asks {other} to {what}", flags | numbered, null);
+                var note = nothingOutstanding ? " (nothing outstanding)" : "";
+                return ($"asks {other} to {what}{note}", flags | numbered, null);
             }
 
             case Ax25FrameType.Sabm:
