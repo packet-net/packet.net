@@ -80,12 +80,12 @@ public sealed class RhpOpenCrossedCallTests
     }
 
     [Fact]
-    public async Task A_dial_on_a_link_that_is_already_up_gets_crossed_true()
+    public async Task A_dial_on_a_link_an_accept_already_holds_is_refused_with_already_connected()
     {
         // The station reached our app callsign first (the RHP listener got its accept), then
-        // the client dials it from the same callsign: that dial only resets the link, so the
-        // station's application is handed nothing new. The station does not call during the
-        // dial, so this is the already-up trigger on its own.
+        // the client dials it from the same callsign. Until #862 that dial reset the link the
+        // accept was using and wrapped the same session a second time, answering crossed:true.
+        // Now it is refused with pdn's error 18: the client already holds the link.
         await using var rig = await Rig.StartAsync(Config(probe: true), callsBack: false);
 
         await rig.Client.SendRawAsync("""{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
@@ -96,14 +96,23 @@ public sealed class RhpOpenCrossedCallTests
         (await rig.Client.ReadUntilAsync("listenReply")).Should().Contain("\"errCode\":0");
 
         await rig.Station.CallAsync();
-        (await rig.Client.ReadUntilAsync("accept")).Should().Contain("\"remote\":\"N0AAA-3\"");
+        var accept = await rig.Client.ReadUntilAsync("accept");
+        accept.Should().Contain("\"remote\":\"N0AAA-3\"");
+        int child = JsonInt(accept, "child");
+        await rig.Client.ReadUntilAsync("status");
 
         await rig.Client.SendRawAsync(OpenToStation);
         var json = await rig.Client.ReadUntilAsync("openReply");
 
-        json.Should().Contain("\"errCode\":0");
-        json.Should().EndWith(",\"crossed\":true}");
+        json.Should().Contain("\"errCode\":18");
+        json.Should().Contain("Already connected to N0AAA-3");
         rig.Station.CalledBack.Should().BeFalse("only the earlier call reached us, none during the dial");
+        rig.Station.SabmesHeard.Should().Be(0, "the refused dial sent nothing onto the accepted link");
+
+        // The accepted link is untouched: data still flows on the child handle.
+        await rig.Client.SendRawAsync($$"""{"type":"send","id":9,"handle":{{child}},"data":"still here\r"}""");
+        (await rig.Client.ReadUntilAsync("sendReply")).Should().Contain("\"errCode\":0");
+        await rig.Station.WaitForDataAsync("still here");
     }
 
     private static int JsonInt(string json, string key)
@@ -182,6 +191,32 @@ public sealed class RhpOpenCrossedCallTests
 
         public bool CalledBack => Volatile.Read(ref calledBack) != 0;
 
+        private int sabmesHeard;
+        private readonly System.Text.StringBuilder received = new();
+
+        /// <summary>SABM or SABME frames the node sent to this station.</summary>
+        public int SabmesHeard => Volatile.Read(ref sabmesHeard);
+
+        /// <summary>Wait until the node's I frames to this station have carried <paramref name="text"/>.</summary>
+        public async Task WaitForDataAsync(string text)
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (DateTime.UtcNow < deadline)
+            {
+                lock (received)
+                {
+                    if (received.ToString().Contains(text, StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+                }
+
+                await Task.Delay(50);
+            }
+
+            throw new TimeoutException($"the station never received '{text}'");
+        }
+
         /// <summary>Call the node's app callsign outright, outside any dial of ours.</summary>
         public Task CallAsync() => SendAsync(Ax25Frame.Sabme(caller, me));
 
@@ -191,7 +226,9 @@ public sealed class RhpOpenCrossedCallTests
             {
                 await foreach (var inbound in wire.ReceiveAsync(stop.Token))
                 {
-                    if (!Ax25Frame.TryParse(inbound.Ax25.Span, Ax25ParseOptions.Lenient, out var frame)
+                    // The station's own call is a SABME, so its links are mod-128: parse I and S
+                    // frames at that modulus (U frames read the same either way).
+                    if (!Ax25Frame.TryParse(inbound.Ax25.Span, Ax25ParseOptions.Lenient, true, out var frame)
                         || !frame.Destination.Callsign.Equals(me)
                         || !frame.Source.Callsign.Equals(caller)
                         || !frame.IsCommand)
@@ -206,8 +243,16 @@ public sealed class RhpOpenCrossedCallTests
                             await SendAsync(Ax25Frame.Xid(caller, me, frame.Info.Span, isCommand: false, pollFinal: frame.PollFinal));
                             break;
                         case Ax25FrameType.Sabm or Ax25FrameType.Sabme:
+                            Interlocked.Increment(ref sabmesHeard);
                             await CallBackOnceAsync();
                             await SendAsync(Ax25Frame.Ua(caller, me, finalBit: frame.PollFinal));
+                            break;
+                        case Ax25FrameType.I:
+                            lock (received)
+                            {
+                                received.Append(System.Text.Encoding.ASCII.GetString(frame.Info.Span));
+                            }
+                            await SendAsync(Ax25Frame.Rr(caller, me, nr: (byte)((frame.Ns + 1) % 128), isCommand: false, pollFinal: frame.PollFinal, extended: true));
                             break;
                         case Ax25FrameType.Disc:
                             await SendAsync(Ax25Frame.Ua(caller, me, finalBit: frame.PollFinal));

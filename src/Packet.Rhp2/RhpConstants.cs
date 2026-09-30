@@ -170,6 +170,14 @@ public static class RhpErrorCode
     public const int NotConnected = 17;
 
     /// <summary>
+    /// pdn extension (not in the published spec, and not XRouter's): an <c>open</c> to a peer
+    /// this callsign already has a link up with, held by an accept or a console, so the dial
+    /// would only reset it (packet-net/packet.net#862). The client already has, or is about to
+    /// get, that link through its listener.
+    /// </summary>
+    public const int AlreadyConnected = 18;
+
+    /// <summary>
     /// Canonical <c>errText</c> for a code, matching the spec's wording
     /// (including its inconsistent capitalisation - "No Route" but
     /// "Operation not supported").
@@ -194,6 +202,7 @@ public static class RhpErrorCode
         NoRoute => "No Route",
         OperationNotSupported => "Operation not supported",
         NotConnected => "Not connected",
+        AlreadyConnected => "Already connected",
         _ => string.Create(CultureInfo.InvariantCulture, $"Unknown ({code})"),
     };
 }

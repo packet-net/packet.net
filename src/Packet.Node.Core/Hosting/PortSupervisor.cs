@@ -718,14 +718,16 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
-    // Whether the key is claimed; if it is, note that its accept was suppressed.
-    private bool SuppressIfOutbound(string portId, Callsign local, Callsign remote)
+    // Whether the key is claimed; if it is, note that its accept was suppressed, and which
+    // session the peer's call brought up, for the dial to take (#862).
+    private bool SuppressIfOutbound(string portId, Callsign local, Callsign remote, Ax25Session session)
     {
         lock (outboundGate)
         {
             if (outboundInProgress.TryGetValue((portId, local, remote), out var state))
             {
                 state.AcceptSuppressed = true;
+                state.Session = session;
                 return true;
             }
 
@@ -738,6 +740,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         public int Count;
         public bool AcceptSuppressed;
         public bool Delivered;
+        public Ax25Session? Session;
     }
 
     private sealed class OutboundTicket(
@@ -750,6 +753,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         public bool LeavesALinkNobodyHolds
         {
             get { lock (owner.outboundGate) { return state.AcceptSuppressed && !state.Delivered && state.Count == 1; } }
+        }
+
+        public Ax25Session? LinkUnderClaim
+        {
+            get { lock (owner.outboundGate) { return state.Session; } }
         }
 
         public void MarkDelivered()
@@ -1987,7 +1995,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // (port, local, remote) for the duration of the connect; comparing THIS port and
         // THIS local is what keeps a same-callsign caller arriving on another port, or
         // calling another callsign of ours, from being swallowed.
-        if (SuppressIfOutbound(portId, session.Context.Local, session.Context.Remote))
+        if (SuppressIfOutbound(portId, session.Context.Local, session.Context.Remote, session))
         {
             return false;
         }

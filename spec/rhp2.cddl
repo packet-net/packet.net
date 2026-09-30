@@ -26,6 +26,9 @@
 ;   WF-4  open.port type: spec field table says string, but the spec's own
 ;         OPEN example uses "port": 2 (a JSON number). Grammar accepts both.
 ;   WF-8  errCode 17: not in the spec's error table (0–16); XRouter-observed.
+;   WF-9  errCode 18 "Already connected": pdn's own, neither the spec's nor
+;         XRouter's. An open to a peer the calling callsign already has a link
+;         up with, held by an accept or a console (packet-net/packet.net#862).
 ;   WF-16 TRACE recv fields tseq/ilen/pid/ptcl: not in the spec at all;
 ;         XRouter-observed (the spec's TRACE example shows srce/dest/ctrl/
 ;         frametype/rseq/cr/pf but omits these four).
@@ -90,8 +93,9 @@ rhp-message = auth / auth-reply
 
 ; ─── Shared fragments ─────────────────────────────────────────────────────────
 
-; Error codes 0–17 (row 8: 17 is XRouter-observed, not in the published spec)
-err-code = 0..17
+; Error codes 0–18 (row 8: 17 is XRouter-observed, 18 is pdn's own; neither is
+; in the published spec)
+err-code = 0..18
 
 ; NOTE on the "-val" suffixes below: a rule name must never collide with a
 ; bareword member key used anywhere in this file. RFC 8610 §3.5.1 says a

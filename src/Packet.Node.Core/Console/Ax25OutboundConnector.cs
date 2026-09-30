@@ -119,6 +119,32 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                     return new(listener, s, timeProvider) { Crossed = upAlready || crossing.PeerCalledUs };
                 }
 
+                if (upAlready)
+                {
+                    // The link to the peer is already up. Whose is it? (packet-net/packet.net#862)
+                    //
+                    // If the peer's call brought it up under this dial's claim (its accept was
+                    // suppressed, so nobody else holds it), it is this dial's link: the two calls
+                    // crossed before ours went out, and §6.3.6.2's outcome for crossed calls is
+                    // one link. Take it as it is, crossed, without a DL-CONNECT request: posting
+                    // one onto a live link is figc4.4 t07, a reset, which would discard whatever
+                    // the peer had queued and cost a round trip. No XID probe has run, so nothing
+                    // could have moved this end's modulus after the link came up, and the version
+                    // the peer opened at is the link's.
+                    //
+                    // Otherwise the link reached its owner before this dial began (a console, or
+                    // an app's accept), and a dial on it would reset a link someone else is using
+                    // and wrap the same session a second time. Refuse it; the app that dialled
+                    // already has, or is about to get, the accepted link.
+                    if (ticket is IOutboundClaim { LinkUnderClaim: { } ours }
+                        && ours.CurrentState is "Connected" or "TimerRecovery")
+                    {
+                        return Connected(ours);
+                    }
+
+                    throw new LinkAlreadyUpException(local, target);
+                }
+
                 // No cache AND nothing declared => today's exact call: the no-extended-arg overload
                 // follows the listener's PreferExtendedConnect + PreConnectXidNegotiatesSrej defaults,
                 // and we record nothing. Preserves every existing connector unchanged.

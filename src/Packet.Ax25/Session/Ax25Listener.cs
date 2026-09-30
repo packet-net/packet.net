@@ -578,39 +578,39 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // the last one settled on.
         cached.Session.Context.ParametersNegotiated = false;
 
-        if (preConnectXidNegotiatesSrej)
+        // A link already up when the dial starts is not the peer calling during the dial; a
+        // dial on it re-establishes it below, as it always has (the node refuses that case
+        // before it gets here, packet-net/packet.net#862).
+        bool upBeforeProbe = IsLinkUp(cached.Session.SettledState);
+
+        // The version the peer's own call set, taken when it brought the link up: figc4.1
+        // runs Set Version for the SABM or SABME before it raises DL-CONNECT indication, so
+        // at that signal the context holds the peer's version and nothing else yet. The
+        // probe's XID answer can move the context's modulus afterwards, so the context
+        // after the probe cannot tell us what the peer opened at. 0 = no call, 8 or 128.
+        // Watched from here to the DL-CONNECT request, probe or no probe: a call landing in
+        // the gap between the probe ending and the request posting, or during a dial with no
+        // probe at all, is a crossing too (#862's race, seen on a simulated AFSK channel).
+        int peerCallModulus = 0;
+        void OnPeerCall(object? _, DataLinkSignal sig)
         {
-            // A link already up when the dial starts is not the peer calling during the
-            // probe; a dial on it re-establishes it below, as it always has.
-            bool upBeforeProbe = IsLinkUp(cached.Session.SettledState);
-
-            // The version the peer's own call set, taken when it brought the link up: figc4.1
-            // runs Set Version for the SABM or SABME before it raises DL-CONNECT indication, so
-            // at that signal the context holds the peer's version and nothing else yet. The
-            // probe's XID answer can move the context's modulus afterwards, so the context
-            // after the probe cannot tell us what the peer opened at. 0 = no call, 8 or 128.
-            int peerCallModulus = 0;
-            void OnPeerCall(object? _, DataLinkSignal sig)
+            if (sig is DataLinkConnectIndication)
             {
-                if (sig is DataLinkConnectIndication)
-                {
-                    Volatile.Write(ref peerCallModulus, cached.Session.Context.IsExtended ? 128 : 8);
-                }
+                Volatile.Write(ref peerCallModulus, cached.Session.Context.IsExtended ? 128 : 8);
             }
+        }
 
-            LogPreConnectXid(portName, local.ToString(), remote.ToString());
-            cached.Session.DataLinkSignalEmitted += OnPeerCall;
-            try
+        cached.Session.DataLinkSignalEmitted += OnPeerCall;
+        try
+        {
+            if (preConnectXidNegotiatesSrej)
             {
+                LogPreConnectXid(portName, local.ToString(), remote.ToString());
                 await NegotiateParametersBeforeConnectAsync(cached, extended, ct).ConfigureAwait(false);
+                LogXidOutcome(portName, local.ToString(), remote.ToString(),
+                    cached.Session.Context.ParametersNegotiated ? "confirmed" : "no response",
+                    cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N");
             }
-            finally
-            {
-                cached.Session.DataLinkSignalEmitted -= OnPeerCall;
-            }
-            LogXidOutcome(portName, local.ToString(), remote.ToString(),
-                cached.Session.Context.ParametersNegotiated ? "confirmed" : "no response",
-                cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N");
 
             // The peer called us while we were probing: its SABM(E) reached this session in
             // Disconnected, and figc4.1 answered UA, raised DL-CONNECT indication and entered
@@ -631,20 +631,27 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // end, and a responder need not move its own on a link it is already opening, so
             // there the dial re-establishes below, as it always has, and both ends take the
             // version from our frame.
+            //
+            // Without a probe nothing has run that could move the modulus, so a link the peer's
+            // call brought up during the dial is kept whatever version it opened at: the
+            // context holds that version, and the dial's caller learns it from the session.
             int offeredModulus = extended ? 128 : 8;
-            if (!upBeforeProbe
-                && IsLinkUp(cached.Session.SettledState)
-                && Volatile.Read(ref peerCallModulus) == offeredModulus
-                && cached.Session.Context.IsExtended == extended)
+            bool versionAgreed = !preConnectXidNegotiatesSrej
+                || (Volatile.Read(ref peerCallModulus) == offeredModulus && cached.Session.Context.IsExtended == extended);
+            if (!upBeforeProbe && Volatile.Read(ref peerCallModulus) != 0 && IsLinkUp(cached.Session.SettledState) && versionAgreed)
             {
                 LogConnectedByPeerDuringXid(portName, local.ToString(), remote.ToString(),
-                    extended ? "v2.2/mod-128" : "v2.0/mod-8");
+                    cached.Session.Context.IsExtended ? "v2.2/mod-128" : "v2.0/mod-8");
                 RaiseSessionAccepted(cached.Session);
                 return cached.Session;
             }
-        }
 
-        cached.Session.PostEvent(new DlConnectRequest());
+            cached.Session.PostEvent(new DlConnectRequest());
+        }
+        finally
+        {
+            cached.Session.DataLinkSignalEmitted -= OnPeerCall;
+        }
 
         // figc4.2 budget - wait up to N2 * T1V for UA. Use the session's
         // negotiated values to give the right backstop on slow links.
