@@ -66,8 +66,8 @@ services:
         ipv4_address: 172.30.0.10
 
   xrouter:
-    # ghcr.io/packethacking/xrouter:latest @ 2026-05-12
-    image: ghcr.io/packethacking/xrouter@sha256:6a885470e19d5c8ee3033d224a30a8675d5b1957428a832aa89746f37ec0b611
+    # ghcr.io/packethacking/xrouter:505o @ 2026-10-11
+    image: ghcr.io/packethacking/xrouter@sha256:55b576e3c9593a595502afc58c6870e3c55d2bd0ca11f57d2777e582ae00419e
     container_name: pn-xrouter
     restart: unless-stopped
     depends_on:
