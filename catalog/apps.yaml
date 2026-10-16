@@ -33,7 +33,7 @@ apps:
   # manifest. DAPPS publishes exactly this shape.
   - id: dapps
     name: DAPPS
-    version: "0.49.0"
+    version: "0.50.0"
     description: "Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging over packet radio."
     icon: inbox
     capabilities: [packet, web]
@@ -41,22 +41,22 @@ apps:
     artifact:
       kind: assets
       manifest:
-        url: https://github.com/packet-net/dapps/releases/download/v0.49.0/pdn-app.yaml
-        sha256: f419c852e2a69ae949fb03226f7671440475615f1340c49e68fa242373035aa1
+        url: https://github.com/packet-net/dapps/releases/download/v0.50.0/pdn-app.yaml
+        sha256: 71be1a94e17362f76b9e78b10b9c7911c7e54db7f9ebaa95ccf4280f9b781879
       binaries:
         linux-x64:
-          url: https://github.com/packet-net/dapps/releases/download/v0.49.0/dapps-linux-x64
-          sha256: 808104b7e5475aeb2936c39618e756aaf471b2bd23d21edfc8006f371495dadf
+          url: https://github.com/packet-net/dapps/releases/download/v0.50.0/dapps-linux-x64
+          sha256: c30452a46138974fb3fddd1297b1f1dfbaa41a03f3cf9c74d4f67d54c69ccb3f
           dest: dapps
           mode: "0755"
         linux-arm64:
-          url: https://github.com/packet-net/dapps/releases/download/v0.49.0/dapps-linux-arm64
-          sha256: 0e7a3dd8098e0d5ca0eb766e7ece960e1ae1873bf0c0a9a89c91420e0c7b635a
+          url: https://github.com/packet-net/dapps/releases/download/v0.50.0/dapps-linux-arm64
+          sha256: 0d2f0ed48dbe857638d2594c071d3d02249e70709cbb842e8997a93244893be4
           dest: dapps
           mode: "0755"
         linux-arm:
-          url: https://github.com/packet-net/dapps/releases/download/v0.49.0/dapps-linux-arm
-          sha256: 38db44daf7776a54676c0208dedc38d65c83c88bf6599abeda6c4e407a32ac01
+          url: https://github.com/packet-net/dapps/releases/download/v0.50.0/dapps-linux-arm
+          sha256: 24f82c77edbcc9689ca15eff8db9b9b0291f07592e59d96fedbca2b814f60b79
           dest: dapps
           mode: "0755"
 
