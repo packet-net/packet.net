@@ -33,30 +33,30 @@ apps:
   # manifest. DAPPS publishes exactly this shape.
   - id: dapps
     name: DAPPS
-    version: "0.49.0"
-    description: "Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging over packet radio."
+    version: "0.51.0"
+    description: "Distributed Asynchronous Packet Pub/Sub: store-and-forward messaging over packet radio."
     icon: inbox
     capabilities: [packet, web]
     homepage: https://github.com/packet-net/dapps
     artifact:
       kind: assets
       manifest:
-        url: https://github.com/packet-net/dapps/releases/download/v0.49.0/pdn-app.yaml
-        sha256: f419c852e2a69ae949fb03226f7671440475615f1340c49e68fa242373035aa1
+        url: https://github.com/packet-net/dapps/releases/download/v0.51.0/pdn-app.yaml
+        sha256: 5f65b7089fce683b596a6692a0f3a628454fd77b346fd7297d31c153fdb4967f
       binaries:
         linux-x64:
-          url: https://github.com/packet-net/dapps/releases/download/v0.49.0/dapps-linux-x64
-          sha256: 808104b7e5475aeb2936c39618e756aaf471b2bd23d21edfc8006f371495dadf
+          url: https://github.com/packet-net/dapps/releases/download/v0.51.0/dapps-linux-x64
+          sha256: 18f843536ecf293c5c2eb5f9f450d5f4457427cd6b297838fb5e1f6ab82a600e
           dest: dapps
           mode: "0755"
         linux-arm64:
-          url: https://github.com/packet-net/dapps/releases/download/v0.49.0/dapps-linux-arm64
-          sha256: 0e7a3dd8098e0d5ca0eb766e7ece960e1ae1873bf0c0a9a89c91420e0c7b635a
+          url: https://github.com/packet-net/dapps/releases/download/v0.51.0/dapps-linux-arm64
+          sha256: 17338c303ec18f7115f310a916ced6d43d1772f4117dd0684713ae07214446fd
           dest: dapps
           mode: "0755"
         linux-arm:
-          url: https://github.com/packet-net/dapps/releases/download/v0.49.0/dapps-linux-arm
-          sha256: 38db44daf7776a54676c0208dedc38d65c83c88bf6599abeda6c4e407a32ac01
+          url: https://github.com/packet-net/dapps/releases/download/v0.51.0/dapps-linux-arm
+          sha256: 6e084c5e8c93f10fafcede4ff4609a1c6865e9e9d6a8a90b0462753b24f78e99
           dest: dapps
           mode: "0755"
 
