@@ -11,7 +11,10 @@ namespace Packet.Node.Core.NetRom;
 /// app contributes an entry <b>only</b> when its owner set <c>netrom.alias</c>. Each entry maps
 /// the alias → the app's node-resolved callsign, advertised AT this node (best-neighbour =
 /// <paramref name="nodeCall"/>) at the configured quality, so a station that <c>C</c>s the alias
-/// routes to us and then to the app. Pure projection - feeds
+/// routes to us and then to the app. An entry at quality 0 is still returned, because its
+/// callsign is still this node's app (circuits to it end here, routes to it are never learned),
+/// but <see cref="NetRomService"/> leaves it out of the NODES broadcast: quality 0 means "not
+/// advertised", as on a BPQ <c>APPLICATION</c> line (packet.net#939). Pure projection - feeds
 /// <see cref="NetRomService.AppAdvertSource"/>.
 /// </summary>
 public static class AppNetromAdvert

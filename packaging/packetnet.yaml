@@ -244,7 +244,7 @@ management:
 #     workingDirectory: /var/lib/packetnet/apps/myapp   # where its state lives
 #     capabilities: [ session ]
 #     # callsign: M0LTE-9         # optional pin (the node's identity for this app)
-#     # netrom: { alias: MYAPP, quality: 200 }   # optional opt-in NET/ROM advert
+#     # netrom: { alias: MYAPP, quality: 200 }   # optional opt-in NET/ROM advert (quality 0 = not in NODES)
 #     # kind: socket instead: drop executable/args and set
 #     #   socketPath: /run/packetnet/myapp.sock
 #     # Optional human-plane web UI: run your own loopback web server and pdn

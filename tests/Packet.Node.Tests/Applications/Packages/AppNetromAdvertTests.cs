@@ -87,4 +87,18 @@ public sealed class AppNetromAdvertTests
         entries.Should().Contain(e => e.DestinationAlias == "RDGBBS" && e.Destination.Equals(new Callsign("M0LTE", 7)));
         entries.Should().Contain(e => e.DestinationAlias == "RDGCHAT" && e.Destination.Equals(new Callsign("M0LTE", 8)));
     }
+
+    [Fact]
+    public void A_quality_0_alias_is_still_projected_so_its_callsign_stays_local()
+    {
+        // packet.net#939: quality 0 keeps the alias out of NODES (NetRomService filters it at
+        // broadcast), but the entry is still returned so the node keeps treating the app's
+        // callsign as its own, as BPQ does for an APPLCALL at quality 0.
+        var cfg = Node(App("telstar", new AppNetromConfig { Alias = "TELSTR", Quality = 0 }, callsign: "-9"));
+        var entries = AppNetromAdvert.Build(cfg, [], NodeCall);
+
+        var e = entries.Should().ContainSingle().Subject;
+        e.Destination.Should().Be(new Callsign("M0LTE", 9));
+        e.Quality.Should().Be((byte)0);
+    }
 }

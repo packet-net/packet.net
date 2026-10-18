@@ -556,7 +556,7 @@ function IdentityForm({ pkg, onClose, onSave }: {
       <Field label="NET/ROM alias" info="Opt-in: the network-wide alias the node advertises → this app's callsign. A station anywhere on the network can connect to it to reach this app. Blank = not advertised (off by default).">
         <Input value={netromAlias} onChange={(e) => setNetromAlias(e.target.value)} placeholder="e.g. RDGBBS" />
       </Field>
-      <Field label="NET/ROM quality" info="The quality (0–255) the alias is advertised at. Only used when an alias is set; blank defaults to 255.">
+      <Field label="NET/ROM quality" info="The quality (0 to 255) the alias is advertised at. Only used when an alias is set; blank defaults to 255; 0 keeps the alias out of NODES, as in BPQ, while the app still takes NET/ROM connects to its callsign.">
         <Input value={netromQuality} onChange={(e) => setNetromQuality(e.target.value)} inputMode="numeric" placeholder="255" />
       </Field>
       <div className="flex justify-end gap-2 pt-1">

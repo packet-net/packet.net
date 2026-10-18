@@ -377,6 +377,90 @@ public sealed class NetRomL3L4IntegrationTests
     }
 
     /// <summary>
+    /// packet.net#939: an app whose alias is at quality 0 is not advertised but its callsign is
+    /// still this node's, as LinBPQ's L4Code.c accepts a circuit for any APPLCALL whatever its
+    /// quality. B learned the alias from an earlier broadcast (before the owner set quality 0),
+    /// the way a neighbour can know it another way; a circuit to it lands in the app when the app
+    /// is running and is refused, not forwarded, when it is stopped.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_circuit_to_a_quality_0_app_callsign_still_ends_at_the_app(bool appRunning)
+    {
+        var bus = new SharedRadioBus();
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+        await using var b = await StartNodeAsync(bus, BNodeCall, "BNODE");
+
+        var appCall = new Callsign(ANodeCall.Base, 9);
+        byte quality = 255;
+        a.NetRom.AppAdvertSource = () =>
+            [new NodesBroadcastBuilder.Entry(appCall, "RDGTEL", ANodeCall, Quality: quality)];
+
+        var generous = TimeSpan.FromSeconds(60);
+        a.NetRom.BroadcastNodes();
+        b.NetRom.BroadcastNodes();
+        await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination("RDGTEL") is not null,
+            "B learns the alias while it is still advertised", generous);
+        await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("BNODE") is not null,
+            "A learns B, so it can route its replies", generous);
+
+        // The owner sets quality 0; the reconcile refresh runs. B still holds its route.
+        quality = 0;
+        a.NetRom.RefreshLocalAppCalls();
+
+        using var registration = appRunning
+            ? a.Supervisor.RegisterAppCallsign(appCall, null, async (connection, port) =>
+                await connection.WriteAsync("Welcome to TELSTAR\r"u8.ToArray()))
+            : null;
+
+        await using var user = new RemoteStation(bus.Attach(), UserCall);
+        await user.StartAsync();
+        await user.ConnectAsync(BNodeCall);
+        await Wait.ForAsync(() => user.Saw("BNODE"), "node B's banner should arrive");
+
+        user.SendLine("C RDGTEL");
+        if (appRunning)
+        {
+            await Wait.ForAsync(() => user.Saw("Welcome to TELSTAR"),
+                "the circuit to the quality 0 app's callsign lands in the app", generous);
+            a.NetRom.Circuits!.Circuits.Should().ContainSingle().Which.LocalNode.Should().Be(appCall);
+        }
+        else
+        {
+            await Wait.ForAsync(() => user.Saw("refused"),
+                "a stopped quality 0 app is refused at A, not forwarded on", generous);
+            user.CurrentState.Should().Be("Connected", "a refusal must not drop the user's session");
+            a.NetRom.Circuits!.Circuits.Should().BeEmpty();
+        }
+    }
+
+    /// <summary>
+    /// packet.net#939 with #954: a quality 0 app alias is still one of our app callsigns, so an
+    /// echo of it in a neighbour's NODES teaches no route to it even with the app not attached.
+    /// </summary>
+    [Fact]
+    public async Task A_neighbour_echoing_a_quality_0_app_call_teaches_no_route_to_it()
+    {
+        var bus = new SharedRadioBus();
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+
+        var appCall = new Callsign(ANodeCall.Base, 9);
+        a.NetRom.AppAdvertSource = () =>
+            [new NodesBroadcastBuilder.Entry(appCall, "RDGTEL", ANodeCall, Quality: 0)];
+        a.NetRom.RefreshLocalAppCalls();
+
+        await SendNodesAsync(bus, BNodeCall, "BNODE",
+            new NodesBroadcastBuilder.Entry(appCall, "RDGTEL", CNodeCall, Quality: 200),
+            new NodesBroadcastBuilder.Entry(CNodeCall, "CNODE", CNodeCall, Quality: 200));
+
+        await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("CNODE") is not null,
+            "A learns the ordinary destination in B's NODES", TimeSpan.FromSeconds(30));
+        a.NetRom.Snapshot().Destinations.Should().NotContain(d => d.Destination == appCall,
+            "a quality 0 app callsign is still ours, so no route to it is learned");
+    }
+
+    /// <summary>
     /// packet.net#954: a neighbour that echoes one of our app callsigns back in its NODES (here
     /// via a third node, which the best-neighbour loop guard does not catch) teaches us no route
     /// to it, as LinBPQ skips its APPLCALLs. Covers both an advertised app alias and a callsign an

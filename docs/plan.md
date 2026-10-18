@@ -1452,6 +1452,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-10-18 - NET/ROM: an app alias at quality 0 is not advertised (#939)
+
+An app alias configured at `netrom.quality: 0` still went out in our NODES broadcast at quality 0. On a BPQ `APPLICATION` line quality 0 means "don't put it in NODES" (GB7RDG's TELSTAR and DAPPS entries are quality 0 for exactly that), so pdn now leaves such an alias out. No new settings; 0 was already a valid value.
+
+- **What BPQ does** (read in the linmail-pdn fork): `cMain.c` builds a NODES table entry for an APPLCALL only when `APPLQUAL` is above 0, and `BPQINP3.c` puts one in a RIF only then. The other two checks ignore quality: `L4Code.c` ends a datagram addressed to any APPLCALL here, and `L3Code.c` skips every APPLCALL in NODES ingest. So a quality 0 app is unadvertised but still local.
+- **pdn**: `AppNetromAdvert.Build` still returns the quality 0 entry, because that list is also the node's record of its app callsigns (#931, #954). `NetRomService.BroadcastNodes` drops entries at quality 0 when it builds the frame. So a circuit to the app's callsign, from a neighbour that knows it another way (an older broadcast, a route still ageing out), still lands in the app or is refused Busy when the app is stopped, and an echo of the call in a neighbour's NODES still teaches no route to it. pdn does not put app aliases in INP3 RIFs at all, so nothing changes there.
+- Docs: `docs/app-packages.md` § Application packet identity, the `AppNetromConfig.Quality` comment, the sample `packetnet.yaml` and the Apps page hint.
+
 ### 2026-10-18 - RHP: a failed open says why (#849)
 
 A peer that answered DM and a peer that never answered both came back from `Ax25Listener.ConnectAsync` as the same `InvalidOperationException`, and the RHP gateway turned both into `errCode 15` "No Route". Apps that script connects could not tell busy from dead.
