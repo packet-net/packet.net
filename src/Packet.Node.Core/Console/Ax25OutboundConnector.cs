@@ -3,6 +3,7 @@ using Packet.Ax25.Session;
 using Packet.Core;
 using Packet.Node.Core.Capabilities;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Core.Console;
 
@@ -47,6 +48,9 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
     // still draining (packet.net#850), whether someone takes the restarted link: the supervisor
     // offers it to a console or an app's accept, or to a dial whose claim covers it (#862).
     private readonly Func<Ax25Session, bool>? peerRestarted;
+    // The port's transport when it can say it has no route to a station (multipoint AXUDP):
+    // a dial it cannot route fails at once instead of after N2 x T1.
+    private readonly IRouteAwareTransport? routes;
 
     public Ax25OutboundConnector(
         string portId,
@@ -56,8 +60,10 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         PeerCapabilityCache? cache = null,
         Func<PortLinkConfig?>? linkPolicy = null,
         TimeProvider? timeProvider = null,
-        Func<Ax25Session, bool>? peerRestarted = null)
+        Func<Ax25Session, bool>? peerRestarted = null,
+        IRouteAwareTransport? routes = null)
     {
+        this.routes = routes;
         this.peerRestarted = peerRestarted;
         // The clock the connections this connector makes use for their close (packet.net#850);
         // pass the listener's, so it and the link's own timers agree. Null means the system clock.
@@ -78,6 +84,11 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
     /// <inheritdoc/>
     public async Task<INodeConnection> ConnectAsync(Callsign target, CancellationToken cancellationToken = default)
     {
+        if (routes is not null && !routes.HasRouteTo(target))
+        {
+            throw new NoRouteToPeerException(PortId, target);
+        }
+
         // Claim the remote as outbound so the supervisor's SessionAccepted handler
         // doesn't start a console session against it. Held across ConnectAsync
         // because the listener fires SessionAccepted synchronously within it -

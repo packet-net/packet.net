@@ -36,7 +36,7 @@ public static class NodeServiceCollectionExtensions
             sp.GetService<TimeProvider>() ?? TimeProvider.System,
             sp.GetService<ILoggerFactory>()?.CreateLogger<FileConfigProvider>()));
 
-        services.TryAddSingleton<ITransportFactory>(TransportFactory.Instance);
+        services.TryAddSingleton<ITransportFactory>(sp => new TransportFactory(sp.GetService<ILoggerFactory>()));
         services.TryAddSingleton(TimeProvider.System);
 
         // The ID-beacon service (a singleton over the live config + clock). The hosted
