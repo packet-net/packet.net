@@ -86,6 +86,7 @@ public static class ReconcilePlanner
         var netRomQualityChanged = new List<PortConfig>();
         var beaconChanged = new List<PortConfig>();
         var mqttInstanceChanged = new List<PortConfig>();
+        var m0lteMapChanged = new List<PortConfig>();
 
         // Removed ports.
         foreach (var oldPort in from.Ports)
@@ -206,6 +207,12 @@ public static class ReconcilePlanner
             {
                 mqttInstanceChanged.Add(newPort);
             }
+            // The UK packet map details: read live by the map reporter on its next report, so
+            // nothing restarts - the arm exists so the edit is not invisible to IsNoOp.
+            if (!Equals(oldPort.M0lteMap, newPort.M0lteMap))
+            {
+                m0lteMapChanged.Add(newPort);
+            }
         }
 
         return new ReconcilePlan
@@ -222,6 +229,7 @@ public static class ReconcilePlanner
             NetRomQualityChanged = netRomQualityChanged,
             BeaconChanged = beaconChanged,
             MqttInstanceChanged = mqttInstanceChanged,
+            M0lteMapChanged = m0lteMapChanged,
             TelnetChanged = telnetChanged,
             ServicesChanged = servicesChanged,
         };
@@ -280,6 +288,7 @@ public static class ReconcilePlanner
             [nameof(PortConfig.NodesPaclen)] = PortFieldClass.Live,
             [nameof(PortConfig.NodesBroadcast)] = PortFieldClass.Live,
             [nameof(PortConfig.MqttInstance)] = PortFieldClass.Live,
+            [nameof(PortConfig.M0lteMap)] = PortFieldClass.Live,
             // Dial policy affects new dials only; it live-reseeds through the same path as Ax25.
             [nameof(PortConfig.Link)] = PortFieldClass.Live,
         };

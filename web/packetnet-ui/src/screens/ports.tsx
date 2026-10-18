@@ -16,6 +16,7 @@ import { DoctorButton } from "@/components/doctor";
 import type {
   PortConfig, PortStatus, TransportConfig, TransportKind, AuthorableTransportKind, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
   PortCompatConfig, CompatPreset, PortLinkConfig, LinkDialPreference, LinkPreConnectXid,
+  PortM0lteMapConfig, M0lteMapLinkType,
   RadioConfig, RadioScanResult, ReconcileResult, ValidationProblem,
   RigConfig, RigScan, RigScanDevice, RigModelCatalogue, NinoMode,
   TaitProgramInfo, TaitProgramEvent, TaitProgramState, TaitProgramMode, TaitRadioSettings,
@@ -95,6 +96,10 @@ export interface PortDraft {
   nodesPaclen: number | null;
   // Whether this port sends the node's NODES broadcast (#929). Default false.
   nodesBroadcast: boolean;
+  // UK packet map details (BPQ M0LTEMapInfo). Null = none set: the port is reported with what
+  // the node derives. A block whose every field is blank collapses to null, so an untouched port
+  // stores no block.
+  m0lteMap: PortM0lteMapConfig | null;
   _new?: boolean;
   // The id the draft was opened against (the reconcile key for an edit) — set on edit,
   // unset on add. Lets a rename in the editor edit the original entry rather than 404.
@@ -226,8 +231,33 @@ export function portDraftToConfig(d: PortDraft): PortConfig {
     netRomMinQuality: d.netRomMinQuality,
     nodesPaclen: d.nodesPaclen,
     nodesBroadcast: d.nodesBroadcast,
+    m0lteMap: d.m0lteMap,
   };
 }
+
+// Drop a map block whose every field is blank (everything derived).
+export function collapseM0lteMap(m: PortM0lteMapConfig | null): PortM0lteMapConfig | null {
+  if (!m) return null;
+  const blank = (v: unknown) => v === null || v === undefined || v === "";
+  const fields: (keyof PortM0lteMapConfig)[] = ["linkType", "frequencyMhz", "modulation", "baud", "bitrate", "usage", "comment"];
+  return fields.every((k) => blank(m[k])) ? null : m;
+}
+
+// A whole number from a number input, or null when blank (baud and bit rate are integers on the
+// server, so "1.5" must never reach the wire).
+export function intOrNull(v: string): number | null {
+  if (v === "") return null;
+  const n = Math.trunc(+v);
+  return Number.isFinite(n) ? n : null;
+}
+
+const M0LTE_MAP_LINK_TYPES: { id: M0lteMapLinkType | ""; label: string }[] = [
+  { id: "", label: "Auto (AXUDP = Internet, else RF)" },
+  { id: "RF", label: "RF" },
+  { id: "PrivateNet", label: "Private network" },
+  { id: "Internet", label: "Internet" },
+  { id: "Other", label: "Other" },
+];
 
 // What the node actually did, from the ReconcileResult the write returned - the save used to
 // discard it, so the operator never learned whether the port restarted (#690 C038). Grouped
@@ -363,6 +393,7 @@ export function Ports() {
     netRomMinQuality: null,
     nodesPaclen: null,
     nodesBroadcast: false,
+    m0lteMap: null,
     _new: true,
   });
 
@@ -387,6 +418,7 @@ export function Ports() {
       netRomMinQuality: p.netRomMinQuality ?? null,
       nodesPaclen: p.nodesPaclen ?? null,
       nodesBroadcast: p.nodesBroadcast ?? false,
+      m0lteMap: p.m0lteMap ?? null,
       _origId: p.id,
       _orig: p,
     });
@@ -722,6 +754,8 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
     });
   const setLinkDial = (dial: LinkDialPreference) => setLink({ dial });
   const setLinkPreConnectXid = (preConnectXid: LinkPreConnectXid) => setLink({ preConnectXid });
+  const setMap = (patch: Partial<PortM0lteMapConfig>) =>
+    edit((d) => ({ ...d, m0lteMap: collapseM0lteMap({ ...(d.m0lteMap ?? {}), ...patch }) }));
   const setRadio = (radio: RadioConfig | null) => edit((d) => ({ ...d, radio }));
   const setRig = (rig: RigConfig | null) => edit((d) => ({ ...d, rig }));
 
@@ -789,7 +823,8 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
     !same(saved.ax25, before.ax25) || !same(saved.kiss, before.kiss) || !same(saved.compat, before.compat) ||
     !same(saved.link, before.link) ||
     !same(saved.netRomQuality, before.netRomQuality) || !same(saved.netRomMinQuality, before.netRomMinQuality) ||
-    !same(saved.nodesPaclen, before.nodesPaclen) || (saved.nodesBroadcast ?? false) !== (before.nodesBroadcast ?? false)
+    !same(saved.nodesPaclen, before.nodesPaclen) || (saved.nodesBroadcast ?? false) !== (before.nodesBroadcast ?? false) ||
+    !same(saved.m0lteMap ?? null, before.m0lteMap ?? null)
   ) {
     disrupt = { tone: "success", text: `Parameter changes apply live to ${before.id}. No sessions drop.` };
   } else {
@@ -1263,6 +1298,44 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
               </label>
             </Field>
           </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">UK packet map</p>
+          <p className="mb-3 text-xs text-muted-foreground">What this port shows on the map when map reporting is on (Config, UK Packet Map). Leave a field blank to leave it off the map.</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Field label="Link type" info="RF, a private network, or the internet. Auto treats an AXUDP port as Internet and anything else as RF.">
+                <Select value={model.m0lteMap?.linkType ?? ""} onChange={(e) => setMap({ linkType: e.target.value === "" ? null : (e.target.value as M0lteMapLinkType) })}>
+                  {M0LTE_MAP_LINK_TYPES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </Select>
+              </Field>
+              <Field label="Frequency (MHz)" info="The channel frequency in MHz, e.g. 144.9375.">
+                <Input type="number" step="any" min={0} value={model.m0lteMap?.frequencyMhz ?? ""} placeholder="none"
+                  onChange={(e) => setMap({ frequencyMhz: e.target.value === "" ? null : +e.target.value })} className="font-mono" />
+              </Field>
+              <Field label="Modulation" info="Free text, e.g. QPSK, GFSK, AFSK1200.">
+                <Input value={model.m0lteMap?.modulation ?? ""} maxLength={32} placeholder="none"
+                  onChange={(e) => setMap({ modulation: e.target.value === "" ? null : e.target.value })} className="font-mono" />
+              </Field>
+              <Field label="Baud" info="The symbol rate, e.g. 1800 for 3600 bit/s QPSK.">
+                <Input type="number" min={0} step={1} value={model.m0lteMap?.baud ?? ""} placeholder="none"
+                  onChange={(e) => setMap({ baud: intOrNull(e.target.value) })} className="font-mono" />
+              </Field>
+              <Field label="Bit rate" info="The data rate in bits per second.">
+                <Input type="number" min={0} step={1} value={model.m0lteMap?.bitrate ?? ""} placeholder="none"
+                  onChange={(e) => setMap({ bitrate: intOrNull(e.target.value) })} className="font-mono" />
+              </Field>
+              <Field label="Usage" info="What the port is for, e.g. Access, Backbone, Mixed.">
+                <Input value={model.m0lteMap?.usage ?? ""} maxLength={32} placeholder="none"
+                  onChange={(e) => setMap({ usage: e.target.value === "" ? null : e.target.value })} className="font-mono" />
+              </Field>
+              <div className="col-span-2 sm:col-span-3">
+                <Field label="Description on the map" info="Shown with the port on the map. Blank = the port id.">
+                  <Input value={model.m0lteMap?.comment ?? ""} maxLength={80} placeholder={model.id || "the port id"}
+                    onChange={(e) => setMap({ comment: e.target.value === "" ? null : e.target.value })} />
+                </Field>
+              </div>
+            </div>
         </div>
       </div>
 

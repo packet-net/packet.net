@@ -385,6 +385,11 @@ public sealed class ClientContractFixtureTests
                 NodesPaclen = 160,
                 NodesBroadcast = true,
                 MqttInstance = "2m",
+                M0lteMap = new PortM0lteMapConfig
+                {
+                    LinkType = M0lteMapLinkType.RF, FrequencyMhz = 144.9375m, Modulation = "QPSK",
+                    Baud = 1800, Bitrate = 3600, Usage = "Mixed", Comment = "144.9375 FM QPSK3600 IL2Pc",
+                },
             },
             new PortConfig { Id = "uhf-2", Transport = new KissTcpTransport { Host = "127.0.0.1", Port = 8001 } },
             new PortConfig { Id = "hf-300", Enabled = false, Transport = new SerialKissTransport { Device = "/dev/ttyUSB1", Baud = 38_400 } },
@@ -455,6 +460,7 @@ public sealed class ClientContractFixtureTests
         Beacon = new BeaconConfig { Enabled = true, IntervalMinutes = 30, Text = "{node} pdn node" },
         Tailscale = new TailscaleConfig { Enabled = false, AuthKey = null, AuthKeyFile = null, Hostname = "pdn", Tags = ["tag:pdn"], StateDir = "/var/lib/packetnet/tsnet", Target = "127.0.0.1:8080", Funnel = false },
         Oarc = new OarcConfig { Enabled = false },
+        M0lteMap = new M0lteMapConfig { Enabled = true },
         Mcp = new McpConfig { Oauth = new McpOauthConfig { Issuer = "https://pdn.m0lte.uk", AllowDynamicRegistration = false } },
         Ardop = new ArdopConfig { Enabled = false, Flex = null },
         Paging = new PagingConfig { Enabled = false, Flex = null },
@@ -562,6 +568,7 @@ public sealed class ClientContractFixtureTests
         compatQuirks = Ax25CompatPresets.QuirksNames,
         linkDial = Enum.GetNames<LinkDialPreference>(),
         linkPreConnectXid = Enum.GetNames<LinkPreConnectXid>(),
+        m0lteMapLinkType = Enum.GetNames<M0lteMapLinkType>(),
         headEndDeviceKinds = ConstStringsOf(typeof(HeadEndDeviceKind)),
         appPackageStates = Enum.GetNames<AppServiceState>(),
         portStates = PortStates.All,

@@ -1083,6 +1083,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             LogMqttInstanceApplied(port.Id);
         }
 
+        // Per-port UK packet map details - nothing to apply: the map reporter reads them from the
+        // live config on each report. Rebaseline + say so, as for the MQTT label above.
+        foreach (var port in plan.M0lteMapChanged)
+        {
+            RebaselineConfig(port);
+            LogM0lteMapApplied(port.Id);
+        }
+
         return PortApplyOutcome.Applied;
     }
 
@@ -2288,6 +2296,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: MQTT instance label applied live; the next published frame uses the new topic segment.")]
     private partial void LogMqttInstanceApplied(string id);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: UK packet map details applied live; the next map report uses them.")]
+    private partial void LogM0lteMapApplied(string id);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Inbound session accepted from {Peer} on port {Port}.")]
     private partial void LogInboundSessionAccepted(string peer, string port);

@@ -113,6 +113,13 @@ public sealed record NodeConfig
     /// toggle. See <see cref="OarcConfig"/> and <c>docs/oarc-reporting-design.md</c>.</summary>
     public OarcConfig Oarc { get; init; } = new();
 
+    /// <summary>Reporting to the UK packet map (<c>nodes.ukpacketradio.network</c>, the
+    /// <c>packetnodes.spots.radio</c> collector LinBPQ's <c>EnableM0LTEMap=1</c> feeds) - outbound
+    /// only. <b>Default-OFF</b> (<see cref="M0lteMapConfig.Enabled"/> = <c>false</c>). Separate from
+    /// <see cref="Oarc"/>: a different service with its own wire format. Per-port details live on
+    /// <see cref="PortConfig.M0lteMap"/>. See <c>docs/m0lte-map-reporting.md</c>.</summary>
+    public M0lteMapConfig M0lteMap { get; init; } = new();
+
     /// <summary>kissproxy-compatible MQTT frame emission - the node publishes every AX.25 frame it
     /// sends/receives to an MQTT broker in kissproxy's native topic/payload format, so pdn can replace
     /// a kissproxy instance at a site without losing the downstream <c>kiss-collector</c> capture.

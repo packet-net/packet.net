@@ -118,6 +118,11 @@ public static class ReconcilePreviewBuilder
             live.Add(new ReconcileChange($"ports.{p.Id}.mqttInstance", Live,
                 $"Port '{p.Id}' MQTT topic label - the next published frame uses it (labelling only; no on-air change)."));
         }
+        foreach (var p in plan.M0lteMapChanged)
+        {
+            live.Add(new ReconcileChange($"ports.{p.Id}.m0lteMap", Live,
+                $"Port '{p.Id}' UK packet map details - the next map report uses them (reporting only; no on-air change)."));
+        }
 
         if (plan.TelnetChanged)
         {
@@ -126,6 +131,16 @@ public static class ReconcilePreviewBuilder
         if (plan.ServicesChanged)
         {
             live.Add(new ReconcileChange("services", Live, "Banner/prompt updated (applies to new sessions)."));
+        }
+
+        // UK packet map reporting is read live by its reporter on every wake-up; say what the
+        // edit does, since turning it on starts sending this node's details to a public map.
+        if (!from.M0lteMap.Equals(to.M0lteMap))
+        {
+            var summary = to.M0lteMap.Enabled
+                ? "UK packet map reporting turned on - the first report goes in about two minutes, then every 15 minutes."
+                : "UK packet map reporting turned off - no further reports are sent.";
+            live.Add(new ReconcileChange("m0lteMap", Live, summary));
         }
 
         // The NET/ROM block is not hot-reconciled - the service is constructed once at

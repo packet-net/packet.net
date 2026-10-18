@@ -23,7 +23,7 @@ import {
 // a pending change, identified by its dotted config path + apply impact
 interface DirtyEntry { path: string; impact: ApplyImpact }
 
-type FormTab = "identity" | "services" | "management" | "netrom" | "beacons" | "oarc";
+type FormTab = "identity" | "services" | "management" | "netrom" | "beacons" | "oarc" | "m0lteMap";
 const TABS: { id: FormTab; label: string }[] = [
   { id: "identity", label: "Identity" },
   { id: "services", label: "Services" },
@@ -31,6 +31,7 @@ const TABS: { id: FormTab; label: string }[] = [
   { id: "netrom", label: "NET/ROM + INP3" },
   { id: "beacons", label: "Beacons" },
   { id: "oarc", label: "OARC Network Map" },
+  { id: "m0lteMap", label: "UK Packet Map" },
 ];
 
 export function Config() {
@@ -281,6 +282,7 @@ export function Config() {
             {tab === "beacons" && <BeaconsSection cfg={cfg} set={set} />}
 
             {tab === "oarc" && <OarcSection cfg={cfg} set={set} />}
+            {tab === "m0lteMap" && <M0lteMapSection cfg={cfg} set={set} />}
           </Card>
         </div>
       ) : (
@@ -916,6 +918,38 @@ function OarcSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: u
           </AdvancedDetails>
         </>
       )}
+    </section>
+  );
+}
+
+// ---------- UK packet map (BPQ's EnableM0LTEMap) -----------
+// The node POSTs a snapshot of itself (alias, locator, ports, live NET/ROM neighbours) to the UK
+// packet map every 15 minutes. Outbound only, off by default, read live by the reporter. Each
+// port's map details (frequency, modulation, rates, usage) are on the Ports screen. Like the
+// OARC map, nothing is reported without a valid 6-character grid, so say so here.
+function M0lteMapSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: unknown, impact: ApplyImpact) => void }) {
+  const m = cfg.m0lteMap;
+  const gridMissing = m.enabled && !MAIDENHEAD_GRID.test(cfg.identity.grid ?? "");
+  return (
+    <section className="space-y-5">
+      <div className="rounded-lg border border-border p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <Label className="text-foreground">Report to the UK packet map</Label>
+            <p className="mt-1.5 max-w-2xl text-xs leading-snug text-muted-foreground">
+              Puts this node on nodes.ukpacketradio.network, as BPQ&apos;s EnableM0LTEMap does: its alias, locator, ports and the NET/ROM neighbours it has a link up to, every 15 minutes. Never the callsigns of stations it hears. Off by default.
+            </p>
+          </div>
+          <div className="shrink-0 pt-0.5"><Switch checked={m.enabled} onChange={(v) => set("m0lteMap.enabled", v, "live")} /></div>
+        </div>
+      </div>
+      {gridMissing && (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-warning">
+          <p className="flex items-center gap-2 text-sm font-medium"><Icon name="alert" size={14} /> No valid locator</p>
+          <p className="mt-1 text-xs leading-snug opacity-90">Set a 6-character Maidenhead grid in Identity - the node is not reported without one.</p>
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Each port&apos;s frequency, modulation and usage are set in that port&apos;s editor on the Ports screen.</p>
     </section>
   );
 }

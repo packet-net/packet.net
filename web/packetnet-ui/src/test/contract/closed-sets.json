@@ -46,6 +46,12 @@
     "On",
     "Off"
   ],
+  "m0lteMapLinkType": [
+    "RF",
+    "PrivateNet",
+    "Internet",
+    "Other"
+  ],
   "headEndDeviceKinds": [
     "nino-tnc",
     "tait-ccdi",

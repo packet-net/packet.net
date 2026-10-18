@@ -638,6 +638,11 @@ public sealed partial class NodeHostedService : BackgroundService
             parts.Add($"{p.MqttInstanceChanged.Count} mqtt-live");
         }
 
+        if (p.M0lteMapChanged.Count > 0)
+        {
+            parts.Add($"{p.M0lteMapChanged.Count} map-live");
+        }
+
         if (p.LinkChanged.Count > 0)
         {
             parts.Add($"{p.LinkChanged.Count} link-live");

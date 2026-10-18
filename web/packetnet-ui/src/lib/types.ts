@@ -237,6 +237,25 @@ export interface PortConfig {
   // the config file; no screen edits it, so it must ride through every port save untouched
   // (server: Packet.Node.Core.Configuration.PortConfig.MqttInstance).
   mqttInstance?: string | null;
+  // UK packet map details for this port (BPQ M0LTEMapInfo). Null/absent = the
+  // port is reported with its derived link type and its id as the comment, nothing else.
+  // Only read when the node-level m0lteMap.enabled is on
+  // (server: Packet.Node.Core.Configuration.PortConfig.M0lteMap).
+  m0lteMap?: PortM0lteMapConfig | null;
+}
+// The link kinds the UK packet map knows (server: Packet.Node.Core.Configuration.M0lteMapLinkType).
+export type M0lteMapLinkType = "RF" | "PrivateNet" | "Internet" | "Other";
+// One port's UK packet map details (server: PortM0lteMapConfig). Every field is optional; an
+// unset one is left out of the report. linkType null = derived (AXUDP -> Internet, else RF);
+// comment null = the port id.
+export interface PortM0lteMapConfig {
+  linkType?: M0lteMapLinkType | null;
+  frequencyMhz?: number | null;
+  modulation?: string | null;
+  baud?: number | null;
+  bitrate?: number | null;
+  usage?: string | null;
+  comment?: string | null;
 }
 // The system-default ID beacon (Packet.Node.Core.Configuration.BeaconConfig).
 // enabled defaults false (a node that never beaconed keeps not beaconing).
@@ -331,6 +350,12 @@ export interface Inp3Config {
 //   publishExactPosition      - publish exact lat/lon vs locator-only.
 //   statusIntervalSecs        - node-status heartbeat cadence.
 //   sessionStatusIntervalSecs - link/circuit status refresh cadence.
+// UK packet map reporting (server: Packet.Node.Core.Configuration.M0lteMapConfig) - the pdn
+// form of BPQ's EnableM0LTEMap. Default-off; when on, the node POSTs a snapshot of itself to the
+// map every 15 minutes.
+export interface M0lteMapConfig {
+  enabled: boolean;
+}
 export interface OarcConfig {
   enabled: boolean;
   baseUrl: string;
@@ -478,6 +503,7 @@ export interface NodeConfig {
   traffic: TrafficConfig;
   tailscale: TailscaleConfig;
   oarc: OarcConfig;
+  m0lteMap: M0lteMapConfig;
   mqtt: MqttConfig;
   // Node-level soundmodem services (each runs over its own dedicated audio device; off by default).
   paging: PagingConfig;

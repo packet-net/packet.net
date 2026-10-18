@@ -54,6 +54,56 @@ public sealed class OarcConfigValidator : AbstractValidator<OarcConfig>
 }
 
 /// <summary>
+/// Validates one port's UK packet map details (<see cref="PortM0lteMapConfig"/>): a link type
+/// from the collector's set, a positive frequency, non-negative rates, and short text fields.
+/// Checked whether or not map reporting is on, for the same reason as the node block.
+/// </summary>
+public sealed class PortM0lteMapValidator : AbstractValidator<PortM0lteMapConfig>
+{
+    /// <summary>The longest modulation / usage text accepted.</summary>
+    public const int MaxShortTextLength = 32;
+
+    /// <summary>The longest port comment accepted (LinBPQ's port <c>ID=</c> is 30 characters;
+    /// this leaves room without letting a paragraph through).</summary>
+    public const int MaxCommentLength = 80;
+
+    public PortM0lteMapValidator()
+    {
+        RuleFor(m => m.LinkType!.Value).IsInEnum()
+            .When(m => m.LinkType.HasValue)
+            .WithMessage(m =>
+                $"m0lteMap.linkType '{(int)m.LinkType!.Value}' is not a known link type " +
+                $"(expected one of: {string.Join(", ", Enum.GetNames<M0lteMapLinkType>())} - or omit it to derive it from the transport).");
+
+        // Above 0 and below 300 GHz: catches a value typed in Hz or kHz by mistake.
+        RuleFor(m => m.FrequencyMhz!.Value)
+            .Must(mhz => mhz is > 0m and < 300_000m)
+            .When(m => m.FrequencyMhz.HasValue)
+            .WithMessage("m0lteMap.frequencyMhz must be a frequency in MHz, e.g. 144.9375 (omit it if the port has none).");
+
+        RuleFor(m => m.Baud!.Value).GreaterThanOrEqualTo(0)
+            .When(m => m.Baud.HasValue)
+            .WithMessage("m0lteMap.baud must not be negative.");
+
+        RuleFor(m => m.Bitrate!.Value).GreaterThanOrEqualTo(0)
+            .When(m => m.Bitrate.HasValue)
+            .WithMessage("m0lteMap.bitrate must not be negative.");
+
+        RuleFor(m => m.Modulation!).MaximumLength(MaxShortTextLength)
+            .When(m => m.Modulation is not null)
+            .WithMessage($"m0lteMap.modulation must be at most {MaxShortTextLength} characters.");
+
+        RuleFor(m => m.Usage!).MaximumLength(MaxShortTextLength)
+            .When(m => m.Usage is not null)
+            .WithMessage($"m0lteMap.usage must be at most {MaxShortTextLength} characters.");
+
+        RuleFor(m => m.Comment!).MaximumLength(MaxCommentLength)
+            .When(m => m.Comment is not null)
+            .WithMessage($"m0lteMap.comment must be at most {MaxCommentLength} characters.");
+    }
+}
+
+/// <summary>
 /// Validates the kissproxy MQTT emission block (<see cref="MqttConfig"/>). The shape constraints
 /// (a valid broker port, a QoS in 0..2) are checked <b>always</b> - even when disabled - so a
 /// disabled-but-edited block can't hold junk that would fail the day it is enabled. The one

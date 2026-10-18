@@ -28,6 +28,7 @@ public class NodeConfigRoundTripProperties
         reparsed.Management.Should().Be(config.Management);
         reparsed.Traffic.Should().Be(config.Traffic, "round-trip should preserve the traffic-log block\nYAML:\n{0}", yaml);
         reparsed.Tailscale.Should().Be(config.Tailscale, "round-trip should preserve the tailscale block (incl. its tags list)\nYAML:\n{0}", yaml);
+        reparsed.M0lteMap.Should().Be(config.M0lteMap, "round-trip should preserve the UK packet map block\nYAML:\n{0}", yaml);
     }
 
     [Property(Arbitrary = [typeof(NodeConfigArbitraries)], MaxTest = 300)]
