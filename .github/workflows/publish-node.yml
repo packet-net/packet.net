@@ -49,6 +49,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+      # build-deb.sh builds the tsnet sidecar with Go. Install the version sidecar/tsnet/go.mod
+      # asks for rather than trusting each runner's system Go (proxmox0 had none on PATH).
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: sidecar/tsnet/go.mod
+          cache-dependency-path: sidecar/tsnet/go.sum
 
       - id: v
         name: Resolve version

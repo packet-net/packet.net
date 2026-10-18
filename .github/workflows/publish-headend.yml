@@ -14,8 +14,8 @@ name: publish-headend
 # Self-hosted x64 only (no GitHub-hosted runners — see CLAUDE.md). CGO_ENABLED=0
 # cross-compiles all three arches from x64 with no cross C-toolchain (the same
 # way scripts/build-deb.sh cross-builds the tsnet sidecar), so a single job
-# produces every binary AND every .deb. Go is taken from the runner's system
-# toolchain — the same assumption publish-node.yml's build-deb.sh makes.
+# produces every binary AND every .deb. actions/setup-go installs the Go that
+# headend/go.mod asks for, as publish-node.yml does for build-deb.sh.
 #
 # Single job, no Actions artifacts: the .debs + binaries are built, install-smoked
 # (amd64 .deb, in throwaway Debian/Ubuntu containers — nothing touches the runner),
@@ -56,13 +56,13 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/headend-v}" >> "$GITHUB_OUTPUT"
           fi
 
+      - uses: actions/setup-go@v6
+        # The version headend/go.mod asks for, not whatever system Go the runner happens to have.
+        with:
+          go-version-file: headend/go.mod
+          cache-dependency-path: headend/go.sum
       - name: Go toolchain
-        # System Go on the self-hosted runner — same as scripts/build-deb.sh uses
-        # for the tsnet sidecar. Fail loud (not a silent toolchain download) if
-        # it's missing so the release doesn't quietly build against a surprise Go.
-        run: |
-          command -v go >/dev/null 2>&1 || { echo "go not found on runner (need Go to cross-build the head-end)" >&2; exit 2; }
-          go version
+        run: go version
 
       - name: Local gate (gofmt + go vet + go test)
         # A binary that fails its own gate must never reach the Release — the
