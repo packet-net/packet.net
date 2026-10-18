@@ -13,6 +13,7 @@ using Packet.Node.Core.Capabilities;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.Hosting;
+using Packet.Node.Core.M0lteMap;
 using Packet.Node.Core.Mqtt;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Oarc;
@@ -757,6 +758,24 @@ builder.Services.AddSingleton(sp => new OarcReporter(
     NodeCommandService.Version,
     sp.GetRequiredService<ILoggerFactory>().CreateLogger<OarcReporter>()));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<OarcReporter>());
+
+// UK packet map reporting (#453, default-off behind m0lteMap.enabled): the pdn form of LinBPQ's
+// EnableM0LTEMap=1, a whole-node report POSTed to the map's collector every 15 minutes. A different
+// service from the OARC reporter above. Registered UNCONDITIONALLY - it self-gates on the live
+// config, so turning it on or off needs no restart. No secret: the collector is unauthenticated.
+// See docs/m0lte-map-reporting.md.
+builder.Services.AddHttpClient(nameof(M0lteMapClient), c => c.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddSingleton<IM0lteMapClient>(sp => new M0lteMapClient(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(M0lteMapClient)),
+    NodeCommandService.Version));
+builder.Services.AddSingleton(sp => new M0lteMapReporter(
+    sp.GetRequiredService<IConfigProvider>(),
+    new NodeM0lteMapStateSource(sp.GetRequiredService<NodeHostedService>()),
+    sp.GetRequiredService<IM0lteMapClient>(),
+    sp.GetRequiredService<TimeProvider>(),
+    NodeCommandService.Version,
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger<M0lteMapReporter>()));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<M0lteMapReporter>());
 
 // kissproxy-compatible MQTT frame emission (default-off behind mqtt.enabled): a background emitter
 // that publishes every AX.25 frame the node sends/receives to an MQTT broker in kissproxy's native

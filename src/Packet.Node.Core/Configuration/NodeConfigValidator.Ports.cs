@@ -79,6 +79,9 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         When(p => p.Link is not null, () =>
             RuleFor(p => p.Link!).SetValidator(new PortLinkValidator()));
 
+        When(p => p.M0lteMap is not null, () =>
+            RuleFor(p => p.M0lteMap!).SetValidator(new PortM0lteMapValidator()));
+
         // Optional radio-control attachment. Its own fields are validated by PortRadioValidator;
         // additionally the block must pair with a transport that has a co-located radio:
         //  - a LOCAL radio (port/serial) needs a local serial-modem transport (serial-kiss /

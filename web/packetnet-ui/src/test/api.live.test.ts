@@ -92,6 +92,7 @@ const CONFIG = {
   beacon: { enabled: false, intervalMinutes: 30, text: "" },
   tailscale: { enabled: false, authKey: null, authKeyFile: null, hostname: "pdn", tags: [], stateDir: "/tmp", target: "127.0.0.1:8080", funnel: false },
   oarc: { enabled: false, baseUrl: "https://x/", reportNodeStatus: true, reportLinks: true, reportCircuits: true, reportTraces: false, tracesRfOnly: true, publishExactPosition: false, statusIntervalSecs: 300, sessionStatusIntervalSecs: 60 },
+  m0lteMap: { enabled: false, comment: null },
   ardop: { enabled: false, device: "default", captureRate: 48000, bind: "127.0.0.1", port: 8515, ptt: "" },
   paging: { enabled: false, device: "default", captureRate: 48000, bind: "127.0.0.1", port: 8106, baud: 1200, invertPolarity: false, ptt: "" },
 } as unknown as NodeConfig;

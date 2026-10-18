@@ -73,6 +73,37 @@ public sealed record OarcConfig
 }
 
 /// <summary>
+/// Reporting to the UK packet map (<c>docs/m0lte-map-reporting.md</c>): the pdn form of LinBPQ's
+/// <c>EnableM0LTEMap=1</c>. When enabled the node POSTs a snapshot of itself (alias, locator,
+/// software, its ports and their map details, and its NET/ROM neighbours) to the map's collector
+/// every 15 minutes, as LinBPQ does. <b>Outbound only</b> and <b>default-OFF</b>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A different service from <see cref="OarcConfig"/> (the OARC node API that LinBPQ's
+/// <c>ENABLEOARCAPI</c>/<c>EnableEvents</c> feed): GB7RDG has both on, and a pdn node replacing it
+/// turns both blocks on.
+/// </para>
+/// <para>
+/// No secret lives here (the collector takes reports keyed on the node callsign, unauthenticated),
+/// and no third-party callsign is ever sent: LinBPQ's report also carries the node's heard list,
+/// which pdn leaves out. A valid 6-character <see cref="Identity.Grid"/> is required; without one
+/// the node is not reported (and says so once in the log). Both fields are read live.
+/// </para>
+/// </remarks>
+public sealed record M0lteMapConfig
+{
+    /// <summary>The master switch (LinBPQ's <c>EnableM0LTEMap</c>). Default <c>false</c>: nothing
+    /// is sent until the operator turns it on.</summary>
+    public bool Enabled { get; init; }
+
+    /// <summary>A short free-text note shown with the node on the map, such as a URL for the
+    /// node's page. Sent as the report's <c>sysopComment</c>. Null = none. At most
+    /// <see cref="M0lteMapConfigValidator.MaxCommentLength"/> characters.</summary>
+    public string? Comment { get; init; }
+}
+
+/// <summary>
 /// kissproxy-compatible MQTT frame emission (<c>docs/research/pdn-mqtt-frame-emission.md</c>). When
 /// enabled, the node publishes every AX.25 frame it sends/receives to an MQTT broker in
 /// <a href="https://github.com/M0LTE/kissproxy">kissproxy</a>'s native wire format, so pdn can replace

@@ -402,6 +402,19 @@ public class ReconcilePlannerTests
     }
 
     [Fact]
+    public void A_uk_packet_map_only_edit_is_a_live_change_not_a_no_op()
+    {
+        var before = Config("M0LTE-1", Tcp("a"));
+        var to = Config("M0LTE-1", Tcp("a") with { M0lteMap = new PortM0lteMapConfig { FrequencyMhz = 144.9375m } });
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.IsNoOp.Should().BeFalse();
+        plan.M0lteMapChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty("the map reporter reads the details live, per report");
+        ReconcilePreviewBuilder.Build(before, to).Live.Should().ContainSingle(c => c.Path == "ports.a.m0lteMap");
+    }
+
+    [Fact]
     public void Transport_change_subsumes_a_simultaneous_kiss_change_no_double_action()
     {
         // A port that changes BOTH transport and kiss params restarts (which

@@ -107,6 +107,7 @@ public static class NodeConfigArbitraries
         from netRomQuality in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(0, 255).Select(q => (int?)q))
         from netRomMinQuality in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(0, 255).Select(q => (int?)q))
         from nodesPaclen in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(28, 256).Select(p => (int?)p))
+        from m0lteMap in PortM0lteMapGen()
         select new PortConfig
         {
             Id = $"port{index}",
@@ -120,7 +121,39 @@ public static class NodeConfigArbitraries
             NetRomQuality = netRomQuality,
             NetRomMinQuality = netRomMinQuality,
             NodesPaclen = nodesPaclen,
+            M0lteMap = m0lteMap,
         };
+
+    // A port's UK packet map details: absent about half the time, else a valid block with each
+    // field independently set or not. The frequencies are the kind an operator types, including
+    // ones (7.0516) a binary double cannot hold exactly, so a lossy round trip would show.
+    private static Gen<PortM0lteMapConfig?> PortM0lteMapGen() =>
+        Gen.OneOf(
+            Gen.Constant<PortM0lteMapConfig?>(null),
+            from enabled in Gen.Elements(true, false)
+            from type in Gen.Elements<M0lteMapLinkType?>(null, M0lteMapLinkType.RF, M0lteMapLinkType.PrivateNet, M0lteMapLinkType.Internet, M0lteMapLinkType.Other)
+            from mhz in Gen.Elements<decimal?>(null, 144.9375m, 432.625m, 7.0516m, 50.650m, 10.1473m)
+            from modulation in Gen.Elements<string?>(null, "QPSK", "GFSK", "AFSK1200")
+            from baud in Gen.Elements<int?>(null, 0, 300, 1200, 9600)
+            from bitrate in Gen.Elements<int?>(null, 300, 3600, 9600)
+            from usage in Gen.Elements<string?>(null, "Access", "Mixed", "Backbone")
+            from comment in Gen.Elements<string?>(null, "144.9375 FM QPSK3600 IL2Pc", "OARC-AXIP")
+            select (PortM0lteMapConfig?)new PortM0lteMapConfig
+            {
+                Enabled = enabled,
+                LinkType = type,
+                FrequencyMhz = mhz,
+                Modulation = modulation,
+                Baud = baud,
+                Bitrate = bitrate,
+                Usage = usage,
+                Comment = comment,
+            });
+
+    private static Gen<M0lteMapConfig> M0lteMapGen() =>
+        from enabled in Gen.Elements(false, true)
+        from comment in Gen.Elements<string?>(null, "https://ukpacketradio.network/nodes:gb7rdg", "Hilltop node, 2m and 70cm")
+        select new M0lteMapConfig { Enabled = enabled, Comment = comment };
 
     private static Gen<NetRomConfig> NetRomGen() =>
         Gen.OneOf(
@@ -288,6 +321,7 @@ public static class NodeConfigArbitraries
         from traffic in TrafficGen()
         from tailscale in TailscaleGen()
         from oarc in OarcGen()
+        from m0lteMap in M0lteMapGen()
         from management in ManagementGen()
         select new NodeConfig
         {
@@ -301,6 +335,7 @@ public static class NodeConfigArbitraries
             Traffic = traffic,
             Tailscale = tailscale,
             Oarc = oarc,
+            M0lteMap = m0lteMap,
             Management = management,
         };
 

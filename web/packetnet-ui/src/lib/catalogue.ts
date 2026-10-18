@@ -29,6 +29,7 @@ export const APPLY_IMPACT: Record<string, ApplyImpact> = {
   "netRom": "live",
   "services": "live",
   "oarc": "live",
+  "m0lteMap": "live",
   "management.http": "node-reset",
   "management.telnet": "port-restart",
   // Node-level soundmodem services: like the audio-device-owning soundmodem port transport

@@ -76,7 +76,17 @@
       "netRomQuality": 192,
       "netRomMinQuality": 100,
       "nodesPaclen": 160,
-      "mqttInstance": "2m"
+      "mqttInstance": "2m",
+      "m0lteMap": {
+        "enabled": true,
+        "linkType": "RF",
+        "frequencyMhz": 144.9375,
+        "modulation": "QPSK",
+        "baud": 1800,
+        "bitrate": 3600,
+        "usage": "Mixed",
+        "comment": "144.9375 FM QPSK3600 IL2Pc"
+      }
     },
     {
       "id": "uhf-2",
@@ -98,7 +108,8 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
-      "mqttInstance": null
+      "mqttInstance": null,
+      "m0lteMap": null
     },
     {
       "id": "hf-300",
@@ -120,7 +131,8 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
-      "mqttInstance": null
+      "mqttInstance": null,
+      "m0lteMap": null
     },
     {
       "id": "2m-headend",
@@ -154,7 +166,8 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
-      "mqttInstance": null
+      "mqttInstance": null,
+      "m0lteMap": null
     },
     {
       "id": "link-dn",
@@ -177,7 +190,8 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
-      "mqttInstance": null
+      "mqttInstance": null,
+      "m0lteMap": null
     },
     {
       "id": "mp-net",
@@ -212,7 +226,8 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
-      "mqttInstance": null
+      "mqttInstance": null,
+      "m0lteMap": null
     },
     {
       "id": "tait-tp",
@@ -241,7 +256,8 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
-      "mqttInstance": null
+      "mqttInstance": null,
+      "m0lteMap": null
     },
     {
       "id": "sm-1",
@@ -275,7 +291,8 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
-      "mqttInstance": null
+      "mqttInstance": null,
+      "m0lteMap": null
     }
   ],
   "services": {
@@ -429,6 +446,10 @@
     "publishExactPosition": false,
     "statusIntervalSecs": 300,
     "sessionStatusIntervalSecs": 60
+  },
+  "m0lteMap": {
+    "enabled": true,
+    "comment": "https://ukpacketradio.network/nodes:gb7rdg"
   },
   "mqtt": {
     "enabled": false,

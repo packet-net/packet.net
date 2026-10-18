@@ -297,6 +297,7 @@ const CLOSED_SETS: Record<string, string> = {
   compatPresets: "CompatPreset",
   linkDial: "LinkDialPreference",
   linkPreConnectXid: "LinkPreConnectXid",
+  m0lteMapLinkType: "M0lteMapLinkType",
   netRomRouting: "NetRomRouting",
   netRomForwardMode: "NetRomForwardMode",
   appPackageStates: "AppPackageState",
