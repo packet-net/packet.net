@@ -1507,7 +1507,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         {
             var liveDest = table.Snapshot().ResolveDestination(destCall.ToString());
             var best = (liveDest is null ? null : SelectActiveRoute(liveDest))
-                ?? throw new InvalidOperationException($"no usable NET/ROM route to {destCall}.");
+                ?? throw new NetRomNoRouteException(destCall.ToString(), $"no usable NET/ROM route to {destCall}.");
 
             try
             {
@@ -1531,7 +1531,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             return await OriginateCircuitAsync(destCall, originatingUser, ct).ConfigureAwait(false);
         }
 
-        throw new InvalidOperationException($"no usable NET/ROM route to {destCall} (all next hops are down).");
+        throw new NetRomNoRouteException(destCall.ToString(), $"no usable NET/ROM route to {destCall} (all next hops are down).");
     }
 
     private async Task<INodeConnection> OriginateCircuitAsync(
@@ -1540,8 +1540,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         var circuit = circuits!.OpenCircuit(destCall);
         var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         circuit.Connected += () => connected.TrySetResult();
-        circuit.Closed += r => connected.TrySetException(
-            new IOException($"NET/ROM circuit to {destCall} {r.ToString().ToLowerInvariant()}."));
+        circuit.Closed += r => connected.TrySetException(new NetRomCircuitFailedException(destCall, r));
 
         var connection = new NetRomNodeConnection(circuit, destCall);
         circuit.Connect(originatingUser);

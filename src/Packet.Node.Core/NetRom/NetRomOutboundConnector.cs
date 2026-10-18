@@ -73,7 +73,9 @@ public sealed class NetRomOutboundConnector : IOutboundConnector
             return await fallback.ConnectAsync(target, cancellationToken).ConfigureAwait(false);
         }
 
-        throw new InvalidOperationException(
-            $"no NET/ROM route to {target} and no local port to dial it on.");
+        throw new NetRomNoRouteException(target.ToString(),
+            netRom.ConnectEnabled
+                ? $"no NET/ROM route to {target} and no local port to dial it on."
+                : $"NET/ROM connect-routing is off, and there is no local port to dial {target} on.");
     }
 }

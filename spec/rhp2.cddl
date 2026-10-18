@@ -30,9 +30,10 @@
 ;         XRouter's. An open to a peer the calling callsign already has a link
 ;         up with, held by an accept or a console (packet-net/packet.net#862).
 ;         errCode 19-22, also pdn's own: why an open failed (packet.net#849):
-;         19 "Refused" (the peer answered DM), 20 "No answer" (T1 x N2), 21
-;         "Timed out" (the node's connect budget), 22 "Link reset" (down
-;         before up for any other reason). XRouter gives no reason.
+;         19 "Refused" (the peer answered DM, or a NET/ROM choke), 20 "No
+;         answer" (T1 x N2, or the L4 retries ran out), 21 "Timed out" (the
+;         node's connect budget), 22 "Link reset" (down before up for any
+;         other reason). XRouter gives no reason.
 ;   WF-16 TRACE recv fields tseq/ilen/pid/ptcl: not in the spec at all;
 ;         XRouter-observed (the spec's TRACE example shows srce/dest/ctrl/
 ;         frametype/rseq/cr/pf but omits these four).
