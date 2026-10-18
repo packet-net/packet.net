@@ -41,19 +41,37 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     private static readonly TimeSpan DefaultAckTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Default read-idle budget. A half-open TCP connection - the peer rebooted,
-    /// the cable was pulled, net-sim was restarted - sends no FIN, so a plain
-    /// <c>ReadAsync</c> blocks forever and the port silently dies (#464). If no
-    /// byte arrives within this window the link is treated as dead and the read
-    /// stream ends, which drives <c>ReconnectingKissModem</c> to re-dial. The
-    /// window is generous because a healthy packet-radio link is often quiet for
-    /// long stretches between frames; OS keepalive (enabled on real sockets) is
-    /// the faster probe, this is the backstop that also covers stacks/peers that
-    /// drop keepalive probes. <see cref="TimeSpan.Zero"/> (or
-    /// <see cref="Timeout.InfiniteTimeSpan"/>) disables idle detection entirely
-    /// - the pre-#464 block-forever behaviour.
+    /// Default read-idle budget, used only as a fallback when the OS will not take
+    /// the keepalive settings (see <see cref="KeepAliveDetectionTime"/>). A half-open
+    /// TCP connection - the peer rebooted, the cable was pulled, net-sim was
+    /// restarted - sends no FIN, so a plain <c>ReadAsync</c> blocks forever and the
+    /// port silently dies (#464). Where keepalive is armed it detects that on its
+    /// own and the read may stay idle indefinitely: a quiet radio channel is silent
+    /// for hours and silence is not a fault (#935). Where keepalive can't be armed,
+    /// a read that stalls past this window ends the stream so
+    /// <c>ReconnectingKissModem</c> re-dials. <see cref="TimeSpan.Zero"/> (or
+    /// <see cref="Timeout.InfiniteTimeSpan"/>) disables the fallback too.
     /// </summary>
     public static readonly TimeSpan DefaultReadIdleTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Roughly how long a dead or half-open peer takes to surface as a read error
+    /// once keepalive is armed: probing starts after 30 s of silence, then every
+    /// 10 s, and the connection is dropped after 5 unanswered probes. On Linux
+    /// <c>TCP_USER_TIMEOUT</c> bounds the same detection at 90 s while sent data
+    /// sits unacknowledged (keepalive does not probe while data is in flight).
+    /// </summary>
+    public static readonly TimeSpan KeepAliveDetectionTime = TimeSpan.FromSeconds(KeepAliveIdleSeconds + (KeepAliveIntervalSeconds * KeepAliveProbeCount));
+
+    private const int KeepAliveIdleSeconds = 30;
+    private const int KeepAliveIntervalSeconds = 10;
+    private const int KeepAliveProbeCount = 5;
+
+    // Linux TCP_USER_TIMEOUT (IPPROTO_TCP = 6, option 18), in milliseconds. Not in
+    // SocketOptionName, so it goes through SetRawSocketOption.
+    private const int IpProtoTcp = 6;
+    private const int LinuxTcpUserTimeout = 18;
+    internal const int UserTimeoutMilliseconds = 90_000;
 
     private readonly TcpClient? tcp;
     private readonly Stream stream;
@@ -62,7 +80,8 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     private readonly TimeProvider time;
 
     // How long a read may stall before the link is presumed dead. Zero or
-    // Timeout.InfiniteTimeSpan disables the check (block forever, as before).
+    // Timeout.InfiniteTimeSpan disables the check; it is always off on a real
+    // socket whose keepalive is armed (see EffectiveReadIdleTimeout).
     private readonly TimeSpan readIdleTimeout;
 
     // In-flight ACKMODE sends, keyed by 16-bit sequence tag. The RX pump
@@ -96,8 +115,8 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
         this.tcp = tcp;
         stream = tcp.GetStream();
         time = timeProvider ?? TimeProvider.System;
-        this.readIdleTimeout = readIdleTimeout;
-        EnableTcpKeepAlive(tcp);
+        KeepAliveArmed = TryArmTcpKeepAlive(tcp.Client);
+        this.readIdleTimeout = EffectiveReadIdleTimeout(KeepAliveArmed, readIdleTimeout);
     }
 
     // Stream-injecting ctor for tests: drives the same read/write/ackmode
@@ -113,25 +132,29 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
 
     /// <summary>
     /// Connect to a KISS-over-TCP listener at <paramref name="host"/>:<paramref name="port"/>.
-    /// Uses <see cref="DefaultReadIdleTimeout"/> for half-open-link detection
-    /// (#464). For an explicit idle timeout or a test clock, use
+    /// Half-open-link detection (#464) is TCP keepalive, tuned to notice a dead peer
+    /// within about <see cref="KeepAliveDetectionTime"/>; a quiet but healthy link
+    /// stays up however long it is silent. For an explicit fallback idle timeout or
+    /// a test clock, use
     /// <see cref="ConnectAsync(string,int,System.TimeSpan?,System.TimeProvider?,System.Threading.CancellationToken)"/>.
     /// </summary>
     public static Task<KissTcpClient> ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
         => ConnectAsync(host, port, readIdleTimeout: null, timeProvider: null, cancellationToken);
 
     /// <summary>
-    /// Connect to a KISS-over-TCP listener, controlling the read-idle liveness
-    /// timeout that lets a supervisor reconnect after a half-open drop (#464).
+    /// Connect to a KISS-over-TCP listener, controlling the read-idle fallback
+    /// that lets a supervisor reconnect after a half-open drop (#464) on a platform
+    /// where TCP keepalive can't be tuned.
     /// </summary>
     /// <param name="host">Listener host.</param>
     /// <param name="port">Listener TCP port.</param>
     /// <param name="readIdleTimeout">
     /// How long a read may stall with no inbound byte before the link is presumed
-    /// dead and the inbound stream ends (so a supervisor can reconnect). Null uses
+    /// dead and the inbound stream ends (so a supervisor can reconnect). Applies
+    /// only when the OS refuses the keepalive settings; with keepalive armed a
+    /// silent link is never dropped for silence alone (#935). Null uses
     /// <see cref="DefaultReadIdleTimeout"/>; <see cref="Timeout.InfiniteTimeSpan"/>
-    /// or <see cref="TimeSpan.Zero"/> disables idle detection (block forever, the
-    /// pre-#464 behaviour).
+    /// or <see cref="TimeSpan.Zero"/> disables the fallback.
     /// </param>
     /// <param name="timeProvider">Clock for the idle timeout (test seam).</param>
     /// <param name="cancellationToken">Cancels the connect.</param>
@@ -155,32 +178,56 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
         return new KissTcpClient(tcp, readIdleTimeout ?? DefaultReadIdleTimeout, timeProvider);
     }
 
+    // True when the OS took every keepalive setting, so a dead peer is caught by
+    // TCP itself within KeepAliveDetectionTime and the read-idle fallback is off.
+    internal bool KeepAliveArmed { get; }
+
+    // The connected socket, for tests that read the keepalive settings back.
+    internal Socket? Socket => tcp?.Client;
+
+    // The read-idle budget actually applied. With keepalive armed, silence on the
+    // link is left alone: on a quiet band no byte may arrive for hours and dropping
+    // the connection then only churns the peer (kissproxy reopens its serial port
+    // on every reconnect, #935). Without keepalive the requested budget is the only
+    // way a half-open link is ever noticed (#464), so it stays.
+    internal static TimeSpan EffectiveReadIdleTimeout(bool keepAliveArmed, TimeSpan requested)
+        => keepAliveArmed ? Timeout.InfiniteTimeSpan : requested;
+
     // Ask the OS to probe a quiet peer so a half-open connection (peer rebooted
-    // without a FIN) surfaces as a read error in bounded time rather than hanging
-    // forever. Best-effort: keepalive knobs are platform-dependent and a failure
-    // to set them is non-fatal - the read-idle timeout is the portable backstop.
-    private static void EnableTcpKeepAlive(TcpClient tcp)
+    // without a FIN, cable pulled) surfaces as a read error in bounded time.
+    // Keepalive probes are TCP segments the peer's kernel answers; nothing reaches
+    // the KISS stream or the TNC. Returns false if any of the core settings was
+    // refused, in which case the caller keeps the read-idle fallback.
+    private static bool TryArmTcpKeepAlive(Socket socket)
     {
         try
         {
-            var socket = tcp.Client;
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-            // Start probing after 30 s idle, every 10 s, give up after ~5 missed
-            // probes. Values are advisory; unsupported options are swallowed.
-            TrySetSocketOption(socket, SocketOptionName.TcpKeepAliveTime, 30);
-            TrySetSocketOption(socket, SocketOptionName.TcpKeepAliveInterval, 10);
-            TrySetSocketOption(socket, SocketOptionName.TcpKeepAliveRetryCount, 5);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, KeepAliveIdleSeconds);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, KeepAliveIntervalSeconds);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, KeepAliveProbeCount);
         }
-        catch
+        catch (Exception ex) when (ex is SocketException or PlatformNotSupportedException or NotSupportedException)
         {
-            // best-effort; the read-idle timeout still detects a dead link
+            return false;
         }
-    }
 
-    private static void TrySetSocketOption(Socket socket, SocketOptionName name, int value)
-    {
-        try { socket.SetSocketOption(SocketOptionLevel.Tcp, name, value); }
-        catch { /* not supported on this platform/stack */ }
+        if (OperatingSystem.IsLinux())
+        {
+            // Keepalive stays silent while sent data is unacknowledged, and plain
+            // retransmission takes about 15 minutes to give up. The user timeout
+            // caps that, so a frame sent into a half-open link is caught as fast as
+            // an idle one. Best-effort: keepalive alone still covers the idle case.
+            try
+            {
+                socket.SetRawSocketOption(IpProtoTcp, LinuxTcpUserTimeout, BitConverter.GetBytes(UserTimeoutMilliseconds));
+            }
+            catch (SocketException)
+            {
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

@@ -170,9 +170,11 @@ using Packet.Kiss;
 await using IAx25Transport transport = await KissTcpClient.ConnectAsync("127.0.0.1", 8001);
 ```
 
-`KissTcpClient` adds a couple of robustness features over a bare socket: a
-read-idle timeout that detects a half-open link (default 5 minutes), and
-confirmed transmit. It implements **both** capabilities -
+`KissTcpClient` adds a couple of robustness features over a bare socket:
+tuned TCP keepalive that notices a dead or half-open link in about 80 seconds
+without dropping a link that is merely quiet (a 5 minute read-idle timeout
+stands in only where the OS won't take the keepalive settings), and confirmed
+transmit. It implements **both** capabilities -
 `ITxCompletionTransport` (via G8BPQ ACKMODE) and `ICsmaChannelParams` - so you
 can correlate a TX with its on-air completion and set channel parameters when the
 far end supports them.

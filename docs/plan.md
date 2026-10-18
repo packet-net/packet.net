@@ -1451,6 +1451,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-10-18 - kiss-tcp: a quiet channel no longer redials every 5 minutes (#935)
+
+A kiss-tcp port whose channel was silent for 5 minutes dropped its TCP connection and redialled, logging warning 5101 each time, and kissproxy in front of a NinoTNC closed and reopened the serial port on every redial. GB7RDG's 6m port is silent for hours. The cause was the #464 half-open guard: a 5 minute read-idle timeout, added because a peer that rebooted or lost its cable sends no FIN and the read blocked forever. Silence on a radio channel looks the same as that to a read timer.
+
+- **Dead-link detection is now TCP keepalive alone** (`src/Packet.Kiss/KissTcpClient.cs`): probing after 30 s of silence, every 10 s, dropped after 5 unanswered probes, so a dead or half-open peer surfaces as a read error in about 80 s (it was up to 5 minutes before). On Linux `TCP_USER_TIMEOUT` (90 s) covers the one gap keepalive leaves, a frame sent into a half-open link, which plain retransmission takes about 15 minutes to give up on. Probes are TCP segments the peer's kernel answers; nothing goes into the KISS stream or to the TNC.
+- **The read-idle budget is only a fallback** for a platform that refuses the keepalive settings, so the #464 case stays covered everywhere. No new settings; `ConnectAsync`'s `readIdleTimeout` now means that fallback.
+- **Logging once per outage** (`ReconnectingKissModem`): 5101 at the drop, 5103 as a warning for the first failed redial only (later attempts in the same outage at Debug, instead of a warning every 30 s), 5102 at recovery with how long the link was down.
+- **Not changed:** the head-end raw serial pipe (`TcpSerialPortIo`, used by nino-tnc-tcp and KISS-over-head-end) still has its own 5 minute read-idle budget; nino-tnc-tcp feeds it with the #580 GETVER keep-alive. Moving that to the same keepalive-only scheme is a separate change.
+- **Tests:** a real loopback kiss-tcp link stays up through an hour of fake-clock silence and still delivers the next frame (fails on the old code); the keepalive and user-timeout settings read back off the socket; a peer reset ends the stream promptly; the fallback rule; the once-per-outage log levels. No parser, listener or parity surface touched.
+
 ### 2026-10-18 - node: multipoint AXUDP logs, and an unroutable connect fails at once (#944)
 
 `TransportFactory` built the multipoint AXUDP transport with `logger: null`, so a connect to a call with no `peers` entry sent nothing, logged nothing, and ~100 s later (N2 x T1) the console blamed the peer. The factory now takes the host's `ILoggerFactory` and gives the transport a real logger. "No route to X" is a Warning naming the call, at most once a minute per destination (repeats go to Debug); per-peer "sent to" stays a first-contact Debug and per-datagram "heard" stays Trace, so normal traffic is quiet. A new `IRouteAwareTransport` capability (implemented by the multipoint transport: configured peer or learned endpoint) lets `Ax25OutboundConnector` refuse a dial it cannot route before claiming or sending anything, with a `NoRouteToPeerException` naming the peer and the port; the console, `POST /sessions` and RHPv2 `open` already surface the message. No new settings.
