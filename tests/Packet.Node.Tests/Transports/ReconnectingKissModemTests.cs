@@ -1,12 +1,15 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Ax25.Transport;
 using Packet.Node.Core.Transports;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Transports;
 
@@ -139,6 +142,42 @@ public sealed class ReconnectingKissModemTests
 
         got.Should().Equal("A", "B");
         modem.IsReconnecting.Should().BeFalse("a fresh inner is live again");
+    }
+
+    [Fact]
+    public async Task An_outage_logs_one_drop_one_failed_redial_warning_and_one_recovery()
+    {
+        // #935: a peer down for an hour used to log a warning every 30 s backoff step.
+        // Now the drop and the first failed re-dial warn, later failures are Debug,
+        // and the recovery says how long the link was down.
+        var first = new FakeModem(endAfterFrames: true, Data("A"));
+        var second = new FakeModem(endAfterFrames: false, Data("B"));
+        var attempts = 0;
+        Func<CancellationToken, Task<IAx25Transport>> reconnect = _ =>
+            Interlocked.Increment(ref attempts) <= 3
+                ? Task.FromException<IAx25Transport>(new SocketException((int)SocketError.ConnectionRefused))
+                : Task.FromResult<IAx25Transport>(second);
+        var log = new CapturingLogger<ReconnectingKissModem>();
+        await using var modem = new ReconnectingKissModem(
+            first, reconnect, "tnc:8001", log, minBackoff: TimeSpan.Zero, maxBackoff: TimeSpan.Zero);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var got = new List<string>();
+        await foreach (var f in modem.ReceiveAsync(cts.Token).ConfigureAwait(false))
+        {
+            got.Add(Encoding.ASCII.GetString(f.Ax25.Span));
+            if (got.Count == 2)
+            {
+                break;
+            }
+        }
+
+        got.Should().Equal("A", "B");
+        log.Warnings.Should().HaveCount(2);
+        log.Warnings[0].Should().Contain("tnc:8001 dropped");
+        log.Warnings[1].Should().Contain("reconnect to tnc:8001 failed");
+        log.Render(LogLevel.Debug).Count(l => l.Contains("failed", StringComparison.Ordinal)).Should().Be(2);
+        log.Render(LogLevel.Information).Should().ContainSingle().Which.Should().MatchRegex(@"tnc:8001 reconnected after \d+s\.");
     }
 
     [Fact]

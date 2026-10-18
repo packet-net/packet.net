@@ -115,9 +115,11 @@ public sealed class TransportFactory : ITransportFactory
                 }
 
             case KissTcpTransport k:
-                // Native IAx25Transport. The read-idle liveness timeout converts a
-                // half-open TCP drop (peer rebooted with no FIN) into an end-of-stream
-                // so the port self-heals via ReconnectingKissModem instead of hanging (#464).
+                // Native IAx25Transport. Tuned TCP keepalive turns a half-open drop
+                // (peer rebooted with no FIN) into an end-of-stream so the port self-heals
+                // via ReconnectingKissModem instead of hanging (#464); the read-idle
+                // budget is only the fallback where keepalive can't be armed, so a quiet
+                // channel is never redialled for silence (#935).
                 return await KissTcpClient.ConnectAsync(
                     k.Host, k.Port,
                     readIdleTimeout: KissTcpClient.DefaultReadIdleTimeout,

@@ -29,10 +29,15 @@ namespace Packet.Node.Core.Transports;
 /// throws) and - the case that actually requires operator intervention without
 /// this (#464) - a <em>half-open</em> connection where the peer vanished with no
 /// FIN (rebooted TNC, net-sim restart, cable yank). The latter is caught by
-/// <c>KissTcpClient</c>'s read-idle liveness timeout (and OS TCP keepalive on a
-/// real socket): a stalled read past the idle budget is treated as a dead link
-/// and ends the stream, so this wrapper reconnects instead of the read hanging
-/// forever.
+/// <c>KissTcpClient</c>'s tuned OS TCP keepalive (a read-idle fallback only where
+/// keepalive can't be armed): the dead link surfaces as a read error and ends the
+/// stream, so this wrapper reconnects instead of the read hanging forever. Mere
+/// silence on a quiet channel is not a drop (#935).
+/// </para>
+/// <para>
+/// Logging is once per outage: one 5101 warning at the drop, one 5103 warning for
+/// the first failed re-dial (later attempts in the same outage log at Debug), and
+/// one 5102 at recovery with how long the link was down.
 /// </para>
 /// <para>
 /// In-flight AX.25 sessions on this port do NOT survive the bounce, and that is
@@ -152,6 +157,7 @@ internal sealed partial class ReconnectingKissModem
 
             // End of stream with no cancellation = the far end dropped.
             reconnecting = true;
+            var droppedAt = time.GetUtcNow();
             LogDisconnected(endpoint);
             await DisposeQuietlyAsync(live).ConfigureAwait(false);
 
@@ -163,7 +169,8 @@ internal sealed partial class ReconnectingKissModem
 
             inner = next;
             reconnecting = false;
-            LogReconnected(endpoint);
+            int downSeconds = (int)Math.Round((time.GetUtcNow() - droppedAt).TotalSeconds);
+            LogReconnected(endpoint, downSeconds);
             await ReplayParamsAsync(next, ct).ConfigureAwait(false);
         }
     }
@@ -173,6 +180,7 @@ internal sealed partial class ReconnectingKissModem
     private async Task<IAx25Transport?> ReconnectAsync(CancellationToken ct)
     {
         var backoff = minBackoff;
+        var failures = 0;
         while (!ct.IsCancellationRequested)
         {
             try
@@ -185,7 +193,13 @@ internal sealed partial class ReconnectingKissModem
             }
             catch (Exception ex)
             {
-                LogReconnectFailed(endpoint, (int)Math.Ceiling(backoff.TotalSeconds), ex.Message);
+                // A peer that stays down for an hour would otherwise log a warning
+                // every 30 s; the first failure says the outage is not a blip, the
+                // rest are detail.
+                failures++;
+                var level = failures == 1 ? LogLevel.Warning : LogLevel.Debug;
+                int retrySeconds = (int)Math.Ceiling(backoff.TotalSeconds);
+                LogReconnectFailed(level, endpoint, retrySeconds, ex.Message);
             }
             try
             {
@@ -375,11 +389,11 @@ internal sealed partial class ReconnectingKissModem
     [LoggerMessage(EventId = 5101, Level = LogLevel.Warning, Message = "KISS-TCP link {Endpoint} dropped; reconnecting.")]
     private partial void LogDisconnected(string endpoint);
 
-    [LoggerMessage(EventId = 5102, Level = LogLevel.Information, Message = "KISS-TCP link {Endpoint} reconnected.")]
-    private partial void LogReconnected(string endpoint);
+    [LoggerMessage(EventId = 5102, Level = LogLevel.Information, Message = "KISS-TCP link {Endpoint} reconnected after {DownSeconds}s.")]
+    private partial void LogReconnected(string endpoint, int downSeconds);
 
-    [LoggerMessage(EventId = 5103, Level = LogLevel.Warning, Message = "KISS-TCP reconnect to {Endpoint} failed ({Reason}); retrying in {Seconds}s.")]
-    private partial void LogReconnectFailed(string endpoint, int seconds, string reason);
+    [LoggerMessage(EventId = 5103, Message = "KISS-TCP reconnect to {Endpoint} failed ({Reason}); retrying in {Seconds}s.")]
+    private partial void LogReconnectFailed(LogLevel level, string endpoint, int seconds, string reason);
 
     [LoggerMessage(EventId = 5104, Level = LogLevel.Warning, Message = "KISS-TCP inbound pump for {Endpoint} faulted; treating as a drop.")]
     private partial void LogInnerFaulted(Exception ex, string endpoint);
