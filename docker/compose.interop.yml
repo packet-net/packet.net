@@ -65,6 +65,68 @@ services:
       rfnet:
         ipv4_address: 172.30.0.10
 
+  # Three LinBPQ AXIP peers for NetRomMultipointAxudpThreePeers: the GB7RDG shape,
+  # one pdn axudp-multipoint port per UDP port (8197/8198/8199), each partner a
+  # separate BPQ that MAPs pdn back at the same port with B. Only the telnet node
+  # prompt is published; pdn sends straight to the container IP (so the UDP source
+  # port each side uses is the real one, not a docker-proxy relay port).
+  linbpq-axip-a:
+    image: m0lte/linbpq@sha256:b01155258c50c0a3f039bc7e3db92e669af505fa95328470980d977d54dd6903
+    container_name: pn-linbpq-axip-a
+    restart: unless-stopped
+    volumes:
+      - linbpq-axip-a-data:/data
+      - ./linbpq/axip-peer-a.cfg:/data/bpq32.cfg:ro
+    ports:
+      - "127.0.0.1:8311:8010"     # TELNETPORT (node prompt, admin/admin SYSOP)
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8008 && exec 3<&-"]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+      start_period: 30s
+    networks:
+      rfnet:
+        ipv4_address: 172.30.0.20
+
+  linbpq-axip-b:
+    image: m0lte/linbpq@sha256:b01155258c50c0a3f039bc7e3db92e669af505fa95328470980d977d54dd6903
+    container_name: pn-linbpq-axip-b
+    restart: unless-stopped
+    volumes:
+      - linbpq-axip-b-data:/data
+      - ./linbpq/axip-peer-b.cfg:/data/bpq32.cfg:ro
+    ports:
+      - "127.0.0.1:8312:8010"     # TELNETPORT (node prompt, admin/admin SYSOP)
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8008 && exec 3<&-"]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+      start_period: 30s
+    networks:
+      rfnet:
+        ipv4_address: 172.30.0.21
+
+  linbpq-axip-c:
+    image: m0lte/linbpq@sha256:b01155258c50c0a3f039bc7e3db92e669af505fa95328470980d977d54dd6903
+    container_name: pn-linbpq-axip-c
+    restart: unless-stopped
+    volumes:
+      - linbpq-axip-c-data:/data
+      - ./linbpq/axip-peer-c.cfg:/data/bpq32.cfg:ro
+    ports:
+      - "127.0.0.1:8313:8010"     # TELNETPORT (node prompt, admin/admin SYSOP)
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8008 && exec 3<&-"]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+      start_period: 30s
+    networks:
+      rfnet:
+        ipv4_address: 172.30.0.22
+
   xrouter:
     # ghcr.io/packethacking/xrouter:latest @ 2026-05-12
     image: ghcr.io/packethacking/xrouter@sha256:6a885470e19d5c8ee3033d224a30a8675d5b1957428a832aa89746f37ec0b611
@@ -200,3 +262,6 @@ volumes:
   # CI run. Anonymous-style lifecycle: lives between `up` and `down -v`,
   # tearing it down rebuilds from the image's /data contents.
   linbpq-data:
+  linbpq-axip-a-data:
+  linbpq-axip-b-data:
+  linbpq-axip-c-data:
