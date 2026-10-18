@@ -272,7 +272,7 @@ public sealed partial class NodeCommandService : INodeApplication
             return;
         }
 
-        await WriteLineAsync(inbound, $"Connecting to {connect.Target} on {connector.PortId}...", ct).ConfigureAwait(false);
+        await WriteLineAsync(inbound, $"Connecting to {connector.DescribeRoute(connect.Target)}...", ct).ConfigureAwait(false);
 
         INodeConnection outbound;
         try

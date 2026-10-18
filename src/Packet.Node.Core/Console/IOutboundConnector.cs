@@ -17,6 +17,13 @@ public interface IOutboundConnector
     string PortId { get; }
 
     /// <summary>
+    /// What to tell the user before dialling <paramref name="target"/>, e.g. <c>BDH on axip-1</c>
+    /// for a direct dial, or <c>BDH via GB7BDH on axip-2</c> when a NET/ROM route carries it.
+    /// Names the route actually used, not the connector's default port.
+    /// </summary>
+    string DescribeRoute(Callsign target) => $"{target} on {PortId}";
+
+    /// <summary>
     /// Connect to <paramref name="target"/> and wrap the resulting session as a
     /// <see cref="INodeConnection"/>. Throws on connect failure (timeout /
     /// refusal); the console catches it and reports back to the user.
