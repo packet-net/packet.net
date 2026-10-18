@@ -190,11 +190,12 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                     ?? PeerCapabilityCache.PlanWithoutCache(PeerDialPolicy.UserConnect, link);
 
                 // Did the peer say ANYTHING to us during the dial? That, not the exception type, is
-                // what separates "ignores SABME" from "refused" or "reset". The engine reports the
-                // SDL's own give-up at RC == N2 as a teardown (DL-DISCONNECT-indication), which is the
-                // very same signal a DM refusal produces, so keying off the exception alone would
-                // conflate them. A dial to a station that emitted not one frame at us is unambiguous:
-                // it is the on-air signature this whole feature exists for.
+                // what separates "ignores SABME" from "refused" or "reset". The listener does say
+                // Refused or NoAnswer (Ax25ConnectFailedException, #849), but NoAnswer only means no
+                // UA or DM came back: the peer may still have sent something else (an FRMR the quirk
+                // did not take, say), and a budget timeout carries no reason at all. A dial to a
+                // station that emitted not one frame at us is unambiguous: it is the on-air signature
+                // this whole feature exists for.
                 Ax25Session session;
                 try
                 {
