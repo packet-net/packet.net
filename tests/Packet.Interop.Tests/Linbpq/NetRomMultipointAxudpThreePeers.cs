@@ -180,9 +180,18 @@ public class NetRomMultipointAxudpThreePeers
 
                 // (5) a partner's user connects to pdn's alias and data round-trips.
                 var c = Peers[2];
-                var session = await BpqAdmin.RunAsync(Host, c.TelnetPort,
-                    ["C " + OurAlias, "WAIT:6", "hello-mpx", "WAIT:4", "B"], TimeSpan.FromSeconds(2), cts.Token);
+                // Polled like step 6: a slow runner may need a second attempt before the
+                // circuit is up and the reply is back inside the read windows.
+                string session = "";
+                var inboundOk = await PollAsync(async ct =>
+                {
+                    session = await BpqAdmin.RunAsync(Host, c.TelnetPort,
+                        ["C " + OurAlias, "WAIT:6", "hello-mpx", "WAIT:4", "B"], TimeSpan.FromSeconds(2), ct);
+                    return session.Contains("pdn-mpx", StringComparison.Ordinal)
+                           && session.Contains("ack:hello-mpx", StringComparison.Ordinal);
+                }, TimeSpan.FromSeconds(90), TimeSpan.FromSeconds(5), cts.Token);
                 output.WriteLine($"{c.Call} C {OurAlias}: {Collapse(session)}");
+                inboundOk.Should().BeTrue($"{c.Call}'s user reaches pdn's alias and a typed line round-trips");
                 session.Should().Contain("pdn-mpx", $"{c.Call}'s user reaches pdn's inbound console over an L4 circuit");
                 inboundEchoed.Task.IsCompletedSuccessfully.Should().BeTrue("the line the BPQ user typed reached pdn over the circuit");
                 session.Should().Contain("ack:hello-mpx", "pdn's reply to the BPQ user's line came back over the circuit");
