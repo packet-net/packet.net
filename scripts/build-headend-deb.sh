@@ -36,7 +36,7 @@ bin="$headend/dist/packetnet-headend-linux-$target"
 stage="$root/artifacts/headend-deb/$rid"
 out="$root/artifacts/packetnet-headend_${version}_${arch}.deb"
 
-command -v go >/dev/null 2>&1 || { echo "go not found (need Go to build the head-end; the runner has it at /usr/bin/go)" >&2; exit 2; }
+command -v go >/dev/null 2>&1 || { echo "go not found (need Go to build the head-end; CI installs it with actions/setup-go)" >&2; exit 2; }
 
 echo "==> build static head-end binary ($rid, CGO_ENABLED=0)"
 # Delegate to the Makefile's arch target so the build flags stay single-sourced

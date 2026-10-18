@@ -30,6 +30,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+      # build-deb.sh builds the tsnet sidecar with Go. Install the version sidecar/tsnet/go.mod
+      # asks for rather than trusting each runner's system Go (proxmox0 had none on PATH).
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: sidecar/tsnet/go.mod
+          cache-dependency-path: sidecar/tsnet/go.sum
       - name: Update-helper URL guards
         # Cheap and packaging-shaped, so it runs here too (and in ci.yml's `guards` job):
         # the root-run github self-update helper must reject the C075 bypass URLs and accept

@@ -112,7 +112,7 @@ case "$arch" in
   armhf) goarch=arm ;;
   *) echo "no GOARCH mapping for arch: $arch" >&2; exit 2 ;;
 esac
-command -v go >/dev/null 2>&1 || { echo "go not found (need Go to build the tsnet sidecar; runner has it at /usr/bin/go)" >&2; exit 2; }
+command -v go >/dev/null 2>&1 || { echo "go not found (need Go to build the tsnet sidecar; CI installs it with actions/setup-go)" >&2; exit 2; }
 echo "==> build tailscale sidecar (GOARCH=$goarch)"
 goarm=""                                  # armv7 (hard-float) for 32-bit ARM
 [ "$goarch" = arm ] && goarm=7
