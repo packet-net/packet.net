@@ -127,9 +127,60 @@ public sealed class CircuitManagerTests
         ours.State.Should().Be(NetRomCircuitState.Connecting, "our colliding circuit is untouched");
     }
 
-    private static NetRomPacket ConnectRequestFrom(Callsign origin, byte index, byte id) => new()
+    [Fact]
+    public void A_connect_addressed_to_another_local_callsign_is_answered_as_that_callsign()
     {
-        Network = new NetRomNetworkHeader { Origin = origin, Destination = Local, TimeToLive = 25 },
+        // packet.net#931: the host terminates circuits for an application's callsign here (BPQ's
+        // APPLCALL). The circuit, its Connect Acknowledge and everything after must come from
+        // the callsign that was dialled, not the node's own.
+        var app = new Callsign("GB7XXX", 2);
+        var manager = new CircuitManager(Local);
+        var sent = new List<NetRomPacket>();
+        manager.SendPacket = sent.Add;
+        IncomingCircuitEventArgs? incoming = null;
+        manager.IncomingCircuit += (_, e) =>
+        {
+            incoming = e;
+            CircuitManager.AcceptIncoming(e);
+        };
+
+        manager.OnPacket(ConnectRequestFrom(Peer, index: 3, id: 7, destination: app));
+
+        incoming.Should().NotBeNull();
+        incoming!.LocalCall.Should().Be(app);
+        incoming.Circuit.LocalNode.Should().Be(app);
+        var ack = sent.Should().ContainSingle().Subject;
+        ack.Transport.Opcode.Should().Be(NetRomOpcode.ConnectAcknowledge);
+        ack.Transport.Choke.Should().BeFalse();
+        ack.Network.Origin.Should().Be(app, "the acknowledgement identifies as the app");
+
+        sent.Clear();
+        incoming.Circuit.Send(Encoding.ASCII.GetBytes("hello"));
+        sent.Should().ContainSingle().Which.Network.Origin.Should().Be(app);
+    }
+
+    [Fact]
+    public void A_refused_connect_to_another_local_callsign_is_refused_as_that_callsign()
+    {
+        var app = new Callsign("GB7XXX", 2);
+        var manager = new CircuitManager(Local);
+        var sent = new List<NetRomPacket>();
+        manager.SendPacket = sent.Add;
+        manager.IncomingCircuit += (_, e) => manager.RefuseIncoming(e);
+
+        manager.OnPacket(ConnectRequestFrom(Peer, index: 3, id: 7, destination: app));
+
+        var ack = sent.Should().ContainSingle().Subject;
+        ack.Transport.Opcode.Should().Be(NetRomOpcode.ConnectAcknowledge);
+        ack.Transport.Choke.Should().BeTrue("a refusal is a Connect Acknowledge with the choke bit, as BPQ sends");
+        ack.Network.Origin.Should().Be(app);
+        ack.Network.Destination.Should().Be(Peer);
+        manager.Circuits.Should().BeEmpty();
+    }
+
+    private static NetRomPacket ConnectRequestFrom(Callsign origin, byte index, byte id, Callsign? destination = null) => new()
+    {
+        Network = new NetRomNetworkHeader { Origin = origin, Destination = destination ?? Local, TimeToLive = 25 },
         Transport = new NetRomTransportHeader
         {
             CircuitIndex = index,

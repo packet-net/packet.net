@@ -275,6 +275,106 @@ public sealed class NetRomL3L4IntegrationTests
             "B set no app advert, so the alias is never on the mesh from B");
     }
 
+    /// <summary>
+    /// packet.net#931: a circuit addressed to an app's advertised callsign ends at the node that
+    /// advertises it and reaches the app through the same registration an inbound AX.25 connect
+    /// to that callsign uses. A user on B types <c>C RDGBBS</c> and lands in A's app, which sees
+    /// the user's callsign as its peer.
+    /// </summary>
+    [Fact]
+    public async Task A_circuit_to_an_advertised_app_alias_lands_in_the_app()
+    {
+        var bus = new SharedRadioBus();
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+        await using var b = await StartNodeAsync(bus, BNodeCall, "BNODE");
+
+        var appCall = new Callsign(ANodeCall.Base, 7);
+        a.NetRom.AppAdvertSource = () =>
+            [new NodesBroadcastBuilder.Entry(appCall, "RDGBBS", ANodeCall, Quality: 255)];
+
+        var appPeer = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = a.Supervisor.RegisterAppCallsign(appCall, null, async (connection, port) =>
+        {
+            appPeer.TrySetResult(connection.PeerId);
+            await connection.WriteAsync("Welcome to the test BBS\r"u8.ToArray());
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var chunk = await connection.ReadAsync();
+                    if (chunk.IsEmpty)
+                    {
+                        break;
+                    }
+                    var line = System.Text.Encoding.ASCII.GetString(chunk.Span).Trim();
+                    await connection.WriteAsync(System.Text.Encoding.ASCII.GetBytes($"BBS heard {line}\r"));
+                }
+            });
+        });
+
+        var generous = TimeSpan.FromSeconds(60);
+        a.NetRom.BroadcastNodes();
+        b.NetRom.BroadcastNodes();
+        await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination("RDGBBS") is not null,
+            "B learns the app alias from A's NODES", generous);
+        await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("BNODE") is not null,
+            "A learns B, so it can route its replies", generous);
+
+        await using var user = new RemoteStation(bus.Attach(), UserCall);
+        await user.StartAsync();
+        await user.ConnectAsync(BNodeCall);
+        await Wait.ForAsync(() => user.Saw("BNODE"), "node B's banner should arrive");
+
+        user.SendLine("C RDGBBS");
+        await Wait.ForAsync(() => user.Saw("Welcome to the test BBS"),
+            "the circuit to the app alias should land in A's app, not A's node prompt", generous);
+        (await appPeer.Task.WaitAsync(generous)).Should().Be(UserCall.ToString(), "the app sees the user who dialled");
+
+        user.SendLine("hello");
+        await Wait.ForAsync(() => user.Saw("BBS heard hello"), "data flows both ways over the app circuit", generous);
+
+        var accepted = a.NetRom.Circuits!.Circuits.Should().ContainSingle().Subject;
+        accepted.LocalNode.Should().Be(appCall, "A's end of the circuit identifies as the app");
+        b.NetRom.Circuits!.Circuits.Should().ContainSingle().Which.RemoteNode.Should().Be(appCall);
+    }
+
+    /// <summary>
+    /// packet.net#931: an advertised app alias whose app is not running is refused the way
+    /// LinBPQ refuses a connect to an unavailable application (a Connect Acknowledge with the
+    /// choke bit), so the caller is told at once and keeps their session.
+    /// </summary>
+    [Fact]
+    public async Task A_circuit_to_an_advertised_app_alias_whose_app_is_stopped_is_refused()
+    {
+        var bus = new SharedRadioBus();
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+        await using var b = await StartNodeAsync(bus, BNodeCall, "BNODE");
+
+        // Advertised, but no app has bound the callsign.
+        var appCall = new Callsign(ANodeCall.Base, 7);
+        a.NetRom.AppAdvertSource = () =>
+            [new NodesBroadcastBuilder.Entry(appCall, "RDGBBS", ANodeCall, Quality: 255)];
+
+        var generous = TimeSpan.FromSeconds(60);
+        a.NetRom.BroadcastNodes();
+        b.NetRom.BroadcastNodes();
+        await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination("RDGBBS") is not null,
+            "B learns the app alias from A's NODES", generous);
+        await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("BNODE") is not null,
+            "A learns B, so it can route its refusal", generous);
+
+        await using var user = new RemoteStation(bus.Attach(), UserCall);
+        await user.StartAsync();
+        await user.ConnectAsync(BNodeCall);
+        await Wait.ForAsync(() => user.Saw("BNODE"), "node B's banner should arrive");
+
+        user.SendLine("C RDGBBS");
+        await Wait.ForAsync(() => user.Saw("refused"),
+            "the stopped app's alias answers with a refusal, not a timeout or A's node prompt", generous);
+        user.CurrentState.Should().Be("Connected", "a refusal must not drop the user's session");
+        a.NetRom.Circuits!.Circuits.Should().BeEmpty("the refused circuit is not kept");
+    }
+
     [Fact]
     public async Task A_transit_node_forwards_an_L4_circuit_between_two_channels_it_bridges_without_terminating_it()
     {

@@ -187,6 +187,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         if (this.netRom is not null)
         {
             this.netRom.RunInboundConsole = RunNodeConsoleAsync;
+            // A circuit addressed to an app's callsign (its advertised NET/ROM alias) reaches the
+            // app through the same registration an inbound AX.25 connect to that callsign uses,
+            // so an RHP app needs no change (packet.net#931).
+            this.netRom.ResolveInboundApp = ResolveNetRomApp;
             this.netRom.OpenInterlink = OpenInterlinkAsync;
             // The port's declared link policy, so an interlink dial honours a `dial: v22` port
             // (auto and v20 both keep the conservative mod-8 interlink default).
@@ -405,6 +409,21 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             .OrderBy(r => order.TryGetValue(r.PortId!, out int i) ? i : int.MaxValue)
             .ThenBy(r => r.PortId, StringComparer.Ordinal)
             .First();
+    }
+
+    // The accept handler for a NET/ROM circuit addressed to `target`, or null when no app is
+    // attached to that callsign. A circuit arrives over the network, not on a port of its own,
+    // so any live registration for the callsign answers (as for the loopback connect); the
+    // label the app sees is its bound port, or "netrom" for an all-ports bind.
+    private Func<INodeConnection, Task>? ResolveNetRomApp(Callsign target)
+    {
+        var registration = FindAnyAppRegistration(target);
+        if (registration is null)
+        {
+            return null;
+        }
+        var label = registration.PortId ?? "netrom";
+        return connection => registration.OnAccepted(connection, label);
     }
 
     // ── ILocalAppRegistry - the live key set, for the bare-verb resolver (packet.net#476) ──

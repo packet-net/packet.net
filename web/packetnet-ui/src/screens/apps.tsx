@@ -553,7 +553,7 @@ function IdentityForm({ pkg, onClose, onSave }: {
       <Field label="Callsign" info="The on-air callsign this app binds. A full callsign (M0ABC-1) or a bare -N SSID on the node base. Blank = the node auto-assigns the lowest free SSID.">
         <Input value={callsign} onChange={(e) => setCallsign(e.target.value)} placeholder={pkg.callsign ?? "auto (lowest free SSID)"} />
       </Field>
-      <Field label="NET/ROM alias" info="Opt-in: the network-wide alias the node advertises → this app's callsign. Blank = not advertised (off by default).">
+      <Field label="NET/ROM alias" info="Opt-in: the network-wide alias the node advertises → this app's callsign. A station anywhere on the network can connect to it to reach this app. Blank = not advertised (off by default).">
         <Input value={netromAlias} onChange={(e) => setNetromAlias(e.target.value)} placeholder="e.g. RDGBBS" />
       </Field>
       <Field label="NET/ROM quality" info="The quality (0–255) the alias is advertised at. Only used when an alias is set; blank defaults to 255.">

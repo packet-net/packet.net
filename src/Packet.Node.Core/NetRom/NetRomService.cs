@@ -198,6 +198,22 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     public Func<INodeConnection, CancellationToken, Task>? RunInboundConsole { get; set; }
 
     /// <summary>
+    /// The hook the supervisor supplies to hand an inbound NET/ROM circuit addressed to a local
+    /// application's callsign to that application (packet.net#931): given the callsign, it
+    /// returns the app's accept handler (the same one an inbound AX.25 connect to that callsign
+    /// reaches), or null when no app is attached to it right now. The handler owns the
+    /// connection once it returns. Null hook = no app is ever reachable over NET/ROM.
+    /// </summary>
+    public Func<Callsign, Func<INodeConnection, Task>?>? ResolveInboundApp { get; set; }
+
+    // Application callsigns this node terminates NET/ROM datagrams for, as BPQ does for its
+    // APPLCALLs (packet.net#931): every callsign this node has advertised for an app alias, plus
+    // any an attached app took a circuit on. Kept for the life of the service, so a circuit to an
+    // app that has since stopped or been disabled still ends here (and is refused) rather than
+    // being forwarded back out while the far nodes' routes to it age out.
+    private readonly ConcurrentDictionary<Callsign, byte> localAppCalls = new();
+
+    /// <summary>
     /// The hook the supervisor supplies to dial an interlink AX.25 session to a
     /// neighbour with the <em>outbound claim</em> held - so the supervisor does not
     /// start a node console against the neighbour we dialled (an interlink carries
@@ -868,7 +884,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // nodeCall) so a station C's the alias and routes to us, then to the app. Absent source
         // (or no aliases) ⇒ nothing extra - the off-by-default, anti-noise behaviour. Composes
         // with the learned routes + the implicit node-self advert (the UI frame's source call).
-        var appAdverts = AppAdvertSource?.Invoke() ?? [];
+        var appAdverts = ReadAppAdverts();
         var entries = appAdverts.Count == 0 ? learned : [.. learned, .. appAdverts];
 
         var dest = new Callsign(NodesBroadcast.NodesDestination, 0);
@@ -887,6 +903,18 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             }
         }
         LogBroadcast(alias, entries.Count, sendOn.Count);
+    }
+
+    // Read the app adverts and remember every callsign they name as one this node terminates
+    // NET/ROM traffic for (packet.net#931).
+    private IReadOnlyList<NodesBroadcastBuilder.Entry> ReadAppAdverts()
+    {
+        var appAdverts = AppAdvertSource?.Invoke() ?? [];
+        foreach (var entry in appAdverts)
+        {
+            localAppCalls.TryAdd(entry.Destination, 0);
+        }
+        return appAdverts;
     }
 
     private async Task SendUiSafe(Ax25Listener listener, Callsign dest, byte[] info, string portId)
@@ -1042,10 +1070,39 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         {
             circuits.OnPacket(packet);
         }
+        else if (IsLocalAppCall(packet))
+        {
+            // Addressed to one of our applications' callsigns (BPQ's APPLCALL): it ends here,
+            // and OnIncomingCircuit hands a new circuit to the app, or refuses it.
+            circuits.OnPacket(packet);
+        }
         else if (ForwardEnabled)
         {
             ForwardDatagram(packet, receivedFrom);
         }
+    }
+
+    // Whether a datagram is addressed to a local application's callsign. A callsign already
+    // known as one is a set lookup. Otherwise only a Connect Request looks further: an app
+    // attached to that callsign right now, or one this node advertises an alias for (the
+    // advert read can touch the disk, so ordinary transit traffic never pays for it).
+    private bool IsLocalAppCall(NetRomPacket packet)
+    {
+        var destination = packet.Network.Destination;
+        if (localAppCalls.ContainsKey(destination))
+        {
+            return true;
+        }
+        if (packet.Transport.Opcode != NetRomOpcode.ConnectRequest)
+        {
+            return false;
+        }
+        if (ResolveInboundApp?.Invoke(destination) is not null)
+        {
+            localAppCalls.TryAdd(destination, 0);
+            return true;
+        }
+        return ReadAppAdverts().Any(e => e.Destination.Equals(destination));
     }
 
     /// <summary>
@@ -1247,6 +1304,15 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // fresh node console so the routed user reaches the prompt.
         var userText = e.OriginatingUser.ToString();
         var remoteNodeText = e.RemoteNode.ToString();
+
+        // A circuit addressed to an application's callsign goes to that application, exactly
+        // as an inbound AX.25 connect to the callsign would (packet.net#931).
+        if (!(nodeCallSet && e.LocalCall.Equals(nodeCall)) && localAppCalls.ContainsKey(e.LocalCall))
+        {
+            OnIncomingAppCircuit(e, userText, remoteNodeText);
+            return;
+        }
+
         LogInboundCircuit(remoteNodeText, userText);
 
         var runConsole = RunInboundConsole;
@@ -1273,6 +1339,49 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                 catch (Exception ex)
                 {
                     LogConsoleFault(ex, userText);
+                }
+            }
+        }, CancellationToken.None);
+    }
+
+    // Hand an inbound circuit for an application's callsign to that application. When no app
+    // is attached to the callsign (stopped, disabled, or not yet bound), refuse it the way
+    // LinBPQ refuses a connect to an application that is not available (L4Code.c SendConNAK):
+    // a Connect Acknowledge with the choke (busy) bit set, from the application's callsign.
+    private void OnIncomingAppCircuit(IncomingCircuitEventArgs e, string userText, string remoteNodeText)
+    {
+        var appText = e.LocalCall.ToString();
+        var handler = ResolveInboundApp?.Invoke(e.LocalCall);
+        if (handler is null || circuits is null)
+        {
+            LogInboundAppCircuitRefused(appText, remoteNodeText, userText);
+            circuits?.RefuseIncoming(e);
+            return;
+        }
+
+        LogInboundAppCircuit(appText, remoteNodeText, userText);
+
+        // Subscribe the connection's data tap before accepting, as for the console.
+        var connection = new NetRomNodeConnection(e.Circuit, e.OriginatingUser);
+        CircuitManager.AcceptIncoming(e);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // The handler owns the connection once it returns (it pumps it in the
+                // background and disposes it when the app closes), as on the AX.25 path.
+                await handler(connection).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                LogAppCircuitFault(ex, appText, userText);
+                try
+                {
+                    await connection.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // teardown best effort
                 }
             }
         }, CancellationToken.None);
@@ -1666,6 +1775,15 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: inbound circuit from {OriginatingUser} via {RemoteNode}.")]
     private partial void LogInboundCircuit(string remoteNode, string originatingUser);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: inbound circuit for app {App} from {RemoteNode} (user {OriginatingUser}), handed to the app.")]
+    private partial void LogInboundAppCircuit(string app, string remoteNode, string originatingUser);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: inbound circuit for app {App} from {RemoteNode} (user {OriginatingUser}) refused, the app is not running.")]
+    private partial void LogInboundAppCircuitRefused(string app, string remoteNode, string originatingUser);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "NET/ROM: handing a circuit for app {App} (user {OriginatingUser}) to the app faulted.")]
+    private partial void LogAppCircuitFault(Exception ex, string app, string originatingUser);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: no route to {Destination} for an outbound datagram.")]
     private partial void LogNoRoute(string destination);

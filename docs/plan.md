@@ -942,6 +942,7 @@ Disposition legend: **DROP** (decided no), **PARK** (deferred / secondary — re
 | **OARC API** (`ENABLEOARCAPI`) | CONSIDER | packet.net | OARC node-API integration. |
 | **Per-port NET/ROM QUALITY** | ✅ SHIPPED | packet.net | `PortConfig.netRomQuality` (0..255) overrides the node-wide `defaultNeighbourQuality` for routes heard on that port → an accurate per-port advert on a mixed-grade node. Hot-reloadable (read-only NET/ROM awareness, no restart). Console/REST/YAML + the Ports editor. See §17 2026-06-17. |
 | **Per-port NODES broadcast switch** | ✅ DONE (#929, ships with the next node release) | packet.net | `PortConfig.nodesBroadcast` (default off): NODES go out on a port only when it and the node-wide `netRom.broadcast` are both on, so GB7RDG's two 40m ports stay free of an hourly broadcast BPQ never sent there. Hot-applied. YAML + the Ports editor's Send NODES box. See §17 2026-10-17. |
+| **App NET/ROM alias reaches the app** | ✅ DONE (#931, ships with the next node release) | packet.net | A circuit to an advertised app alias (RDGBBS -> GB7RDG-2) ends at the node and is handed to the app over the same RHP path an L2 connect to its callsign uses; a stopped app's alias answers Busy as BPQ does. See §17 2026-10-18. |
 | **Per-port PACLEN / N1 knob** | ✅ SHIPPED | packet.net | `Ax25PortParams.n1` (16..256) seeds the session's N1/PACLEN per port; XID can still negotiate it lower, never higher. Hot-reseed (new sessions only). YAML + the Ports editor. See §17 2026-06-17. |
 | **Housekeeping lifetime defaults + MaxMsgno** | CONSIDER | pdn-bbs | Kill-by-age machinery exists but all-30-day; GB7RDG keeps bulls ~7d. Mostly defaults/tuning + renumber. |
 | **L4Compress** (`L4Compress=1`) | CONSIDER | packet.net | NET/ROM L4 payload compression; efficiency on slow links. |
@@ -1450,6 +1451,17 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-10-18 - NET/ROM: a circuit to an app's alias now reaches the app (#931)
+
+A node advertised each opted-in app alias in its NODES broadcast (RDGBBS -> GB7RDG-2, via the node), but the receive side was never built: only datagrams for the node's own callsign ended here, so a circuit for GB7RDG-2 was forwarded back out or dropped, and every accepted circuit went to the node prompt. `C RDGBBS` from across the network dead-ended. It now works as BPQ's APPLCALLs do.
+
+- **Termination** (`NetRomService.DispatchL4`): a datagram addressed to an app's callsign ends here. The node keeps the set of app callsigns it has advertised (plus any an attached app took a circuit on) for the life of the service, so a circuit to an app that has since stopped or been disabled still ends here while the far nodes' routes age out. A Connect Request for a callsign not yet in that set checks the live app registrations and then the current adverts; other transit traffic only pays a set lookup.
+- **Hand-off** (`OnIncomingAppCircuit`, `PortSupervisor.ResolveNetRomApp`): the circuit is handed to the app through the same registration an inbound AX.25 connect to its callsign uses (the RHP bind), so linmail-pdn and other RHP apps need no change. The app sees the originating user as its peer; the port label is the app's bound port, or `netrom` for an all-ports bind.
+- **Identity** (`CircuitManager.MintInbound`): an inbound circuit answers as the callsign the Connect Request was addressed to, so the Connect Acknowledge and every later datagram come from the app's callsign, as BPQ's address swap does. A reflected Disconnect Acknowledge for an unknown circuit does the same. New `IncomingCircuitEventArgs.LocalCall` and `NetRomCircuit.LocalNode`.
+- **App not running**: refused the way LinBPQ refuses a connect to an unavailable application (`L4Code.c` `SendConNAK`): a Connect Acknowledge with the choke (busy) bit, from the app's callsign. A BPQ user sees `Busy from <alias>:<call>`; a pdn console user sees the circuit refused.
+- **Unchanged**: the node's own callsign still goes to the console, and transit forwarding for every other destination is as before. No new settings.
+- **Tests**: `CircuitManagerTests` (answers and refuses as the dialled callsign), `NetRomL3L4IntegrationTests` (a user on node B does `C RDGBBS` and lands in node A's app; the stopped-app alias is refused), and the LinBPQ interop leg `NetRomL4CircuitViaAxudp.A_linbpq_user_connecting_to_an_advertised_app_alias_lands_in_the_app` (BPQ `C PNAPP` lands in the app and data round-trips; `C PNOFF` gets `Busy from PNOFF:PNL4BX-8`).
 
 ### 2026-10-18 - kiss-tcp: a quiet channel no longer redials every 5 minutes (#935)
 

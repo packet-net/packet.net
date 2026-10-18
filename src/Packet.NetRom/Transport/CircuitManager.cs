@@ -197,11 +197,13 @@ public sealed class CircuitManager : IDisposable
         {
             // Reflect a Disconnect Acknowledge addressed to the peer's circuit
             // (carried in this request's index/id) so a half-open peer settles.
+            // From the callsign the request was addressed to (the node, or a local app's
+            // callsign the host terminates here), as BPQ's address swap does.
             var ack = new NetRomPacket
             {
                 Network = new NetRomNetworkHeader
                 {
-                    Origin = localNode,
+                    Origin = LocalCallFor(packet),
                     Destination = packet.Network.Origin,
                     TimeToLive = options.TimeToLive,
                 },
@@ -279,12 +281,16 @@ public sealed class CircuitManager : IDisposable
         // (both ends agreed) is settled by AcceptInbound; this is just the peer's offer.
         bool peerOffersCompression = ConnectRequestInfo.OffersCompression(request.Payload.Span);
 
+        // The circuit answers as the callsign the request was addressed to: the node itself,
+        // or a local application's callsign the host terminates here (packet.net#931, BPQ's
+        // APPLCALL), so the Connect Acknowledge and every later datagram carry the app's call.
+        var localCall = LocalCallFor(request);
         var peerKey = (remoteNode, t.CircuitIndex, t.CircuitId);
         NetRomCircuit circuit;
         lock (gate)
         {
             var (index, id) = AllocateKey();
-            circuit = new NetRomCircuit(index, id, localNode, remoteNode, options, time)
+            circuit = new NetRomCircuit(index, id, localCall, remoteNode, options, time)
             {
                 SendPacket = p => SendPacket?.Invoke(p),
             };
@@ -295,7 +301,10 @@ public sealed class CircuitManager : IDisposable
 
         // The peer's own (index,id) live in the Connect Request's index/id fields;
         // its proposed window came from the info field (ConnectRequestInfo, above).
-        var args = new IncomingCircuitEventArgs(circuit, remoteNode, originatingUser, t.CircuitIndex, t.CircuitId, proposedWindow, peerOffersCompression);
+        var args = new IncomingCircuitEventArgs(circuit, remoteNode, originatingUser, t.CircuitIndex, t.CircuitId, proposedWindow, peerOffersCompression)
+        {
+            LocalCall = localCall,
+        };
         var handler = IncomingCircuit;
         if (handler is null)
         {
@@ -305,6 +314,21 @@ public sealed class CircuitManager : IDisposable
             return;
         }
         handler.Invoke(this, args);
+    }
+
+    // The callsign a reply to an inbound datagram comes from: the one it was addressed to, or
+    // the manager's local node when the datagram names none.
+    private Callsign LocalCallFor(NetRomPacket packet)
+    {
+        var destination = packet.Network.Destination;
+        if (!string.IsNullOrEmpty(destination.Base))
+        {
+            return destination;
+        }
+        lock (gate)
+        {
+            return localNode;
+        }
     }
 
     private (byte Index, byte Id) AllocateKey()
@@ -388,6 +412,11 @@ public sealed class IncomingCircuitEventArgs : EventArgs
 
     /// <summary>The freshly-minted circuit (registered, not yet acknowledged).</summary>
     public NetRomCircuit Circuit { get; }
+
+    /// <summary>The callsign the Connect Request was addressed to, which the circuit answers
+    /// as: the node's own callsign, or a local application's callsign the host terminates here
+    /// (packet.net#931).</summary>
+    public Callsign LocalCall { get; init; }
 
     /// <summary>The far node that originated the circuit.</summary>
     public Callsign RemoteNode { get; }
