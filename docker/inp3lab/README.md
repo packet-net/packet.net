@@ -45,5 +45,5 @@ NET/ROM routes:
 
 - `compose.yml` - net-sim + two pdn nodes (consoles on `127.0.0.1:9011`/`9012`, net-sim API on `9080`).
 - `network.yaml` - net-sim topology: `a`↔`b` on one afsk1200 channel (KISS 8100/8101).
-- `node-a.yaml` / `node-b.yaml` - pdn configs: KISS-TCP to net-sim, `netRom.{enabled,broadcast,connect}`, and `inp3.enabled` with compressed probe/RIF intervals for a quick demo.
+- `node-a.yaml` / `node-b.yaml` - pdn configs: KISS-TCP to net-sim with `nodesBroadcast: true` on the port, `netRom.{enabled,broadcast,connect}`, and `inp3.enabled` with compressed probe/RIF intervals for a quick demo.
 - `Dockerfile` - runs the `./app` self-contained publish output (globalization-invariant; the `app/` dir is gitignored - build it per step 1).

@@ -504,6 +504,45 @@ public class NodeConfigValidatorTests
     }
 
     [Fact]
+    public void Nodes_broadcast_is_valid_on_or_off_on_an_ordinary_port()
+    {
+        foreach (var on in new[] { false, true })
+        {
+            Validator.Validate(Valid(new PortConfig
+            {
+                Id = "p",
+                Transport = new KissTcpTransport { Host = "h", Port = 1 },
+                NodesBroadcast = on,
+            })).IsValid.Should().BeTrue($"nodesBroadcast: {on} on a kiss-tcp port is a plain choice");
+        }
+    }
+
+    [Fact]
+    public void Nodes_broadcast_on_a_multipoint_port_with_no_broadcast_peer_validates_but_gets_a_config_note()
+    {
+        // #929: the multipoint transport fans a broadcast out only to peers marked broadcast, so a
+        // tick with none sends nothing. Legal staging, so a config note, never a refusal.
+        var noBroadcastPeer = Valid(MultipointPort(10093,
+            new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = false }) with { NodesBroadcast = true });
+        Validator.Validate(noBroadcastPeer).IsValid.Should().BeTrue();
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(noBroadcastPeer)
+            .Should().ContainSingle().Which.Should().Contain("'ipgw'").And.Contain("nodesBroadcast");
+
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(Valid(MultipointPort(10093) with { NodesBroadcast = true }))
+            .Should().ContainSingle("no peers at all is the same case");
+
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(Valid(MultipointPort(10093,
+            new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = true }) with { NodesBroadcast = true }))
+            .Should().BeEmpty("one broadcast peer is enough");
+
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(Valid(MultipointPort(10093) with { NodesBroadcast = true, Enabled = false }))
+            .Should().BeEmpty("a disabled port sends nothing anyway");
+
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(Valid(MultipointPort(10093)))
+            .Should().BeEmpty("with nodesBroadcast off the peer marks do not matter");
+    }
+
+    [Fact]
     public void Axudp_multipoint_accepts_an_empty_peer_table()
     {
         // A receive-only listener (no MAP entries yet) is legal.

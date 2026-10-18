@@ -182,13 +182,14 @@ public static class ReconcilePlanner
             {
                 linkChanged.Add(newPort);
             }
-            // Per-port NET/ROM awareness knobs (QUALITY / MINQUAL / NODESPACLEN): a hot edit
-            // (NET/ROM awareness + advertisement is read-only - it never disturbs a session),
-            // applied by swapping the port's attachment quality/minqual/paclen. Any of the
-            // three changing schedules the same light-touch hot-apply.
+            // Per-port NET/ROM knobs (QUALITY / MINQUAL / NODESPACLEN / the NODES-broadcast
+            // switch): a hot edit (awareness is read-only and the broadcast is a UI frame - none
+            // of them disturbs a session), applied by swapping the port's attachment values. Any
+            // of the four changing schedules the same light-touch hot-apply.
             if (oldPort.NetRomQuality != newPort.NetRomQuality ||
                 oldPort.NetRomMinQuality != newPort.NetRomMinQuality ||
-                oldPort.NodesPaclen != newPort.NodesPaclen)
+                oldPort.NodesPaclen != newPort.NodesPaclen ||
+                oldPort.NodesBroadcast != newPort.NodesBroadcast)
             {
                 netRomQualityChanged.Add(newPort);
             }
@@ -285,6 +286,7 @@ public static class ReconcilePlanner
             [nameof(PortConfig.NetRomQuality)] = PortFieldClass.Live,
             [nameof(PortConfig.NetRomMinQuality)] = PortFieldClass.Live,
             [nameof(PortConfig.NodesPaclen)] = PortFieldClass.Live,
+            [nameof(PortConfig.NodesBroadcast)] = PortFieldClass.Live,
             [nameof(PortConfig.MqttInstance)] = PortFieldClass.Live,
             [nameof(PortConfig.M0lteMap)] = PortFieldClass.Live,
             // Dial policy affects new dials only; it live-reseeds through the same path as Ax25.

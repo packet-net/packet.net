@@ -42,6 +42,7 @@ function draftWith(transport: TransportConfig, radio: PortDraft["radio"], rig: P
     netRomQuality: null,
     netRomMinQuality: null,
     nodesPaclen: null,
+    nodesBroadcast: false,
     m0lteMap: null,
     _new: true,
   };
@@ -66,6 +67,7 @@ function draftOf(p: PortConfig): PortDraft {
     netRomQuality: p.netRomQuality ?? null,
     netRomMinQuality: p.netRomMinQuality ?? null,
     nodesPaclen: p.nodesPaclen ?? null,
+    nodesBroadcast: p.nodesBroadcast ?? false,
     m0lteMap: p.m0lteMap ?? null,
     _origId: p.id,
     _orig: p,
@@ -137,6 +139,19 @@ describe("config round-trip preserves the GB7RDG features", () => {
     const edited = editorRoundTrip(mp, (d) => ({ ...d, netRomMinQuality: 143, nodesPaclen: 120 }));
     expect(edited.netRomMinQuality).toBe(143);
     expect(edited.nodesPaclen).toBe(120);
+  });
+
+  it("per-port nodesBroadcast survives a Forms load -> save, and ticking or unticking reaches the wire", () => {
+    // #929: the Send NODES checkbox. Off is the default and must stay off; a ticked port must
+    // stay ticked on an unrelated save; and the operator's tick reaches the PUT body.
+    const mp = NODE_CONFIG.ports.find((p) => p.id === "mp-net")!;
+    const hf = NODE_CONFIG.ports.find((p) => p.id === "hf-300")!;
+    expect(editorRoundTrip(mp).nodesBroadcast).toBe(true);
+    expect(editorRoundTrip(hf).nodesBroadcast).toBe(false);
+    expect(editorRoundTrip(hf, (d) => ({ ...d, nodesBroadcast: true })).nodesBroadcast).toBe(true);
+    expect(editorRoundTrip(mp, (d) => ({ ...d, nodesBroadcast: false })).nodesBroadcast).toBe(false);
+    // A brand-new port starts unticked.
+    expect(wireRoundTrip(portDraftToConfig(draftWith({ kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, null))).nodesBroadcast).toBe(false);
   });
 
   it("a port that leaves the new per-port knobs unset round-trips them as absent/null", () => {

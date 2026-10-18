@@ -121,7 +121,7 @@ public class NetRomNodesIngestViaAxudp
             // (the static MAP pins it; broadcasting keeps the AUTOADD entry warm).
             Broadcast = true,
         }, nodeAlias: OurAlias);
-        netRom.AttachPort("axudp", OurCall, listener);
+        netRom.AttachPort("axudp", OurCall, listener, nodesBroadcast: true);   // our NODES must reach LinBPQ (#929: per-port, default off)
         await listener.StartAsync(cts.Token);
 
         // Keep originating pdn's NODES so BPQ keeps a fresh route + AUTOADD entry to us.

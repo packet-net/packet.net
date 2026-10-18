@@ -76,6 +76,7 @@
       "netRomQuality": 192,
       "netRomMinQuality": 100,
       "nodesPaclen": 160,
+      "nodesBroadcast": true,
       "mqttInstance": "2m",
       "m0lteMap": {
         "linkType": "RF",
@@ -107,6 +108,7 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
+      "nodesBroadcast": false,
       "mqttInstance": null,
       "m0lteMap": null
     },
@@ -130,6 +132,7 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
+      "nodesBroadcast": false,
       "mqttInstance": null,
       "m0lteMap": null
     },
@@ -165,6 +168,7 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
+      "nodesBroadcast": false,
       "mqttInstance": null,
       "m0lteMap": null
     },
@@ -189,6 +193,7 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
+      "nodesBroadcast": false,
       "mqttInstance": null,
       "m0lteMap": null
     },
@@ -225,6 +230,7 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
+      "nodesBroadcast": false,
       "mqttInstance": null,
       "m0lteMap": null
     },
@@ -255,6 +261,7 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
+      "nodesBroadcast": false,
       "mqttInstance": null,
       "m0lteMap": null
     },
@@ -290,6 +297,7 @@
       "netRomQuality": null,
       "netRomMinQuality": null,
       "nodesPaclen": null,
+      "nodesBroadcast": false,
       "mqttInstance": null,
       "m0lteMap": null
     }

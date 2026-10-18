@@ -60,12 +60,13 @@ public sealed record ReconcilePlan
     /// the version it negotiated. Keyed by the new config.</summary>
     public IReadOnlyList<PortConfig> LinkChanged { get; init; } = [];
 
-    /// <summary>Ports whose per-port NET/ROM <see cref="PortConfig.NetRomQuality"/>
-    /// changed but nothing restart-class did → hot-apply the new route quality to the
-    /// port's NET/ROM attachment (no restart). QUALITY only affects how the next NODES
-    /// broadcast on this port is quality-combined - read-only awareness/advertisement, it
-    /// can never disturb a live session - so it is the lightest possible hot edit. Keyed
-    /// by the new config.</summary>
+    /// <summary>Ports whose per-port NET/ROM knobs (<see cref="PortConfig.NetRomQuality"/>,
+    /// <see cref="PortConfig.NetRomMinQuality"/>, <see cref="PortConfig.NodesPaclen"/>,
+    /// <see cref="PortConfig.NodesBroadcast"/>) changed but nothing restart-class did, so hot-apply
+    /// them to the port's NET/ROM attachment (no restart). They only affect how the next NODES
+    /// ingest or broadcast on this port is handled - read-only awareness, or a UI frame - so none
+    /// can disturb a live session and it is the lightest possible hot edit. Keyed by the new
+    /// config.</summary>
     public IReadOnlyList<PortConfig> NetRomQualityChanged { get; init; } = [];
 
     /// <summary>Ports whose per-port ID-beacon override (<see cref="PortConfig.Beacon"/>)

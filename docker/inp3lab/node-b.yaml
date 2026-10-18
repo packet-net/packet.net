@@ -11,6 +11,7 @@ ports:
       kind: kiss-tcp
       host: netsim
       port: 8101
+    nodesBroadcast: true     # send NODES on this port (per-port, default off)
 
 netRom:
   enabled: true

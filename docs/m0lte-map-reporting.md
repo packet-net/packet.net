@@ -1,7 +1,7 @@
 # UK packet map reporting (#453)
 
 **Status:** built 2026-10-18 (node-host only, no `Packet.Ax25` change, no ax25-ts leg).
-**Operator page:** [`operating/12-put-your-node-on-the-map.md`](../operating/12-put-your-node-on-the-map.md).
+**Operator page:** [`operating/13-put-your-node-on-the-map.md`](../operating/13-put-your-node-on-the-map.md).
 
 This is the pdn form of LinBPQ's `EnableM0LTEMap=1`: it puts a pdn node on the UK packet map at [nodes.ukpacketradio.network](https://nodes.ukpacketradio.network/) the same way a LinBPQ node gets there.
 

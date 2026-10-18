@@ -104,7 +104,7 @@ public static class ReconcilePreviewBuilder
         foreach (var p in plan.NetRomQualityChanged)
         {
             live.Add(new ReconcileChange($"ports.{p.Id}.netRom", Live,
-                $"Port '{p.Id}' NET/ROM settings (quality / minQuality / nodesPaclen) applied live (the next NODES ingest/broadcast on this port uses them)."));
+                $"Port '{p.Id}' NET/ROM settings (quality / minQuality / nodesPaclen / nodesBroadcast) applied live (the next NODES ingest/broadcast on this port uses them)."));
         }
         foreach (var p in plan.BeaconChanged)
         {

@@ -156,6 +156,18 @@ public sealed record PortConfig
     public int? NodesPaclen { get; init; }
 
     /// <summary>
+    /// Whether the node sends its NET/ROM NODES broadcast on this port. Default <c>false</c>:
+    /// a port never transmits NODES unless the operator ticks it. Both this and the node-wide
+    /// <see cref="NetRomConfig.Broadcast"/> must be on for NODES to go out here; the node-wide
+    /// switch stays the master (one place to stop all NODES transmission), and this picks the
+    /// ports. Hearing NODES and learning routes on the port is unaffected either way. On an
+    /// <c>axudp-multipoint</c> port the broadcast still fans out only to peers marked
+    /// <c>broadcast: true</c>. Applied live: the next broadcast reads it. A node upgraded from
+    /// a version without this key sends no NODES until at least one port has it on (#929).
+    /// </summary>
+    public bool NodesBroadcast { get; init; }
+
+    /// <summary>
     /// Optional label feeding the <c>{instance}</c> segment of this port's kissproxy MQTT topics
     /// (see <see cref="MqttConfig"/>). Null (the default) ⇒ the port's <see cref="Id"/> is used. Set
     /// it to the band name (<c>70cm</c> / <c>40m</c> / …) when migrating a port off kissproxy, so the

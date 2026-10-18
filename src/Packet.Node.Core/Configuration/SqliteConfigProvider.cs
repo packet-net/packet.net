@@ -391,7 +391,9 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
             .Concat(NodeConfigWarnings.DuplicateMqttInstances(config))
             .Concat(NodeConfigWarnings.WideWindowSeeds(config))
             .Concat(NodeConfigWarnings.DuplicateEndpoints(config))
-            .Concat(NodeConfigWarnings.NumericIdsOutOfPosition(config)))
+            .Concat(NodeConfigWarnings.NumericIdsOutOfPosition(config))
+            .Concat(NodeConfigWarnings.NodesBroadcastOnNoPort(config))
+            .Concat(NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(config)))
         {
             LogConfigWarning(warning);
         }

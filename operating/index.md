@@ -63,7 +63,8 @@ Start with the row that matches what you are trying to do.
 | Fix connects to a **BPQ / LinBPQ** node that just time out | [9. Running existing software](09-running-existing-software.md#talking-to-a-bpq-or-linbpq-node-on-air) | One line of port config, or one field in the panel |
 | Work out which radio "port 1" (or a bare `C`) means | [10. Your ports, in order](10-your-ports-in-order.md) | Two or more ports |
 | Set up a surplus commercial Tait from scratch | [11. Program your Tait](11-program-your-tait.md) | Physical access to the radio (it must be power-cycled) |
-| Put my node on the UK packet map | [12. Put your node on the map](12-put-your-node-on-the-map.md) | A Maidenhead locator, and a switch in the panel |
+| Choose which ports send my node's NET/ROM **NODES** broadcast (or find out why it stopped after an upgrade) | [12. Sending NODES broadcasts](12-sending-nodes.md) | One tick box per port |
+| Put my node on the UK packet map | [13. Put your node on the map](13-put-your-node-on-the-map.md) | A Maidenhead locator, and a switch in the panel |
 
 ## Three ways a radio can join a port
 

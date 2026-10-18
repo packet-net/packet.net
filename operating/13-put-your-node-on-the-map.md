@@ -1,4 +1,4 @@
-# 12. Put your node on the UK packet map
+# 13. Put your node on the UK packet map
 
 **Goal:** have your node show up on [nodes.ukpacketradio.network](https://nodes.ukpacketradio.network/), with its ports and neighbours, the way a BPQ node with `EnableM0LTEMap=1` does.
 

@@ -383,6 +383,7 @@ public sealed class ClientContractFixtureTests
                 NetRomQuality = 192,
                 NetRomMinQuality = 100,
                 NodesPaclen = 160,
+                NodesBroadcast = true,
                 MqttInstance = "2m",
                 M0lteMap = new PortM0lteMapConfig
                 {
