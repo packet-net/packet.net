@@ -152,6 +152,11 @@ public sealed class NetRomCircuit
     /// <summary>The far node this circuit reaches.</summary>
     public Callsign RemoteNode => remoteNode;
 
+    /// <summary>The callsign this end of the circuit answers as (the L3 origin of its sends):
+    /// the node's own callsign, or a local application's callsign for a circuit addressed to
+    /// one (packet.net#931).</summary>
+    public Callsign LocalNode => localNode;
+
     /// <summary>The current lifecycle state (snapshot).</summary>
     public NetRomCircuitState State { get { lock (gate) { return state; } } }
 

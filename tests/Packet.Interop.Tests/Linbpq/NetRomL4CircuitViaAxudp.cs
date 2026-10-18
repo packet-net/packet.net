@@ -10,6 +10,7 @@ using Packet.Core;
 using Packet.Interop.Tests.Netsim;
 using Packet.NetRom.Routing;
 using Packet.NetRom.Transport;
+using Packet.NetRom.Wire;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.NetRom;
@@ -257,6 +258,165 @@ public class NetRomL4CircuitViaAxudp
         }
     }
 
+    // packet.net#931: the app aliases this test advertises. Both point at SSIDs of our call,
+    // reached through us; only the first has an app attached.
+    private const string AppAlias = "PNAPP";
+    private static readonly Callsign AppCall = new("PNL4BX", 7);
+    private const string StoppedAppAlias = "PNOFF";
+    private static readonly Callsign StoppedAppCall = new("PNL4BX", 8);
+
+    /// <summary>
+    /// packet.net#931: a LinBPQ user does <c>C &lt;app alias&gt;</c> and lands in the app pdn
+    /// advertises the alias for, not at pdn's node prompt; and the alias of an app that is not
+    /// running answers as BPQ itself does for an unavailable application (a choked Connect
+    /// Acknowledge, which BPQ shows its user as "Busy from").
+    /// </summary>
+    [SkippableFact]
+    public async Task A_linbpq_user_connecting_to_an_advertised_app_alias_lands_in_the_app()
+    {
+        Skip.IfNot(await IsTcpPortReachable(Host, BpqHttpPort),
+            $"LinBPQ not reachable (HTTP {Host}:{BpqHttpPort}). Bring up the interop stack: 'docker compose -f docker/compose.interop.yml up -d --wait'.");
+
+        using var cts = new CancellationTokenSource(
+            HearBpqBudget + BpqLearnsUsBudget + InboundCircuitBudget * 2 + TimeSpan.FromSeconds(60));
+
+        await using var modem = new AxudpFrameTransport(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
+        await using var netRom = new NetRomService(new NetRomConfig
+        {
+            Enabled = true,
+            Broadcast = true,
+            Connect = true,
+            TransportTimeoutSeconds = 4,
+            TransportRetries = 5,
+        }, nodeAlias: OurAlias);
+
+        netRom.AppAdvertSource = () =>
+        [
+            new NodesBroadcastBuilder.Entry(AppCall, AppAlias, OurCall, Quality: 255),
+            new NodesBroadcastBuilder.Entry(StoppedAppCall, StoppedAppAlias, OurCall, Quality: 255),
+        ];
+
+        // A circuit that reaches the node prompt instead of the app is the bug this guards.
+        var landedAtConsole = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        netRom.RunInboundConsole = (conn, _) =>
+        {
+            landedAtConsole.TrySetResult();
+            return conn.DisposeAsync().AsTask();
+        };
+
+        var appSeen = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var appEchoed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        netRom.ResolveInboundApp = call => !call.Equals(AppCall) ? null : async conn =>
+        {
+            output.WriteLine($"app circuit accepted from {conn.PeerId}");
+            appSeen.TrySetResult(conn.PeerId);
+            await conn.WriteAsync(Encoding.ASCII.GetBytes("pdn-app\r"));
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var data = await conn.ReadAsync();
+                    if (data.IsEmpty)
+                    {
+                        break;
+                    }
+                    var text = Encoding.ASCII.GetString(data.Span);
+                    output.WriteLine($"app circuit RX: {text.Replace("\r", "\\r")}");
+                    await conn.WriteAsync(Encoding.ASCII.GetBytes("app-ack:" + text));
+                    appEchoed.TrySetResult();
+                }
+            });
+        };
+
+        netRom.AttachPort("axudp", OurCall, listener, nodesBroadcast: true);
+        await listener.StartAsync(cts.Token);
+
+        using var broadcastCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        var broadcaster = RunBroadcastLoop(netRom, broadcastCts.Token);
+
+        try
+        {
+            (await ProvokeAndHearBpqAsync(netRom, cts.Token)).Should().BeTrue(
+                "pdn must hear LinBPQ's NODES so it has a route back to BPQ for its replies");
+            (await WaitForBpqToLearnAsync(AppAlias, cts.Token)).Should().BeTrue(
+                "LinBPQ learns the app alias from pdn's NODES");
+
+            // ── C <app alias> lands in the app ──────────────────────────────────
+            var reached = await DriveBpqConnectAsync(AppAlias, "hello-from-bpq\r",
+                () => appSeen.Task.IsCompleted, () => appEchoed.Task.IsCompleted, _ => false, cts.Token);
+            reached.Should().BeTrue("a LinBPQ user's C to the app alias reaches the app and data round-trips");
+            landedAtConsole.Task.IsCompleted.Should().BeFalse("the circuit is for the app, not pdn's node prompt");
+            netRom.Circuits!.Circuits.Should().Contain(c => c.LocalNode.Equals(AppCall),
+                "pdn's end of the circuit identifies as the app's callsign");
+            output.WriteLine("*** BPQ C <app alias> landed in the app ***");
+
+            // ── C <stopped app alias> is refused as BPQ refuses ─────────────────
+            (await WaitForBpqToLearnAsync(StoppedAppAlias, cts.Token)).Should().BeTrue(
+                "LinBPQ learns the stopped app's alias too");
+            var refused = await DriveBpqConnectAsync(StoppedAppAlias, "",
+                () => false, () => false, text => text.Contains("Busy from", StringComparison.OrdinalIgnoreCase), cts.Token);
+            refused.Should().BeTrue("the alias of an app that is not running answers with a refusal BPQ reports as Busy");
+            landedAtConsole.Task.IsCompleted.Should().BeFalse("a refused app circuit never falls back to the node prompt");
+            output.WriteLine("*** BPQ C <stopped app alias> refused (Busy) ***");
+        }
+        finally
+        {
+            await broadcastCts.CancelAsync();
+            try { await broadcaster; } catch (OperationCanceledException) { /* expected */ }
+        }
+    }
+
+    // Wait for LinBPQ's NODES table to list `alias`.
+    private async Task<bool> WaitForBpqToLearnAsync(string alias, CancellationToken outer)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        cts.CancelAfter(BpqLearnsUsBudget);
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                var (nodes, _) = await BpqTelnet.QueryNodesAndRoutesAsync(Host, BpqTelnetPort, BpqPasswordText, output, cts.Token);
+                if (nodes.Contains(alias, StringComparison.OrdinalIgnoreCase))
+                {
+                    output.WriteLine($"BPQ learned {alias}. NODES=[{Collapse(nodes)}]");
+                    return true;
+                }
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested) { break; }
+            catch (Exception ex) { output.WriteLine($"BPQ query failed (will retry): {ex.Message}"); }
+            try { await Task.Delay(2000, cts.Token); } catch (OperationCanceledException) { break; }
+        }
+        return false;
+    }
+
+    // Drive BPQ's `C <alias>` with bounded retry until `done` (data round-tripped) or BPQ's
+    // reply text satisfies `replied`.
+    private async Task<bool> DriveBpqConnectAsync(
+        string alias, string payload, Func<bool> established, Func<bool> done, Func<string, bool> replied,
+        CancellationToken outer)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        cts.CancelAfter(InboundCircuitBudget);
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                var text = await BpqTelnet.ConnectAndSendAsync(
+                    Host, BpqTelnetPort, BpqPasswordText, alias, payload, TimeSpan.FromSeconds(20),
+                    established, done, output, cts.Token, replied);
+                if (done() || replied(text))
+                {
+                    return true;
+                }
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested) { break; }
+            catch (Exception ex) { output.WriteLine($"BPQ C {alias} attempt failed (will retry): {ex.Message}"); }
+            try { await Task.Delay(2000, cts.Token); } catch (OperationCanceledException) { break; }
+        }
+        return done();
+    }
+
     // ── pdn NODES origination loop ───────────────────────────────────────────
     private async Task RunBroadcastLoop(NetRomService netRom, CancellationToken ct)
     {
@@ -460,9 +620,10 @@ public class NetRomL4CircuitViaAxudp
             return (nodes, routes);
         }
 
-        public static async Task ConnectAndSendAsync(
+        public static async Task<string> ConnectAndSendAsync(
             string host, int port, string passwordText, string alias, string payload, TimeSpan hold,
-            Func<bool> established, Func<bool> echoed, ITestOutputHelper output, CancellationToken ct)
+            Func<bool> established, Func<bool> echoed, ITestOutputHelper output, CancellationToken ct,
+            Func<string, bool>? replied = null)
         {
             using var tcp = new TcpClient();
             await tcp.ConnectAsync(host, port, ct);
@@ -475,9 +636,9 @@ public class NetRomL4CircuitViaAxudp
             cts.CancelAfter(hold);
             var acc = new StringBuilder();
             bool payloadSent = false;
-            while (!cts.IsCancellationRequested && !echoed())
+            while (!cts.IsCancellationRequested && !echoed() && !(replied?.Invoke(acc.ToString()) ?? false))
             {
-                if (!payloadSent && established() &&
+                if (!payloadSent && payload.Length > 0 && established() &&
                     acc.ToString().Contains("Connected", StringComparison.OrdinalIgnoreCase))
                 {
                     payloadSent = true;
@@ -507,6 +668,7 @@ public class NetRomL4CircuitViaAxudp
             {
                 output.WriteLine($"BPQ C {alias}: {Collapse(text)}");
             }
+            return text;
         }
 
         private static async Task SendLineRawAsync(NetworkStream stream, string line, CancellationToken ct)
