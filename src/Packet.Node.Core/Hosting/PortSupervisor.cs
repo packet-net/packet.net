@@ -116,6 +116,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private readonly object outboundGate = new();
     private readonly CancellationTokenSource lifecycle = new();
     private int disposed;
+    private readonly Heard.HeardLog? heardLog;
 
     public PortSupervisor(
         IConfigProvider config,
@@ -131,7 +132,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         IRadioControlFactory? radioFactory = null,
         HeadEnd.IHeadEndDiscovery? headEndDiscovery = null,
         IRigControlFactory? rigFactory = null,
-        RigTelemetry? rigTelemetry = null)
+        RigTelemetry? rigTelemetry = null,
+        Heard.HeardLog? heardLog = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
@@ -157,6 +159,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         this.sysopContext = sysopContext;
         this.applicationHost = applicationHost;
         this.capabilityCache = capabilityCache;
+        // The same heard log the telnet/web/sysop consoles read, so MH works for RF and NET/ROM users (#933).
+        this.heardLog = heardLog;
         logger = this.loggerFactory.CreateLogger<PortSupervisor>();
         // Optional live telemetry: when present, each port that comes up has its
         // frame-trace tap subscribed (and unsubscribed on teardown) so the node's
@@ -248,7 +252,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var connector = netRom is not null ? new Packet.Node.Core.NetRom.NetRomOutboundConnector(netRom, fallback: null, user) : null;
         var env = new NodeConsoleEnvironment(
             config, connector, netRom, sysopContext, applicationHost, CreateConnectRouter(connector), capabilityCache,
-            heard: null, portHealth: this);
+            heard: heardLog, portHealth: this);
         var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lifecycle.Token);
         await service.RunAsync(connection, linked.Token).ConfigureAwait(false);
@@ -2084,7 +2088,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 var routed = WrapWithNetRom(connector, session.Context.Remote);
                 var env = new NodeConsoleEnvironment(
                     config, routed, netRom, sysopContext, applicationHost, CreateConnectRouter(routed), capabilityCache,
-                    heard: null, portHealth: this);
+                    heard: heardLog, portHealth: this);
                 var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
                 await service.RunAsync(connection, lifecycle.Token).ConfigureAwait(false);
             }

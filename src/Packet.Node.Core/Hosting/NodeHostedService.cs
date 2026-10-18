@@ -214,7 +214,7 @@ public sealed partial class NodeHostedService : BackgroundService
         var host = new ApplicationHost(config, loggerFactory, appPackages);
         applicationHost = host;
 
-        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons, sysopContext, applicationHost, capabilityCache, radioFactory: null, headEndDiscovery: headEndDiscovery, rigFactory: rigFactory, rigTelemetry: rigTelemetry);
+        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons, sysopContext, applicationHost, capabilityCache, radioFactory: null, headEndDiscovery: headEndDiscovery, rigFactory: rigFactory, rigTelemetry: rigTelemetry, heardLog: heardLog);
         // The supervisor IS the live app-callsign registry; wire it back into the host now it exists
         // so a bare command verb reaches a self-deriving app that bound a non-PDN_APP_CALLSIGN SSID
         // (packet.net#476). Built after the host (its per-connection consoles need the host), so this

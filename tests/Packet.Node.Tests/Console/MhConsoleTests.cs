@@ -50,7 +50,7 @@ public sealed class MhConsoleTests
     public async Task Mh_lists_the_node_wide_heard_stations()
     {
         var svc = BuildService(SeededLog());
-        var conn = new ScriptedConnection("M0LTE-7", NodeTransportKind.Ax25, ["MH", "B"]);
+        var conn = new ScriptedConnection("M0LTE-7", NodeTransportKind.Telnet, ["MH", "B"]);
 
         await svc.RunAsync(conn);
 

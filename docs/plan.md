@@ -1455,6 +1455,10 @@ What changed, why, where to look for details.
 
 `TransportFactory` built the multipoint AXUDP transport with `logger: null`, so a connect to a call with no `peers` entry sent nothing, logged nothing, and ~100 s later (N2 x T1) the console blamed the peer. The factory now takes the host's `ILoggerFactory` and gives the transport a real logger. "No route to X" is a Warning naming the call, at most once a minute per destination (repeats go to Debug); per-peer "sent to" stays a first-contact Debug and per-datagram "heard" stays Trace, so normal traffic is quiet. A new `IRouteAwareTransport` capability (implemented by the multipoint transport: configured peer or learned endpoint) lets `Ax25OutboundConnector` refuse a dial it cannot route before claiming or sending anything, with a `NoRouteToPeerException` naming the peer and the port; the console, `POST /sessions` and RHPv2 `open` already surface the message. No new settings.
 
+### 2026-10-18 - node: MH works for RF and NET/ROM users (#933)
+
+`MH` typed over an AX.25 connect or a NET/ROM circuit said the heard log was not available, because the port supervisor built those two consoles with no heard log. It now takes the same `HeardLog` the telnet, web and sysop consoles read (`NodeHostedService` passes it in). Over RF and NET/ROM the list is capped at the 30 newest, newest first (LinBPQ's MHENTRIES), for `MH <port>` and bare `MH` (then across ports, each line naming its port), with a `(30 of N shown)` footer when cut; telnet and web are unchanged. No setting. Tests: `tests/Packet.Node.Tests/Integration/MhOverRfAndNetRomTests.cs`.
+
 ### 2026-10-18 - node: UK packet map reporting (#453)
 
 The §5.G M0LTEMap item, built. GB7RDG has `EnableM0LTEMap=1`, a `MAPCOMMENT` and per-port `M0LTEMapInfo` lines; a pdn node replacing it now shows on the UK packet map the same way. Design note and the full "what LinBPQ sends" reading: [`docs/m0lte-map-reporting.md`](m0lte-map-reporting.md); operator page [`operating/13-put-your-node-on-the-map.md`](../operating/13-put-your-node-on-the-map.md).
