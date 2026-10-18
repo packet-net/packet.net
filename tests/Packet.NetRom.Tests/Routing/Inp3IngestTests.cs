@@ -53,6 +53,28 @@ public sealed class Inp3IngestTests
         return d?.Routes.FirstOrDefault(r => r.Neighbour == via);
     }
 
+    // ─── Our own app callsigns (packet.net#954) ───
+
+    [Fact]
+    public void A_rif_advertising_our_app_call_teaches_no_route_and_drops_an_old_one()
+    {
+        var myApp = new Callsign("M0LTE", 2);
+        var table = NewTable();
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(myApp, hopCount: 1, targetTimeMs: 100, alias: "RDGBBS")));
+        RouteVia(table, myApp, NbrA).Should().NotBeNull("not an app call yet");
+
+        table.IsLocalCall = c => c == myApp;
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(
+            Rip(myApp, hopCount: 1, targetTimeMs: 100, alias: "RDGBBS"),
+            Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
+
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == myApp,
+            "a route to our own app callsign is never held");
+        table.RecentlyWithdrawn().Should().Contain(myApp,
+            "the dropped time-route is withdrawn from the neighbours too");
+        RouteVia(table, DestSot, NbrA).Should().NotBeNull("the rest of the RIF is learned");
+    }
+
     // ─── Upsert ───
 
     [Fact]

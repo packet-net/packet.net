@@ -1452,6 +1452,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-10-18 - NET/ROM: no routes learned to our own app callsigns (#954)
+
+A neighbour that echoed one of our app aliases back in its NODES (RDGBBS -> GB7RDG-2) could leave the node holding a route to its own app via that neighbour. While the app was enabled the #931 check answered first, but with the app disabled a Connect Request for the call was forwarded out and bounced until its TTL ran out. LinBPQ skips its APPLCALLs in NODES ingest (`L3Code.c`) as well as its own call; pdn now does the same.
+
+- **Ingest** (`NetRomRoutingTable.IsLocalCall`): NODES and INP3 ingest skip a destination that is one of the node's app callsigns, exactly as they skip the node call. The set is the in-memory one #931 built (`localAppCalls`: every advertised app callsign, plus any an attached app took a circuit on), and ingest also adds an advertised destination that an app is attached to right now (a lookup in the supervisor's registrations, outside the table lock). Ingest never reads the package catalog, so a NODES frame costs no disk reads.
+- **When the set is refreshed** (`NetRomService.RefreshLocalAppCalls`): the app adverts are re-read once the app wiring is in place at start-up, after each config reconcile (an app enabled, an alias edit; a disabled app stays a local call until the next restart, so it is refused Busy rather than routed away), on every NODES broadcast, and at the NODES-interval tick. So an alias is known before our NODES puts it on the air, and before any neighbour can echo it back.
+- **Routes already held**: the start-up and reconcile refresh drop any route to a call that is now an app call, without ageing the rest. That covers a route restored from the routing store (restore runs before the apps are wired, so it cannot tell) and a route learned before an app was enabled. Ingest naming such a destination and the interval sweep drop it too. A dropped INP3 route is withdrawn from the neighbours as usual.
+- **L3 traffic**: routes are only learned from NODES and INP3, never from the source of forwarded datagrams, so nothing else needed the guard.
+- **Robustness**: an app advert source that throws (package discovery failing) now reads as "no app callsigns" and is logged, so a transit Connect Request is still forwarded and the NODES broadcast still goes out. A throwing live-registration lookup is treated the same way. No new settings.
+
 ### 2026-10-18 - NET/ROM: a circuit to an app's alias now reaches the app (#931)
 
 A node advertised each opted-in app alias in its NODES broadcast (RDGBBS -> GB7RDG-2, via the node), but the receive side was never built: only datagrams for the node's own callsign ended here, so a circuit for GB7RDG-2 was forwarded back out or dropped, and every accepted circuit went to the node prompt. `C RDGBBS` from across the network dead-ended. It now works as BPQ's APPLCALLs do.

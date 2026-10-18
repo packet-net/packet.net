@@ -171,6 +171,90 @@ public class NetRomRoutingTableTests
         table.BuildAdvertisement(obsoleteMinimum: 0).Should().Contain(e => e.Destination == DestSot);
     }
 
+    // packet.net#954: our own app callsigns (BPQ's APPLCALLs) are local, like our node call.
+    private static readonly Callsign MyApp = new("M0LTE", 2);
+
+    [Fact]
+    public void A_neighbour_advertising_our_app_call_back_teaches_no_route_to_it()
+    {
+        var table = NewTable(out _);
+        table.IsLocalCall = c => c == MyApp;
+        // RDG echoes our app alias back (RDGBBS -> M0LTE-2 via us would be loop-guarded anyway,
+        // so advertise it via a third node, which slips past the best-neighbour guard).
+        table.Ingest(NbrA, Me, Port, Broadcast("RDGBPQ",
+            (MyApp, "RDGBBS", NbrB, 200),
+            (DestSot, "SOT", NbrB, 200)));
+
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == MyApp,
+            "a route to one of our own app callsigns is never learned (LinBPQ skips APPLCALLs)");
+        table.BuildAdvertisement(obsoleteMinimum: 0).Should().NotContain(e => e.Destination == MyApp);
+        table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot,
+            "the rest of the broadcast is learned as usual");
+    }
+
+    [Fact]
+    public void A_route_learned_before_the_call_became_an_app_call_is_dropped()
+    {
+        var table = NewTable(out _);
+        var local = false;
+        table.IsLocalCall = c => local && c == MyApp;
+        table.Ingest(NbrA, Me, Port, Broadcast("RDGBPQ", (MyApp, "RDGBBS", NbrB, 200)));
+        table.Snapshot().Destinations.Should().Contain(d => d.Destination == MyApp,
+            "not an app call yet, so an ordinary destination");
+
+        // The app is enabled at runtime: the next sweep drops the route without waiting for it to age.
+        local = true;
+        table.Sweep();
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == MyApp);
+
+        // And a fresh echo is not learned either.
+        table.Ingest(NbrA, Me, Port, Broadcast("RDGBPQ", (MyApp, "RDGBBS", NbrB, 200)));
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == MyApp);
+    }
+
+    [Fact]
+    public void Forgetting_local_destinations_drops_them_without_ageing_the_rest()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, Port, Broadcast("RDGBPQ",
+            (MyApp, "RDGBBS", NbrB, 200),
+            (DestSot, "SOT", NbrB, 200)));
+        var sotBefore = table.Snapshot().Destinations.Single(d => d.Destination == DestSot).Routes.Single().Obsolescence;
+
+        table.IsLocalCall = c => c == MyApp;
+        table.ForgetLocalDestinations().Should().Be(1);
+
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == MyApp);
+        table.Snapshot().Destinations.Single(d => d.Destination == DestSot).Routes.Single().Obsolescence
+            .Should().Be(sotBefore, "only the local destination goes; nothing else is aged");
+    }
+
+    [Fact]
+    public void A_restored_route_to_an_app_call_is_not_reloaded()
+    {
+        var source = NewTable(out _);
+        source.Ingest(NbrA, Me, Port, Broadcast("RDGBPQ",
+            (MyApp, "RDGBBS", NbrB, 200),
+            (DestSot, "SOT", NbrB, 200)));
+
+        var table = NewTable(out _);
+        table.IsLocalCall = c => c == MyApp;
+        table.Restore(source.Snapshot());
+
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == MyApp);
+        table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot);
+    }
+
+    [Fact]
+    public void A_throwing_local_call_test_reads_as_not_local_and_ingest_carries_on()
+    {
+        var table = NewTable(out _);
+        table.IsLocalCall = _ => throw new InvalidOperationException("discovery failed");
+        table.Ingest(NbrA, Me, Port, Broadcast("RDGBPQ", (DestSot, "SOT", NbrB, 200)));
+
+        table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot);
+    }
+
     [Fact]
     public void Keeps_only_the_three_best_routes_per_destination()
     {

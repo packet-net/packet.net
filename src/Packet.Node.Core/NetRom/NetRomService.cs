@@ -356,7 +356,13 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // read lazily, so wiring it here, before PortOrder is set, is correct.
         routingOptions = ResolveRoutingOptions(config) with { PortRank = PortRankOf };
         circuitOptions = ResolveCircuitOptions(config);
-        table = new NetRomRoutingTable(routingOptions, this.timeProvider);
+        table = new NetRomRoutingTable(routingOptions, this.timeProvider)
+        {
+            // Our applications' callsigns are local, like the node call: no route to one is ever
+            // learned from a neighbour echoing it back (packet.net#954, as BPQ skips APPLCALLs).
+            // A lock-free lookup, as the table calls it under its own lock.
+            IsLocalCall = localAppCalls.ContainsKey,
+        };
 
         if (config.Enabled)
         {
@@ -797,6 +803,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             attachments.TryGetValue(portId, out var att);
             int? portQuality = att?.NeighbourQuality;
             int? portMinQuality = att?.MinQuality;
+            NoteLocalAppCalls(broadcast.Entries.Select(e => e.Destination));
             table.Ingest(originator, myCall, portId, broadcast, portQuality, portMinQuality);
             LogHeard(portId, originatorText, broadcast.SenderAlias, broadcast.Entries.Count);
             ArmPersist();
@@ -816,6 +823,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     {
         try
         {
+            // Refresh the app callsigns first, so the sweep drops any route to one that became
+            // local since it was learned (an app enabled at runtime, packet.net#954).
+            ReadAppAdverts();
             int purged = Sweep();
             if (purged > 0)
             {
@@ -906,16 +916,88 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     }
 
     // Read the app adverts and remember every callsign they name as one this node terminates
-    // NET/ROM traffic for (packet.net#931).
+    // NET/ROM traffic for (packet.net#931). A source that throws (package discovery failing)
+    // reads as "no adverts" and is logged, so neither a broadcast nor a transit Connect Request
+    // on the receive path is lost to it (packet.net#954).
     private IReadOnlyList<NodesBroadcastBuilder.Entry> ReadAppAdverts()
     {
-        var appAdverts = AppAdvertSource?.Invoke() ?? [];
+        IReadOnlyList<NodesBroadcastBuilder.Entry> appAdverts;
+        try
+        {
+            appAdverts = AppAdvertSource?.Invoke() ?? [];
+        }
+        catch (Exception ex)
+        {
+            LogAppAdvertFault(ex);
+            return [];
+        }
         foreach (var entry in appAdverts)
         {
             localAppCalls.TryAdd(entry.Destination, 0);
         }
         return appAdverts;
     }
+
+    // The attached-app lookup, with a throwing hook read as "no app attached" (logged).
+    private Func<INodeConnection, Task>? TryResolveInboundApp(Callsign call)
+    {
+        try
+        {
+            return ResolveInboundApp?.Invoke(call);
+        }
+        catch (Exception ex)
+        {
+            LogAppAdvertFault(ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Re-read the app adverts into the set of this node's app callsigns and drop any learned or
+    /// restored route to one (packet.net#954). The composition root calls this once the app
+    /// wiring is in place and after each config reconcile (an app enabled or disabled, an alias
+    /// edit), so NODES ingest itself never touches the package catalog.
+    /// </summary>
+    public void RefreshLocalAppCalls()
+    {
+        ReadAppAdverts();
+        int dropped = table.ForgetLocalDestinations();
+        if (dropped > 0)
+        {
+            LogForgotLocalAppRoutes(dropped);
+            ArmPersist();
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "NET/ROM: dropped {Count} route(s) to this node's own app callsigns.")]
+    private partial void LogForgotLocalAppRoutes(int count);
+
+    // Before a NODES or INP3 ingest: note any advertised destination that an app is attached to
+    // right now, so the table (which only reads localAppCalls, under its lock) skips it
+    // (packet.net#954). An in-memory lookup, done outside the table lock because it reaches into
+    // the supervisor. Advertised app callsigns are already in the set: every broadcast and
+    // RefreshLocalAppCalls read the adverts, so an alias is known before it goes on the air.
+    private void NoteLocalAppCalls(IEnumerable<Callsign> destinations)
+    {
+        if (ResolveInboundApp is null)
+        {
+            return;
+        }
+        foreach (var destination in destinations)
+        {
+            if (!(nodeCallSet && destination.Equals(nodeCall))
+                && !localAppCalls.ContainsKey(destination)
+                && TryResolveInboundApp(destination) is not null)
+            {
+                localAppCalls.TryAdd(destination, 0);
+            }
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "NET/ROM: could not read the local app callsigns; treating the call as not ours.")]
+    private partial void LogAppAdvertFault(Exception ex);
 
     private async Task SendUiSafe(Ax25Listener listener, Callsign dest, byte[] info, string portId)
     {
@@ -1097,7 +1179,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         {
             return false;
         }
-        if (ResolveInboundApp?.Invoke(destination) is not null)
+        if (TryResolveInboundApp(destination) is not null)
         {
             localAppCalls.TryAdd(destination, 0);
             return true;
