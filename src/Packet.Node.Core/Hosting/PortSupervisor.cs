@@ -1048,13 +1048,13 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             }
         }
 
-        // Per-port NET/ROM awareness changes (QUALITY / MINQUAL / NODESPACLEN) - hot-apply
+        // Per-port NET/ROM changes (QUALITY / MINQUAL / NODESPACLEN / nodesBroadcast) - hot-apply
         // the new values to the port's NET/ROM attachment (no restart, no session
-        // disturbance). NET/ROM awareness + advertisement is read-only; QUALITY/MINQUAL
-        // govern the next NODES ingest, NODESPACLEN the next broadcast's framing.
+        // disturbance). QUALITY/MINQUAL govern the next NODES ingest, NODESPACLEN the next
+        // broadcast's framing, nodesBroadcast whether the next broadcast goes out here at all.
         foreach (var port in plan.NetRomQualityChanged)
         {
-            netRom?.UpdatePortQuality(port.Id, port.NetRomQuality, port.NetRomMinQuality, port.NodesPaclen);
+            netRom?.UpdatePortQuality(port.Id, port.NetRomQuality, port.NetRomMinQuality, port.NodesPaclen, port.NodesBroadcast);
             RebaselineConfig(port);
             LogNetRomQualityApplied(port.Id);
         }
@@ -1586,8 +1586,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // cannot disturb the session path. Detached on teardown. The per-port NET/ROM
         // knobs (all null = inherit the node-wide defaults) govern this port: QUALITY the
         // quality assumed for a neighbour heard here, MINQUAL the route-keep floor, and
-        // NODESPACLEN the size cap on our NODES broadcast on this port.
-        netRom?.AttachPort(port.Id, myCall, listener, port.NetRomQuality, port.NetRomMinQuality, port.NodesPaclen);
+        // NODESPACLEN the size cap on our NODES broadcast on this port, and nodesBroadcast
+        // whether that broadcast is sent here at all (default off, #929).
+        netRom?.AttachPort(port.Id, myCall, listener, port.NetRomQuality, port.NetRomMinQuality, port.NodesPaclen, port.NodesBroadcast);
 
         // Live telemetry: tap the same frame trace for the node's frame/byte counters
         // + the monitor SSE feed. Also observation-only; detached on teardown. The radio

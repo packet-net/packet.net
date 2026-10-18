@@ -130,7 +130,8 @@ public class NetRomMultipointAxudpThreePeers
                 modems.Add(modem);
                 var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
                 listeners.Add(listener);
-                netRom.AttachPort(p.PortId, OurCall, listener, neighbourQuality: 50);
+                // nodesBroadcast: per-port NODES are off by default (#929); GB7RDG sets it on each AXIP port.
+                netRom.AttachPort(p.PortId, OurCall, listener, neighbourQuality: 50, nodesBroadcast: true);
                 await listener.StartAsync(cts.Token);
             }
 

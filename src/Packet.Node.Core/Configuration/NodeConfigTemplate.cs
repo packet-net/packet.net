@@ -62,6 +62,9 @@ public static class NodeConfigTemplate
         #                          # QUALITY), 0..255. Omit to inherit netRom.defaultNeighbourQuality.
         #                          # Set per port on a mixed-grade node (e.g. 191 on one link,
         #                          # 192 on another) so neighbours pick routes correctly.
+        #    nodesBroadcast: true  # send our NET/ROM NODES broadcast on this port. Default
+        #                          # false: no port sends NODES unless you turn it on here,
+        #                          # AND netRom.broadcast is on too. Hearing NODES is unaffected.
         #    compat:               # optional - AX.25 compatibility profile, applied live
         #      preset: lenient     # which inbound wire frames the port accepts:
         #                          #   strict   - exactly AX.25 v2.2, nothing else
@@ -242,7 +245,11 @@ public static class NodeConfigTemplate
         # command - it originates nothing on the air and cannot disturb a QSO.
         # The TX-bearing features are OPT-IN:
         #   broadcast: true  -> also originate your own NODES broadcast (advertise
-        #                       your node + learned routes to neighbours).
+        #                       your node + learned routes to neighbours). This is the
+        #                       master switch: NODES go out only on ports that also set
+        #                       nodesBroadcast: true (default false). Upgrading from a
+        #                       version without nodesBroadcast? Your node sends NO NODES
+        #                       until you set it on each port that should carry them.
         #   routing:         -> how much your node routes across the network:
         #       none     (default) passive - listen + maintain the table only.
         #       endpoint           open interlinks so `connect <alias>` can route
@@ -256,7 +263,7 @@ public static class NodeConfigTemplate
         # specific network's conventions.
         netRom:
           enabled: true
-          # broadcast: false              # originate NODES (TX is opt-in)
+          # broadcast: false              # originate NODES (TX is opt-in; also needs a port's nodesBroadcast: true)
           # routing: none                 # none | endpoint | transit (routing role; TX/interlinks are opt-in)
           # alias: NODE                   # your NET/ROM alias in broadcasts (defaults to the identity alias)
           # defaultNeighbourQuality: 192  # assumed quality of a directly-heard link

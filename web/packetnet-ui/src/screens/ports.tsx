@@ -93,6 +93,8 @@ export interface PortDraft {
   netRomMinQuality: number | null;
   // Per-port NODES-broadcast frame-size cap (BPQ per-port NODESPACLEN), ~28..256. Null = no cap.
   nodesPaclen: number | null;
+  // Whether this port sends the node's NODES broadcast (#929). Default false.
+  nodesBroadcast: boolean;
   _new?: boolean;
   // The id the draft was opened against (the reconcile key for an edit) — set on edit,
   // unset on add. Lets a rename in the editor edit the original entry rather than 404.
@@ -223,6 +225,7 @@ export function portDraftToConfig(d: PortDraft): PortConfig {
     netRomQuality: d.netRomQuality,
     netRomMinQuality: d.netRomMinQuality,
     nodesPaclen: d.nodesPaclen,
+    nodesBroadcast: d.nodesBroadcast,
   };
 }
 
@@ -359,6 +362,7 @@ export function Ports() {
     netRomQuality: null,
     netRomMinQuality: null,
     nodesPaclen: null,
+    nodesBroadcast: false,
     _new: true,
   });
 
@@ -382,6 +386,7 @@ export function Ports() {
       netRomQuality: p.netRomQuality ?? null,
       netRomMinQuality: p.netRomMinQuality ?? null,
       nodesPaclen: p.nodesPaclen ?? null,
+      nodesBroadcast: p.nodesBroadcast ?? false,
       _origId: p.id,
       _orig: p,
     });
@@ -784,7 +789,7 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
     !same(saved.ax25, before.ax25) || !same(saved.kiss, before.kiss) || !same(saved.compat, before.compat) ||
     !same(saved.link, before.link) ||
     !same(saved.netRomQuality, before.netRomQuality) || !same(saved.netRomMinQuality, before.netRomMinQuality) ||
-    !same(saved.nodesPaclen, before.nodesPaclen)
+    !same(saved.nodesPaclen, before.nodesPaclen) || (saved.nodesBroadcast ?? false) !== (before.nodesBroadcast ?? false)
   ) {
     disrupt = { tone: "success", text: `Parameter changes apply live to ${before.id}. No sessions drop.` };
   } else {
@@ -1245,6 +1250,17 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
                 onChange={(e) => edit((d) => ({ ...d, nodesPaclen: e.target.value === "" ? null : +e.target.value }))}
                 className="font-mono"
               />
+            </Field>
+            <Field label={PARAM_HELP.nodesBroadcast.label} info={PARAM_HELP.nodesBroadcast.help}>
+              <label className="flex h-9 items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={model.nodesBroadcast}
+                  onChange={(e) => edit((d) => ({ ...d, nodesBroadcast: e.target.checked }))}
+                  aria-label="Send NODES broadcasts on this port"
+                />
+                Send on this port
+              </label>
             </Field>
           </div>
         </div>

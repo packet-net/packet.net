@@ -10,6 +10,41 @@ namespace Packet.Node.Core.Configuration;
 public static class NodeConfigWarnings
 {
     /// <summary>
+    /// The node-wide <c>netRom.broadcast</c> is on but no enabled port has
+    /// <see cref="PortConfig.NodesBroadcast"/> on, so no NODES broadcast goes out anywhere (#929).
+    /// The per-port switch defaults off, so this is exactly the state a node upgraded from a
+    /// version without it starts in, and the state an operator reaches by unticking the last
+    /// port live. Said on every load and apply so neither is a silent stop.
+    /// </summary>
+    public static IReadOnlyList<string> NodesBroadcastOnNoPort(NodeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        return config.NetRom.Enabled && config.NetRom.Broadcast && !config.Ports.Any(p => p.Enabled && p.NodesBroadcast)
+            ? ["NET/ROM: netRom.broadcast is on but no enabled port has nodesBroadcast on, so this node sends NO NODES broadcasts. " +
+               "NODES now go out only on ports with nodesBroadcast: true (the Send NODES box in the port's editor); tick it on each port that should carry them."]
+            : [];
+    }
+
+    /// <summary>
+    /// Enabled <c>axudp-multipoint</c> ports with <see cref="PortConfig.NodesBroadcast"/> on but no
+    /// peer marked <c>broadcast: true</c> (#929). The multipoint transport fans a broadcast out only
+    /// to those peers, so the tick sends nothing there. Legal (it may be staged ahead of marking a
+    /// peer), hence a warning rather than a validation error.
+    /// </summary>
+    public static IReadOnlyList<string> NodesBroadcastWithNoBroadcastPeer(NodeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        return config.Ports
+            .Where(p => p.Enabled && p.NodesBroadcast && p.Transport is AxudpMultipointTransport mp && !mp.Peers.Any(peer => peer.Broadcast))
+            .Select(p =>
+                $"port '{p.Id}' has nodesBroadcast on, but none of its axudp-multipoint peers has broadcast: true, " +
+                "so no NODES go out on it. Mark at least one peer broadcast, or turn nodesBroadcast off.")
+            .ToArray();
+    }
+
+    /// <summary>
     /// One warning per MQTT <c>{instance}</c> label shared by two or more ports (#586). The label is
     /// the port's <see cref="PortConfig.MqttInstance"/> when set, else its id - exactly how the frame
     /// emitter resolves the topic segment - so sharing one silently merges the ports' kissproxy topic

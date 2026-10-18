@@ -28,8 +28,9 @@ namespace Packet.Node.Core.NetRom;
 /// <b>Hearing can never disturb a QSO.</b> The read-only tap is the existing
 /// <see cref="Ax25Listener.FrameTraced"/> event (fires before address filtering, so
 /// it hears NODES - dest <c>NODES</c>, not us - with no engine change) and only
-/// reads. The TX-bearing behaviours are opt-in (<see cref="NetRomConfig.Broadcast"/>
-/// / a <see cref="NetRomConfig.Routing"/> mode that opens interlinks) and default off.
+/// reads. The TX-bearing behaviours are opt-in (<see cref="NetRomConfig.Broadcast"/> plus
+/// each port's <c>nodesBroadcast</c> / a <see cref="NetRomConfig.Routing"/> mode that opens
+/// interlinks) and default off.
 /// </para>
 /// <para>
 /// <b>Interlinks.</b> The service owns the connected-mode AX.25 sessions (PID 0xCF)
@@ -459,7 +460,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// (the default) ⇒ no cap (the canonical 11-entries-per-frame structural limit) -
     /// byte-for-byte the prior behaviour.
     /// </param>
-    public void AttachPort(string portId, Callsign myCall, Ax25Listener listener, int? neighbourQuality = null, int? minQuality = null, int? nodesPaclen = null)
+    /// <param name="nodesBroadcast">
+    /// Whether our NODES broadcast is sent on this port (#929). <c>false</c> (the default) means
+    /// never: <see cref="BroadcastNodes"/> skips the port even with
+    /// <see cref="NetRomConfig.Broadcast"/> on. Hearing NODES on the port is unaffected.
+    /// </param>
+    public void AttachPort(string portId, Callsign myCall, Ax25Listener listener, int? neighbourQuality = null, int? minQuality = null, int? nodesPaclen = null, bool nodesBroadcast = false)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(listener);
@@ -481,7 +487,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         void FrameHandler(object? sender, Ax25FrameEventArgs e) => OnFrameTraced(portId, myCall, e);
         void SessionHandler(object? sender, Ax25SessionEventArgs e) => OnSessionAccepted(portId, e.Session);
 
-        var attachment = new Attachment(portId, myCall, listener, FrameHandler, SessionHandler, neighbourQuality, minQuality, nodesPaclen);
+        var attachment = new Attachment(portId, myCall, listener, FrameHandler, SessionHandler, neighbourQuality, minQuality, nodesPaclen, nodesBroadcast);
         if (!attachments.TryAdd(portId, attachment))
         {
             return;
@@ -501,26 +507,30 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     /// <summary>
     /// Hot-apply the per-port NET/ROM awareness/advertisement knobs - route quality (BPQ
-    /// per-port <c>QUALITY</c>), minimum quality (<c>MINQUAL</c>), and the NODES-broadcast
-    /// UI-frame cap (<c>NODESPACLEN</c>) - to a running attachment without re-subscribing its
-    /// taps. No-op if the port isn't attached. All three affect only how the <em>next</em>
-    /// NODES ingest/broadcast on this port is handled (read-only awareness + outbound
-    /// advertisement) - none can ever disturb a live session - so they are applied live rather
-    /// than via a port restart.
+    /// per-port <c>QUALITY</c>), minimum quality (<c>MINQUAL</c>), the NODES-broadcast
+    /// UI-frame cap (<c>NODESPACLEN</c>) and whether NODES are sent on the port at all - to a
+    /// running attachment without re-subscribing its taps. No-op if the port isn't attached.
+    /// All four affect only how the <em>next</em> NODES ingest/broadcast on this port is
+    /// handled (read-only awareness + outbound advertisement) - none can ever disturb a live
+    /// session - so they are applied live rather than via a port restart. Every value is
+    /// replaced, so pass the port's full current set (<paramref name="nodesBroadcast"/>
+    /// defaults to off, as in config).
     /// </summary>
-    public void UpdatePortQuality(string portId, int? neighbourQuality, int? minQuality = null, int? nodesPaclen = null)
+    public void UpdatePortQuality(string portId, int? neighbourQuality, int? minQuality = null, int? nodesPaclen = null, bool nodesBroadcast = false)
     {
         ArgumentNullException.ThrowIfNull(portId);
         if (attachments.TryGetValue(portId, out var existing) &&
             (existing.NeighbourQuality != neighbourQuality ||
              existing.MinQuality != minQuality ||
-             existing.NodesPaclen != nodesPaclen))
+             existing.NodesPaclen != nodesPaclen ||
+             existing.NodesBroadcast != nodesBroadcast))
         {
             attachments[portId] = existing with
             {
                 NeighbourQuality = neighbourQuality,
                 MinQuality = minQuality,
                 NodesPaclen = nodesPaclen,
+                NodesBroadcast = nodesBroadcast,
             };
         }
     }
@@ -819,15 +829,34 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     }
 
     /// <summary>
-    /// Originate our NODES broadcast on every attached port: our alias + the best
-    /// route to each advertisable destination (OBSMIN-gated). Sent as UI frames
-    /// (dest <c>NODES</c>, PID 0xCF). Exposed so a test can drive a broadcast
-    /// deterministically without waiting on the interval timer.
+    /// Originate our NODES broadcast on every attached port that has the per-port switch on
+    /// (<c>nodesBroadcast</c>, #929): our alias + the best route to each advertisable
+    /// destination (OBSMIN-gated). Sent as UI frames (dest <c>NODES</c>, PID 0xCF). Nothing
+    /// goes out unless <see cref="NetRomConfig.Broadcast"/> is on too (the node-wide master).
+    /// Exposed so a test can drive a broadcast deterministically without waiting on the
+    /// interval timer.
     /// </summary>
     public void BroadcastNodes()
     {
         if (!config.Enabled || !config.Broadcast || Volatile.Read(ref disposed) != 0)
         {
+            return;
+        }
+
+        // The per-port switch (#929, default off): a port without it never carries our NODES.
+        // This is the only NODES origination path; an axudp-multipoint port's fan-out to its
+        // broadcast peers happens below the listener, so gating the port gates every peer.
+        var sendOn = new List<Attachment>();
+        foreach (var portId in AttachedPortIdsInOrder())
+        {
+            if (attachments.TryGetValue(portId, out var attachment) && attachment.NodesBroadcast)
+            {
+                sendOn.Add(attachment);
+            }
+        }
+        if (sendOn.Count == 0)
+        {
+            LogBroadcastNoPorts();
             return;
         }
 
@@ -849,19 +878,15 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // NODES table stays robust on a slow/shared channel. A port with no cap (the default)
         // uses the canonical structural limit (11 entries/frame) - byte-for-byte today's
         // behaviour. Build once per port so the cap is honoured per port.
-        foreach (var portId in AttachedPortIdsInOrder())
+        foreach (var attachment in sendOn)
         {
-            if (!attachments.TryGetValue(portId, out var attachment))
-            {
-                continue;   // detached between the ordering read and here.
-            }
             var frames = NodesBroadcastBuilder.Build(alias, entries, attachment.NodesPaclen);
             foreach (var info in frames)
             {
-                _ = SendUiSafe(attachment.Listener, dest, info, portId);
+                _ = SendUiSafe(attachment.Listener, dest, info, attachment.PortId);
             }
         }
-        LogBroadcast(alias, entries.Count, attachments.Count);
+        LogBroadcast(alias, entries.Count, sendOn.Count);
     }
 
     private async Task SendUiSafe(Ax25Listener listener, Callsign dest, byte[] info, string portId)
@@ -1581,7 +1606,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     private sealed record Attachment(
         string PortId, Callsign MyCall, Ax25Listener Listener,
         EventHandler<Ax25FrameEventArgs> FrameHandler, EventHandler<Ax25SessionEventArgs> SessionHandler,
-        int? NeighbourQuality, int? MinQuality, int? NodesPaclen);
+        int? NeighbourQuality, int? MinQuality, int? NodesPaclen, bool NodesBroadcast);
 
     // The port is in the interlinks dictionary KEY (NeighbourKey), so it is not repeated here.
     private sealed record Interlink(Ax25Listener? Listener, Ax25Session? Session);
@@ -1609,6 +1634,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: broadcast NODES as {Alias} ({EntryCount} entr(ies)) on {PortCount} port(s).")]
     private partial void LogBroadcast(string alias, int entryCount, int portCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: NODES broadcast due, but no attached port has nodesBroadcast on; nothing sent.")]
+    private partial void LogBroadcastNoPorts();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: interlink to {Neighbour} up.")]
     private partial void LogInterlinkUp(string neighbour);

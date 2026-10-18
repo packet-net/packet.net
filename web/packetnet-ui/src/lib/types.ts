@@ -228,6 +228,10 @@ export interface PortConfig {
   // ~28..256. Large NODES tables fragment into frames no larger than this. Null = no cap
   // (the structural 11-entries limit). See Packet.Node.Core.Configuration.PortConfig.NodesPaclen.
   nodesPaclen?: number | null;
+  // Whether the node sends its NET/ROM NODES broadcast on this port. Default false: a port never
+  // sends NODES unless ticked, and only while the node-wide netRom.broadcast is on too (#929).
+  // See Packet.Node.Core.Configuration.PortConfig.NodesBroadcast.
+  nodesBroadcast?: boolean;
   // Label feeding the {instance} segment of this port's kissproxy MQTT topics; null = the
   // port id. Written by the head-end adopt flow (the radio's amateur band) and by hand in
   // the config file; no screen edits it, so it must ride through every port save untouched

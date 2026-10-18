@@ -321,6 +321,11 @@ sessions to neighbours are operator decisions; defaulting them off keeps
 a freshly-installed node from injecting traffic onto the air or the
 network without intent.
 
+NODES origination is also opt-in **per port** (`nodesBroadcast`, default
+off, #929): `netRom.broadcast` is the node-wide master, and the broadcast
+goes out only on ports that set `nodesBroadcast: true`, so a slow shared
+channel can be kept free of it. Hearing NODES stays on for every port.
+
 ### Interop fixture (de-facto, documented - not baked into the library)
 
 The interop bed nudges the reference nodes to broadcast NODES promptly
