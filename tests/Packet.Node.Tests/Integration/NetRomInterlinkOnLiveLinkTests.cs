@@ -37,6 +37,7 @@ public sealed class NetRomInterlinkOnLiveLinkTests
                 Enabled = true,
                 Transport = new KissTcpTransport { Host = call.Base, Port = 1 },
                 Ax25 = new Ax25PortParams { N2 = TestAx25Timing.NodeN2 },
+                NodesBroadcast = true,   // NODES go out only on a port that opts in (#929)
             },
         ],
     };

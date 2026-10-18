@@ -70,6 +70,10 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
             .When(p => p.NodesPaclen.HasValue)
             .WithMessage("Port.nodesPaclen must be in 28..256 octets (28 = the 7-octet header + one 21-octet entry; 256 = the AX.25 UI-frame ceiling).");
 
+        // Per-port NODES broadcast (#929): any value is valid. A tick that would send nothing
+        // (master off, or a multipoint port with no broadcast peer) is legal staging and is said
+        // as a config note instead (NodeConfigWarnings), never refused here.
+
         When(p => p.Beacon is not null, () =>
             RuleFor(p => p.Beacon!).SetValidator(new PortBeaconValidator()));
 

@@ -132,7 +132,7 @@ public class NetRomInp3L3RttViaAxudp
             },
         }, nodeAlias: OurAlias);
 
-        netRom.AttachPort("axudp", OurCall, listener);
+        netRom.AttachPort("axudp", OurCall, listener, nodesBroadcast: true);   // our NODES must reach LinBPQ (#929: per-port, default off)
         await listener.StartAsync(cts.Token);
 
         // Keep originating pdn's NODES so BPQ holds a route to us (its obsolescence/AUTOADD would

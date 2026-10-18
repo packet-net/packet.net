@@ -107,6 +107,7 @@ public static class NodeConfigArbitraries
         from netRomQuality in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(0, 255).Select(q => (int?)q))
         from netRomMinQuality in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(0, 255).Select(q => (int?)q))
         from nodesPaclen in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(28, 256).Select(p => (int?)p))
+        from nodesBroadcast in Gen.Elements(false, true)
         select new PortConfig
         {
             Id = $"port{index}",
@@ -120,6 +121,7 @@ public static class NodeConfigArbitraries
             NetRomQuality = netRomQuality,
             NetRomMinQuality = netRomMinQuality,
             NodesPaclen = nodesPaclen,
+            NodesBroadcast = nodesBroadcast,
         };
 
     private static Gen<NetRomConfig> NetRomGen() =>

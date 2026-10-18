@@ -383,6 +383,7 @@ public sealed class ClientContractFixtureTests
                 NetRomQuality = 192,
                 NetRomMinQuality = 100,
                 NodesPaclen = 160,
+                NodesBroadcast = true,
                 MqttInstance = "2m",
             },
             new PortConfig { Id = "uhf-2", Transport = new KissTcpTransport { Host = "127.0.0.1", Port = 8001 } },
