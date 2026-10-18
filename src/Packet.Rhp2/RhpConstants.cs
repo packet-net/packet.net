@@ -183,15 +183,17 @@ public static class RhpErrorCode
 
     /// <summary>
     /// pdn extension (not in the published spec, and not XRouter's, whose failed connect gives
-    /// no reason at all): an <c>open</c> the far end refused: the peer answered the SABM(E)
-    /// with DM. The station is there but would not take the call, so a later try may work
+    /// no reason at all): an <c>open</c> the far end refused. On AX.25 the peer answered the
+    /// SABM(E) with DM; on NET/ROM the far node answered the Connect Request with the choke
+    /// (busy) bit. The station is there but would not take the call, so a later try may work
     /// (BPQ's node says "Busy from"). packet-net/packet.net#849.
     /// </summary>
     public const int Refused = 19;
 
     /// <summary>
-    /// pdn extension: an <c>open</c> the far end never answered: T1 expired N2 times with
-    /// nothing back (BPQ's node says "Failure with"). packet-net/packet.net#849.
+    /// pdn extension: an <c>open</c> the far end never answered. On AX.25 T1 expired N2 times
+    /// with nothing back; on NET/ROM the Connect Request's retries ran out (BPQ's node says
+    /// "Failure with"). packet-net/packet.net#849.
     /// </summary>
     public const int NoAnswer = 20;
 
@@ -203,8 +205,8 @@ public static class RhpErrorCode
 
     /// <summary>
     /// pdn extension: an <c>open</c> whose link went down before it came up for a reason that
-    /// is neither a refusal nor no answer (a disconnect at this end, say).
-    /// packet-net/packet.net#849.
+    /// is neither a refusal nor no answer (a disconnect at this end, or a NET/ROM circuit
+    /// closed before it connected). packet-net/packet.net#849.
     /// </summary>
     public const int LinkReset = 22;
 

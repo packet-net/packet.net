@@ -5,6 +5,8 @@ using Packet.Core;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.Hosting;
+using Packet.Node.Core.NetRom;
+using Packet.NetRom.Transport;
 using Packet.Rhp2;
 using Packet.Rhp2.Server;
 
@@ -22,8 +24,9 @@ namespace Packet.Node.Rhp;
 /// configuration order counting from 1 (<c>"1"</c> = the first <c>ports:</c> entry), the
 /// numeric form RHPv2 and XRouter-convention clients such as DAPPS send (#841). An id
 /// match wins, so a port whose id is a number is always that port. For outbound opens, null resolves a
-/// locally-registered app (loopback) or errors - it does not silently default to the first
-/// port. R-2 limitation (named in <c>docs/rhp2-server.md</c>): <c>local</c> must be the
+/// locally-registered app (loopback), or else a NET/ROM destination by callsign or alias (an L4
+/// circuit, as the console's <c>C &lt;alias&gt;</c>, #932), or errors - it does not silently
+/// default to the first port. R-2 limitation (named in <c>docs/rhp2-server.md</c>): <c>local</c> must be the
 /// node's own callsign - originating from an arbitrary app callsign needs the R-3
 /// multi-callsign engine work.
 /// </remarks>
@@ -74,18 +77,25 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             throw new RhpGatewayException(RhpErrorCode.InvalidRemoteAddress, $"'{remote}' is not a valid AX.25 callsign.");
         }
 
-        // With NO explicit port, a target the node is locally registered for (an app on its
-        // own SSID) is reached by an in-process loopback crossconnect - no RF, no second SABM.
-        // An EXPLICIT port is an explicit "go to RF" and always dials. A null port that does
-        // NOT match a local app is an error (#665): silently defaulting to ports[0] dialled
-        // the wrong port when an upstream bug stripped the label to null (GB7RDG cutover).
+        // With NO explicit port, the open goes where the console's `C <call or alias>` goes: a
+        // target the node is locally registered for (an app on its own SSID) is reached by an
+        // in-process loopback crossconnect, and anything else is routed over NET/ROM, resolved
+        // in the routing table by callsign or alias, as an L4 circuit (#932). The connector is
+        // the console's own NET/ROM one, with no direct AX.25 fallback: a null port that matches
+        // neither must not silently dial ports[0] (#665: an upstream bug that stripped the label
+        // to null dialled the wrong port at the GB7RDG cutover), so no route is errCode 15. With
+        // NET/ROM connect routing off, it is still the #665 errCode 10. An EXPLICIT port is an
+        // explicit "go to RF" and always dials L2, unchanged.
         IOutboundConnector connector;
         if (string.IsNullOrWhiteSpace(portLabel))
         {
             var callerPeerId = localOverride?.ToString() ?? nodeCall;
+            Callsign originatingUser = localOverride
+                ?? (Callsign.TryParse(nodeCall.Trim().ToUpperInvariant(), out var nc) ? nc : default);
             connector = supervisor.TryResolveLocalAppConnector(target, callerPeerId, NodeTransportKind.Ax25)
+                ?? supervisor.ResolveNetRomConnector(originatingUser)
                 ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort,
-                    $"No port specified and '{target}' is not a locally registered app; an explicit port id is required ({PortList(ports)}).");
+                    $"No port specified, '{target}' is not a locally registered app, and NET/ROM connect routing is off; an explicit port id is required ({PortList(ports)}).");
         }
         else
         {
@@ -123,6 +133,20 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         LinkAlreadyUpException => new RhpGatewayException(RhpErrorCode.AlreadyConnected, ex.Message),
         // The port's transport (multipoint AXUDP) has no way to reach the station at all.
         NoRouteToPeerException => new RhpGatewayException(RhpErrorCode.NoRoute, $"No route to {target}: {ex.Message}"),
+        // A portless open (#932) to a destination that is in the NET/ROM table, but the interlink
+        // to every next hop failed: a dead neighbour, which BPQ reports as "Failure with", so no
+        // answer rather than no route.
+        NetRomNoRouteException { NextHopsFailed: true } =>
+            new RhpGatewayException(RhpErrorCode.NoAnswer, $"Connect to {target} got no answer over NET/ROM: {ex.Message}"),
+        // A portless open whose destination the NET/ROM table does not have at all.
+        NetRomNoRouteException => new RhpGatewayException(RhpErrorCode.NoRoute, $"No route to {target}: {ex.Message}"),
+        // The L4 circuit's own outcome: the far node's choke (busy) bit, or its retries running out.
+        NetRomCircuitFailedException { Reason: NetRomCircuitCloseReason.Refused } =>
+            new RhpGatewayException(RhpErrorCode.Refused, $"Connect to {target} refused: the far node answered busy."),
+        NetRomCircuitFailedException { Reason: NetRomCircuitCloseReason.Timeout } =>
+            new RhpGatewayException(RhpErrorCode.NoAnswer, $"Connect to {target} got no answer over NET/ROM (the L4 retries ran out)."),
+        NetRomCircuitFailedException =>
+            new RhpGatewayException(RhpErrorCode.LinkReset, $"Connect to {target} failed: the NET/ROM circuit closed before it connected."),
         Ax25ConnectFailedException { Failure: Ax25ConnectFailure.Refused } =>
             new RhpGatewayException(RhpErrorCode.Refused, $"Connect to {target} refused: the peer answered DM (busy or not accepting)."),
         Ax25ConnectFailedException { Failure: Ax25ConnectFailure.NoAnswer } =>

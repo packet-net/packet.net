@@ -15,6 +15,11 @@ using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Transports;
+using Packet.Node.Core.Hosting;
+using Packet.Node.Rhp;
+using Packet.Rhp2;
+using Packet.Rhp2.Server;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -364,6 +369,112 @@ public class NetRomL4CircuitViaAxudp
         {
             await broadcastCts.CancelAsync();
             try { await broadcaster; } catch (OperationCanceledException) { /* expected */ }
+        }
+    }
+
+    /// <summary>
+    /// packet-net/packet.net#932 against real LinBPQ: an RHP <c>open</c> with no port, through
+    /// the node's real gateway, supervisor and NET/ROM service, resolves BPQ's alias
+    /// <c>PNTST</c> in the routing table and opens an L4 circuit to BPQ's node prompt, which
+    /// answers a command over it. Then a portless open to a destination nobody advertises is
+    /// <c>errCode 15</c>.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_portless_RHP_open_reaches_linbpq_over_NET_ROM_by_its_alias()
+    {
+        Skip.IfNot(await IsTcpPortReachable(Host, BpqHttpPort),
+            $"LinBPQ not reachable (HTTP {Host}:{BpqHttpPort}). Bring up the interop stack: 'docker compose -f docker/compose.interop.yml up -d --wait'.");
+
+        using var cts = new CancellationTokenSource(
+            HearBpqBudget + OutboundConnectBudget + DataRoundTripBudget + TimeSpan.FromSeconds(60));
+
+        var config = new NodeConfig
+        {
+            Identity = new Identity { Callsign = RhpNodeCall.ToString(), Alias = "PNRHP" },
+            NetRom = new NetRomConfig
+            {
+                Enabled = true,
+                Broadcast = true,
+                Connect = true,
+                TransportTimeoutSeconds = 4,
+                TransportRetries = 5,
+            },
+            Ports =
+            [
+                new PortConfig
+                {
+                    Id = "axudp",
+                    Enabled = true,
+                    Transport = new AxudpTransport { Host = Host, Port = BpqAxudpPort, LocalPort = RhpNodeLocalPort },
+                    NodesBroadcast = true,
+                },
+            ],
+            Management = new ManagementConfig { Telnet = new TelnetConfig { Enabled = false } },
+        };
+        var configProvider = new FixedConfig(config);
+        using var host = new NodeHostedService(configProvider, TransportFactory.Instance, TimeProvider.System, NullLoggerFactory.Instance);
+        await host.StartAsync(cts.Token);
+        try
+        {
+            await WaitUntil(() => host.Supervisor?.RunningPortIds.Contains("axudp") == true && host.NetRom is not null,
+                TimeSpan.FromSeconds(15), cts.Token);
+            var netRom = host.NetRom!;
+
+            using var broadcastCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+            var broadcaster = RunBroadcastLoop(netRom, broadcastCts.Token);
+            try
+            {
+                (await ProvokeAndHearBpqAsync(netRom, cts.Token)).Should().BeTrue(
+                    "pdn must hear LinBPQ's NODES so it has a NET/ROM route to PNTST");
+                await WaitUntil(() => netRom.Snapshot().ResolveDestination("PNTST") is not null,
+                    HearBpqBudget, cts.Token);
+
+                var gateway = new SupervisorRhpGateway(host, configProvider);
+                using (var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token))
+                {
+                    connectCts.CancelAfter(OutboundConnectBudget);
+                    await using var conn = await gateway.OpenAx25StreamAsync(
+                        portLabel: null, local: RhpAppCall.ToString(), remote: "PNTST", connectCts.Token);
+
+                    conn.TransportKind.Should().Be(NodeTransportKind.NetRom,
+                        "a portless open to a NET/ROM alias is an L4 circuit, not an AX.25 dial");
+                    await conn.WriteAsync(Encoding.ASCII.GetBytes("\r"), cts.Token);
+                    await conn.WriteAsync(Encoding.ASCII.GetBytes("PORTS\r"), cts.Token);
+                    var reply = await ReadCircuitAccumulateAsync(conn, "PN0TST", DataRoundTripBudget, cts.Token);
+                    reply.Should().Contain("PN0TST", "BPQ's node prompt answers a command over the circuit");
+                    output.WriteLine("*** portless RHP open reached LinBPQ over NET/ROM ***");
+                }
+
+                var noRoute = () => gateway.OpenAx25StreamAsync(portLabel: null, local: RhpAppCall.ToString(), remote: "NOWHRE", cts.Token);
+                (await noRoute.Should().ThrowAsync<RhpGatewayException>()).Which
+                    .ErrCode.Should().Be(RhpErrorCode.NoRoute);
+            }
+            finally
+            {
+                await broadcastCts.CancelAsync();
+                await broadcaster;
+            }
+        }
+        finally
+        {
+            await host.StopAsync(CancellationToken.None);
+        }
+    }
+
+    // Its own callsign and port (bpq32.cfg MAP PNRHPX-1 ... 8193 B), apart from PNL4BX-1, so
+    // a link or route left from one test cannot perturb the other.
+    private static readonly Callsign RhpNodeCall = new("PNRHPX", 1);
+    private static readonly Callsign RhpAppCall = new("PNRHPX", 3);
+    private const int RhpNodeLocalPort = 8193;
+
+    private sealed class FixedConfig(NodeConfig config) : IConfigProvider
+    {
+        public NodeConfig Current => config;
+        public IDisposable OnChange(Action<NodeConfig> listener) => Noop.Instance;
+        private sealed class Noop : IDisposable
+        {
+            public static readonly Noop Instance = new();
+            public void Dispose() { }
         }
     }
 

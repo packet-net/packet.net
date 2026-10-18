@@ -355,6 +355,20 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     }
 
     /// <summary>
+    /// The NET/ROM-routing connector a <c>C &lt;call or alias&gt;</c> with no port uses, with no
+    /// direct AX.25 fallback: the same <see cref="Packet.Node.Core.NetRom.NetRomOutboundConnector"/>
+    /// the console wraps its default dial in, so the RHPv2 server's portless <c>open</c> resolves
+    /// the destination in the routing table by callsign or alias and opens an L4 circuit exactly
+    /// as the console does (packet-net/packet.net#932). <paramref name="originatingUser"/> is the
+    /// circuit's user (the app's callsign, or the node's). Null when NET/ROM connect routing is
+    /// off. A destination with no route throws <see cref="Packet.Node.Core.NetRom.NetRomNoRouteException"/>.
+    /// </summary>
+    public IOutboundConnector? ResolveNetRomConnector(Callsign originatingUser)
+        => netRom is { ConnectEnabled: true }
+            ? new Packet.Node.Core.NetRom.NetRomOutboundConnector(netRom, fallback: null, originatingUser)
+            : null;
+
+    /// <summary>
     /// Build the connect router a console session uses for <c>C[onnect] [port] &lt;call&gt;</c>:
     /// it bridges to a locally-registered app SSID (loopback crossconnect), dials a chosen
     /// 1-indexed port directly, or - for a plain <c>C &lt;call&gt;</c> - returns
