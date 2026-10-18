@@ -213,6 +213,23 @@ public class NetRomRoutingTableTests
     }
 
     [Fact]
+    public void Forgetting_local_destinations_drops_them_without_ageing_the_rest()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, Port, Broadcast("RDGBPQ",
+            (MyApp, "RDGBBS", NbrB, 200),
+            (DestSot, "SOT", NbrB, 200)));
+        var sotBefore = table.Snapshot().Destinations.Single(d => d.Destination == DestSot).Routes.Single().Obsolescence;
+
+        table.IsLocalCall = c => c == MyApp;
+        table.ForgetLocalDestinations().Should().Be(1);
+
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == MyApp);
+        table.Snapshot().Destinations.Single(d => d.Destination == DestSot).Routes.Single().Obsolescence
+            .Should().Be(sotBefore, "only the local destination goes; nothing else is aged");
+    }
+
+    [Fact]
     public void A_restored_route_to_an_app_call_is_not_reloaded()
     {
         var source = NewTable(out _);

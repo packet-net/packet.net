@@ -952,17 +952,34 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         }
     }
 
-    // Before a NODES or INP3 ingest: refresh the app adverts and note any advertised destination
-    // that an app is attached to right now, so the table (which only reads localAppCalls, under
-    // its lock) skips our own app callsigns (packet.net#954). Done here, outside the table lock,
-    // because both lookups reach into other components.
+    /// <summary>
+    /// Re-read the app adverts into the set of this node's app callsigns and drop any learned or
+    /// restored route to one (packet.net#954). The composition root calls this once the app
+    /// wiring is in place and after each config reconcile (an app enabled or disabled, an alias
+    /// edit), so NODES ingest itself never touches the package catalog.
+    /// </summary>
+    public void RefreshLocalAppCalls()
+    {
+        ReadAppAdverts();
+        int dropped = table.ForgetLocalDestinations();
+        if (dropped > 0)
+        {
+            LogForgotLocalAppRoutes(dropped);
+            ArmPersist();
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "NET/ROM: dropped {Count} route(s) to this node's own app callsigns.")]
+    private partial void LogForgotLocalAppRoutes(int count);
+
+    // Before a NODES or INP3 ingest: note any advertised destination that an app is attached to
+    // right now, so the table (which only reads localAppCalls, under its lock) skips it
+    // (packet.net#954). An in-memory lookup, done outside the table lock because it reaches into
+    // the supervisor. Advertised app callsigns are already in the set: every broadcast and
+    // RefreshLocalAppCalls read the adverts, so an alias is known before it goes on the air.
     private void NoteLocalAppCalls(IEnumerable<Callsign> destinations)
     {
-        if (AppAdvertSource is null && ResolveInboundApp is null)
-        {
-            return;
-        }
-        ReadAppAdverts();
         if (ResolveInboundApp is null)
         {
             return;

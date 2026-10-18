@@ -138,6 +138,30 @@ public sealed class NetRomRoutingTable
         }
     }
 
+    /// <summary>
+    /// Drop every route to a destination <see cref="IsLocalCall"/> now matches, without ageing
+    /// anything else (packet.net#954). The host calls this when its set of app callsigns may have
+    /// changed (apps wired at start-up, an app enabled by a config change), which also covers
+    /// routes restored from the store before the set was known.
+    /// </summary>
+    /// <returns>The number of routes dropped.</returns>
+    public int ForgetLocalDestinations()
+    {
+        lock (gate)
+        {
+            int dropped = 0;
+            foreach (var destination in destinations.Keys.Where(IsLocal).ToList())
+            {
+                dropped += ForgetLocalDestination(destination);
+            }
+            if (dropped > 0)
+            {
+                PruneOrphanNeighbours();
+            }
+            return dropped;
+        }
+    }
+
     // Remove every route to a destination that has become local (packet.net#954). Keeps
     // invariant (W): a destination that carried an INP3 route is recorded so its withdrawal
     // reaches the neighbours. Caller holds the lock.

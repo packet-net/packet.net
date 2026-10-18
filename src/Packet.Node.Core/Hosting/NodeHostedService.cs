@@ -204,6 +204,9 @@ public sealed partial class NodeHostedService : BackgroundService
             var packages = appPackages?.Discover(current) ?? [];
             return Packet.Node.Core.NetRom.AppNetromAdvert.Build(current, packages, nodeCall);
         };
+        // Learn the app callsigns now, before any NODES is heard, and drop any route to one that
+        // was restored from the routing store (packet.net#954).
+        netRom.RefreshLocalAppCalls();
 
         // Assemble the over-RF sysop context before the supervisor so its per-connection
         // consoles (AX.25 + NET/ROM) can serve SYSOP; the telnet factory reads the same field.
@@ -338,6 +341,8 @@ public sealed partial class NodeHostedService : BackgroundService
             {
                 await appServices.ReconcileAsync(ct).ConfigureAwait(false);
             }
+            // An app enabled or an alias edited: its callsign is ours now (packet.net#954).
+            netRom?.RefreshLocalAppCalls();
             lock (swapGate)
             {
                 appliedConfig = to;
@@ -400,6 +405,8 @@ public sealed partial class NodeHostedService : BackgroundService
         {
             await appServices.ReconcileAsync(ct).ConfigureAwait(false);
         }
+        // An app enabled or an alias edited: its callsign is ours now (packet.net#954).
+        netRom?.RefreshLocalAppCalls();
 
         lock (swapGate)
         {
