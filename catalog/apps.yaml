@@ -105,7 +105,7 @@ apps:
 
   - id: bbs
     name: BBS
-    version: "0.2.54"
+    version: "0.3.0"
     description: "Packet-radio mailbox — personal mail, bulletins + NTS, FBB store-and-forward, webmail, and IMAP/SMTP for a phone mail app over Tailscale. Renders inside the pdn panel (slot UI mode), styled to match and following the panel's theme. Binds <node>-<ssid> + the BBS alias; mail addresses are SSID-less. Sysop forwarding dashboard; reverse collection."
     icon: mail
     capabilities: [packet, web]
@@ -114,18 +114,18 @@ apps:
       kind: deb
       debs:
         linux-x64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.54/pdn-bbs_0.2.54_amd64.deb
-          sha256: b2ce0e6e4339ae3c8bcf39c398efa1c7eb7bacf29aed67bf5877d293aab8d96f
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.3.0/pdn-bbs_0.3.0_amd64.deb
+          sha256: ecb51f51ae9ecb6bed1ed6ee8d771c6a9873216ec69be6f07c0641af37e34726
         linux-arm64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.54/pdn-bbs_0.2.54_arm64.deb
-          sha256: f1a2c4503d48f821135a0bab537f063f63370b35e0fc7b30eec681cf58a12a4a
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.3.0/pdn-bbs_0.3.0_arm64.deb
+          sha256: c8d70dca76c9a482c858d5d19ec11b5e486693c19c49c916c7bd0bad9695e2be
         linux-arm:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.54/pdn-bbs_0.2.54_armhf.deb
-          sha256: 2df2fab47f62a9ecd344557b766c5810c697bdb5345b8a7586aca14c9f536155
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.3.0/pdn-bbs_0.3.0_armhf.deb
+          sha256: e36b7c807e6193ae69a24cd6a23fe015db3fd85edce37ee32bfeb5e1629fa9e5
 
   - id: linmail
     name: LinBPQ Mail
-    version: "6.0.25.41-pdn1"
+    version: "6.0.25.41-pdn2"
     description: "The real LinBPQ mail server (G8BPQ's BPQMail) as a pdn app: personal mail, bulletins, FBB forwarding with other BBSes, and webmail. Unlike the BBS app, it runs LinBPQ's own mail code, so a BPQ sysop can bring their existing mail files and linmail.cfg across unchanged. Needs pdn node 0.58.0 or newer."
     icon: mail
     capabilities: [packet, web]
@@ -134,11 +134,11 @@ apps:
       kind: deb
       debs:
         linux-x64:
-          url: https://github.com/packet-net/linmail-pdn/releases/download/v6.0.25.41-pdn1/pdn-linmail_6.0.25.41-pdn1_amd64.deb
-          sha256: e3019a39eef0ce10027abd31ca13071aa4f844afe94ab0bec2a8bd41efe549eb
+          url: https://github.com/packet-net/linmail-pdn/releases/download/v6.0.25.41-pdn2/pdn-linmail_6.0.25.41-pdn2_amd64.deb
+          sha256: f84e0349c98b3985ceb66c80ed8c802e41ae3fb9938d261bc8ffb7776c23a84d
         linux-arm64:
-          url: https://github.com/packet-net/linmail-pdn/releases/download/v6.0.25.41-pdn1/pdn-linmail_6.0.25.41-pdn1_arm64.deb
-          sha256: 8c9c6fcfde8cf122b99f1d27b7fd3154d4c0984daa161e8b5d42793ebb818900
+          url: https://github.com/packet-net/linmail-pdn/releases/download/v6.0.25.41-pdn2/pdn-linmail_6.0.25.41-pdn2_arm64.deb
+          sha256: de28f021212c4cbc6d07d46f8a68fe7f6101b4df6f676f801a57da5be5ac2199
         linux-arm:
-          url: https://github.com/packet-net/linmail-pdn/releases/download/v6.0.25.41-pdn1/pdn-linmail_6.0.25.41-pdn1_armhf.deb
-          sha256: 0e54914f52162f361ae52ba3683c6d9075465ed9f98ccfe9c931193654ea7c66
+          url: https://github.com/packet-net/linmail-pdn/releases/download/v6.0.25.41-pdn2/pdn-linmail_6.0.25.41-pdn2_armhf.deb
+          sha256: 48b93ed340014e703745b01da9ce669653237361088f47e9622090decd3a3b7b
