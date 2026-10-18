@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.Logging;
 using Packet.Ax25.Transport;
 using Packet.Core;
 using Packet.Kiss;
@@ -37,6 +38,19 @@ public sealed class TransportFactory : ITransportFactory
 {
     /// <summary>A shared default instance (the factory holds no state).</summary>
     public static TransportFactory Instance { get; } = new();
+
+    private readonly ILoggerFactory? loggerFactory;
+
+    /// <summary>Create a factory whose transports log to nothing.</summary>
+    public TransportFactory()
+    {
+    }
+
+    /// <summary>Create a factory whose transports that log (multipoint AXUDP) use <paramref name="loggerFactory"/>.</summary>
+    public TransportFactory(ILoggerFactory? loggerFactory)
+    {
+        this.loggerFactory = loggerFactory;
+    }
 
     /// <inheritdoc/>
     public async Task<IAx25Transport> CreateAsync(
@@ -132,7 +146,8 @@ public sealed class TransportFactory : ITransportFactory
                         var call = Callsign.Parse(peer.Call);
                         peers.Add(new AxudpMultipointPeerEndpoint(call, endpoint, peer.Broadcast));
                     }
-                    return new AxudpMultipointFrameTransport(peers, m.LocalPort, timeProvider, logger: null);
+                    return new AxudpMultipointFrameTransport(peers, m.LocalPort, timeProvider,
+                        logger: loggerFactory?.CreateLogger<AxudpMultipointFrameTransport>());
                 }
 
             case SoundModemTransportConfig sm:

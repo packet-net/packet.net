@@ -60,4 +60,25 @@ public sealed class TransportFactoryTests
             mp.LocalPort.Should().BeGreaterThan(0, "localPort 0 resolves to a real ephemeral bind");
         }
     }
+
+    [Fact]
+    public async Task The_multipoint_arm_gets_a_real_logger_from_the_factory()
+    {
+        // Regression for #944: the factory built the transport with logger: null, so a frame
+        // with no route vanished without a trace.
+        var provider = new Packet.Node.Tests.Support.CapturingLoggerFactory();
+        var factory = new TransportFactory(provider);
+        var created = await factory.CreateAsync(new AxudpMultipointTransport
+        {
+            LocalPort = 0,
+            Peers = [new AxudpPeerConfig { Call = "GB7OUK", Host = "127.0.0.1", Port = 10094 }],
+        });
+        await using (created)
+        {
+            var frame = Packet.Ax25.Ax25Frame.Ui(
+                new Packet.Core.Callsign("SA6DAZ", 7), new Packet.Core.Callsign("M0LTE", 0), [1]).ToBytes();
+            await created.SendAsync(frame);
+        }
+        provider.Lines.Should().Contain(l => l.Contains("no route to SA6DAZ-7"));
+    }
 }

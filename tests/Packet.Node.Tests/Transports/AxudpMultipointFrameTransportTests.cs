@@ -267,4 +267,28 @@ public sealed class AxudpMultipointFrameTransportTests
         }
         throw new InvalidOperationException("no frame arrived");
     }
+
+    [Fact]
+    public async Task A_frame_with_no_route_logs_a_warning_naming_the_call_once_per_minute()
+    {
+        var log = new CapturingLogger<AxudpMultipointFrameTransport>();
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        await using var transport = new AxudpMultipointFrameTransport(
+            [new(new Callsign("SA6DAZ"), new IPEndPoint(IPAddress.Loopback, 9), Broadcast: false)],
+            localPort: 0, timeProvider: clock, logger: log);
+
+        var frame = Ax25Frame.Ui(new Callsign("SA6DAZ", 7), new Callsign("M0LTE", 0), [1]).ToBytes();
+
+        transport.HasRouteTo(new Callsign("SA6DAZ", 7)).Should().BeFalse();
+        transport.HasRouteTo(new Callsign("SA6DAZ")).Should().BeTrue();
+
+        await transport.SendAsync(frame);
+        await transport.SendAsync(frame);
+        log.Warnings.Should().ContainSingle("a repeat inside the minute is Debug, not another Warning")
+            .Which.Should().Contain("SA6DAZ-7").And.Contain("no route");
+
+        clock.Advance(TimeSpan.FromMinutes(2));
+        await transport.SendAsync(frame);
+        log.Warnings.Should().HaveCount(2, "the warning repeats after the interval");
+    }
 }

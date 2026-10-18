@@ -341,7 +341,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         Ax25OutboundConnector? made = null;
         made = new Ax25OutboundConnector(
             port.Id, port.Listener, r => ClaimOutbound(port.Id, localOverride ?? port.Listener.MyCall, r), localOverride, capabilityCache, LinkPolicyFor(port.Id),
-            timeProvider, peerRestarted: s => TryAcceptInbound(port.Id, port.Listener, made!, s));
+            timeProvider, peerRestarted: s => TryAcceptInbound(port.Id, port.Listener, made!, s),
+            routes: port.ModemTransport as IRouteAwareTransport);
         return made;
     }
 
@@ -680,7 +681,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             ax25 = new Ax25OutboundConnector(
                 first.Id, first.Listener, r => ClaimOutbound(first.Id, first.Listener.MyCall, r), localOverride: null, cache: capabilityCache,
                 linkPolicy: LinkPolicyFor(first.Id), timeProvider: timeProvider,
-                peerRestarted: s => TryAcceptInbound(first.Id, first.Listener, ax25!, s));
+                peerRestarted: s => TryAcceptInbound(first.Id, first.Listener, ax25!, s),
+                routes: first.ModemTransport as IRouteAwareTransport);
         }
 
         // A telnet dial-in has no callsign of its own; a NET/ROM-routed `connect`
@@ -1479,7 +1481,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
         var connector = new Ax25OutboundConnector(
             port.Id, listener, r => ClaimOutbound(port.Id, listener.MyCall, r), localOverride: null, cache: capabilityCache,
-            linkPolicy: LinkPolicyFor(port.Id), timeProvider: timeProvider);
+            linkPolicy: LinkPolicyFor(port.Id), timeProvider: timeProvider,
+            routes: modemTransport as IRouteAwareTransport);
         // The arrival port id is captured here rather than reverse-looked-up from the listener:
         // it is now load-bearing (the outbound claim and the app-registration lookup are both
         // keyed on it), and a SessionAccepted racing a teardown must not resolve to "?".

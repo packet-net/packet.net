@@ -48,7 +48,7 @@ namespace Packet.Node.Core.Transports;
 /// <see cref="AxudpMultipointSocket"/> (the de-facto wire form - see its remarks).
 /// </para>
 /// </remarks>
-public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
+public sealed partial class AxudpMultipointFrameTransport : IAx25Transport, IRouteAwareTransport
 {
     private readonly AxudpMultipointSocket socket;
     private readonly TimeProvider clock;
@@ -76,6 +76,11 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
     // After this much silence to a peer, the next send re-logs as a resume (so a peer that
     // goes quiet then comes back is visible at the cutover, not buried as a one-time line).
     private static readonly TimeSpan SendResumeAfter = TimeSpan.FromMinutes(5);
+
+    // Per-destination instant of the last "no route" Warning, so a stuck retry loop to one
+    // unmapped call produces one warning per interval, not one per frame (the rest go to Debug).
+    private readonly ConcurrentDictionary<Callsign, DateTimeOffset> lastNoRouteWarning = new();
+    private static readonly TimeSpan NoRouteWarnEvery = TimeSpan.FromMinutes(1);
 
     private int disposed;
 
@@ -117,6 +122,10 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
 
         socket = new AxudpMultipointSocket(localPort);
     }
+
+    /// <inheritdoc/>
+    public bool HasRouteTo(Callsign destination) =>
+        peersByCall.ContainsKey(destination) || learned.ContainsKey(destination);
 
     /// <inheritdoc/>
     public async Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
@@ -165,7 +174,24 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
         }
 
         // No route - drop (don't fan a directed frame to every peer). Counted for diagnosis.
-        LogNoRoute(destination);
+        var now = clock.GetUtcNow();
+        bool warn = true;
+        lastNoRouteWarning.AddOrUpdate(
+            destination,
+            _ => now,
+            (_, last) =>
+            {
+                warn = now - last >= NoRouteWarnEvery;
+                return warn ? now : last;
+            });
+        if (warn)
+        {
+            LogNoRouteWarning(LocalPort, destination);
+        }
+        else
+        {
+            LogNoRoute(destination);
+        }
     }
 
     /// <inheritdoc/>
@@ -315,6 +341,9 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "AXUDP-multipoint: broadcast frame to {Destination} had no broadcast peers configured; dropped.")]
     private partial void LogNoBroadcastPeers(Callsign destination);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "AXUDP-multipoint {LocalPort}: no route to {Destination}: no peers entry for it on this port and nothing heard from it, so frames to it are dropped. Add a peers entry (call, host, port) to reach it. Further drops for it are logged at Debug, with this warning repeated at most once a minute.")]
+    private partial void LogNoRouteWarning(int localPort, Callsign destination);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "AXUDP-multipoint: no route for destination {Destination} (no MAP entry, not a broadcast, not learned); dropped.")]
     private partial void LogNoRoute(Callsign destination);

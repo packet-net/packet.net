@@ -550,7 +550,7 @@ builder.Services.AddScoped<IAuthorizationHandler, ScopeRequirementHandler>();
 // app's loopback web server. See PdnAppGateway + docs/app-gateway.md.
 builder.Services.AddHttpForwarder();
 
-builder.Services.AddSingleton<ITransportFactory>(TransportFactory.Instance);
+builder.Services.AddSingleton<ITransportFactory>(sp => new TransportFactory(sp.GetService<ILoggerFactory>()));
 builder.Services.AddSingleton(TimeProvider.System);
 
 // ASP.NET Core's data-protection key ring. Configured explicitly for two reasons.
