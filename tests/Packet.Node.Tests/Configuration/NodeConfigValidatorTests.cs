@@ -504,6 +504,43 @@ public class NodeConfigValidatorTests
     }
 
     [Fact]
+    public void Nodes_broadcast_is_valid_on_or_off_on_an_ordinary_port()
+    {
+        foreach (var on in new[] { false, true })
+        {
+            Validator.Validate(Valid(new PortConfig
+            {
+                Id = "p",
+                Transport = new KissTcpTransport { Host = "h", Port = 1 },
+                NodesBroadcast = on,
+            })).IsValid.Should().BeTrue($"nodesBroadcast: {on} on a kiss-tcp port is a plain choice");
+        }
+    }
+
+    [Fact]
+    public void Nodes_broadcast_on_a_multipoint_port_needs_a_broadcast_peer()
+    {
+        // #929: the multipoint transport fans a broadcast out only to peers marked broadcast,
+        // so ticking a port that has none would send nothing, silently.
+        var noBroadcastPeer = MultipointPort(10093,
+            new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = false }) with { NodesBroadcast = true };
+        var result = Validator.Validate(Valid(noBroadcastPeer));
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("nodesBroadcast"));
+
+        Validator.Validate(Valid(MultipointPort(10093) with { NodesBroadcast = true }))
+            .IsValid.Should().BeFalse("no peers at all is the same contradiction");
+
+        Validator.Validate(Valid(MultipointPort(10093,
+            new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = true }) with { NodesBroadcast = true }))
+            .IsValid.Should().BeTrue("one broadcast peer is enough");
+
+        Validator.Validate(Valid(MultipointPort(10093,
+            new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = false })))
+            .IsValid.Should().BeTrue("with nodesBroadcast off the peer marks do not matter");
+    }
+
+    [Fact]
     public void Axudp_multipoint_accepts_an_empty_peer_table()
     {
         // A receive-only listener (no MAP entries yet) is legal.

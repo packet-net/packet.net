@@ -70,6 +70,13 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
             .When(p => p.NodesPaclen.HasValue)
             .WithMessage("Port.nodesPaclen must be in 28..256 octets (28 = the 7-octet header + one 21-octet entry; 256 = the AX.25 UI-frame ceiling).");
 
+        // Per-port NODES broadcast (#929). Any value is valid on its own; the one contradiction
+        // is an axudp-multipoint port, which fans a broadcast out only to peers marked
+        // broadcast: true. With none marked, ticking the port would send nothing, silently.
+        RuleFor(p => p.NodesBroadcast)
+            .Must((p, on) => !on || p.Transport is not AxudpMultipointTransport mp || mp.Peers.Any(peer => peer.Broadcast))
+            .WithMessage("Port.nodesBroadcast is on, but none of this axudp-multipoint port's peers has broadcast: true, so no NODES would go out. Mark at least one peer broadcast, or turn nodesBroadcast off.");
+
         When(p => p.Beacon is not null, () =>
             RuleFor(p => p.Beacon!).SetValidator(new PortBeaconValidator()));
 

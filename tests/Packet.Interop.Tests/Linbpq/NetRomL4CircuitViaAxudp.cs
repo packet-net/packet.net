@@ -180,7 +180,7 @@ public class NetRomL4CircuitViaAxudp
             }
         };
 
-        netRom.AttachPort("axudp", OurCall, listener);
+        netRom.AttachPort("axudp", OurCall, listener, nodesBroadcast: true);   // our NODES must reach LinBPQ (#929: per-port, default off)
         if (netRom.Circuits is not null)
         {
             netRom.Circuits.IncomingCircuit += (_, e) =>

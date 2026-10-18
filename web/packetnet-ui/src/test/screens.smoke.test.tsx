@@ -275,6 +275,11 @@ describe("screens render without crashing", () => {
     // The new per-port NET/ROM fields both render.
     expect(screen.getByText(/NET\/ROM min quality/i)).toBeInTheDocument();
     expect(screen.getByText(/NODES PACLEN/i)).toBeInTheDocument();
+    // #929: the per-port Send NODES checkbox, ticked for this port in the fixture.
+    const sendNodes = screen.getByRole("checkbox", { name: /Send NODES broadcasts on this port/i }) as HTMLInputElement;
+    expect(sendNodes.checked).toBe(true);
+    fireEvent.click(sendNodes);
+    expect(sendNodes.checked).toBe(false);
   });
 
   it("a panel-created port POSTs TX delay in 10 ms wire units, not milliseconds", async () => {

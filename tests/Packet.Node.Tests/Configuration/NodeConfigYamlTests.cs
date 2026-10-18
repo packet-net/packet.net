@@ -86,7 +86,7 @@ public class NodeConfigYamlTests
     }
 
     [Fact]
-    public void Parses_and_round_trips_per_port_n1_paclen_and_netrom_quality()
+    public void Parses_and_round_trips_per_port_n1_paclen_netrom_quality_and_nodes_broadcast()
     {
         const string yaml = """
             schemaVersion: 1
@@ -104,6 +104,7 @@ public class NodeConfigYamlTests
                 netRomQuality: 191
                 netRomMinQuality: 100
                 nodesPaclen: 160
+                nodesBroadcast: true
               - id: vhf
                 enabled: true
                 transport:
@@ -123,6 +124,7 @@ public class NodeConfigYamlTests
         hf.NetRomMinQuality.Should().Be(100);
         hf.EffectiveNetRomMinQuality(globalDefault: 0).Should().Be(100);   // explicit wins
         hf.NodesPaclen.Should().Be(160);
+        hf.NodesBroadcast.Should().BeTrue();
 
         var vhf = config.Ports[1];
         vhf.Ax25.Should().BeNull();           // N1 unset ⇒ engine default 256
@@ -135,6 +137,8 @@ public class NodeConfigYamlTests
         vhf.EffectiveNetRomMinQuality(globalDefault: null).Should().Be(0);
         // NODESPACLEN unset ⇒ no cap (today's behaviour).
         vhf.NodesPaclen.Should().BeNull();
+        // nodesBroadcast unset => off: the port never sends NODES (#929).
+        vhf.NodesBroadcast.Should().BeFalse();
 
         // Survives a serialise → re-parse round trip.
         var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(config));
@@ -145,6 +149,8 @@ public class NodeConfigYamlTests
         reparsed.Ports[1].NetRomQuality.Should().BeNull();
         reparsed.Ports[1].NetRomMinQuality.Should().BeNull();
         reparsed.Ports[1].NodesPaclen.Should().BeNull();
+        reparsed.Ports[0].NodesBroadcast.Should().BeTrue();
+        reparsed.Ports[1].NodesBroadcast.Should().BeFalse();
     }
 
     [Fact]
