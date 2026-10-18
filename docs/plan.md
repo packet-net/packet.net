@@ -1450,6 +1450,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-10-18 - Interop: multipoint AXUDP against three LinBPQ peers at once (the GB7RDG AXIP shape)
+
+New interop test `tests/Packet.Interop.Tests/Linbpq/NetRomMultipointAxudpThreePeers.cs` (Group=NetRom) plus three LinBPQ services in `docker/compose.interop.yml` (`linbpq-axip-a/b/c`, fixtures `docker/linbpq/axip-peer-*.cfg`). pdn runs one `AxudpMultipointFrameTransport` per UDP port (8197/8198/8199), each with one broadcast peer that MAPs pdn back on the same port with `B`, `BROADCAST NODES` and `BROADCAST ID`, the way GB7RDG's partners do. It asserts NODES both ways on every port, each partner learning the other two through pdn (transit NODES), an L4 circuit pdn -> each partner, a partner user's circuit to pdn's alias, and a partner-to-partner circuit through pdn. Behind it is a Docker lab run for the GB7RDG cutover (one pdn, four LinBPQ, captures), which also found: the one-socket-for-all-partners shape is one-way against BPQ (BPQ sends to its own MAP port), multipoint AXUDP never logs because `TransportFactory` passes `logger: null`, a console L2 connect to a neighbour's node call collides with BPQ's NET/ROM interlink ("Already connected"), unknown AXIP senders are accepted, and `netRom.compress` interoperated with a live BPQ for the first time. Issues to follow from the lab write-up. No library or node code changed.
+
 ### 2026-10-17 - NET/ROM: NODES broadcasts are sent per port, default off (#929)
 
 Until now `netRom.broadcast: true` put the node's NODES broadcast on every port, with no way to keep it off one; `netRomQuality: 0` stops routes being learnt on a port but never stopped the broadcast. At GB7RDG that would have meant an hourly NODES broadcast on both 40m ports, where BPQ sends none (a BPQ port with no `QUALITY` is skipped) and airtime is scarce. Tom asked for a simple per-port checkbox, default off.

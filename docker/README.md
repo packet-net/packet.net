@@ -18,6 +18,7 @@ Once everything is healthy:
 | LinBPQ telnet | localhost:8010 | node prompt (user/pass) |
 | LinBPQ AGW | localhost:8000 | external app socket |
 | LinBPQ AXUDP | localhost:8093/udp | AXUDP port (BPQAXIP driver) |
+| LinBPQ AXIP peers a/b/c | localhost:8311 / 8312 / 8313 | node prompts (admin/admin) of three extra LinBPQs (PN1MPA/B/C, 172.30.0.20-22, UDP 8197/8198/8199) for the multipoint AXUDP test |
 | Xrouter telnet | localhost:8023 | node prompt |
 | Xrouter web UI | http://localhost:8086 | + `/exec?cmd=…` |
 | Xrouter AXUDP | localhost:8095/udp | peer-pair listener (UDPREMOTE=8094) |
