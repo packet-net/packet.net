@@ -83,7 +83,7 @@ public sealed record NetRomConfig
     /// transmitting on the air is opt-in. Requires <see cref="Enabled"/>. This is the
     /// node-wide master: the broadcast goes out only on ports that also have
     /// <see cref="PortConfig.NodesBroadcast"/> on (default off, #929), so with this on and
-    /// no port ticked nothing is sent, and the node says so at start-up.
+    /// no port ticked nothing is sent, and the node says so on every config load and apply.
     /// </summary>
     public bool Broadcast { get; init; }
 

@@ -176,10 +176,6 @@ public sealed partial class NodeHostedService : BackgroundService
     {
         var startConfig = config.Current;
         LogStarting(startConfig.Identity.Callsign, startConfig.Ports.Count);
-        if (BroadcastsNodesOnNoPort(startConfig))
-        {
-            LogNodesBroadcastOnNoPort();
-        }
 
         // The NET/ROM read-only service is created once at start from the initial
         // config. It's a pure consumer of each port's frame-trace tap (subscribed
@@ -662,18 +658,6 @@ public sealed partial class NodeHostedService : BackgroundService
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node starting (callsign {Callsign}, {PortCount} configured port(s)).")]
     private partial void LogStarting(string callsign, int portCount);
-
-    /// <summary>
-    /// True when the node-wide <c>netRom.broadcast</c> is on but no enabled port has
-    /// <c>nodesBroadcast</c> on, so no NODES broadcast will go out anywhere. The per-port switch
-    /// defaults off (#929), so this is exactly the state a node upgraded from a version without
-    /// it starts in; the start-up warning makes that loud rather than a silent stop.
-    /// </summary>
-    internal static bool BroadcastsNodesOnNoPort(NodeConfig config)
-        => config.NetRom.Enabled && config.NetRom.Broadcast && !config.Ports.Any(p => p.Enabled && p.NodesBroadcast);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "NET/ROM: netRom.broadcast is on but no enabled port has nodesBroadcast on, so this node sends NO NODES broadcasts. NODES now go out only on ports with nodesBroadcast: true (the Send NODES box in the port's editor); tick it on each port that should carry them.")]
-    private partial void LogNodesBroadcastOnNoPort();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Reconciling config change: {Summary}.")]
     private partial void LogReconciling(string summary);

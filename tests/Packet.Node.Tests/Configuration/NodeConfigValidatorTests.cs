@@ -518,26 +518,28 @@ public class NodeConfigValidatorTests
     }
 
     [Fact]
-    public void Nodes_broadcast_on_a_multipoint_port_needs_a_broadcast_peer()
+    public void Nodes_broadcast_on_a_multipoint_port_with_no_broadcast_peer_validates_but_gets_a_config_note()
     {
-        // #929: the multipoint transport fans a broadcast out only to peers marked broadcast,
-        // so ticking a port that has none would send nothing, silently.
-        var noBroadcastPeer = MultipointPort(10093,
-            new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = false }) with { NodesBroadcast = true };
-        var result = Validator.Validate(Valid(noBroadcastPeer));
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("nodesBroadcast"));
+        // #929: the multipoint transport fans a broadcast out only to peers marked broadcast, so a
+        // tick with none sends nothing. Legal staging, so a config note, never a refusal.
+        var noBroadcastPeer = Valid(MultipointPort(10093,
+            new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = false }) with { NodesBroadcast = true });
+        Validator.Validate(noBroadcastPeer).IsValid.Should().BeTrue();
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(noBroadcastPeer)
+            .Should().ContainSingle().Which.Should().Contain("'ipgw'").And.Contain("nodesBroadcast");
 
-        Validator.Validate(Valid(MultipointPort(10093) with { NodesBroadcast = true }))
-            .IsValid.Should().BeFalse("no peers at all is the same contradiction");
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(Valid(MultipointPort(10093) with { NodesBroadcast = true }))
+            .Should().ContainSingle("no peers at all is the same case");
 
-        Validator.Validate(Valid(MultipointPort(10093,
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(Valid(MultipointPort(10093,
             new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = true }) with { NodesBroadcast = true }))
-            .IsValid.Should().BeTrue("one broadcast peer is enough");
+            .Should().BeEmpty("one broadcast peer is enough");
 
-        Validator.Validate(Valid(MultipointPort(10093,
-            new AxudpPeerConfig { Call = "GB7OUK", Host = "10.66.66.3", Port = 10094, Broadcast = false })))
-            .IsValid.Should().BeTrue("with nodesBroadcast off the peer marks do not matter");
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(Valid(MultipointPort(10093) with { NodesBroadcast = true, Enabled = false }))
+            .Should().BeEmpty("a disabled port sends nothing anyway");
+
+        NodeConfigWarnings.NodesBroadcastWithNoBroadcastPeer(Valid(MultipointPort(10093)))
+            .Should().BeEmpty("with nodesBroadcast off the peer marks do not matter");
     }
 
     [Fact]

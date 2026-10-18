@@ -21,7 +21,8 @@ namespace Packet.Node.Tests.NetRom;
 /// explicit <see cref="NetRomService.BroadcastNodes"/>, the NODESINTERVAL timer, a port
 /// attached through the supervisor from config, the live reconcile of an edit, the multipoint
 /// AXUDP fan-out); the node-wide <c>netRom.broadcast</c> stays the master; and hearing NODES
-/// on a port with it off still learns routes.
+/// on a port with it off still learns routes. A config with nothing ticked under the master gets a
+/// config note on every load and apply.
 /// </summary>
 /// <remarks>
 /// Absence is proven with a sentinel rather than a sleep: the listener's connectionless send is
@@ -225,7 +226,7 @@ public sealed class NetRomNodesBroadcastPerPortTests
     }
 
     [Fact]
-    public void The_start_up_warning_fires_when_broadcast_is_on_and_no_enabled_port_sends_NODES()
+    public void The_config_note_fires_when_broadcast_is_on_and_no_enabled_port_sends_NODES()
     {
         static PortConfig Port(string id, bool enabled = true, bool nodes = false)
             => new() { Id = id, Enabled = enabled, NodesBroadcast = nodes, Transport = new KissTcpTransport { Host = "h", Port = 1 } };
@@ -236,14 +237,14 @@ public sealed class NetRomNodesBroadcastPerPortTests
             Ports = ports,
         };
 
-        NodeHostedService.BroadcastsNodesOnNoPort(Cfg(true, Port("a"), Port("b")))
-            .Should().BeTrue("the upgraded-node case: the master is on but nothing is ticked");
-        NodeHostedService.BroadcastsNodesOnNoPort(Cfg(true, Port("a", enabled: false, nodes: true)))
-            .Should().BeTrue("a ticked port that is disabled sends nothing either");
-        NodeHostedService.BroadcastsNodesOnNoPort(Cfg(true, Port("a"), Port("b", nodes: true)))
-            .Should().BeFalse("one ticked, enabled port is enough");
-        NodeHostedService.BroadcastsNodesOnNoPort(Cfg(false, Port("a")))
-            .Should().BeFalse("with broadcast off the node is not meant to send NODES at all");
+        NodeConfigWarnings.NodesBroadcastOnNoPort(Cfg(true, Port("a"), Port("b")))
+            .Should().ContainSingle("the upgraded-node case: the master is on but nothing is ticked");
+        NodeConfigWarnings.NodesBroadcastOnNoPort(Cfg(true, Port("a", enabled: false, nodes: true)))
+            .Should().ContainSingle("a ticked port that is disabled sends nothing either");
+        NodeConfigWarnings.NodesBroadcastOnNoPort(Cfg(true, Port("a"), Port("b", nodes: true)))
+            .Should().BeEmpty("one ticked, enabled port is enough");
+        NodeConfigWarnings.NodesBroadcastOnNoPort(Cfg(false, Port("a")))
+            .Should().BeEmpty("with broadcast off the node is not meant to send NODES at all");
     }
 
     private static Ax25Frame Parse(byte[] datagram)
