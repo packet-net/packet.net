@@ -312,9 +312,11 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// and test is unchanged).</summary>
     /// <summary>
     /// Optional source of <b>app NET/ROM adverts</b> (<c>docs/app-packages.md</c> § Application
-    /// packet identity): returns the extra destination entries to append to our NODES broadcast -
-    /// one per enabled app whose owner set <c>netrom.alias</c>, each pointing the alias at the
-    /// app's resolved callsign with the configured quality (best-neighbour = this node). Null /
+    /// packet identity): returns one entry per enabled app whose owner set <c>netrom.alias</c>,
+    /// each pointing the alias at the app's resolved callsign with the configured quality
+    /// (best-neighbour = this node). Every entry names a callsign this node terminates NET/ROM
+    /// circuits for; only entries with a quality above 0 are appended to our NODES broadcast
+    /// (quality 0 = not advertised, as in BPQ, packet.net#939). Null /
     /// returns-empty ⇒ nothing extra advertised (the opt-in default, off). Read fresh on each
     /// broadcast so an alias edit hot-applies. Set by the composition root, which holds the
     /// catalog + the node callsign authority the resolution needs.
@@ -894,7 +896,11 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // nodeCall) so a station C's the alias and routes to us, then to the app. Absent source
         // (or no aliases) ⇒ nothing extra - the off-by-default, anti-noise behaviour. Composes
         // with the learned routes + the implicit node-self advert (the UI frame's source call).
-        var appAdverts = ReadAppAdverts();
+        // Quality 0 means "not in NODES", as BPQ's APPLICATION line does (cMain.c only builds a
+        // NODES entry for an APPLCALL with APPLQUAL > 0, packet.net#939). Such an app is still one
+        // of ours: ReadAppAdverts has noted its callsign, so circuits to it end here and routes
+        // to it are never learned.
+        var appAdverts = ReadAppAdverts().Where(e => e.Quality > 0).ToList();
         var entries = appAdverts.Count == 0 ? learned : [.. learned, .. appAdverts];
 
         var dest = new Callsign(NodesBroadcast.NodesDestination, 0);

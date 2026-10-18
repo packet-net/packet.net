@@ -79,7 +79,9 @@ public sealed record AppNetromConfig
     public string? Alias { get; init; }
 
     /// <summary>The quality (0..255) to advertise the alias at. Null ⇒ a sensible default
-    /// (<see cref="DefaultQuality"/>).</summary>
+    /// (<see cref="DefaultQuality"/>). 0 ⇒ the alias is not put in NODES, as on a BPQ
+    /// <c>APPLICATION</c> line; the app's callsign is still local, so a NET/ROM circuit to it
+    /// still reaches the app (packet.net#939).</summary>
     public int? Quality { get; init; }
 
     /// <summary>The default advertised quality when <see cref="Quality"/> is unset - high (an

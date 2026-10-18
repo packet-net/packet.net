@@ -247,6 +247,32 @@ public sealed class NetRomNodesBroadcastPerPortTests
             .Should().BeEmpty("with broadcast off the node is not meant to send NODES at all");
     }
 
+    [Fact]
+    public async Task A_quality_0_app_alias_is_left_out_of_the_broadcast()
+    {
+        // packet.net#939: quality 0 on an app alias means "not in NODES", as on a BPQ
+        // APPLICATION line; another app's alias in the same broadcast still goes out.
+        var (listener, far) = await PortAsync();
+        await using var _ = listener;
+        await using var __ = far;
+        await using var svc = new NetRomService(Broadcasting(), TimeProvider.System, NullLogger<NetRomService>.Instance, nodeAlias: "AAA");
+        var telCall = new Callsign(NodeCall.Base, 9);
+        var bbsCall = new Callsign(NodeCall.Base, 7);
+        svc.AppAdvertSource = () =>
+        [
+            new NodesBroadcastBuilder.Entry(telCall, "RDGTEL", NodeCall, Quality: 0),
+            new NodesBroadcastBuilder.Entry(bbsCall, "RDGBBS", NodeCall, Quality: 255),
+        ];
+        svc.AttachPort("p1", NodeCall, listener, nodesBroadcast: true);
+
+        svc.BroadcastNodes();
+
+        await Wait.ForAsync(() => far.NodesCount > 0, "the NODES broadcast goes out");
+        var entries = far.NodesEntries();
+        entries.Should().Contain(e => e.Destination == bbsCall && e.BestQuality == 255);
+        entries.Should().NotContain(e => e.Destination == telCall, "a quality 0 alias is not advertised");
+    }
+
     private static Ax25Frame Parse(byte[] datagram)
     {
         // The multipoint transport appends the AXUDP FCS; strip it to read the frame.
@@ -289,6 +315,12 @@ public sealed class NetRomNodesBroadcastPerPortTests
         public int NodesCount => heard.Count(f => f.IsUi && f.Destination.Callsign.Base == NodesBroadcast.NodesDestination);
 
         public bool HeardSentinel => heard.Any(f => f.Destination.Callsign == Sentinel);
+
+        public IReadOnlyList<NodesRoutingEntry> NodesEntries() =>
+        [
+            .. heard.Where(f => f.IsUi && f.Destination.Callsign.Base == NodesBroadcast.NodesDestination)
+                .SelectMany(f => NodesBroadcast.TryParse(f.Info.Span, out var b) ? b.Entries : []),
+        ];
 
         public async ValueTask DisposeAsync()
         {
