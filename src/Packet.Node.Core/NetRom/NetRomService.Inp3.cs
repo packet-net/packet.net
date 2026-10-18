@@ -351,6 +351,7 @@ public sealed partial class NetRomService
         /// NEGATIVE/withdrawal path IS wired, via the drain).</summary>
         public void IngestRif(Callsign from, string portId, Inp3Rif rif)
         {
+            owner.NoteLocalAppCalls(rif.Rips.Select(r => r.Destination));
             owner.table.IngestRif(from, portId, owner.nodeCall, engine.SnttMs(from) ?? Inp3Sntt.Unset, rif, options.HopLimit);
         }
 

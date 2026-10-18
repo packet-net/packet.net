@@ -108,6 +108,55 @@ public sealed class NetRomRoutingTable
         routeRank = Comparer<RouteState>.Create(CompareRoutes);
     }
 
+    /// <summary>
+    /// Optional test for callsigns this node answers for besides its own (its applications'
+    /// callsigns, BPQ's APPLCALLs - packet.net#954). A destination it matches is treated like
+    /// <c>myCall</c>: never learned from NODES or INP3, dropped by <see cref="Ingest"/> /
+    /// <see cref="IngestRif"/> / <see cref="Sweep"/> if a route to it was learned before it
+    /// became local, and skipped by <see cref="Restore"/>. LinBPQ skips its APPLCALLs in NODES
+    /// ingest the same way (L3Code.c). Called under the table lock, so it must be cheap and must
+    /// not block or call back into the table. Null (the default) = only <c>myCall</c> is local.
+    /// </summary>
+    public Func<Callsign, bool>? IsLocalCall { get; set; }
+
+    // Whether `destination` is one of this node's own non-node callsigns. A throwing predicate
+    // counts as "not local", so a fault there never stops ingest. Caller holds the lock.
+    private bool IsLocal(Callsign destination)
+    {
+        var predicate = IsLocalCall;
+        if (predicate is null)
+        {
+            return false;
+        }
+        try
+        {
+            return predicate(destination);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    // Remove every route to a destination that has become local (packet.net#954). Keeps
+    // invariant (W): a destination that carried an INP3 route is recorded so its withdrawal
+    // reaches the neighbours. Caller holds the lock.
+    private int ForgetLocalDestination(Callsign destination)
+    {
+        if (!destinations.TryGetValue(destination, out var dest))
+        {
+            return 0;
+        }
+        bool hadInp3 = HasAnyInp3Route(destination);
+        int dropped = dest.Routes.Count;
+        destinations.Remove(destination);
+        if (hadInp3)
+        {
+            recentlyWithdrawn.Add(destination);
+        }
+        return dropped;
+    }
+
     // The one deterministic route ordering: best quality first, then the node's canonical port
     // order (NetRomRoutingOptions.PortRank; ordinal port id when none is wired), then neighbour
     // callsign ordinal. Shared by Snapshot, the per-destination route cap and the advertisement
@@ -220,6 +269,14 @@ public sealed class NetRomRoutingTable
                     // slips past it and puts our own callsign into our own NODES
                     // broadcast. LinBPQ skips destination == MYCALL outright
                     // (L3Code.c:456), and IngestRif has the same guard.
+                    continue;
+                }
+                if (IsLocal(entry.Destination))
+                {
+                    // Nor to one of our own applications' callsigns (an app alias we advertise,
+                    // echoed back by a neighbour): LinBPQ skips its APPLCALLs here too. A route
+                    // learned before the call became local goes now (packet.net#954).
+                    ForgetLocalDestination(entry.Destination);
                     continue;
                 }
 
@@ -359,6 +416,11 @@ public sealed class NetRomRoutingTable
                 {
                     continue;   // trivial-loop guard: a route to ourselves is never learned
                 }
+                if (IsLocal(rip.Destination))
+                {
+                    ForgetLocalDestination(rip.Destination);   // nor to our own app callsigns (#954)
+                    continue;
+                }
 
                 UpsertInp3Route(
                     destination: rip.Destination,
@@ -384,6 +446,19 @@ public sealed class NetRomRoutingTable
 
             foreach (var (destCall, dest) in destinations)
             {
+                // A destination that has become one of our own app callsigns since its route was
+                // learned (an app enabled at runtime) is dropped outright (packet.net#954).
+                if (IsLocal(destCall))
+                {
+                    purged += dest.Routes.Count;
+                    emptyDestinations.Add(destCall);
+                    if (HasAnyInp3Route(destCall))
+                    {
+                        recentlyWithdrawn.Add(destCall);
+                    }
+                    continue;
+                }
+
                 // Did this destination hold an Inp3-bearing route before the sweep? (Cheaper
                 // to test before than to diff after, and the predicate is pre-mutation.)
                 bool hadInp3Before = false;
@@ -662,6 +737,10 @@ public sealed class NetRomRoutingTable
 
             foreach (var d in snapshot.Destinations)
             {
+                if (IsLocal(d.Destination))
+                {
+                    continue;       // one of our own app callsigns now: never hold a route to it
+                }
                 var routes = new Dictionary<NeighbourKey, RouteState>(d.Routes.Count);
                 foreach (var r in d.Routes)
                 {

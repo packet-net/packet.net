@@ -1452,6 +1452,15 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-10-18 - NET/ROM: no routes learned to our own app callsigns (#954)
+
+A neighbour that echoed one of our app aliases back in its NODES (RDGBBS -> GB7RDG-2) could leave the node holding a route to its own app via that neighbour. While the app was enabled the #931 check answered first, but with the app disabled a Connect Request for the call was forwarded out and bounced until its TTL ran out. LinBPQ skips its APPLCALLs in NODES ingest (`L3Code.c`) as well as its own call; pdn now does the same.
+
+- **Ingest** (`NetRomRoutingTable.IsLocalCall`): NODES and INP3 ingest skip a destination that is one of the node's app callsigns, exactly as they skip the node call. The set is the one #931 built (`localAppCalls`: every advertised app callsign, plus any an attached app took a circuit on); before each NODES or RIF ingest the node refreshes the adverts and checks the advertised destinations against the live app registrations, outside the table lock.
+- **Runtime changes**: a route learned before its destination became an app call (an app enabled later) is dropped at the next ingest that names it, at the next NODES-interval sweep (which refreshes the adverts first), and on restore from the routing store. A dropped INP3 route is withdrawn from the neighbours as usual.
+- **L3 traffic**: routes are only learned from NODES and INP3, never from the source of forwarded datagrams, so nothing else needed the guard.
+- **Robustness**: an app advert source that throws (package discovery failing) now reads as "no app callsigns" and is logged, so a transit Connect Request is still forwarded and the NODES broadcast still goes out. A throwing live-registration lookup is treated the same way. No new settings.
+
 ### 2026-10-18 - NET/ROM: a circuit to an app's alias now reaches the app (#931)
 
 A node advertised each opted-in app alias in its NODES broadcast (RDGBBS -> GB7RDG-2, via the node), but the receive side was never built: only datagrams for the node's own callsign ended here, so a circuit for GB7RDG-2 was forwarded back out or dropped, and every accepted circuit went to the node prompt. `C RDGBBS` from across the network dead-ended. It now works as BPQ's APPLCALLs do.

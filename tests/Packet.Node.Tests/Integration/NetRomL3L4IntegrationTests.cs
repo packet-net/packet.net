@@ -375,8 +375,74 @@ public sealed class NetRomL3L4IntegrationTests
         a.NetRom.Circuits!.Circuits.Should().BeEmpty("the refused circuit is not kept");
     }
 
+    /// <summary>
+    /// packet.net#954: a neighbour that echoes one of our app callsigns back in its NODES (here
+    /// via a third node, which the best-neighbour loop guard does not catch) teaches us no route
+    /// to it, as LinBPQ skips its APPLCALLs. Covers both an advertised app alias and a callsign an
+    /// app is attached to without advertising it; the rest of the broadcast is learned as usual.
+    /// </summary>
     [Fact]
-    public async Task A_transit_node_forwards_an_L4_circuit_between_two_channels_it_bridges_without_terminating_it()
+    public async Task A_neighbour_echoing_our_app_call_back_in_NODES_teaches_no_route_to_it()
+    {
+        var bus = new SharedRadioBus();
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+
+        var advertisedApp = new Callsign(ANodeCall.Base, 7);
+        var attachedApp = new Callsign(ANodeCall.Base, 8);
+        a.NetRom.AppAdvertSource = () =>
+            [new NodesBroadcastBuilder.Entry(advertisedApp, "RDGBBS", ANodeCall, Quality: 255)];
+        using var registration = a.Supervisor.RegisterAppCallsign(attachedApp, null, (_, _) => Task.CompletedTask);
+
+        await SendNodesAsync(bus, BNodeCall, "BNODE",
+            new NodesBroadcastBuilder.Entry(advertisedApp, "RDGBBS", CNodeCall, Quality: 200),
+            new NodesBroadcastBuilder.Entry(attachedApp, "RDGCHT", CNodeCall, Quality: 200),
+            new NodesBroadcastBuilder.Entry(CNodeCall, "CNODE", CNodeCall, Quality: 200));
+
+        await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("CNODE") is not null,
+            "A learns the ordinary destination in B's NODES", TimeSpan.FromSeconds(30));
+        var snapshot = a.NetRom.Snapshot();
+        snapshot.Destinations.Should().NotContain(d => d.Destination == advertisedApp,
+            "a route to our own advertised app callsign is never learned");
+        snapshot.Destinations.Should().NotContain(d => d.Destination == attachedApp,
+            "nor to a callsign one of our apps is attached to");
+    }
+
+    /// <summary>
+    /// packet.net#954: an app advert source that throws (package discovery failing) reads as "no
+    /// app callsigns". NODES are still learned and our own broadcast still goes out.
+    /// </summary>
+    [Fact]
+    public async Task A_throwing_app_advert_source_does_not_stop_NODES_ingest_or_broadcast()
+    {
+        var bus = new SharedRadioBus();
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+        a.NetRom.AppAdvertSource = () => throw new InvalidOperationException("package discovery failed");
+
+        await SendNodesAsync(bus, BNodeCall, "BNODE",
+            new NodesBroadcastBuilder.Entry(CNodeCall, "CNODE", CNodeCall, Quality: 200));
+        await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("CNODE") is not null,
+            "A still learns B's NODES", TimeSpan.FromSeconds(30));
+
+        var broadcast = () => a.NetRom.BroadcastNodes();
+        broadcast.Should().NotThrow("the broadcast goes out without the app adverts");
+    }
+
+    // Send one NODES broadcast onto the bus from a bare station (no node behind it).
+    private static async Task SendNodesAsync(SharedRadioBus bus, Callsign from, string alias, params NodesBroadcastBuilder.Entry[] entries)
+    {
+        await using var listener = new Ax25Listener(bus.Attach(), new Ax25ListenerOptions { MyCall = from });
+        await listener.StartAsync();
+        listener.AcceptIncoming = false;
+        foreach (var info in NodesBroadcastBuilder.Build(alias, entries))
+        {
+            await listener.SendUiAsync(new Callsign(NodesBroadcast.NodesDestination, 0), info, Packet.Ax25.Ax25Frame.PidNetRom);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_transit_node_forwards_an_L4_circuit_between_two_channels_it_bridges_without_terminating_it(bool throwingAppAdvertSource)
     {
         // The transit topology: A is on channel 1, C is on channel 2, and B bridges
         // the two (a port on each). A can NOT hear C directly - it learns C only from
@@ -391,6 +457,12 @@ public sealed class NetRomL3L4IntegrationTests
         await using var a = await StartNodeAsync(ch1, ANodeCall, "ANODE");
         await using var b = await StartBridgeNodeAsync(BNodeCall, "BNODE", ("p1", 1, ch1.Attach()), ("p2", 2, ch2.Attach()));
         await using var c = await StartNodeAsync(ch2, CNodeCall, "CNODE");
+        if (throwingAppAdvertSource)
+        {
+            // packet.net#954: the bridge's app callsign check reads the advert source for a
+            // Connect Request; a failure there means "not ours", so the circuit is still forwarded.
+            b.NetRom.AppAdvertSource = () => throw new InvalidOperationException("package discovery failed");
+        }
 
         var generous = TimeSpan.FromSeconds(60);
 
