@@ -372,7 +372,6 @@ public class NetRomL4CircuitViaAxudp
         }
     }
 
-    // Wait for LinBPQ's NODES table to list `alias`.
     /// <summary>
     /// packet-net/packet.net#932 against real LinBPQ: an RHP <c>open</c> with no port, through
     /// the node's real gateway, supervisor and NET/ROM service, resolves BPQ's alias
@@ -479,6 +478,7 @@ public class NetRomL4CircuitViaAxudp
         }
     }
 
+    // Wait for LinBPQ's NODES table to list `alias`.
     private async Task<bool> WaitForBpqToLearnAsync(string alias, CancellationToken outer)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);

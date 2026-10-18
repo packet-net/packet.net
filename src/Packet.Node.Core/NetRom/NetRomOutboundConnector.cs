@@ -75,7 +75,7 @@ public sealed class NetRomOutboundConnector : IOutboundConnector
 
         throw new NetRomNoRouteException(target.ToString(),
             netRom.ConnectEnabled
-                ? $"no NET/ROM route to {target} and no local port to dial it on."
+                ? $"no NET/ROM route to {target}."
                 : $"NET/ROM connect-routing is off, and there is no local port to dial {target} on.");
     }
 }

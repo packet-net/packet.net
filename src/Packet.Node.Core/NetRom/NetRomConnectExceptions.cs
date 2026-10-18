@@ -5,20 +5,29 @@ namespace Packet.Node.Core.NetRom;
 
 /// <summary>
 /// A NET/ROM connect with nowhere to go: the routing table has no usable route to the
-/// destination (none was ever learned, or every next hop has been marked down). Derives from
+/// destination, either because none was ever learned or because this connect tried every
+/// next hop and none of their interlinks came up (<see cref="NextHopsFailed"/>). Derives from
 /// <see cref="InvalidOperationException"/>, which is what this failure was thrown as before it
 /// had a type of its own, so existing handlers still catch it.
 /// </summary>
 public sealed class NetRomNoRouteException : InvalidOperationException
 {
-    public NetRomNoRouteException(string destination, string message)
+    public NetRomNoRouteException(string destination, string message, bool nextHopsFailed = false)
         : base(message)
     {
         Destination = destination;
+        NextHopsFailed = nextHopsFailed;
     }
 
     /// <summary>The destination as it was asked for (a callsign or an alias).</summary>
     public string Destination { get; }
+
+    /// <summary>
+    /// True when the destination was in the table and this connect tried its routes, but the
+    /// interlink to every next hop failed (each was marked down as it failed). A dead neighbour,
+    /// not an unknown destination: BPQ says "Failure with" for it, never "not a node".
+    /// </summary>
+    public bool NextHopsFailed { get; }
 }
 
 /// <summary>

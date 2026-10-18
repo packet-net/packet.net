@@ -1507,7 +1507,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         {
             var liveDest = table.Snapshot().ResolveDestination(destCall.ToString());
             var best = (liveDest is null ? null : SelectActiveRoute(liveDest))
-                ?? throw new NetRomNoRouteException(destCall.ToString(), $"no usable NET/ROM route to {destCall}.");
+                ?? throw (attempt == 0
+                    ? new NetRomNoRouteException(destCall.ToString(), $"no usable NET/ROM route to {destCall}.")
+                    : new NetRomNoRouteException(destCall.ToString(),
+                        $"no NET/ROM next hop to {destCall} answered (all {attempt} tried are down).", nextHopsFailed: true));
 
             try
             {
@@ -1531,7 +1534,8 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             return await OriginateCircuitAsync(destCall, originatingUser, ct).ConfigureAwait(false);
         }
 
-        throw new NetRomNoRouteException(destCall.ToString(), $"no usable NET/ROM route to {destCall} (all next hops are down).");
+        throw new NetRomNoRouteException(destCall.ToString(),
+            $"no NET/ROM next hop to {destCall} answered (all next hops are down).", nextHopsFailed: true);
     }
 
     private async Task<INodeConnection> OriginateCircuitAsync(

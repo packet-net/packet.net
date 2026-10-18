@@ -133,7 +133,12 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         LinkAlreadyUpException => new RhpGatewayException(RhpErrorCode.AlreadyConnected, ex.Message),
         // The port's transport (multipoint AXUDP) has no way to reach the station at all.
         NoRouteToPeerException => new RhpGatewayException(RhpErrorCode.NoRoute, $"No route to {target}: {ex.Message}"),
-        // A portless open (#932) whose destination the NET/ROM table has no usable route to.
+        // A portless open (#932) to a destination that is in the NET/ROM table, but the interlink
+        // to every next hop failed: a dead neighbour, which BPQ reports as "Failure with", so no
+        // answer rather than no route.
+        NetRomNoRouteException { NextHopsFailed: true } =>
+            new RhpGatewayException(RhpErrorCode.NoAnswer, $"Connect to {target} got no answer over NET/ROM: {ex.Message}"),
+        // A portless open whose destination the NET/ROM table does not have at all.
         NetRomNoRouteException => new RhpGatewayException(RhpErrorCode.NoRoute, $"No route to {target}: {ex.Message}"),
         // The L4 circuit's own outcome: the far node's choke (busy) bit, or its retries running out.
         NetRomCircuitFailedException { Reason: NetRomCircuitCloseReason.Refused } =>
