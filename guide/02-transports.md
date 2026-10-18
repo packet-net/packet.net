@@ -171,7 +171,7 @@ await using IAx25Transport transport = await KissTcpClient.ConnectAsync("127.0.0
 ```
 
 `KissTcpClient` adds a couple of robustness features over a bare socket:
-tuned TCP keepalive that notices a dead or half-open link in about 80 seconds
+tuned TCP keepalive that notices a dead or half-open link in about 90 seconds
 without dropping a link that is merely quiet (a 5 minute read-idle timeout
 stands in only where the OS won't take the keepalive settings), and confirmed
 transmit. It implements **both** capabilities -
