@@ -19,10 +19,13 @@ public sealed class M0lteMapReporterTests
     private sealed class FakeState : IM0lteMapStateSource
     {
         public bool Throw { get; set; }
+        public bool PortsDown { get; set; }
 
         public M0lteMapSnapshot Capture() => Throw
             ? throw new InvalidOperationException("supervisor gone")
-            : new M0lteMapSnapshot { ServingPortIds = ["vhf"], Neighbours = [new("GB7AAA", "vhf", 192)] };
+            : PortsDown
+                ? M0lteMapSnapshot.Empty
+                : new M0lteMapSnapshot { ServingPortIds = ["vhf"], Neighbours = [new("GB7AAA", "vhf", 192)] };
     }
 
     private sealed class FakeClient : IM0lteMapClient
@@ -195,6 +198,37 @@ public sealed class M0lteMapReporterTests
 
         h.Client.Posts.Should().ContainSingle();
         (h.Client.Posts[0].At - setAt).Should().BeLessThanOrEqualTo(M0lteMapReporter.ConfigCheckInterval);
+    }
+
+    [Fact]
+    public async Task With_no_port_up_the_report_is_skipped_rather_than_sent_empty()
+    {
+        var h = new Harness(enabled: true);
+        h.State.PortsDown = true;
+
+        await h.RunFor(TimeSpan.FromMinutes(10));
+        h.Client.Posts.Should().BeEmpty();
+        h.Log.Warnings.Should().BeEmpty();
+
+        h.State.PortsDown = false;
+        await h.RunFor(TimeSpan.FromMinutes(1));
+        h.Client.Posts.Should().ContainSingle().Which.Report.Ports.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_refusal_during_an_outage_is_its_own_warning()
+    {
+        var h = new Harness(enabled: true);
+        h.Client.Answers.Enqueue(Down);
+        h.Client.Answers.Enqueue(Down);
+        h.Client.Answers.Enqueue(new M0lteMapPostResult(M0lteMapPostOutcome.Rejected, 400, "bad body"));
+        h.Client.Answers.Enqueue(new M0lteMapPostResult(M0lteMapPostOutcome.Rejected, 400, "bad body"));
+
+        await h.RunFor(TimeSpan.FromMinutes(40));
+
+        h.Log.Warnings.Should().HaveCount(2);
+        h.Log.Warnings[0].Should().Contain("did not get through");
+        h.Log.Warnings[1].Should().Contain("refused the report (HTTP 400: bad body)");
     }
 
     [Fact]

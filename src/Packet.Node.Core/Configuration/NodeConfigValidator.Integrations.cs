@@ -54,28 +54,6 @@ public sealed class OarcConfigValidator : AbstractValidator<OarcConfig>
 }
 
 /// <summary>
-/// Validates the UK packet map block (<see cref="M0lteMapConfig"/>). The comment's length is
-/// checked always (even when disabled), so a disabled-but-edited block cannot hold a value that
-/// would be refused the day it is enabled. The locator is not a config error here: like
-/// <see cref="OarcConfigValidator"/>, a node may enable reporting before its grid is set, and the
-/// reporter says why it is not reporting.
-/// </summary>
-public sealed class M0lteMapConfigValidator : AbstractValidator<M0lteMapConfig>
-{
-    /// <summary>The longest node comment accepted. LinBPQ caps its <c>MAPCOMMENT</c> at 248
-    /// characters; the same ceiling keeps a pasted LinBPQ value valid.</summary>
-    public const int MaxCommentLength = 248;
-
-    public M0lteMapConfigValidator()
-    {
-        RuleFor(m => m.Comment!)
-            .MaximumLength(MaxCommentLength)
-            .When(m => m.Comment is not null)
-            .WithMessage($"m0lteMap.comment must be at most {MaxCommentLength} characters.");
-    }
-}
-
-/// <summary>
 /// Validates one port's UK packet map details (<see cref="PortM0lteMapConfig"/>): a link type
 /// from the collector's set, a positive frequency, non-negative rates, and short text fields.
 /// Checked whether or not map reporting is on, for the same reason as the node block.

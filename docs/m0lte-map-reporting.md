@@ -25,28 +25,27 @@ Read from the LinBPQ source (`CommonCode.c` `SendLocation`, `SendDataToPktMapThr
 
 `src/Packet.Node.Core/M0lteMap/`: `M0lteMapReportBuilder` (pure, golden-tested), `M0lteMapClient` (HTTP), `M0lteMapReporter` (schedule), `NodeM0lteMapStateSource` (the live node).
 
-- **Same:** endpoint path, field names and meanings, `source`, the 2 minute then 15 minute cadence, port numbering (pdn's port number is its position in the config, the number `PORTS` shows), `mode: "ax.25"`, neighbours left out when empty, a port reported only while it is on the air, the per-port opt-out.
+- **Same:** endpoint path, field names and meanings, `source`, the 2 minute then 15 minute cadence, port numbering (pdn's port number is its position in the config, the number `PORTS` shows), `mode: "ax.25"`, every port reported while it is on the air, neighbours only while their link is up (a NET/ROM routing-table neighbour with a live AX.25 session to it on that port, LinBPQ's `L2STATE >= 5`), neighbours left out when there are none.
 - **Different, on purpose:**
   - HTTPS to `https://packetnodes.spots.radio/`, and `User-Agent: pdn/<version>`. Software name `pdn`, as for OARC.
   - Numbers are JSON numbers, as the collector's OpenAPI schema types them.
   - An unset detail is left out instead of LinBPQ's placeholders, which the map would otherwise show as fact (an AXIP port "on FSK at 0 Hz").
   - **No `mheard`.** It is other people's callsigns, and the issue rules them out. This is the one real loss: the map derives "heard" links from it.
-  - Neighbours are the NET/ROM routing table's directly-heard neighbours on reported ports, not "L2 link up right now": LinBPQ keeps its neighbour links up, pdn opens interlinks only when it has traffic, so the heard set is what matches a LinBPQ node on the map. A neighbour on an opted-out port is not sent.
-  - The node comment is sent as `sysopComment`.
-  - A failed delivery (no route, timeout, 429, 5xx) is retried after 1, 2, 4 and 8 minutes, then at the normal interval; a refusal (other 4xx) waits for the next report. The first failure in a run is a warning, later ones are debug, recovery is one information line.
+  - No per-port opt-out (LinBPQ's `SendtoM0LTEMap`) and no node comment: neither was asked for, and LinBPQ never sends `MAPCOMMENT` here. pdn opens interlinks only when it has traffic, so a pdn node may show fewer neighbour links than a LinBPQ node, whose links stay up.
+  - If no port is up at report time, the report is skipped (and tried again a minute later) rather than sent with no ports.
+  - A failed delivery (no route, timeout, 429, 5xx) is retried after 1, 2, 4 and 8 minutes, then at the normal interval; a refusal (other 4xx) waits for the next report. Each kind of failure is one warning per outage (so a refusal after a spell of being unreachable still warns), later ones are debug, recovery is one information line.
   - Location is the locator only: a 6-character `identity.grid` is required, or nothing is sent (one warning). `DIAL+n` frequencies are not supported; a frequency is typed in MHz.
 - **Not sent:** anything from a transport endpoint (hosts, ports, AXUDP peers), any secret (there is none), user callsigns.
 
 ## Config
 
-Node level, `m0lteMap:` (default off): `enabled`, `comment` (up to 248 characters, LinBPQ's `MAPCOMMENT` limit). Per port, `ports[].m0lteMap:` (optional): `enabled` (default true, LinBPQ's `SendtoM0LTEMap`), `linkType` (`RF`, `PrivateNet`, `Internet`, `Other`; unset = Internet for AXUDP, else RF), `frequencyMhz`, `modulation`, `baud`, `bitrate`, `usage`, `comment` (unset = the port id). All read live: an edit changes the next report and nothing else. Panel: Config, UK Packet Map tab; each port's editor on the Ports screen.
+Node level, `m0lteMap:` (default off): `enabled`. Per port, `ports[].m0lteMap:` (optional): `linkType` (`RF`, `PrivateNet`, `Internet`, `Other`; unset = Internet for AXUDP, else RF), `frequencyMhz`, `modulation`, `baud`, `bitrate`, `usage`, `comment` (unset = the port id). All read live: an edit changes the next report and nothing else. Panel: Config, UK Packet Map tab; each port's editor on the Ports screen.
 
 GB7RDG's lines map like this:
 
 ```yaml
 m0lteMap:                 # EnableM0LTEMap=1
   enabled: true
-  comment: https://ukpacketradio.network/nodes:gb7rdg   # MAPCOMMENT=
 ports:
   - id: 2m                # PORTNUM=1, ID=144.9375 FM QPSK3600 IL2Pc
     # ...
@@ -62,4 +61,4 @@ ports:
 
 ## Not verified
 
-No test traffic was sent to the live collector. The schema, the stored GB7RDG record and GB7RDG's raw LinBPQ body were read with GETs of public pages only. Unverified until a real pdn node reports: that the collector accepts JSON numbers where LinBPQ quotes them (the schema says it should), whether the map shows `sysopComment`, and how the map treats a port with no frequency.
+No test traffic was sent to the live collector. The schema, the stored GB7RDG record and GB7RDG's raw LinBPQ body were read with GETs of public pages only. Unverified until a real pdn node reports: that the collector accepts a POST over HTTPS with JSON numbers where LinBPQ quotes them (the schema says it should, and XRouter's accepted reports use bare numbers), and how the map shows a port with no frequency.

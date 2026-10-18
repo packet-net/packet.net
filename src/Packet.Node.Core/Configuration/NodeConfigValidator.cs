@@ -106,7 +106,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
 
         RuleFor(c => c.Oarc).NotNull().SetValidator(new OarcConfigValidator());
 
-        RuleFor(c => c.M0lteMap).NotNull().SetValidator(new M0lteMapConfigValidator());
+        RuleFor(c => c.M0lteMap).NotNull();
 
         RuleFor(c => c.Mqtt).NotNull().SetValidator(new MqttConfigValidator());
 

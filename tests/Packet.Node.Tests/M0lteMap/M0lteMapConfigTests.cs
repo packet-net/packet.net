@@ -17,7 +17,6 @@ public sealed class M0lteMapConfigTests
           grid: IO91lk
         m0lteMap:
           enabled: true
-          comment: https://ukpacketradio.network/nodes:gb7rdg
         ports:
           - id: 2m
             transport:
@@ -43,13 +42,6 @@ public sealed class M0lteMapConfigTests
               baud: 300
               bitrate: 600
               usage: Mixed
-          - id: lab
-            transport:
-              kind: kiss-tcp
-              host: 127.0.0.1
-              port: 8102
-            m0lteMap:
-              enabled: false
           - id: plain
             transport:
               kind: kiss-tcp
@@ -65,7 +57,7 @@ public sealed class M0lteMapConfigTests
         var config = NodeConfigYaml.Parse(Gb7rdgYaml);
 
         Validator.Validate(config).IsValid.Should().BeTrue();
-        config.M0lteMap.Should().Be(new M0lteMapConfig { Enabled = true, Comment = "https://ukpacketradio.network/nodes:gb7rdg" });
+        config.M0lteMap.Should().Be(new M0lteMapConfig { Enabled = true });
         config.Ports[0].M0lteMap.Should().Be(new PortM0lteMapConfig
         {
             LinkType = M0lteMapLinkType.RF,
@@ -78,9 +70,7 @@ public sealed class M0lteMapConfigTests
         });
         config.Ports[1].M0lteMap!.LinkType.Should().BeNull();
         config.Ports[1].M0lteMap!.FrequencyMhz.Should().Be(7.0516m);
-        config.Ports[1].M0lteMap!.Enabled.Should().BeTrue("a port is on the map unless it opts out, as in LinBPQ");
-        config.Ports[2].M0lteMap!.Enabled.Should().BeFalse();
-        config.Ports[3].M0lteMap.Should().BeNull();
+        config.Ports[2].M0lteMap.Should().BeNull();
     }
 
     [Fact]
@@ -119,7 +109,6 @@ public sealed class M0lteMapConfigTests
 
         config.M0lteMap.Should().Be(new M0lteMapConfig());
         config.M0lteMap.Enabled.Should().BeFalse();
-        config.M0lteMap.Comment.Should().BeNull();
     }
 
     [Theory]
@@ -190,20 +179,6 @@ public sealed class M0lteMapConfigTests
             """);
 
         act.Should().Throw<Exception>();
-    }
-
-    [Fact]
-    public void The_node_comment_is_capped_at_LinBpqs_MAPCOMMENT_length()
-    {
-        NodeConfig With(string comment) => new()
-        {
-            Identity = new Identity { Callsign = "M0LTE-1" },
-            M0lteMap = new M0lteMapConfig { Comment = comment },
-        };
-
-        Validator.Validate(With(new string('a', 248))).IsValid.Should().BeTrue();
-        Validator.Validate(With(new string('a', 249))).Errors
-            .Should().Contain(e => e.ErrorMessage.Contains("m0lteMap.comment", StringComparison.Ordinal));
     }
 
     [Fact]

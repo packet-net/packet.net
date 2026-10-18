@@ -24,10 +24,6 @@ public sealed record M0lteMapNodeData
     [JsonPropertyName("software")]
     public required M0lteMapSoftware Software { get; init; }
 
-    /// <summary>The operator's note for the map (<see cref="M0lteMapConfig.Comment"/>).</summary>
-    [JsonPropertyName("sysopComment")]
-    public string? SysopComment { get; init; }
-
     /// <summary>Always <c>ReportedByNode</c> (the collector's other value is for crawled data).</summary>
     [JsonPropertyName("source")]
     public string Source { get; init; } = "ReportedByNode";
@@ -36,8 +32,8 @@ public sealed record M0lteMapNodeData
     [JsonPropertyName("ports")]
     public required IReadOnlyList<M0lteMapPort> Ports { get; init; }
 
-    /// <summary>The node's NET/ROM neighbours on reported ports. Null (left out) when there are
-    /// none, as LinBPQ does.</summary>
+    /// <summary>The NET/ROM neighbours the node has an L2 link up to right now. Null (left out)
+    /// when there are none, as LinBPQ does.</summary>
     [JsonPropertyName("neighbours")]
     public IReadOnlyList<M0lteMapNeighbour>? Neighbours { get; init; }
 }
@@ -128,15 +124,15 @@ public sealed record M0lteMapSnapshot
     /// <summary>The ids of the ports that are serving (up or degraded) right now.</summary>
     public IReadOnlyCollection<string> ServingPortIds { get; init; } = [];
 
-    /// <summary>The node's directly-heard NET/ROM neighbours.</summary>
+    /// <summary>The NET/ROM neighbours the node has an L2 link up to right now.</summary>
     public IReadOnlyList<M0lteMapNeighbourState> Neighbours { get; init; } = [];
 
     /// <summary>An empty snapshot (nothing serving, no neighbours).</summary>
     public static M0lteMapSnapshot Empty { get; } = new();
 }
 
-/// <summary>A NET/ROM neighbour as the node knows it: callsign, the port id it was heard on, and
-/// the quality the node assigns it there.</summary>
+/// <summary>A NET/ROM neighbour with a link up: callsign, the port id the link is on, and the
+/// quality the node assigns that neighbour there.</summary>
 public sealed record M0lteMapNeighbourState(string Callsign, string PortId, int Quality);
 
 /// <summary>The seam between the map reporter and the running node (so the reporter is tested
@@ -165,14 +161,11 @@ public static class M0lteMapReportBuilder
     /// 6-character Maidenhead <see cref="Identity.Grid"/>).
     /// </summary>
     /// <remarks>
-    /// <para>A port is reported when it is serving, and its <see cref="PortConfig.M0lteMap"/> does
-    /// not opt it out. Unset details are left out; LinBPQ fills them with placeholders
-    /// (frequency 0, modulation FSK, usage Access) that the map would show as fact.</para>
-    /// <para>Neighbours are the NET/ROM routing table's directly-heard neighbours on reported
-    /// ports. LinBPQ lists the neighbours whose L2 link is up; its neighbour links stay up, while
-    /// pdn opens interlinks only when there is traffic to carry, so the heard set is the one that
-    /// matches what the map shows for a LinBPQ node. A neighbour on an opted-out port is not
-    /// reported, so opting a port out hides who is on it too.</para>
+    /// <para>Every serving port is reported, as LinBPQ reports every active port. Unset details
+    /// are left out; LinBPQ fills them with placeholders (frequency 0, modulation FSK, usage
+    /// Access) that the map would show as fact.</para>
+    /// <para>Neighbours are the snapshot's: the NET/ROM neighbours with an L2 link up now, as
+    /// LinBPQ sends (<c>L2STATE &gt;= 5</c>), on reported ports.</para>
     /// <para>The heard list LinBPQ also sends (every station heard, with packet counts and
     /// times) is never built here: those are other people's callsigns.</para>
     /// </remarks>
@@ -196,7 +189,7 @@ public static class M0lteMapReportBuilder
         {
             var port = config.Ports[i];
             var map = port.M0lteMap;
-            if (!serving.Contains(port.Id) || map is { Enabled: false })
+            if (!serving.Contains(port.Id))
             {
                 continue;
             }
@@ -234,7 +227,6 @@ public static class M0lteMapReportBuilder
             NodeAlias = Text(config.Identity.Alias),
             Location = new M0lteMapLocation { Locator = grid },
             Software = new M0lteMapSoftware { Name = SoftwareName, Version = version },
-            SysopComment = Text(config.M0lteMap.Comment),
             Ports = ports,
             Neighbours = neighbours.Count == 0 ? null : neighbours,
         };

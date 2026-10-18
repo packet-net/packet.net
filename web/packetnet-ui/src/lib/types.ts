@@ -233,7 +233,7 @@ export interface PortConfig {
   // the config file; no screen edits it, so it must ride through every port save untouched
   // (server: Packet.Node.Core.Configuration.PortConfig.MqttInstance).
   mqttInstance?: string | null;
-  // UK packet map details for this port (BPQ M0LTEMapInfo + SendtoM0LTEMap). Null/absent = the
+  // UK packet map details for this port (BPQ M0LTEMapInfo). Null/absent = the
   // port is reported with its derived link type and its id as the comment, nothing else.
   // Only read when the node-level m0lteMap.enabled is on
   // (server: Packet.Node.Core.Configuration.PortConfig.M0lteMap).
@@ -241,11 +241,10 @@ export interface PortConfig {
 }
 // The link kinds the UK packet map knows (server: Packet.Node.Core.Configuration.M0lteMapLinkType).
 export type M0lteMapLinkType = "RF" | "PrivateNet" | "Internet" | "Other";
-// One port's UK packet map details (server: PortM0lteMapConfig). Every field but `enabled` is
-// optional; an unset one is left out of the report. linkType null = derived (AXUDP -> Internet,
-// else RF); comment null = the port id.
+// One port's UK packet map details (server: PortM0lteMapConfig). Every field is optional; an
+// unset one is left out of the report. linkType null = derived (AXUDP -> Internet, else RF);
+// comment null = the port id.
 export interface PortM0lteMapConfig {
-  enabled: boolean;
   linkType?: M0lteMapLinkType | null;
   frequencyMhz?: number | null;
   modulation?: string | null;
@@ -349,10 +348,9 @@ export interface Inp3Config {
 //   sessionStatusIntervalSecs - link/circuit status refresh cadence.
 // UK packet map reporting (server: Packet.Node.Core.Configuration.M0lteMapConfig) - the pdn
 // form of BPQ's EnableM0LTEMap. Default-off; when on, the node POSTs a snapshot of itself to the
-// map every 15 minutes. `comment` is a short note shown with the node (sent as sysopComment).
+// map every 15 minutes.
 export interface M0lteMapConfig {
   enabled: boolean;
-  comment?: string | null;
 }
 export interface OarcConfig {
   enabled: boolean;

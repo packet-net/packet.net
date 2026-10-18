@@ -17,7 +17,7 @@
 import { describe, it, expect } from "vitest";
 import { NODE_CONFIG } from "@/lib/mock";
 import type { AxudpMultipointTransport, PortConfig, TransportConfig } from "@/lib/types";
-import { collapseM0lteMap, portDraftToConfig, radioPairsWith, type PortDraft } from "@/screens/ports";
+import { collapseM0lteMap, intOrNull, portDraftToConfig, radioPairsWith, type PortDraft } from "@/screens/ports";
 
 // The PUT /config wire path is JSON; this is the same shape the server deserialises.
 function wireRoundTrip<T>(value: T): T {
@@ -370,17 +370,22 @@ describe("the save body is the loaded port plus the operator's edits", () => {
     const port: PortConfig = {
       id: "2m", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8910 },
       profile: null, ax25: null, kiss: null, beacon: null,
-      m0lteMap: { enabled: true, linkType: "RF", frequencyMhz: 144.9375, modulation: "QPSK", baud: 1800, bitrate: 3600, usage: "Mixed", comment: "144.9375 FM QPSK3600 IL2Pc" },
+      m0lteMap: { linkType: "RF", frequencyMhz: 144.9375, modulation: "QPSK", baud: 1800, bitrate: 3600, usage: "Mixed", comment: "144.9375 FM QPSK3600 IL2Pc" },
     };
     expect(editorRoundTrip(port).m0lteMap).toEqual(port.m0lteMap);
     const edited = editorRoundTrip(port, (d) => ({ ...d, m0lteMap: { ...d.m0lteMap!, usage: "Backbone" } }));
     expect(edited.m0lteMap).toEqual({ ...port.m0lteMap, usage: "Backbone" });
   });
 
-  it("a map block left at its defaults collapses to none, an opt-out does not", () => {
-    expect(collapseM0lteMap({ enabled: true, frequencyMhz: null, comment: "" })).toBeNull();
-    expect(collapseM0lteMap({ enabled: false })).toEqual({ enabled: false });
-    expect(collapseM0lteMap({ enabled: true, usage: "Mixed" })).toEqual({ enabled: true, usage: "Mixed" });
+  it("the map's baud and bit rate inputs only ever produce whole numbers", () => {
+    expect(intOrNull("1800")).toBe(1800);
+    expect(intOrNull("1.5")).toBe(1);
+    expect(intOrNull("")).toBeNull();
+  });
+
+  it("a map block left blank collapses to none", () => {
+    expect(collapseM0lteMap({ frequencyMhz: null, comment: "" })).toBeNull();
+    expect(collapseM0lteMap({ usage: "Mixed" })).toEqual({ usage: "Mixed" });
   });
 
   it("mqttInstance survives an ordinary edit of an ordinary port", () => {

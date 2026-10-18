@@ -130,7 +130,6 @@ public static class NodeConfigArbitraries
     private static Gen<PortM0lteMapConfig?> PortM0lteMapGen() =>
         Gen.OneOf(
             Gen.Constant<PortM0lteMapConfig?>(null),
-            from enabled in Gen.Elements(true, false)
             from type in Gen.Elements<M0lteMapLinkType?>(null, M0lteMapLinkType.RF, M0lteMapLinkType.PrivateNet, M0lteMapLinkType.Internet, M0lteMapLinkType.Other)
             from mhz in Gen.Elements<decimal?>(null, 144.9375m, 432.625m, 7.0516m, 50.650m, 10.1473m)
             from modulation in Gen.Elements<string?>(null, "QPSK", "GFSK", "AFSK1200")
@@ -140,7 +139,6 @@ public static class NodeConfigArbitraries
             from comment in Gen.Elements<string?>(null, "144.9375 FM QPSK3600 IL2Pc", "OARC-AXIP")
             select (PortM0lteMapConfig?)new PortM0lteMapConfig
             {
-                Enabled = enabled,
                 LinkType = type,
                 FrequencyMhz = mhz,
                 Modulation = modulation,
@@ -152,8 +150,7 @@ public static class NodeConfigArbitraries
 
     private static Gen<M0lteMapConfig> M0lteMapGen() =>
         from enabled in Gen.Elements(false, true)
-        from comment in Gen.Elements<string?>(null, "https://ukpacketradio.network/nodes:gb7rdg", "Hilltop node, 2m and 70cm")
-        select new M0lteMapConfig { Enabled = enabled, Comment = comment };
+        select new M0lteMapConfig { Enabled = enabled };
 
     private static Gen<NetRomConfig> NetRomGen() =>
         Gen.OneOf(

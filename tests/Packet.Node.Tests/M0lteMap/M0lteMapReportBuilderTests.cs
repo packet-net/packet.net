@@ -73,11 +73,11 @@ public sealed class M0lteMapReportBuilderTests
     /// <summary>GB7RDG's bpq32.cfg in pdn terms: the same nine ports in the same order (pdn has
     /// no ARDOP or Telnet port, so 5 and 7 are placeholders that are not on the air), the same
     /// <c>M0LTEMapInfo</c> values (the last line wins where a LinBPQ port has two, as in LinBPQ),
-    /// <c>MAPCOMMENT</c> as the node comment.</summary>
+    /// <c>MAPCOMMENT</c> is not part of this report in LinBPQ either.</summary>
     private static NodeConfig Gb7rdg() => new()
     {
         Identity = new Identity { Callsign = "GB7RDG", Alias = "READNG", Grid = "IO91lk" },
-        M0lteMap = new M0lteMapConfig { Enabled = true, Comment = "https://ukpacketradio.network/nodes:gb7rdg" },
+        M0lteMap = new M0lteMapConfig { Enabled = true },
         Ports =
         [
             Kiss("2m", 8910, Info(M0lteMapLinkType.RF, 144.9375m, "QPSK", 1800, 3600, "Mixed", "144.9375 FM QPSK3600 IL2Pc")),
@@ -118,7 +118,7 @@ public sealed class M0lteMapReportBuilderTests
     {
         const string golden =
             """{"nodeAlias":"READNG","location":{"locator":"IO91lk"},"software":{"name":"pdn","version":"0.68.0"}"""
-            + ""","sysopComment":"https://ukpacketradio.network/nodes:gb7rdg","source":"ReportedByNode","ports":["""
+            + ""","source":"ReportedByNode","ports":["""
             + """{"id":"1","linkType":"RF","freq":144937500,"mode":"ax.25","modulation":"QPSK","baud":1800,"bitrate":3600,"usage":"Mixed","comment":"144.9375 FM QPSK3600 IL2Pc"},"""
             + """{"id":"2","linkType":"RF","freq":432625000,"mode":"ax.25","modulation":"GFSK","baud":9600,"bitrate":9600,"usage":"Mixed","comment":"432.625 GFSK9600 IL2P+CRC"},"""
             + """{"id":"3","linkType":"RF","freq":7051600,"mode":"ax.25","modulation":"BPSK300","baud":300,"bitrate":600,"usage":"Mixed","comment":"7051.6kHz BPSK300 IL2P+CRC"},"""
@@ -205,6 +205,7 @@ public sealed class M0lteMapReportBuilderTests
         report.Select(kv => kv.Key).Should().BeSubsetOf(nodeData);
         report.ContainsKey("mheard").Should().BeFalse("the heard list is other stations' callsigns");
         report.ContainsKey("contact").Should().BeFalse();
+        report.ContainsKey("sysopComment").Should().BeFalse("LinBPQ never sends it to this service");
         foreach (var p in report["ports"]!.AsArray())
         {
             p!.AsObject().Select(kv => kv.Key).Should().BeSubsetOf(port);
@@ -245,7 +246,7 @@ public sealed class M0lteMapReportBuilderTests
     }
 
     [Fact]
-    public void A_port_that_is_not_on_the_air_or_is_opted_out_is_left_out_and_so_are_its_neighbours()
+    public void A_port_that_is_not_on_the_air_is_left_out_and_so_are_its_neighbours()
     {
         var config = new NodeConfig
         {
@@ -254,19 +255,18 @@ public sealed class M0lteMapReportBuilderTests
             [
                 Kiss("vhf", 8001),
                 Kiss("down", 8002),
-                Kiss("private", 8003, new PortM0lteMapConfig { Enabled = false, FrequencyMhz = 145.0m }),
                 Kiss("uhf", 8004),
             ],
         };
         var snapshot = new M0lteMapSnapshot
         {
-            ServingPortIds = ["vhf", "private", "uhf"],
-            Neighbours = [new("GB7AAA", "vhf", 200), new("GB7BBB", "private", 150), new("GB7CCC", "down", 100)],
+            ServingPortIds = ["vhf", "uhf"],
+            Neighbours = [new("GB7AAA", "vhf", 200), new("GB7CCC", "down", 100)],
         };
 
         var report = M0lteMapReportBuilder.Build(config, snapshot, Version)!;
 
-        report.Ports.Select(p => (p.Id, p.Comment)).Should().Equal(("1", "vhf"), ("4", "uhf"));
+        report.Ports.Select(p => (p.Id, p.Comment)).Should().Equal(("1", "vhf"), ("3", "uhf"));
         report.Neighbours!.Select(n => n.Node).Should().Equal("GB7AAA");
     }
 

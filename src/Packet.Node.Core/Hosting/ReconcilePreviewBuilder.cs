@@ -137,11 +137,9 @@ public static class ReconcilePreviewBuilder
         // edit does, since turning it on starts sending this node's details to a public map.
         if (!from.M0lteMap.Equals(to.M0lteMap))
         {
-            var summary = from.M0lteMap.Enabled == to.M0lteMap.Enabled
-                ? "UK packet map comment changed - the next map report uses it."
-                : to.M0lteMap.Enabled
-                    ? "UK packet map reporting turned on - the first report goes in about two minutes, then every 15 minutes."
-                    : "UK packet map reporting turned off - no further reports are sent.";
+            var summary = to.M0lteMap.Enabled
+                ? "UK packet map reporting turned on - the first report goes in about two minutes, then every 15 minutes."
+                : "UK packet map reporting turned off - no further reports are sent.";
             live.Add(new ReconcileChange("m0lteMap", Live, summary));
         }
 

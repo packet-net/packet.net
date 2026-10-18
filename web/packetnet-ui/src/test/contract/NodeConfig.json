@@ -78,7 +78,6 @@
       "nodesPaclen": 160,
       "mqttInstance": "2m",
       "m0lteMap": {
-        "enabled": true,
         "linkType": "RF",
         "frequencyMhz": 144.9375,
         "modulation": "QPSK",
@@ -448,8 +447,7 @@
     "sessionStatusIntervalSecs": 60
   },
   "m0lteMap": {
-    "enabled": true,
-    "comment": "https://ukpacketradio.network/nodes:gb7rdg"
+    "enabled": true
   },
   "mqtt": {
     "enabled": false,

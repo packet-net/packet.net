@@ -167,8 +167,7 @@ public sealed record PortConfig
     public string? MqttInstance { get; init; }
 
     /// <summary>
-    /// Optional per-port UK packet map details (LinBPQ's <c>M0LTEMapInfo</c> and
-    /// <c>SendtoM0LTEMap</c>): link type, frequency, modulation, baud, bit rate, usage and the
+    /// Optional per-port UK packet map details (LinBPQ's <c>M0LTEMapInfo</c>): link type, frequency, modulation, baud, bit rate, usage and the
     /// port's description on the map. Only read when <see cref="NodeConfig.M0lteMap"/> is
     /// enabled. Null (the default) = the port is reported with what the node can derive (its
     /// link type and id) and nothing else. Read live per report; never an on-air change. See

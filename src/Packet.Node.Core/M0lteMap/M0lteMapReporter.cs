@@ -17,9 +17,9 @@ namespace Packet.Node.Core.M0lteMap;
 /// <b>Never load-bearing.</b> Each report is a whole snapshot, so a lost one is simply replaced by
 /// the next. A report that could not be delivered (no route, timeout, 429, 5xx) is retried after
 /// 1, 2, 4 and 8 minutes and then at the normal interval; one the collector refused (another 4xx)
-/// waits for the next scheduled report. The first failure in a run is a warning, the rest are
-/// debug lines, and the recovery is one information line, so a collector outage cannot flood the
-/// journal.
+/// waits for the next scheduled report. Each kind of failure is one warning per outage, the rest
+/// are debug lines, and the recovery is one information line, so a collector outage cannot flood
+/// the journal. A report with no port up is skipped rather than sent empty.
 /// </para>
 /// <para>
 /// The loop is one <see cref="TickAsync"/> per wake-up, driven by <see cref="TimeProvider"/>; tests
@@ -54,7 +54,10 @@ public sealed partial class M0lteMapReporter : BackgroundService
     // Touched only by the single loop (or a test driving TickAsync), so no locking.
     private DateTimeOffset? nextDue;
     private int consecutiveFailures;
-    private bool failing;
+    // The kind of failure the current outage is in, or null when the last report got through. A
+    // warning is logged when an outage starts and again only if its kind changes (unreachable to
+    // refused, or back), so a new kind of problem always reaches the journal once.
+    private M0lteMapPostOutcome? failing;
     private bool everAccepted;
     private bool warnedNoLocator;
 
@@ -124,7 +127,7 @@ public sealed partial class M0lteMapReporter : BackgroundService
             }
             nextDue = null;
             consecutiveFailures = 0;
-            failing = false;
+            failing = null;
             return ConfigCheckInterval;
         }
 
@@ -172,13 +175,21 @@ public sealed partial class M0lteMapReporter : BackgroundService
         }
         warnedNoLocator = false;
 
+        if (report.Ports.Count == 0)
+        {
+            // Every port is down (or the node is still starting). A report now would tell the map
+            // the node has no ports for the next quarter of an hour; skip it and look again soon.
+            LogNoPortsUp();
+            return RetryDelays[0];
+        }
+
         var call = current.Identity.Callsign;
         var result = await client.PostAsync(call, report, ct).ConfigureAwait(false);
         switch (result.Outcome)
         {
             case M0lteMapPostOutcome.Accepted:
                 var neighbours = report.Neighbours?.Count ?? 0;
-                if (failing || !everAccepted)
+                if (failing is not null || !everAccepted)
                 {
                     LogReported(call, report.Ports.Count, neighbours);
                 }
@@ -187,12 +198,12 @@ public sealed partial class M0lteMapReporter : BackgroundService
                     LogReportedQuietly(call, report.Ports.Count, neighbours);
                 }
                 everAccepted = true;
-                failing = false;
+                failing = null;
                 consecutiveFailures = 0;
                 return ReportInterval;
 
             case M0lteMapPostOutcome.Rejected:
-                if (!failing)
+                if (failing != M0lteMapPostOutcome.Rejected)
                 {
                     LogRejected(result.StatusCode ?? 0, result.Detail ?? "no reason given", (int)ReportInterval.TotalMinutes);
                 }
@@ -200,7 +211,7 @@ public sealed partial class M0lteMapReporter : BackgroundService
                 {
                     LogRejectedAgain(result.StatusCode ?? 0, result.Detail ?? "no reason given");
                 }
-                failing = true;
+                failing = M0lteMapPostOutcome.Rejected;
                 consecutiveFailures = 0;
                 return ReportInterval;
 
@@ -211,7 +222,7 @@ public sealed partial class M0lteMapReporter : BackgroundService
                     delay = ReportInterval;
                 }
                 var reason = result.StatusCode is { } status ? $"HTTP {status}" : result.Detail ?? "unreachable";
-                if (!failing)
+                if (failing != M0lteMapPostOutcome.TransportError)
                 {
                     LogFailed(reason, (int)delay.TotalMinutes);
                 }
@@ -219,7 +230,7 @@ public sealed partial class M0lteMapReporter : BackgroundService
                 {
                     LogFailedAgain(reason, (int)delay.TotalMinutes);
                 }
-                failing = true;
+                failing = M0lteMapPostOutcome.TransportError;
                 consecutiveFailures++;
                 return delay;
         }
@@ -263,6 +274,10 @@ public sealed partial class M0lteMapReporter : BackgroundService
     [LoggerMessage(Level = LogLevel.Debug,
         Message = "UK packet map: could not read the node's ports and neighbours ({Reason}); skipped this report, trying again in a minute.")]
     private partial void LogCaptureFault(string reason);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "UK packet map: no port is up, so this report was skipped; looking again in a minute.")]
+    private partial void LogNoPortsUp();
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "UK packet map: a reporting pass faulted ({Reason}); trying again shortly.")]
     private partial void LogTickFault(string reason);

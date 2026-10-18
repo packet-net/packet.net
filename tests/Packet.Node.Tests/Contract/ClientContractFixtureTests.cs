@@ -386,7 +386,7 @@ public sealed class ClientContractFixtureTests
                 MqttInstance = "2m",
                 M0lteMap = new PortM0lteMapConfig
                 {
-                    Enabled = true, LinkType = M0lteMapLinkType.RF, FrequencyMhz = 144.9375m, Modulation = "QPSK",
+                    LinkType = M0lteMapLinkType.RF, FrequencyMhz = 144.9375m, Modulation = "QPSK",
                     Baud = 1800, Bitrate = 3600, Usage = "Mixed", Comment = "144.9375 FM QPSK3600 IL2Pc",
                 },
             },
@@ -459,7 +459,7 @@ public sealed class ClientContractFixtureTests
         Beacon = new BeaconConfig { Enabled = true, IntervalMinutes = 30, Text = "{node} pdn node" },
         Tailscale = new TailscaleConfig { Enabled = false, AuthKey = null, AuthKeyFile = null, Hostname = "pdn", Tags = ["tag:pdn"], StateDir = "/var/lib/packetnet/tsnet", Target = "127.0.0.1:8080", Funnel = false },
         Oarc = new OarcConfig { Enabled = false },
-        M0lteMap = new M0lteMapConfig { Enabled = true, Comment = "https://ukpacketradio.network/nodes:gb7rdg" },
+        M0lteMap = new M0lteMapConfig { Enabled = true },
         Mcp = new McpConfig { Oauth = new McpOauthConfig { Issuer = "https://pdn.m0lte.uk", AllowDynamicRegistration = false } },
         Ardop = new ArdopConfig { Enabled = false, Flex = null },
         Paging = new PagingConfig { Enabled = false, Flex = null },

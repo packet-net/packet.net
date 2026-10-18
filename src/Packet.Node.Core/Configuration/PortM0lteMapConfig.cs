@@ -21,10 +21,9 @@ public enum M0lteMapLinkType
 
 /// <summary>
 /// What one port tells the UK packet map (the pdn form of LinBPQ's per-port
-/// <c>M0LTEMapInfo=Type,Freq,Modulation,Baud,Bitrate,Usage</c> line plus its
-/// <c>SendtoM0LTEMap</c> switch). Every field is optional: a port with no block, or a block
-/// that leaves a field unset, is still reported when map reporting is on, with the unset
-/// fields left out of the report rather than filled with placeholders. See
+/// <c>M0LTEMapInfo=Type,Freq,Modulation,Baud,Bitrate,Usage</c> line). Every field is optional:
+/// every serving port is reported when map reporting is on, and a field left unset is left out
+/// of the report rather than filled with a placeholder. See
 /// <c>docs/m0lte-map-reporting.md</c>.
 /// </summary>
 /// <remarks>
@@ -33,11 +32,6 @@ public enum M0lteMapLinkType
 /// </remarks>
 public sealed record PortM0lteMapConfig
 {
-    /// <summary>Whether this port appears on the map at all (LinBPQ's <c>SendtoM0LTEMap</c>).
-    /// Default <c>true</c>, as in LinBPQ: once map reporting is on, every serving port is
-    /// listed unless it opts out here.</summary>
-    public bool Enabled { get; init; } = true;
-
     /// <summary>The kind of link (the first <c>M0LTEMapInfo</c> field). Null = derived from
     /// the transport: AXUDP ports are <see cref="M0lteMapLinkType.Internet"/>, everything else
     /// <see cref="M0lteMapLinkType.RF"/>.</summary>

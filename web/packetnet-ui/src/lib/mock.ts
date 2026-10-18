@@ -85,7 +85,7 @@ export const NODE_CONFIG: NodeConfig = {
     reportTraces: false, tracesRfOnly: true, publishExactPosition: false,
     statusIntervalSecs: 300, sessionStatusIntervalSecs: 60,
   },
-  m0lteMap: { enabled: false, comment: null },
+  m0lteMap: { enabled: false },
   mqtt: {
     enabled: false, brokerHost: "", brokerPort: 1883, useTls: false,
     username: null, password: null, topicPrefix: "", nodeName: null, base64: false, qos: 2, rfOnly: false,

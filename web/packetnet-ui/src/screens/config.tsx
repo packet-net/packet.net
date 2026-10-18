@@ -923,7 +923,7 @@ function OarcSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: u
 }
 
 // ---------- UK packet map (BPQ's EnableM0LTEMap) -----------
-// The node POSTs a snapshot of itself (alias, locator, ports, NET/ROM neighbours) to the UK
+// The node POSTs a snapshot of itself (alias, locator, ports, live NET/ROM neighbours) to the UK
 // packet map every 15 minutes. Outbound only, off by default, read live by the reporter. Each
 // port's map details (frequency, modulation, rates, usage) are on the Ports screen. Like the
 // OARC map, nothing is reported without a valid 6-character grid, so say so here.
@@ -937,7 +937,7 @@ function M0lteMapSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, va
           <div className="min-w-0">
             <Label className="text-foreground">Report to the UK packet map</Label>
             <p className="mt-1.5 max-w-2xl text-xs leading-snug text-muted-foreground">
-              Puts this node on nodes.ukpacketradio.network, as BPQ&apos;s EnableM0LTEMap does: its alias, locator, ports and NET/ROM neighbours, every 15 minutes. Never the callsigns of stations it hears. Off by default.
+              Puts this node on nodes.ukpacketradio.network, as BPQ&apos;s EnableM0LTEMap does: its alias, locator, ports and the NET/ROM neighbours it has a link up to, every 15 minutes. Never the callsigns of stations it hears. Off by default.
             </p>
           </div>
           <div className="shrink-0 pt-0.5"><Switch checked={m.enabled} onChange={(v) => set("m0lteMap.enabled", v, "live")} /></div>
@@ -949,18 +949,7 @@ function M0lteMapSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, va
           <p className="mt-1 text-xs leading-snug opacity-90">Set a 6-character Maidenhead grid in Identity - the node is not reported without one.</p>
         </div>
       )}
-      <div className="max-w-xl">
-        <Field label="Map comment" info="A short note shown with the node on the map, such as a link to its page (BPQ's MAPCOMMENT). Up to 248 characters.">
-          <Input
-            value={m.comment ?? ""}
-            maxLength={248}
-            placeholder="https://ukpacketradio.network/nodes:..."
-            onChange={(e) => set("m0lteMap.comment", e.target.value === "" ? null : e.target.value, "live")}
-            className="font-mono text-xs"
-          />
-        </Field>
-        <p className="mt-2 text-xs text-muted-foreground">Each port&apos;s frequency, modulation and usage are set in that port&apos;s editor on the Ports screen.</p>
-      </div>
+      <p className="text-xs text-muted-foreground">Each port&apos;s frequency, modulation and usage are set in that port&apos;s editor on the Ports screen.</p>
     </section>
   );
 }
