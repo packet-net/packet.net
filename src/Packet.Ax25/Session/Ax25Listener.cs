@@ -404,8 +404,11 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// The peer's <see cref="Ax25Session"/> once Connected. Throws
     /// <see cref="TimeoutException"/> if the connect doesn't complete
     /// within figc4.1's N2 × T1V budget; throws
-    /// <see cref="InvalidOperationException"/> if the SDL responds with
-    /// DM (peer refused) or torn down before the budget expired.
+    /// <see cref="Ax25ConnectFailedException"/> (an <see cref="InvalidOperationException"/>)
+    /// if the link went down first, with the reason: the peer answered DM
+    /// (<see cref="Ax25ConnectFailure.Refused"/>), T1 expired N2 times
+    /// (<see cref="Ax25ConnectFailure.NoAnswer"/>), or anything else
+    /// (<see cref="Ax25ConnectFailure.LinkReset"/>).
     /// </returns>
     public Task<Ax25Session> ConnectAsync(Callsign remote, CancellationToken ct = default)
         => ConnectAsync(remote, MyCall, ct);
@@ -665,7 +668,12 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, budgetCts.Token);
 
         // Drain queued upward signals: return the session on DL-CONNECT-confirm,
-        // throw on teardown, or null if nothing decisive is queued yet.
+        // throw on teardown, or null if nothing decisive is queued yet. The teardown says
+        // why (#849): Awaiting Connection's RC == N2 arm raises DL-ERROR indication (G)
+        // just before its DL-DISCONNECT indication, while its DM arm raises the indication
+        // alone, so a G seen during this dial marks retry exhaustion and its absence a DM.
+        // A DL-DISCONNECT confirm is this end's own disconnect, which is neither.
+        bool retriesExhausted = false;
         Ax25Session? DrainForConfirm()
         {
             while (cached.Signals.TryDequeue(out var sig))
@@ -677,11 +685,16 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                             cached.Session.Context.IsExtended ? "v2.2/mod-128" : "v2.0/mod-8");
                         RaiseSessionAccepted(cached.Session);
                         return cached.Session;
+                    case DataLinkErrorIndication { Code: "G" }:
+                        retriesExhausted = true;
+                        break;
                     case DataLinkDisconnectIndication:
                     case DataLinkDisconnectConfirm:
-                        LogConnectRefused(portName, local.ToString(), remote.ToString());
-                        throw new InvalidOperationException(
-                            $"outbound connect to {remote} torn down before DL-CONNECT-confirm arrived (peer refused or link reset).");
+                        var failure = sig is DataLinkDisconnectConfirm
+                            ? Ax25ConnectFailure.LinkReset
+                            : retriesExhausted ? Ax25ConnectFailure.NoAnswer : Ax25ConnectFailure.Refused;
+                        LogConnectFailed(portName, local.ToString(), remote.ToString(), DescribeFailure(failure));
+                        throw new Ax25ConnectFailedException(remote, failure);
                 }
             }
             return null;
@@ -2244,8 +2257,15 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     [LoggerMessage(EventId = 5206, Level = LogLevel.Warning, Message = "AX.25 [{Port}] connect {Local} -> {Remote} timed out after {Seconds}s")]
     private partial void LogConnectTimeout(string port, string local, string remote, string seconds);
 
-    [LoggerMessage(EventId = 5207, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} refused (DM / link reset)")]
-    private partial void LogConnectRefused(string port, string local, string remote);
+    [LoggerMessage(EventId = 5207, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} failed: {Reason}")]
+    private partial void LogConnectFailed(string port, string local, string remote, string reason);
+
+    private static string DescribeFailure(Ax25ConnectFailure failure) => failure switch
+    {
+        Ax25ConnectFailure.Refused => "refused (DM)",
+        Ax25ConnectFailure.NoAnswer => "no answer (T1 expired N2 times)",
+        _ => "link reset",
+    };
 
     [LoggerMessage(EventId = 5208, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} waits for the previous link to finish disconnecting")]
     private partial void LogConnectWaitsForRelease(string port, string local, string remote);

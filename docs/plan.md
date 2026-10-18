@@ -1452,6 +1452,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-10-18 - RHP: a failed open says why (#849)
+
+A peer that answered DM and a peer that never answered both came back from `Ax25Listener.ConnectAsync` as the same `InvalidOperationException`, and the RHP gateway turned both into `errCode 15` "No Route". Apps that script connects could not tell busy from dead.
+
+- **Listener** (`Ax25Listener.ConnectAsync`, new `Ax25ConnectFailedException` / `Ax25ConnectFailure`): Awaiting Connection already tells them apart. Its DM arm (figc4.2, figc4.6) raises DL-DISCONNECT indication alone, its RC == N2 arm raises DL-ERROR indication (G) first. The dial watches for the G and throws `Refused`, `NoAnswer`, or `LinkReset` (a DL-DISCONNECT confirm). The exception derives from `InvalidOperationException`, so every existing handler still catches it; a budget timeout is still a `TimeoutException`. No SDL change, no quirk, no listener surface change (the parity check keys on methods, not exception types).
+- **Wire** (`RhpErrorCode`, `spec/rhp2.cddl` WF-9, `docs/rhp2-server.md` "Why an open failed"): four pdn codes after 18. 19 Refused, 20 No answer, 21 Timed out (the dial's budget or the gateway's 90 s backstop, which were 15 before), 22 Link reset. 15 No Route stays for a station the port cannot reach (multipoint AXUDP with no peers entry) and any unclassified failure. XRouter gives no reason at all (its failure is a later bare `status` + `close`), so there was nothing to match. No client keyed on 15 for a failed open (DAPPS, pdn-bbs and linmail-pdn checked).
+- **Tests**: `Ax25ListenerConnectFailureTests` (DM to SABM, DM to SABME then SABM, silence), `RhpOpenFailureReasonTests` (19 and 20 through the real gateway and port), the code and text pins, and CDDL vectors for 19 to 22. No new settings.
+
 ### 2026-10-18 - NET/ROM: no routes learned to our own app callsigns (#954)
 
 A neighbour that echoed one of our app aliases back in its NODES (RDGBBS -> GB7RDG-2) could leave the node holding a route to its own app via that neighbour. While the app was enabled the #931 check answered first, but with the app disabled a Connect Request for the call was forwarded out and bounced until its TTL ran out. LinBPQ skips its APPLCALLs in NODES ingest (`L3Code.c`) as well as its own call; pdn now does the same.

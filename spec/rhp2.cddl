@@ -29,6 +29,10 @@
 ;   WF-9  errCode 18 "Already connected": pdn's own, neither the spec's nor
 ;         XRouter's. An open to a peer the calling callsign already has a link
 ;         up with, held by an accept or a console (packet-net/packet.net#862).
+;         errCode 19-22, also pdn's own: why an open failed (packet.net#849):
+;         19 "Refused" (the peer answered DM), 20 "No answer" (T1 x N2), 21
+;         "Timed out" (the node's connect budget), 22 "Link reset" (down
+;         before up for any other reason). XRouter gives no reason.
 ;   WF-16 TRACE recv fields tseq/ilen/pid/ptcl: not in the spec at all;
 ;         XRouter-observed (the spec's TRACE example shows srce/dest/ctrl/
 ;         frametype/rseq/cr/pf but omits these four).
@@ -93,9 +97,9 @@ rhp-message = auth / auth-reply
 
 ; ─── Shared fragments ─────────────────────────────────────────────────────────
 
-; Error codes 0 to 18 (row 8: 17 is XRouter-observed, 18 is pdn's own; neither
-; is in the published spec)
-err-code = 0..18
+; Error codes 0 to 22 (row 8: 17 is XRouter-observed, 18 to 22 are pdn's own;
+; none is in the published spec)
+err-code = 0..22
 
 ; NOTE on the "-val" suffixes below: a rule name must never collide with a
 ; bareword member key used anywhere in this file. RFC 8610 §3.5.1 says a

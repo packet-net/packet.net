@@ -106,19 +106,34 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         }
         catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
         {
-            throw new RhpGatewayException(RhpErrorCode.NoRoute, $"Connect to {target} timed out.");
+            throw new RhpGatewayException(RhpErrorCode.TimedOut, $"Connect to {target} timed out.");
         }
-        catch (LinkAlreadyUpException ex)
+        catch (Exception ex) when (MapConnectFailure(ex, target) is { } mapped)
         {
-            // pdn extension, error 18 (docs/rhp2-server.md row 8): the link to the peer is up
-            // and held by an accept or a console, so this open would only reset it (#862).
-            throw new RhpGatewayException(RhpErrorCode.AlreadyConnected, ex.Message);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException)
-        {
-            throw new RhpGatewayException(RhpErrorCode.NoRoute, $"Connect to {target} failed: {ex.Message}");
+            throw mapped;
         }
     }
+
+    // Why a dial failed, in the wire's terms (docs/rhp2-server.md, "Why an open failed"; #849).
+    // Null for an exception that is not a connect failure, which then propagates as it is.
+    private static RhpGatewayException? MapConnectFailure(Exception ex, Callsign target) => ex switch
+    {
+        // pdn extension, error 18 (docs/rhp2-server.md row 8): the link to the peer is up and
+        // held by an accept or a console, so this open would only reset it (#862).
+        LinkAlreadyUpException => new RhpGatewayException(RhpErrorCode.AlreadyConnected, ex.Message),
+        // The port's transport (multipoint AXUDP) has no way to reach the station at all.
+        NoRouteToPeerException => new RhpGatewayException(RhpErrorCode.NoRoute, $"No route to {target}: {ex.Message}"),
+        Ax25ConnectFailedException { Failure: Ax25ConnectFailure.Refused } =>
+            new RhpGatewayException(RhpErrorCode.Refused, $"Connect to {target} refused: the peer answered DM (busy or not accepting)."),
+        Ax25ConnectFailedException { Failure: Ax25ConnectFailure.NoAnswer } =>
+            new RhpGatewayException(RhpErrorCode.NoAnswer, $"Connect to {target} got no answer (T1 expired N2 times)."),
+        Ax25ConnectFailedException =>
+            new RhpGatewayException(RhpErrorCode.LinkReset, $"Connect to {target} failed: the link was reset before it came up."),
+        // Anything else the dial threw keeps the code it always had.
+        InvalidOperationException or IOException =>
+            new RhpGatewayException(RhpErrorCode.NoRoute, $"Connect to {target} failed: {ex.Message}"),
+        _ => null,
+    };
 
     /// <inheritdoc/>
     public IDisposable RegisterListener(string? portLabel, string local, Func<INodeConnection, string, Task> onAccepted)
