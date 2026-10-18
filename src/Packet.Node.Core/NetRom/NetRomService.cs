@@ -1071,6 +1071,17 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     // the knob is set, and the destination holds a time-route; otherwise the best-quality
     // route, exactly as today. Null when the destination has no usable route. Shares
     // Inp3RouteSelector with the forward path's SelectInp3NextHop so the two agree.
+    /// <summary>
+    /// The route a connect to <paramref name="target"/> (alias or callsign) would use right now,
+    /// or null when there is none. Same selection <see cref="ConnectCircuitAsync"/> makes; used
+    /// to tell the user which neighbour and port the circuit is going out on.
+    /// </summary>
+    public NetRomRoute? ActiveRouteFor(string target)
+    {
+        var dest = table.Snapshot().ResolveDestination(target);
+        return dest is null ? null : SelectActiveRoute(dest);
+    }
+
     private NetRomRoute? SelectActiveRoute(NetRomDestination destination) =>
         Inp3RouteSelector.SelectActiveRoute(destination, PreferInp3Routes);
 

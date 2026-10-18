@@ -4,6 +4,7 @@ using Packet.Core;
 using Packet.Ax25.Transport;
 using Packet.NetRom.Wire;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Console;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Tests.Support;
@@ -547,6 +548,36 @@ public sealed class NetRomL3L4IntegrationTests
             "the best route is tried first, then it fails over to the alternate once nb1 is marked down");
         a.NetRom.Snapshot().ResolveDestination(CNodeCall.ToString())
             .Should().BeNull("both dead next hops were marked down, so the destination has no routes left");
+    }
+
+    private sealed class StubConnector(string portId) : IOutboundConnector
+    {
+        public string PortId => portId;
+
+        public Task<INodeConnection> ConnectAsync(Callsign target, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task The_connect_message_names_the_neighbour_and_port_of_the_route_actually_used()
+    {
+        // #947: "Connecting to BDH on axip-10093..." named the default connector's port although
+        // the circuit went out on the route's port. The message must name the best route.
+        await using var a = await StartNodeAsync(new SharedRadioBus(), ANodeCall, "ANODE");
+        var nb1 = new Callsign("GB7NB1", 0);
+        IngestRoute(a.NetRom, originator: nb1, dest: CNodeCall, quality: 200);
+
+        var connector = new NetRomOutboundConnector(a.NetRom, new StubConnector("default-port"), UserCall);
+        connector.DescribeRoute(CNodeCall).Should().Be($"{CNodeCall} via {nb1} on p1");
+
+        // No route (and a direct L2 target): unchanged wording, naming the fallback's port.
+        var direct = new Callsign("M0DIR", 1);
+        connector.DescribeRoute(direct).Should().Be($"{direct} on default-port");
+
+        // An L4 user has no fallback connector: still names the route, and "netrom" when none.
+        var l4 = new NetRomOutboundConnector(a.NetRom, fallback: null, UserCall);
+        l4.DescribeRoute(CNodeCall).Should().Be($"{CNodeCall} via {nb1} on p1");
+        l4.DescribeRoute(direct).Should().Be($"{direct} on netrom");
     }
 
     // Prime a route to <paramref name="dest"/> via <paramref name="originator"/> by

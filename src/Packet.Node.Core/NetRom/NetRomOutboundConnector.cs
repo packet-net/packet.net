@@ -44,6 +44,17 @@ public sealed class NetRomOutboundConnector : IOutboundConnector
     public string PortId => fallback?.PortId ?? "netrom";
 
     /// <inheritdoc/>
+    public string DescribeRoute(Callsign target)
+    {
+        if (netRom.ConnectEnabled && netRom.ActiveRouteFor(target.ToString()) is { } route)
+        {
+            return $"{target} via {route.Neighbour} on {route.PortId}";
+        }
+
+        return fallback is not null ? fallback.DescribeRoute(target) : $"{target} on {PortId}";
+    }
+
+    /// <inheritdoc/>
     public async Task<INodeConnection> ConnectAsync(Callsign target, CancellationToken cancellationToken = default)
     {
         // Try a NET/ROM route first when connect-routing is enabled.
