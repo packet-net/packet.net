@@ -105,4 +105,32 @@ public sealed class MhOverRfAndNetRomTests
         await Wait.ForAsync(() => user.Saw("G9HRD-1"), "B's MH lists its heard station to a NET/ROM user", generous);
         user.Saw("not available").Should().BeFalse();
     }
+
+    [Fact]
+    public async Task Mh_over_rf_is_capped_at_30_newest_first_with_a_footer()
+    {
+        var bus = new SharedRadioBus();
+        var generous = TimeSpan.FromSeconds(60);
+        var log = new HeardLog();
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 45; i++)
+        {
+            log.Record("p1", $"G9X{i:00}", now.AddMinutes(-60 + i));   // G9X44 newest, G9X00 oldest
+        }
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE", log);
+
+        await using var user = new RemoteStation(bus.Attach(), UserAtA);
+        await user.StartAsync();
+        await user.ConnectAsync(ANodeCall);
+        await Wait.ForAsync(() => user.Saw("ANODE"), "the banner reaches the RF user", generous);
+        user.SendLine("MH");
+        await Wait.ForAsync(() => user.Saw("30 of 45 shown"), "the capped list ends with its footer", generous);
+        user.Saw("G9X44").Should().BeTrue();
+        user.Saw("G9X15").Should().BeTrue();
+        user.Saw("G9X14").Should().BeFalse("only the 30 newest are sent");
+        user.Saw("p1").Should().BeTrue("the bare form names each entry's port");
+
+        user.SendLine("MH p1");
+        await Wait.ForAsync(() => user.Saw("Heard on p1:"), "the per-port form answers", generous);
+    }
 }

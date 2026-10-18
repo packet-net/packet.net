@@ -163,7 +163,7 @@ public sealed partial class NodeCommandService : INodeApplication
                 return DispatchOutcome.Continue;
 
             case MhCommand mh:
-                await WriteLineAsync(connection, MhText(mh.PortId), ct).ConfigureAwait(false);
+                await WriteLineAsync(connection, MhText(mh.PortId, connection.TransportKind != NodeTransportKind.Telnet), ct).ConfigureAwait(false);
                 return DispatchOutcome.Continue;
 
             case ByeCommand:
@@ -448,7 +448,13 @@ public sealed partial class NodeCommandService : INodeApplication
     // ports it was heard on, with a port count); MH <port> ⇒ that port's stations. Read-only; no
     // elevation (it leaks only which stations were on the air, the same data the monitor shows).
     // Columns: callsign, last-heard (relative h:mm:ss ago), count, and port(s). Most-recent first.
-    private string MhText(string? portId)
+    //
+    // Over RF and NET/ROM (not telnet or web) the list is capped at MhRfEntries newest first, like
+    // LinBPQ's fixed MHENTRIES, so a long list does not cost minutes of airtime (#933). The bare
+    // form is then the newest entries across all ports, each line naming its port.
+    private const int MhRfEntries = 30;
+
+    private string MhText(string? portId, bool capped = false)
     {
         var log = env.Heard;
         if (log is null)
@@ -457,6 +463,30 @@ public sealed partial class NodeCommandService : INodeApplication
         }
 
         var now = clock.GetUtcNow();
+
+        if (capped)
+        {
+            var all = portId is null ? log.All() : log.ForPort(portId);
+            if (all.Count == 0)
+            {
+                return portId is null ? "MHeard: (nothing heard yet)" : $"MHeard on {portId}: (nothing heard yet)";
+            }
+            var shown = all.Take(MhRfEntries).ToList();
+            var sb = new StringBuilder(portId is null ? "Heard (newest first):" : $"Heard on {portId}:");
+            sb.Append('\n').Append(portId is null ? "  Callsign    Last heard  Count  Port" : "  Callsign    Last heard  Count");
+            foreach (var r in shown)
+            {
+                sb.Append('\n').Append("  ")
+                  .Append(Pad(r.Callsign, 10)).Append("  ")
+                  .Append(Pad(RelativeAgo(now, r.LastHeard), 10)).Append("  ")
+                  .Append(portId is null ? Pad(r.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), 5) + "  " + r.PortId : r.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            if (all.Count > shown.Count)
+            {
+                sb.Append('\n').Append('(').Append(shown.Count).Append(" of ").Append(all.Count).Append(" shown)");
+            }
+            return sb.ToString();
+        }
 
         if (portId is null)
         {

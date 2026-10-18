@@ -1457,7 +1457,7 @@ What changed, why, where to look for details.
 
 ### 2026-10-18 - node: MH works for RF and NET/ROM users (#933)
 
-`MH` typed over an AX.25 connect or a NET/ROM circuit said the heard log was not available, because the port supervisor built those two consoles with no heard log. It now takes the same `HeardLog` the telnet, web and sysop consoles read (`NodeHostedService` passes it in). Output is unchanged and unpaged, as for the sysop MH. Tests: `tests/Packet.Node.Tests/Integration/MhOverRfAndNetRomTests.cs`.
+`MH` typed over an AX.25 connect or a NET/ROM circuit said the heard log was not available, because the port supervisor built those two consoles with no heard log. It now takes the same `HeardLog` the telnet, web and sysop consoles read (`NodeHostedService` passes it in). Over RF and NET/ROM the list is capped at the 30 newest, newest first (LinBPQ's MHENTRIES), for `MH <port>` and bare `MH` (then across ports, each line naming its port), with a `(30 of N shown)` footer when cut; telnet and web are unchanged. No setting. Tests: `tests/Packet.Node.Tests/Integration/MhOverRfAndNetRomTests.cs`.
 
 ### 2026-10-18 - node: UK packet map reporting (#453)
 
