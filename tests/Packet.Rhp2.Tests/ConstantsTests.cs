@@ -98,6 +98,11 @@ public class ConstantsTests
     // 17 is XRouter-observed, not in the published spec.
     [InlineData(RhpErrorCode.NotConnected, "Not connected")]
     [InlineData(RhpErrorCode.AlreadyConnected, "Already connected")]
+    // 19 to 22 are pdn's own: why an open failed (#849).
+    [InlineData(RhpErrorCode.Refused, "Refused")]
+    [InlineData(RhpErrorCode.NoAnswer, "No answer")]
+    [InlineData(RhpErrorCode.TimedOut, "Timed out")]
+    [InlineData(RhpErrorCode.LinkReset, "Link reset")]
     public void Error_code_canonical_text_matches_the_spec(int code, string expected)
     {
         RhpErrorCode.Text(code).Should().Be(expected);
@@ -125,6 +130,10 @@ public class ConstantsTests
         RhpErrorCode.OperationNotSupported.Should().Be(16);
         RhpErrorCode.NotConnected.Should().Be(17);
         RhpErrorCode.AlreadyConnected.Should().Be(18);
+        RhpErrorCode.Refused.Should().Be(19);
+        RhpErrorCode.NoAnswer.Should().Be(20);
+        RhpErrorCode.TimedOut.Should().Be(21);
+        RhpErrorCode.LinkReset.Should().Be(22);
     }
 
     [Fact]

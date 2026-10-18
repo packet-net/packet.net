@@ -203,6 +203,15 @@ public class CddlWireConformanceTests
     public void OpenReply_error_validates() =>
         ValidateAgainstGrammar(ToJson(new OpenReplyMessage { Id = 2, ErrCode = 15, ErrText = "No Route" }));
 
+    // pdn's own reasons for a failed open (#849): 19 Refused, 20 No answer, 21 Timed out, 22 Link reset.
+    [SkippableTheory]
+    [InlineData(19, "Refused")]
+    [InlineData(20, "No answer")]
+    [InlineData(21, "Timed out")]
+    [InlineData(22, "Link reset")]
+    public void OpenReply_failure_reason_validates(int code, string text) =>
+        ValidateAgainstGrammar(ToJson(new OpenReplyMessage { Id = 2, ErrCode = code, ErrText = text }));
+
     [SkippableFact]
     public void OpenReply_crossed_validates() =>
         ValidateAgainstGrammar(ToJson(new OpenReplyMessage { Id = 7, Handle = 104, ErrCode = 0, ErrText = "Ok", Crossed = true }));

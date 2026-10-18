@@ -109,7 +109,9 @@ public enum StatusFlags
 /// returns it from <c>send</c> on a stream socket whose downlink hasn't
 /// (or has stopped) being connected. <see cref="AlreadyConnected"/> (18) is
 /// pdn's own: an <c>open</c> to a peer the calling callsign already has a link
-/// up with (packet-net/packet.net#862). Ints rather than an enum so an
+/// up with (packet-net/packet.net#862). 19 to 22 are pdn's own too: why an
+/// <c>open</c> failed (<see cref="Refused"/>, <see cref="NoAnswer"/>,
+/// <see cref="TimedOut"/>, <see cref="LinkReset"/>; packet-net/packet.net#849). Ints rather than an enum so an
 /// unrecognised future code still flows through DTOs unchanged.
 /// </remarks>
 public static class RhpErrorCode
@@ -180,6 +182,33 @@ public static class RhpErrorCode
     public const int AlreadyConnected = 18;
 
     /// <summary>
+    /// pdn extension (not in the published spec, and not XRouter's, whose failed connect gives
+    /// no reason at all): an <c>open</c> the far end refused: the peer answered the SABM(E)
+    /// with DM. The station is there but would not take the call, so a later try may work
+    /// (BPQ's node says "Busy from"). packet-net/packet.net#849.
+    /// </summary>
+    public const int Refused = 19;
+
+    /// <summary>
+    /// pdn extension: an <c>open</c> the far end never answered: T1 expired N2 times with
+    /// nothing back (BPQ's node says "Failure with"). packet-net/packet.net#849.
+    /// </summary>
+    public const int NoAnswer = 20;
+
+    /// <summary>
+    /// pdn extension: an <c>open</c> that ran out of the node's time budget for a connect
+    /// before the link either came up or failed. packet-net/packet.net#849.
+    /// </summary>
+    public const int TimedOut = 21;
+
+    /// <summary>
+    /// pdn extension: an <c>open</c> whose link went down before it came up for a reason that
+    /// is neither a refusal nor no answer (a disconnect at this end, say).
+    /// packet-net/packet.net#849.
+    /// </summary>
+    public const int LinkReset = 22;
+
+    /// <summary>
     /// Canonical <c>errText</c> for a code, matching the spec's wording
     /// (including its inconsistent capitalisation - "No Route" but
     /// "Operation not supported").
@@ -205,6 +234,10 @@ public static class RhpErrorCode
         OperationNotSupported => "Operation not supported",
         NotConnected => "Not connected",
         AlreadyConnected => "Already connected",
+        Refused => "Refused",
+        NoAnswer => "No answer",
+        TimedOut => "Timed out",
+        LinkReset => "Link reset",
         _ => string.Create(CultureInfo.InvariantCulture, $"Unknown ({code})"),
     };
 }
