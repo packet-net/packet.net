@@ -92,6 +92,13 @@ jobs:
             tar -C "artifacts/node/$rid" -czf "artifacts/packetnet_${VERSION}_${arch}.tar.gz" .
           done
 
+      # Self-contained, so the runtime in each package is the runner's SDK's, and a stale runner
+      # ships old security fixes. Fail the release instead.
+      - name: Check the bundled .NET runtime is the latest patch
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: python3 scripts/check-bundled-runtime.py artifacts/packetnet_"${VERSION}"_*.deb artifacts/packetnet_"${VERSION}"_*.tar.gz
+
       - name: Install-smoke the amd64 .deb (Debian-stable + Ubuntu-LTS)
         env:
           VERSION: ${{ steps.v.outputs.version }}

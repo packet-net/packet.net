@@ -37,6 +37,8 @@ for arch in "${arches[@]}"; do
 done
 
 if [ "$mode" = push ]; then
+  # The image carries the runtime of whichever SDK built the tree; refuse to push a stale one.
+  python3 "$root/scripts/check-bundled-runtime.py" "$root"/pdn-app/*
   echo "==> buildx multi-arch push $image:$version + :latest"
   docker buildx build -f "$root/docker/node/Dockerfile" \
     --platform linux/amd64,linux/arm64 \
