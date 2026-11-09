@@ -5,7 +5,6 @@
     <Project Path="src/Packet.Ax25.Transport.Abstractions/Packet.Ax25.Transport.Abstractions.csproj" />
     <Project Path="src/Packet.Ax25.Radio/Packet.Ax25.Radio.csproj" />
     <Project Path="src/Packet.Ax25.Radio.Tait/Packet.Ax25.Radio.Tait.csproj" />
-    <Project Path="src/Packet.Aprs/Packet.Aprs.csproj" />
     <Project Path="src/Packet.Axudp/Packet.Axudp.csproj" />
     <Project Path="src/Packet.Core/Packet.Core.csproj" />
     <Project Path="src/Packet.Kiss.NinoTnc/Packet.Kiss.NinoTnc.csproj" />
@@ -25,7 +24,6 @@
     <Project Path="tests/Packet.Ax25.Tests/Packet.Ax25.Tests.csproj" />
     <Project Path="tests/Packet.Ax25.Radio.Tests/Packet.Ax25.Radio.Tests.csproj" />
     <Project Path="tests/Packet.Ax25.Radio.Tait.Tests/Packet.Ax25.Radio.Tait.Tests.csproj" />
-    <Project Path="tests/Packet.Aprs.Tests/Packet.Aprs.Tests.csproj" />
     <Project Path="tests/Packet.Axudp.Tests/Packet.Axudp.Tests.csproj" />
     <Project Path="tests/Packet.Core.Tests/Packet.Core.Tests.csproj" />
     <Project Path="tests/Packet.Interop.Tests/Packet.Interop.Tests.csproj" />
@@ -39,7 +37,6 @@
     <Project Path="tests/Packet.Tune.Core.Tests/Packet.Tune.Core.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
-    <Project Path="tools/Packet.Aprs.Corpus/Packet.Aprs.Corpus.csproj" />
     <Project Path="tools/Packet.AprsIs.Spike/Packet.AprsIs.Spike.csproj" />
     <Project Path="tools/Packet.Fuzz/Packet.Fuzz.csproj" />
     <Project Path="tools/Packet.LinkBench/Packet.LinkBench.csproj" />

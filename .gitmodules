@@ -1,3 +1,0 @@
-[submodule "spec/aprs"]
-	path = spec/aprs
-	url = https://github.com/packet-net/aprs-vectors

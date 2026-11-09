@@ -15,7 +15,6 @@ name: publish-libs
 #   Packet.Ax25.Radio
 #   Packet.Ax25.Radio.Tait
 #   Packet.Axudp
-#   Packet.Aprs
 #   Packet.Agw
 #   Packet.NetRom
 #   Packet.Rhp2
@@ -86,7 +85,6 @@ jobs:
           - Packet.Ax25.Radio
           - Packet.Ax25.Radio.Tait
           - Packet.Axudp
-          - Packet.Aprs
           - Packet.Agw
           - Packet.NetRom
           - Packet.Rhp2

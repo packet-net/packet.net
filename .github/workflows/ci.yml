@@ -44,7 +44,6 @@ jobs:
       matrix:
         project:
           - Packet.Agw.Tests
-          - Packet.Aprs.Tests
           - Packet.Ax25.Properties
           - Packet.Ax25.Tests
           - Packet.Ax25.Radio.Tests

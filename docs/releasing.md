@@ -64,7 +64,6 @@ The `lib-v*` tag triggers [`.github/workflows/publish-libs.yml`](../.github/work
 - `Packet.Ax25`
 - `Packet.Ax25.Transport.Abstractions`
 - `Packet.Axudp`
-- `Packet.Aprs`
 - `Packet.Agw`
 - `Packet.NetRom`
 - `Packet.Rhp2`
