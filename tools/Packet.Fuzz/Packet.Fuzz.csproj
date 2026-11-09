@@ -22,7 +22,7 @@
     <ProjectReference Include="..\..\src\Packet.Node.Core\Packet.Node.Core.csproj" />
     <!-- Higher-layer wire parsers fed untrusted bytes: APRS info fields, AGW
          length-prefixed frames, NET/ROM network-layer datagrams. -->
-    <ProjectReference Include="..\..\src\Packet.Aprs\Packet.Aprs.csproj" />
+    <PackageReference Include="Packet.Aprs" />
     <ProjectReference Include="..\..\src\Packet.Agw\Packet.Agw.csproj" />
     <ProjectReference Include="..\..\src\Packet.NetRom\Packet.NetRom.csproj" />
   </ItemGroup>

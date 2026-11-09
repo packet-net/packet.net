@@ -23,7 +23,6 @@ on:
       # 2026-07-14 — see ci.yml.)
       - 'src/Packet.Ax25/**'
       - 'src/Packet.Kiss/**'
-      - 'src/Packet.Aprs/**'
       - 'src/Packet.Agw/**'
       - 'src/Packet.NetRom/**'
       - 'tools/Packet.Fuzz/**'
