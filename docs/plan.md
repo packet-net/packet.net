@@ -1453,6 +1453,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-11-11 - Packet.Aprs pin moves to 1.0.0
+
+The `Packet.Aprs` pin goes from 0.55.0 to 1.0.0 (frozen API). Only the interop tests, `Packet.Fuzz` and `Packet.AprsIs.Spike` use it, and none needed a code change; test and tooling only, no release impact.
+
 ### 2026-10-19 - RELEASE: node-v0.68.0 (NODES per port, UK packet map, RHP over NET/ROM, catalog bumps)
 
 Tagged `node-v0.68.0` on `d1fc34b4` (main, the #961 merge) with `ci`, `interop` and `deb-smoke` green on that commit. Node only: no `lib-v*` this time, so the RHP constants added by #957 reach NuGet with the next library release. Carries #941 (#929, NODES broadcasts per port, default off: the one breaking change), #942 (#453, UK packet map reporting), #949 (#947), #950 (#944), #951, #952 (#935), #953 (#931), #955 (#954), #957 (#849), #958 (#932), #959 (#939), and the catalog bumps #920, #921, #922, #925, #927, #928 and #960.
