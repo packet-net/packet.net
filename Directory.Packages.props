@@ -157,6 +157,7 @@
 
     <!-- Build housekeeping -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageVersion Include="System.Formats.Cbor" Version="9.0.24" />
   </ItemGroup>
 
 </Project>
