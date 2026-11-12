@@ -55,8 +55,8 @@ public static class WebAuthnFido2Builder
 
         var config = new Fido2Configuration
         {
-            ServerDomain = cfg.RelyingPartyId,
-            ServerName = cfg.RelyingPartyName,
+            RPID = cfg.RelyingPartyId,
+            RPName = cfg.RelyingPartyName,
             Origins = AcceptedOrigins(cfg, request),
         };
         return new Fido2(config, metadataService: null);
